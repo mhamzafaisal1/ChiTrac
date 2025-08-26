@@ -107,6 +107,7 @@ module.exports = function (server) {
             itemAgg: new Map(), // itemId -> { name, standard, count, workedTimeMs }
             totalCount: 0,
             totalWorkedMs: 0,
+            totalRuntimeMs: 0,
           });
         }
         const bucket = grouped.get(key);
@@ -121,6 +122,7 @@ module.exports = function (server) {
 
         // Worked time for this clipped slice
         const workedTimeMs = Math.max(0, s.sliceMs * activeStations);
+        const runtimeMs = Math.max(0, s.sliceMs);
 
         // Session entry for response 
         bucket.sessions.push({
@@ -128,6 +130,8 @@ module.exports = function (server) {
           end: new Date(s.ovEnd).toISOString(),
           workedTimeMs,
           workedTimeFormatted: formatDuration(workedTimeMs),
+          runtimeMs,
+          runtimeFormatted: formatDuration(runtimeMs),
         });
 
         // Counts inside the clipped slice (already filtered by the pipeline)
@@ -166,6 +170,7 @@ module.exports = function (server) {
 
           bucket.totalCount += itm.count;
           bucket.totalWorkedMs += workedTimeMs;
+          bucket.totalRuntimeMs += runtimeMs;
         }
       }
 
@@ -213,7 +218,7 @@ module.exports = function (server) {
           };
         }
 
-        const totalHours = b.totalWorkedMs / 3600000;
+        const totalHours = b.totalRuntimeMs / 3600000;
         const machinePph = totalHours > 0 ? b.totalCount / totalHours : 0;
         const machineEff = proratedStandard > 0 ? machinePph / proratedStandard : 0;
 
@@ -224,6 +229,8 @@ module.exports = function (server) {
             totalCount: b.totalCount,
             workedTimeMs: b.totalWorkedMs,
             workedTimeFormatted: formatDuration(b.totalWorkedMs),
+            runtimeMs: b.totalRuntimeMs,
+            runtimeFormatted: formatDuration(b.totalRuntimeMs),
             pph: Math.round(machinePph * 100) / 100,
             proratedStandard: Math.round(proratedStandard * 100) / 100,
             efficiency: Math.round(machineEff * 10000) / 100,
@@ -419,7 +426,7 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
         if (b.items.size === 0) continue; // match current route behavior
   
         const hours = b.totalRunMs / 3_600_000;
-        const workedTimeFormatted = formatDuration(b.totalRunMs); // same helper as today (object with hours/minutes)
+        const runtimeFormatted = formatDuration(b.totalRunMs);
   
         for (const [, it] of b.items) {
           const pph = hours > 0 ? it.count / hours : 0;
@@ -430,7 +437,7 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
             operatorName: b.operatorName,
             machineName: b.machineName,
             itemName: it.name,
-            workedTimeFormatted,
+            runtimeFormatted,
             count: it.count,
             misfeed: it.misfeed,
             pph: Math.round(pph * 100) / 100,

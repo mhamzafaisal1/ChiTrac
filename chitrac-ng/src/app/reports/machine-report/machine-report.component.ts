@@ -96,7 +96,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
           formattedData.push({
             'Machine': machine.machine.name,
             'Item': 'TOTAL',
-            'Worked Time': `${summary.workedTimeFormatted.hours}h ${summary.workedTimeFormatted.minutes}m`,
+            'Total Time (Runtime)': `${summary.runtimeFormatted.hours}h ${summary.runtimeFormatted.minutes}m`,
             'Total Count': summary.totalCount,
             'PPH': summary.pph,
             'Standard': summary.proratedStandard,
@@ -108,7 +108,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
             formattedData.push({
               'Machine': machine.machine.name,
               'Item': item.name,
-              'Worked Time': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
+              'Total Time (Runtime)': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
               'Total Count': item.countTotal,
               'PPH': item.pph,
               'Standard': item.standard,
@@ -144,7 +144,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
         doc.setFontSize(11);
         doc.text(`Date Range: ${this.startTime} to ${this.endTime}`, 14, 23);
   
-        const head = [['Machine/Item', 'Worked Time', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
+        const head = [['Machine/Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
         const body: any[] = [];
   
         data.forEach((machine: any) => {
@@ -160,7 +160,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
                 fontStyle: 'bold'
               }
             },
-            `${summary.workedTimeFormatted.hours}h ${summary.workedTimeFormatted.minutes}m`,
+            `${summary.runtimeFormatted.hours}h ${summary.runtimeFormatted.minutes}m`,
             summary.totalCount,
             summary.pph,
             summary.proratedStandard,
