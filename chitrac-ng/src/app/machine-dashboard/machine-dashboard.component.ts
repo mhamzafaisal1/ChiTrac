@@ -346,7 +346,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (res: any[]) => {
           const machineData = res[0]; // <-- FIX HERE
-          console.log("Machine data:", machineData);
 
           const itemSummaryData = Object.values(
             machineData.itemSummary?.machineSummary?.itemSummaries || {}

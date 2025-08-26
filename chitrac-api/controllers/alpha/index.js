@@ -99,6 +99,10 @@ function constructor(server) {
   const dailyDashboardSessionRoutes = require("./dailyDashboardSessionRoutes")(server);
   router.use("/", dailyDashboardSessionRoutes);
 
+  // Import dashboard sessions routes
+  const dashboardSessionsRoutes = require("./dashboardSessionsRoutes")(server);
+  router.use("/", dashboardSessionsRoutes);
+
   // Import misc-related routes
   const miscRoutes = require("./miscRoutes")(server);
   router.use("/", miscRoutes);
