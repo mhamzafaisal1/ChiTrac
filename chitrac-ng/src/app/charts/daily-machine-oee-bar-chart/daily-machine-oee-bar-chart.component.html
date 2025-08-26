@@ -1,0 +1,23 @@
+<!-- charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component.html -->
+<div class="chart-container" [class.dark-mode]="isDarkTheme">
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading data...</div>
+    </div>
+  </div>
+
+  <div class="chart-content" *ngIf="hasInitialData && chartData.length">
+    <bar-chart
+      [data]="chartData"
+      [title]="'Ranked OEE% by Machine'"
+      [mode]="'oee'"
+      [chartWidth]="chartWidth"
+      [chartHeight]="chartHeight">
+    </bar-chart>
+  </div>
+
+  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+    <div class="loading-spinner dummy-chart">⏳</div>
+  </div>
+</div>

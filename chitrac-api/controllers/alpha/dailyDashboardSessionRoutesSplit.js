@@ -312,43 +312,5 @@ module.exports = function (server) {
     }
   });
 
-  // Optional: Keep the consolidated route for backward compatibility
-  router.get('/analytics/daily-sessions-dashboard', async (req, res) => {
-    try {
-      const now = DateTime.now();
-      const dayStart = now.startOf('day').toJSDate();
-      const dayEnd = now.toJSDate();
-
-      const [
-        machineStatus,
-        machineOee,
-        itemHourlyStack,
-        topOperators,
-        plantwideMetrics,
-        dailyCounts
-      ] = await Promise.all([
-        buildDailyMachineStatusFromSessions(db, dayStart, dayEnd),
-        buildMachineOEEFromSessions(db, dayStart, dayEnd),
-        buildDailyItemHourlyStack(db, dayStart, dayEnd),
-        buildTopOperatorEfficiencyFromSessions(db, dayStart, dayEnd),
-        buildPlantwideMetricsByHour(db, dayStart, dayEnd),
-        buildDailyCountTotals(db, null, dayEnd)
-      ]);
-
-      return res.json({
-        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
-        machineStatus,
-        machineOee,
-        itemHourlyStack,
-        topOperators,
-        plantwideMetrics,
-        dailyCounts
-      });
-    } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
-      res.status(500).json({ error: "Failed to fetch full daily dashboard data" });
-    }
-  });
-
   return router;
 };
