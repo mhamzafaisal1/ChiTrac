@@ -99,6 +99,10 @@ function constructor(server) {
   const dailyDashboardSessionRoutes = require("./dailyDashboardSessionRoutes")(server);
   router.use("/", dailyDashboardSessionRoutes);
 
+  // Import daily dashboard session routes (split)
+  const dailyDashboardSessionRoutesSplit = require("./dailyDashboardSessionRoutesSplit")(server);
+  router.use("/", dailyDashboardSessionRoutesSplit);
+
   // Import dashboard sessions routes
   const dashboardSessionsRoutes = require("./dashboardSessionsRoutes")(server);
   router.use("/", dashboardSessionsRoutes);
@@ -134,6 +138,10 @@ function constructor(server) {
   // Import machine-details routes
   const machineDetailsRoutes = require("./machineDetails..js")(server);
   router.use("/", machineDetailsRoutes);
+
+  // Import operator-details routes
+  const operatorDetailsRoutes = require("./operatorDetails")(server);
+  router.use("/", operatorDetailsRoutes);
 
   //Import dashboard-related routes
   const dashboardRoutes = require("./dashboardRoutes")(server);

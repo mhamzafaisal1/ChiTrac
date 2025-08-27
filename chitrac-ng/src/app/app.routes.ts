@@ -34,6 +34,14 @@ import { MachineGridComponent } from './machine-grid/machine-grid.component';
 import { EfficiencyScreens } from './efficiency-screens/efficiency-screens.component';
 import { SplEfficiencyScreen } from './efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component';
 import { LplEfficiencyScreen } from './efficiency-screens/lpl-efficiency-screen/lpl-efficiecny-screen.component';
+import { MachineEfficiencyLaneComponent } from './efficiency-screens/efficiecny-screen-machine/machine-efficiecny-lane.component';
+import { DailyCountBarChartComponent } from './charts/daily-count-bar-chart/daily-count-bar-chart.component';
+import { DailyMachineItemStackedBarChartComponent } from './charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component';	
+import { DailyMachineOeeBarChartComponent } from './charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component';
+import { DailyMachineStackedBarChartComponent } from './charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component';
+import { PlantwideMetricsChartComponent } from './charts/plantwide-metrics-chart/plantwide-metrics-chart.component';
+import { RankedOperatorBarChartComponent } from './charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component';
+import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
 import { DataAwareItemStackedChartComponent } from './charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component';
 
 export const routes: Routes = [
@@ -60,6 +68,7 @@ export const routes: Routes = [
 	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent },
 	{ path: 'ng/test', component: TestComponent },
 	{ path: 'ng/daily-analytics', component: DailyAnalyticsDashboardComponent },
+	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent },
 	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
 	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
@@ -71,6 +80,13 @@ export const routes: Routes = [
 	{ path: 'ng/spl-efficiency-screen', component: SplEfficiencyScreen },
 	{ path: 'ng/lpl-efficiency-screen', component: LplEfficiencyScreen },
 	{ path: 'ng/lpl-efficiency-screen/:line', component: LplEfficiencyScreen },
+	{ path: 'ng/machine-efficiency-lane', component: MachineEfficiencyLaneComponent },
+	{ path: 'ng/daily-count-bar-chart', component: DailyCountBarChartComponent },
+	{ path: 'ng/daily-machine-item-stacked-bar-chart', component: DailyMachineItemStackedBarChartComponent },
+	{ path: 'ng/daily-machine-oee-bar-chart', component: DailyMachineOeeBarChartComponent },
+	{ path: 'ng/daily-machine-stacked-bar-chart', component: DailyMachineStackedBarChartComponent },
+	{ path: 'ng/daily-plantwide-metrics-chart', component: PlantwideMetricsChartComponent },
+	{ path: 'ng/daily-ranked-operator-bar-chart', component: RankedOperatorBarChartComponent },
 	{ path: 'ng/item-stacked-chart', component: DataAwareItemStackedChartComponent },
 	{ path: 'ng/*', redirectTo: 'ng/home' }
 	];

@@ -1,0 +1,88 @@
+html, body { height: 100%; margin: 0; }
+
+:host {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  flex: 1;
+  max-height: calc(100vh - 64px);
+}
+
+.custom-container {
+  height: 100%;
+  width: 100%;
+  padding: 1rem 2rem;
+  box-sizing: border-box;
+  background-color: var(--md-sys-color-background);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 1rem);
+}
+
+.lane-wrapper {
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  height: 100%;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+/* one-lane layout: center and constrain width/height */
+/* center a single lane without shrinking height */
+/* narrow single-lane card */
+.lane-wrapper.single {
+    justify-content: center;
+    align-items: stretch;
+  }
+  
+  :root {
+    --lane-min: 640px;
+    --lane-ideal: 54vw;   /* tweak this to 50–60vw to taste */
+    --lane-max: 1000px;
+  }
+  
+  .lane-wrapper.single .lane-card {
+    flex: 0 0 auto;
+    width: clamp(var(--lane-min), var(--lane-ideal), var(--lane-max));
+    height: 100%;
+    margin: 0 auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  }
+  
+  /* ensure inner lane fills height */
+  .lane-wrapper.single .lane-card ct-lane-running,
+  .lane-wrapper.single .lane-card ct-lane-running-greyed,
+  .lane-wrapper.single .lane-card ct-lane-fault,
+  .lane-wrapper.single .lane-card ct-lane-stop {
+    display: block;
+    height: 100%;
+  }
+  
+
+.top-bar {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  align-items: center;
+
+  .serial-input {
+    width: 200px;
+    padding: 0.5rem 0.75rem;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.2s ease;
+
+    &:focus {
+      border-color: #1976d2;
+      box-shadow: 0 0 0 2px rgba(25,118,210,.2);
+    }
+
+    &::placeholder { color: #999; font-size: 13px; }
+  }
+}

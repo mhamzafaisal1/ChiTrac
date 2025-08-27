@@ -70,4 +70,42 @@ getItemsSummary(start: string, end: string, serial?: number) {
   return this.http.get(`${this.apiUrl}/analytics/daily-summary-dashboard/items`, { params });
 }
 
+  /** ✅ New daily dashboard session split individual routes */
+  getDailyMachineStatus(start: string, end: string, serial?: number): Observable<any> {
+    let params = new HttpParams()
+      .set('start', start)
+      .set('end', end);
+
+    if (serial) {
+      params = params.set('serial', serial.toString());
+    }
+
+    return this.http.get(`${this.apiUrl}/analytics/daily/machine-status`, { params });
+  }
+
+  getDailyMachineOee(start: string, end: string): Observable<any> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get(`${this.apiUrl}/analytics/daily/machine-oee`, { params });
+  }
+
+  getDailyItemHourlyProduction(start: string, end: string): Observable<any> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get(`${this.apiUrl}/analytics/daily/item-hourly-production`, { params });
+  }
+
+  getDailyTopOperators(start: string, end: string): Observable<any> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get(`${this.apiUrl}/analytics/daily/top-operators`, { params });
+  }
+
+  getDailyPlantwideMetrics(start: string, end: string): Observable<any> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get(`${this.apiUrl}/analytics/daily/plantwide-metrics`, { params });
+  }
+
+  getDailyCountTotals(start: string, end: string): Observable<any> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get(`${this.apiUrl}/analytics/daily/count-totals`, { params });
+  }
+
 }
