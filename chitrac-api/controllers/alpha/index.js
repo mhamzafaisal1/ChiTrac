@@ -103,6 +103,10 @@ function constructor(server) {
   const dailyDashboardSessionRoutesSplit = require("./dailyDashboardSessionRoutesSplit")(server);
   router.use("/", dailyDashboardSessionRoutesSplit);
 
+  // Import dashboard sessions routes
+  const dashboardSessionsRoutes = require("./dashboardSessionsRoutes")(server);
+  router.use("/", dashboardSessionsRoutes);
+
   // Import misc-related routes
   const miscRoutes = require("./miscRoutes")(server);
   router.use("/", miscRoutes);

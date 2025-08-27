@@ -42,6 +42,7 @@ import { DailyMachineStackedBarChartComponent } from './charts/daily-machine-sta
 import { PlantwideMetricsChartComponent } from './charts/plantwide-metrics-chart/plantwide-metrics-chart.component';
 import { RankedOperatorBarChartComponent } from './charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component';
 import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
+import { DataAwareItemStackedChartComponent } from './charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component';
 
 export const routes: Routes = [
 	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
@@ -86,5 +87,6 @@ export const routes: Routes = [
 	{ path: 'ng/daily-machine-stacked-bar-chart', component: DailyMachineStackedBarChartComponent },
 	{ path: 'ng/daily-plantwide-metrics-chart', component: PlantwideMetricsChartComponent },
 	{ path: 'ng/daily-ranked-operator-bar-chart', component: RankedOperatorBarChartComponent },
+	{ path: 'ng/item-stacked-chart', component: DataAwareItemStackedChartComponent },
 	{ path: 'ng/*', redirectTo: 'ng/home' }
 	];

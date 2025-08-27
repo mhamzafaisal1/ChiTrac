@@ -1,0 +1,78 @@
+<div class="chart-container" [class.dark-mode]="isDarkTheme">
+  <!-- Manual Controls Section -->
+  <div class="controls-section">
+    <button class="toggle-controls-btn" (click)="toggleManualControls()">
+      {{ showManualControls ? 'Hide' : 'Show' }} Filters
+    </button>
+    
+    <div class="manual-controls" *ngIf="showManualControls">
+      <div class="input-group">
+        <label for="machineSerial">Machine Serial:</label>
+        <input 
+          id="machineSerial"
+          type="number" 
+          [(ngModel)]="manualSerial" 
+          placeholder="Enter machine serial"
+          class="form-input">
+      </div>
+      
+      <div class="input-group">
+        <label for="operatorId">Operator ID:</label>
+        <input 
+          id="operatorId"
+          type="number" 
+          [(ngModel)]="manualOperatorId" 
+          placeholder="Enter operator ID"
+          class="form-input">
+      </div>
+      
+      <div class="button-group">
+        <button class="btn btn-primary" (click)="getData()" [disabled]="!startDate || !endDate">
+          Get Data
+        </button>
+        <button class="btn btn-secondary" (click)="clearFilters()">
+          Clear Filters
+        </button>
+      </div>
+      
+      <div class="info-text">
+        <small>
+          • Leave both empty for all data<br>
+          • Enter only machine serial for machine-specific data<br>
+          • Enter only operator ID for operator-specific data<br>
+          • Enter both for combined machine-operator data
+        </small>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading-overlay" *ngIf="isLoading && filtersSelected">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading data...</div>
+    </div>
+  </div>
+
+  <div class="chart-content">
+    <app-stacked-bar-chart
+      *ngIf="chartData"
+      [data]="chartData"
+      mode="time"
+      [style.width.px]="chartWidth"
+      [style.height.px]="chartHeight">
+    </app-stacked-bar-chart>
+  </div>
+
+  <!-- Show different content based on filter state -->
+  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+    <div *ngIf="!filtersSelected" class="no-filters-message">
+      <div class="icon">📊</div>
+      <h3>Select Filters to View Chart</h3>
+      <p>Please select machine serial, operator ID, or both to start viewing the item stacked chart data.</p>
+      <button class="btn btn-primary" (click)="toggleManualControls()">
+        Show Filters
+      </button>
+    </div>
+    <div *ngIf="filtersSelected" class="loading-spinner dummy-chart">⏳</div>
+  </div>
+</div>
