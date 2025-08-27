@@ -1,0 +1,83 @@
+<div class="dashboard-container" [class.dark-mode]="isDarkTheme">
+  <div class="dashboard-wrapper">
+    <div class="charts-grid">
+      <!-- Machine Run/Pause/Fault Time Chart -->
+      <app-chart-tile
+        title="Machine Run/Pause/Fault Time"
+        icon="bar_chart"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+      >
+        <app-daily-machine-stacked-bar-chart
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        ></app-daily-machine-stacked-bar-chart>
+      </app-chart-tile>
+
+      <!-- Machine OEE Chart -->
+      <app-chart-tile
+        title="Machine OEE"
+        icon="insights"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+      >
+        <app-daily-machine-oee-bar-chart
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        ></app-daily-machine-oee-bar-chart>
+      </app-chart-tile>
+
+      <!-- Machine Item Stacked Bar Chart -->
+      <app-chart-tile
+        title="Machine Item Stacked Bar"
+        icon="stacked_bar_chart"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+      >
+        <app-daily-machine-item-stacked-bar-chart
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        ></app-daily-machine-item-stacked-bar-chart>
+      </app-chart-tile>
+
+      <!-- Daily Plantwide Count Totals Chart -->
+      <app-chart-tile
+        title="Daily Plantwide Count Totals"
+        icon="calendar_view_day"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+      >
+        <app-daily-count-bar-chart
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        ></app-daily-count-bar-chart>
+      </app-chart-tile>
+
+      <!-- Top Operator Efficiency Chart -->
+      <app-chart-tile
+        title="Top Operator Efficiency"
+        icon="leaderboard"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+      >
+        <app-ranked-operator-bar-chart
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        ></app-ranked-operator-bar-chart>
+      </app-chart-tile>
+
+      <!-- Plantwide Metrics by Hour Chart -->
+      <app-chart-tile
+        title="Plantwide Metrics by Hour"
+        icon="trending_up"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+      >
+        <app-plantwide-metrics-chart
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        ></app-plantwide-metrics-chart>
+      </app-chart-tile>
+    </div>
+  </div>
+</div>

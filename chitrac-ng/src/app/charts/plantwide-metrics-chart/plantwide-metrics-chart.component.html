@@ -1,0 +1,22 @@
+<!-- charts/plantwide-metrics-chart/plantwide-metrics-chart.component.html -->
+<div class="chart-container" [class.dark-mode]="isDarkTheme">
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading data...</div>
+    </div>
+  </div>
+
+  <div class="chart-content" *ngIf="hasInitialData && chartInputData">
+    <app-multiple-bar-and-line-chart
+      [data]="chartInputData"
+      [title]="'Plantwide Metrics by Hour'"
+      [chartWidth]="chartWidth"
+      [chartHeight]="chartHeight">
+    </app-multiple-bar-and-line-chart>
+  </div>
+
+  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+    <div class="loading-spinner dummy-chart">⏳</div>
+  </div>
+</div>
