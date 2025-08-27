@@ -24,6 +24,7 @@ import { getStatusDotByCode } from "../../utils/status-utils";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
 import { UseCarouselComponent } from "../use-carousel/use-carousel.component";
 import { MachineItemSummaryTableComponent } from "../machine-item-summary-table/machine-item-summary-table.component";
+import { MachineCurrentOperatorsComponent } from "../machine-current-operators/machine-current-operators.component";
 import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component";
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
@@ -364,6 +365,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 endTime: this.endTime,
                 selectedMachineSerial: machineSerial,
                 itemSummaryData,
+                isModal: this.isModal,
+              },
+            },
+            {
+              label: "Current Operators",
+              component: MachineCurrentOperatorsComponent,
+              componentInputs: {
+                startTime: this.startTime,
+                endTime: this.endTime,
+                selectedMachineSerial: machineSerial,
+                currentOperatorsData: machineData.currentOperators || [],
                 isModal: this.isModal,
               },
             },

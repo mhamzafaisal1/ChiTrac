@@ -14,7 +14,8 @@ import { forkJoin } from 'rxjs';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
+import { Subject, takeUntil, tap, delay, Observable, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -22,8 +23,7 @@ import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-f
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
 import { DateTimePickerComponent } from "../components/date-time-picker/date-time-picker.component";
 import { BaseTableComponent } from "../components/base-table/base-table.component";
-import { MachineAnalyticsService } from "../services/machine-analytics.service";
-import { OperatorAnalyticsService } from '../services/operator-analytics.service';
+
 import { OperatorCountbyitemChartComponent } from "../operator-countbyitem-chart/operator-countbyitem-chart.component";
 import { getStatusDotByCode } from '../../utils/status-utils';
 import { DailyDashboardService } from '../services/daily-dashboard.service';
@@ -64,9 +64,14 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   isLoading: boolean = false;
   rawMachineData: any[] = []; // store full API response for machines
   rawOperatorData: any[] = []; // store full API response for operators
-  private pollingSubscription: any;
+  rawItemData: any[] = [];
+  private machinePollSub: any;
+  private operatorPollSub: any;
+  private itemPollSub: any;
   private destroy$ = new Subject<void>();
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
+  private readonly OP_POLL = this.POLLING_INTERVAL + 2000; // 8 seconds
+  private readonly ITEM_POLL = this.POLLING_INTERVAL + 4000; // 10 seconds
 
   // Add chart dimensions and isModal property
   chartWidth: number = 1000;
@@ -94,7 +99,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     if (!isLive && wasConfirmed) {
       this.startTime = this.dateTimeService.getStartTime();
       this.endTime = this.dateTimeService.getEndTime();
-      this.fetchData();
+      this.fetchData().subscribe();
     }
 
     const end = new Date();
@@ -106,9 +111,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.detectTheme();
 
-    this.observer = new MutationObserver(() => {
-      this.detectTheme();
-    });
+    if (this.observer) this.observer.disconnect();
+    this.observer = new MutationObserver(() => this.detectTheme());
     this.observer.observe(document.body, {
       attributes: true,
       attributeFilter: ["class"],
@@ -176,72 +180,87 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   private setupPolling(): void {
-    if (this.liveMode) {
-      // Setup polling for subsequent updates
-      this.pollingSubscription = this.pollingService.poll(
-        () => {
-          this.endTime = this.pollingService.updateEndTimestampToNow();
-          this.dateTimeService.setEndTime(this.endTime);
-          return this.dailyDashboardService.getDailySummaryDashboard(this.startTime, this.endTime)
-            .pipe(
-              tap((data: any) => {
-                this.updateDashboardData(data);
-              }),
-              delay(0) // Force change detection cycle
-            );
-        },
-        this.POLLING_INTERVAL,
-        this.destroy$,
-        false, // isModal
-        false  // 👈 don't run immediately
-      ).subscribe();
-    }
+    if (!this.liveMode) return;
+
+    const tick = () => {
+      this.endTime = this.pollingService.updateEndTimestampToNow();
+      this.dateTimeService.setEndTime(this.endTime);
+    };
+
+    this.machinePollSub = this.pollingService.poll(
+      () => { tick(); return this.dailyDashboardService
+        .getMachinesSummary(this.startTime, this.endTime)
+        .pipe(
+          tap((r:any)=> this.updateMachines(r)),
+          catchError(err => { console.error('machines poll', err); return of(null); }),
+          delay(0)
+        ); },
+      this.POLLING_INTERVAL, this.destroy$, false, false).subscribe();
+
+    this.operatorPollSub = this.pollingService.poll(
+      () => { tick(); return this.dailyDashboardService
+        .getOperatorsSummary(this.startTime, this.endTime)
+        .pipe(
+          tap((r:any)=> this.updateOperators(r)),
+          catchError(err => { console.error('operators poll', err); return of(null); }),
+          delay(0)
+        ); },
+      this.OP_POLL, this.destroy$, false, false).subscribe();
+
+    this.itemPollSub = this.pollingService.poll(
+      () => { tick(); return this.dailyDashboardService
+        .getItemsSummary(this.startTime, this.endTime)
+        .pipe(
+          tap((r:any)=> this.updateItems(r)),
+          catchError(err => { console.error('items poll', err); return of(null); }),
+          delay(0)
+        ); },
+      this.ITEM_POLL, this.destroy$, false, false).subscribe();
   }
 
   private stopPolling(): void {
-    if (this.pollingSubscription) {
-      this.pollingSubscription.unsubscribe();
-      this.pollingSubscription = null;
-    }
+    for (const s of [this.machinePollSub, this.operatorPollSub, this.itemPollSub]) if (s) s.unsubscribe();
+    this.machinePollSub = this.operatorPollSub = this.itemPollSub = null;
   }
 
   private clearData(): void {
     this.rawMachineData = [];
     this.rawOperatorData = [];
+    this.rawItemData = [];
     this.machineRows = [];
     this.operatorRows = [];
     this.itemRows = [];
   }
 
-  private updateDashboardData(data: any): void {
-    this.rawMachineData = data.machineResults || [];
-    this.rawOperatorData = data.operatorResults || [];
-
-    //Machines
-    this.machineRows = this.rawMachineData.map((response: any) => ({
-      Status: getStatusDotByCode(response.currentStatus?.code),
-      'Machine Name': response.machine?.name ?? 'Unknown',
-      'OEE': response.performance?.performance?.oee?.percentage ?? '0%',
-      'Total Count': response.performance?.output?.totalCount ?? 0,
-      serial: response.machine?.serial
+  private updateMachines(data:any){ 
+    const arr = Array.isArray(data) ? data : (data?.machineResults ?? []);
+    this.rawMachineData = arr;
+    this.machineRows = arr.map((m:any)=>({
+      Status: getStatusDotByCode(m.currentStatus?.code),
+      'Machine Name': m.machine?.name ?? 'Unknown',
+      'OEE': m.performance?.performance?.oee?.percentage ?? '0%',
+      'Total Count': m.performance?.output?.totalCount ?? 0,
+      serial: m.machine?.serial
     }));
+  }
 
-    // Operators
-    this.operatorRows = this.rawOperatorData.map((response: any) => ({
-      Status: getStatusDotByCode(response.currentStatus?.code),
-      'Operator Name': response.operator?.name ?? 'Unknown',
-      'Worked Time': `${response.metrics?.runtime?.formatted?.hours ?? 0}h ${response.metrics?.runtime?.formatted?.minutes ?? 0}m`,
-      'Efficiency': response.metrics?.performance?.efficiency?.percentage ?? '0%',
-      operatorId: response.operator?.id
+  private updateOperators(data:any){
+    const arr = Array.isArray(data) ? data : (data?.operatorResults ?? []);
+    this.rawOperatorData = arr;
+    this.operatorRows = arr.map((o:any)=>({
+      Status: getStatusDotByCode(o.currentStatus?.code),
+      'Operator Name': o.operator?.name ?? 'Unknown',
+      'Worked Time': `${o.metrics?.runtime?.formatted?.hours ?? 0}h ${o.metrics?.runtime?.formatted?.minutes ?? 0}m`,
+      'Efficiency': o.metrics?.performance?.efficiency?.percentage ?? '0%',
+      operatorId: o.operator?.id
     }));
+  }
 
-    // Items
-    this.itemRows = (data.items || [])
-      .filter((item: any) => item.count > 0)
-      .map((item: any) => ({
-        'Item Name': item.itemName,
-        'Total Count': item.count
-      }));
+  private updateItems(data:any){
+    const arr = Array.isArray(data) ? data : (data?.items ?? []);
+    this.rawItemData = arr;
+    this.itemRows = arr.filter((x:any)=>(x.count ?? 0)>0)
+      .map((x:any)=>({'Item Name': x.itemName, 'Total Count': x.count}));
   }
 
   fetchData(): Observable<any> {
@@ -253,22 +272,28 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
   
-    return this.dailyDashboardService.getDailySummaryDashboard(formattedStart, formattedEnd)
-      .pipe(
-        takeUntil(this.destroy$),
-        tap({
-          next: (data: any) => {
-            this.updateDashboardData(data);
-            this.isLoading = false;
-          },
-          error: (err: any) => {
-            console.error('Error fetching summary data:', err);
-            this.clearData();
-            this.isLoading = false;
-          }
-        }),
-        delay(0) // Force change detection cycle
-      );
+    return forkJoin({
+      machines: this.dailyDashboardService.getMachinesSummary(formattedStart, formattedEnd),
+      operators: this.dailyDashboardService.getOperatorsSummary(formattedStart, formattedEnd),
+      items: this.dailyDashboardService.getItemsSummary(formattedStart, formattedEnd),
+    }).pipe(
+      takeUntil(this.destroy$),
+      tap({
+        next: ({machines, operators, items}) => {
+          this.updateMachines(machines);
+          this.updateOperators(operators);
+          this.updateItems(items);
+          this.isLoading = false;
+          this.cdr.markForCheck();
+        },
+        error: (err: any) => {
+          console.error('Error fetching summary data:', err);
+          this.clearData();
+          this.isLoading = false;
+        }
+      }),
+      delay(0)
+    );
   }
 
   onDateChange(): void {

@@ -1159,6 +1159,211 @@ function shapeMachineOee(machineOeeBase) {
 
   //Bookending for daily-summary-dashboard end
 
+  // Daily Summary Dashboard Split in three routes 
+
+
+  // helpers reused by all three endpoints
+async function computeMachineResults(db, start, end, serial) {
+  const targetSerials = serial
+    ? [serial]
+    : await db.collection("machine").distinct("serial");
+
+  const machineResults = [];
+
+  for (const machineSerial of targetSerials) {
+    const bookended = await getBookendedStatesAndTimeRange(db, machineSerial, start, end);
+    if (!bookended) continue;
+
+    const { sessionStart, sessionEnd, states } = bookended;
+    const counts   = await getValidCounts(db, machineSerial, sessionStart, sessionEnd);
+    const misfeeds = await getMisfeedCounts(db, machineSerial, sessionStart, sessionEnd);
+
+    const performance        = await buildMachinePerformance(states, counts, misfeeds, sessionStart, sessionEnd);
+    const itemSummary        = buildMachineItemSummary(states, counts, sessionStart, sessionEnd);
+    const itemHourlyStack    = buildItemHourlyStack(counts, sessionStart, sessionEnd);
+    const faultData          = buildFaultData(states, sessionStart, sessionEnd);
+    const operatorEfficiency = await buildOperatorEfficiency(states, counts, sessionStart, sessionEnd, machineSerial);
+
+    const latestState = states.at(-1);
+    const machineName = latestState?.machine?.name || "Unknown";
+    const statusCode  = latestState?.status?.code || 0;
+    const statusName  = latestState?.status?.name || "Unknown";
+
+    machineResults.push({
+      machine: { serial: machineSerial, name: machineName },
+      currentStatus: { code: statusCode, name: statusName },
+      performance,
+      itemSummary,
+      itemHourlyStack,
+      faultData,
+      operatorEfficiency,
+    });
+  }
+
+  return machineResults;
+}
+
+async function computeItemSummaries(db, start, end, serial) {
+  const targetSerials = serial
+    ? [serial]
+    : await db.collection("machine").distinct("serial");
+
+  const items = [];
+
+  for (const machineSerial of targetSerials) {
+    const bookended = await getBookendedStatesAndTimeRange(db, machineSerial, start, end);
+    if (!bookended) continue;
+
+    const { sessionStart, sessionEnd, states } = bookended;
+    const counts = await getValidCounts(db, machineSerial, sessionStart, sessionEnd);
+
+    const runCycles = extractAllCyclesFromStates(states, sessionStart, sessionEnd).running;
+
+    const machineSummary = {
+      totalCount: 0,
+      totalWorkedMs: 0,
+      itemSummaries: {},
+    };
+
+    for (const cycle of runCycles) {
+      const cycleStart = new Date(cycle.start);
+      const cycleEnd   = new Date(cycle.end);
+      const cycleMs    = cycleEnd.getTime() - cycleStart.getTime();
+
+      const cycleCounts = counts.filter(c => {
+        const ts = new Date(c.timestamp);
+        return ts >= cycleStart && ts <= cycleEnd;
+      });
+      if (!cycleCounts.length) continue;
+
+      const operators = new Set(cycleCounts.map(c => c.operator?.id).filter(Boolean));
+      const workedTimeMs = cycleMs * Math.max(1, operators.size);
+      const itemGroups = groupCountsByItem(cycleCounts);
+
+      for (const [itemId, group] of Object.entries(itemGroups)) {
+        const countTotal = group.length;
+        const first = group[0];
+        const standard = first?.item?.standard > 0 ? first.item.standard : 666;
+        const name = first?.item?.name || "Unknown";
+
+        if (!machineSummary.itemSummaries[itemId]) {
+          machineSummary.itemSummaries[itemId] = { count: 0, standard, workedTimeMs: 0, name };
+        }
+        machineSummary.itemSummaries[itemId].count += countTotal;
+        machineSummary.itemSummaries[itemId].workedTimeMs += workedTimeMs;
+        machineSummary.totalCount += countTotal;
+        machineSummary.totalWorkedMs += workedTimeMs;
+      }
+    }
+
+    for (const summary of Object.values(machineSummary.itemSummaries)) {
+      const workedTimeFormatted = formatDuration(summary.workedTimeMs);
+      const totalHours = summary.workedTimeMs / 3_600_000;
+      const pph = totalHours > 0 ? summary.count / totalHours : 0;
+      const efficiency = summary.standard > 0 ? pph / summary.standard : 0;
+
+      items.push({
+        itemName: summary.name,
+        workedTimeFormatted,
+        count: summary.count,
+        pph: Math.round(pph * 100) / 100,
+        standard: summary.standard,
+        efficiency: Math.round(efficiency * 10000) / 100, // percentage number
+      });
+    }
+  }
+
+  return items;
+}
+
+async function computeOperatorResults(db, start, end) {
+  const operatorGroupedData = await fetchGroupedAnalyticsData(db, start, end, "operator");
+
+  const results = await Promise.all(
+    Object.entries(operatorGroupedData).map(async ([operatorId, group]) => {
+      const numericOperatorId = parseInt(operatorId, 10);
+      const { states, counts } = group;
+      if (!states.length && !counts.all.length) return null;
+
+      const performance = await buildOperatorPerformance(states, counts.valid, counts.misfeed, start, end);
+      const countByItem = await buildOperatorCountByItem(group, start, end);
+      const operatorName =
+        counts.valid[0]?.operator?.name ||
+        counts.all[0]?.operator?.name ||
+        "Unknown";
+
+      const latest = states.at(-1) || {};
+
+      return {
+        operator: { id: numericOperatorId, name: operatorName },
+        currentStatus: {
+          code: latest.status?.code || 0,
+          name: latest.status?.name || "Unknown",
+        },
+        metrics: {
+          runtime: {
+            total: performance.runtime.total,
+            formatted: performance.runtime.formatted,
+          },
+          performance: {
+            efficiency: {
+              value: performance.performance.efficiency.value,
+              percentage: performance.performance.efficiency.percentage,
+            },
+          },
+        },
+        countByItem,
+      };
+    })
+  );
+
+  return results.filter(Boolean);
+}
+
+// --- Routes ---
+
+// 1) Machines summary
+router.get("/analytics/daily-summary-dashboard/machines", async (req, res) => {
+  try {
+    const started = Date.now();
+    const { start, end, serial } = parseAndValidateQueryParams(req);
+    const machineResults = await computeMachineResults(db, start, end, serial ? parseInt(serial) : undefined);
+    res.json({ timeRange: { start, end, total: formatDuration(Date.now() - started) }, machineResults });
+  } catch (error) {
+    logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+    res.status(500).json({ error: "Failed to generate machines summary" });
+  }
+});
+
+// 2) Operators summary
+router.get("/analytics/daily-summary-dashboard/operators", async (req, res) => {
+  try {
+    const started = Date.now();
+    const { start, end } = parseAndValidateQueryParams(req);
+    const operatorResults = await computeOperatorResults(db, start, end);
+    res.json({ timeRange: { start, end, total: formatDuration(Date.now() - started) }, operatorResults });
+  } catch (error) {
+    logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+    res.status(500).json({ error: "Failed to generate operators summary" });
+  }
+});
+
+// 3) Items summary
+router.get("/analytics/daily-summary-dashboard/items", async (req, res) => {
+  try {
+    const started = Date.now();
+    const { start, end, serial } = parseAndValidateQueryParams(req);
+    const items = await computeItemSummaries(db, start, end, serial ? parseInt(serial) : undefined);
+    res.json({ timeRange: { start, end, total: formatDuration(Date.now() - started) }, items });
+  } catch (error) {
+    logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+    res.status(500).json({ error: "Failed to generate items summary" });
+  }
+});
+
+
+  
+
 
 
 

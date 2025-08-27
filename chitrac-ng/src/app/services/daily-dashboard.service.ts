@@ -53,4 +53,21 @@ export class DailyDashboardService {
     const params = new HttpParams().set('start', start).set('end', end);
     return this.http.get(`${this.apiUrl}/analytics/daily-summary-dashboard`, { params });
   }
+
+  // daily-dashboard.service.ts
+getMachinesSummary(start: string, end: string, serial?: number) {
+  let params = new HttpParams().set('start', start).set('end', end);
+  if (serial != null) params = params.set('serial', String(serial));
+  return this.http.get(`${this.apiUrl}/analytics/daily-summary-dashboard/machines`, { params });
+}
+getOperatorsSummary(start: string, end: string) {
+  const params = new HttpParams().set('start', start).set('end', end);
+  return this.http.get(`${this.apiUrl}/analytics/daily-summary-dashboard/operators`, { params });
+}
+getItemsSummary(start: string, end: string, serial?: number) {
+  let params = new HttpParams().set('start', start).set('end', end);
+  if (serial != null) params = params.set('serial', String(serial));
+  return this.http.get(`${this.apiUrl}/analytics/daily-summary-dashboard/items`, { params });
+}
+
 }

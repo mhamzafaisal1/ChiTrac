@@ -17,6 +17,9 @@ const {
   getHourlyIntervals,
 } = require("./time");
 
+// Configuration import for buildCurrentOperators
+const config = require('../modules/config');
+
 const { extractAllCyclesFromStates, extractFaultCycles } = require("./state");
 const {
   getMisfeedCounts,
@@ -713,10 +716,89 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
   }
 }
 
+
+// utils/currentOperators.js (or inline in the route file)
+
+/**
+ * Return most-recent sessions for operators on the latest machine-session for a serial.
+ * “Current” here = operators from the latest machine-session, then each operator’s
+ * most recent operator-session on this machine.
+ */
+async function buildCurrentOperators(db, serial) {
+  const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+  const msColl = db.collection(config.machineSessionCollectionName);
+
+  // latest machine-session → operator IDs
+  const latest = await msColl.find({ "machine.serial": Number(serial) })
+    .project({ _id: 0, operators: 1, machine: 1, timestamps: 1 })
+    .sort({ "timestamps.start": -1 })
+    .limit(1)
+    .toArray();
+
+  if (!latest.length) return [];
+
+  const opIds = [...new Set(
+    (latest[0].operators || [])
+      .map(o => o && o.id)
+      .filter(id => typeof id === "number" && id !== -1)
+  )];
+
+  if (!opIds.length) return [];
+
+  const osColl = db.collection(config.operatorSessionCollectionName);
+
+  // most-recent operator-session for each operator on this machine
+  const rows = await Promise.all(opIds.map(async (opId) => {
+    const s = await osColl.find({
+      "operator.id": opId,
+      "machine.serial": Number(serial),
+    })
+      .project({
+        _id: 0, operator: 1, machine: 1, timestamps: 1,
+        workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
+      })
+      .sort({ "timestamps.start": -1 })
+      .limit(1)
+      .toArray();
+
+    const doc = s[0];
+    if (!doc) return null;
+
+    const workSec   = safe(doc.workTime);
+    const creditSec = safe(doc.totalTimeCredit);
+    const valid     = safe(doc.totalCount);
+    const mis       = safe(doc.misfeedCount);
+    const eff       = workSec > 0 ? (creditSec / workSec) : 0;
+    const workedMs  = Math.round(workSec * 1000);
+
+    return {
+      operatorId: doc.operator?.id ?? null,
+      operatorName: doc.operator?.name || "Unknown",
+      machineSerial: doc.machine?.serial ?? Number(serial),
+      machineName: doc.machine?.name || "Unknown",
+      session: {
+        start: doc.timestamps?.start || null,
+        end: doc.timestamps?.end || null
+      },
+      metrics: {
+        workedTimeMs: workedMs,
+        workedTimeFormatted: formatDuration(workedMs),
+        totalCount: Math.round(valid + mis),
+        validCount: Math.round(valid),
+        misfeedCount: Math.round(mis),
+        efficiencyPct: +(eff * 100).toFixed(2)
+      }
+    };
+  }));
+
+  return rows.filter(Boolean);
+}
+
 module.exports = {
   buildMachinePerformance,
   buildMachineItemSummary,
   buildItemHourlyStack,
   buildFaultData,
   buildOperatorEfficiency,
+  buildCurrentOperators,
 };

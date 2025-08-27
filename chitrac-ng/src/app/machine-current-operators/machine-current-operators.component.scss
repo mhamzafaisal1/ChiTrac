@@ -1,0 +1,13 @@
+/* src/app/machine-current-operator-table/machine-current-operator-table.component.scss */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}

@@ -1,3 +1,5 @@
+const { DateTime, Interval } = require("luxon");
+
 const {
   calculateDowntime,
   calculateAvailability,
@@ -24,6 +26,8 @@ const {
   } = require('./count');
 
   const { getBookendedStatesAndTimeRange } = require('./bookendingBuilder'); 
+
+  const config = require('../modules/config');
 
 
 async function buildMachineOEE(db, start, end) {
@@ -302,7 +306,7 @@ async function buildDailyItemHourlyStack(db, start, end) {
 //   }
 
 
-async function buildPlantwideMetricsByHour(db, start, end) {
+async function buildPlantwideMetricsByHourOld(db, start, end) {
   const intervals = getHourlyIntervals(start, end);
   const allStates = await fetchStatesForMachine(db, null, start, end);
   const groupedStates = groupStatesByMachine(allStates);
@@ -369,6 +373,126 @@ async function buildPlantwideMetricsByHour(db, start, end) {
 
   return hourlyMetrics;
 }
+
+// buildPlantwideMetricsByHour with  machine-sessions version
+async function buildPlantwideMetricsByHour(db, start, end) {
+  
+  const msColl = db.collection(config.machineSessionCollectionName);
+
+  const wStart = new Date(start);
+  const wEnd = new Date(end);
+
+  // hour slots [start,end) using Luxon (timezone inferred upstream)
+  const intervals = Interval
+    .fromDateTimes(DateTime.fromJSDate(wStart).startOf("hour"), DateTime.fromJSDate(wEnd).endOf("hour"))
+    .splitBy({ hours: 1 })
+    .map(iv => ({ start: iv.start.toJSDate(), end: iv.end.toJSDate() }));
+
+  // machines that ran today (overlapped any session)
+  const machineSerials = await msColl.distinct("machine.serial", {
+    "timestamps.start": { $lt: wEnd },
+    $or: [
+      { "timestamps.end": { $gt: wStart } },
+      { "timestamps.end": { $exists: false } },
+      { "timestamps.end": null }
+    ]
+  });
+
+  const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+  const overlapFactor = (sStart, sEnd, wStart, wEnd) => {
+    if (!sStart) return { factor: 0 };
+    const ss = new Date(sStart);
+    const se = new Date(sEnd || wEnd);
+    const os = ss > wStart ? ss : wStart;
+    const oe = se < wEnd ? se : wEnd;
+    const ov = Math.max(0, (oe - os) / 1000);
+    const full = Math.max(0, (se - ss) / 1000);
+    return { factor: full > 0 ? ov / full : 0 };
+  };
+  const calcOEE = (a, e, t) => a * e * t;
+
+  const hourlyMetrics = [];
+
+  for (const iv of intervals) {
+    const slotSec = (iv.end - iv.start) / 1000;
+
+    // per-machine queries in parallel for this hour
+    const machineRows = await Promise.all(machineSerials.map(async (serial) => {
+      const sessions = await msColl.find({
+        "machine.serial": Number(serial),
+        "timestamps.start": { $lt: iv.end },
+        $or: [
+          { "timestamps.end": { $gt: iv.start } },
+          { "timestamps.end": { $exists: false } },
+          { "timestamps.end": { $exists: true, $eq: null } }
+        ]
+      })
+      .project({
+        _id: 0,
+        timestamps: 1,
+        runtime: 1, workTime: 1, totalTimeCredit: 1,
+        totalCount: 1, misfeedCount: 1
+      })
+      .toArray();
+
+      if (!sessions.length) return null;
+
+      let runtimeSec = 0, workSec = 0, creditSec = 0, valid = 0, mis = 0;
+
+      for (const s of sessions) {
+        const { factor } = overlapFactor(s.timestamps?.start, s.timestamps?.end, iv.start, iv.end);
+        if (factor <= 0) continue;
+        runtimeSec += safe(s.runtime)          * factor;
+        workSec    += safe(s.workTime)         * factor;
+        creditSec  += safe(s.totalTimeCredit)  * factor;
+        valid      += safe(s.totalCount)       * factor;
+        mis        += safe(s.misfeedCount)     * factor;
+      }
+
+      if (runtimeSec <= 0 && workSec <= 0 && (valid + mis) <= 0) return null;
+
+      const availability = slotSec > 0 ? (runtimeSec / slotSec) : 0;
+      const efficiency   = workSec  > 0 ? (creditSec / workSec) : 0;
+      const throughput   = (valid + mis) > 0 ? (valid / (valid + mis)) : 0;
+      const oee          = calcOEE(availability, efficiency, throughput);
+
+      return { runtimeSec, availability, efficiency, throughput, oee };
+    }));
+
+    // aggregate plantwide (runtime-weighted)
+    let totalRuntime = 0, wAvail = 0, wEff = 0, wThru = 0, wOee = 0;
+
+    for (const r of machineRows) {
+      if (!r) continue;
+      totalRuntime += r.runtimeSec;
+      wAvail += r.availability * r.runtimeSec;
+      wEff   += r.efficiency   * r.runtimeSec;
+      wThru  += r.throughput   * r.runtimeSec;
+      wOee   += r.oee          * r.runtimeSec;
+    }
+
+    if (totalRuntime > 0) {
+      const availability = +( (wAvail / totalRuntime) * 100 ).toFixed(2);
+      const efficiency   = +( (wEff   / totalRuntime) * 100 ).toFixed(2);
+      const throughput   = +( (wThru  / totalRuntime) * 100 ).toFixed(2);
+      const oee          = +( (wOee   / totalRuntime) * 100 ).toFixed(2);
+
+      // skip all-zero rows
+      if (availability || efficiency || throughput || oee) {
+        hourlyMetrics.push({
+          hour: iv.start.getHours(),
+          availability,
+          efficiency,
+          throughput,
+          oee
+        });
+      }
+    }
+  }
+
+  return hourlyMetrics;
+}
+
 
 
 
