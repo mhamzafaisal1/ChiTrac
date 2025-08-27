@@ -44,7 +44,7 @@ export class OperatorAnalyticsService {
       .set('end', end)
       .set('operatorId', operatorId.toString());
   
-    return this.http.get('/api/alpha/analytics/operator-info', { params });
+    return this.http.get('/api/alpha/analytics/operator-details', { params });
   }
   
 
