@@ -17,7 +17,7 @@ interface OperatorSummaryRow {
   operatorName: string;
   machineName: string;
   itemName: string;
-  workedTimeFormatted: { hours: number; minutes: number };
+  runtimeFormatted: { hours: number; minutes: number };
   count: number;
   misfeed: number;
   pph: number;
@@ -96,7 +96,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     const formattedEnd = new Date(this.endTime).toISOString();
 
     this.operatorSummaryService.getOperatorSummary(formattedStart, formattedEnd).subscribe({
-      next: (data: OperatorSummaryRow[]) => {
+      next: (data: any[]) => {
         // Group by composite key
         const grouped = new Map<string, OperatorSummaryRow>();
 
@@ -108,18 +108,18 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
             const existing = grouped.get(key)!;
             existing.count += row.count;
             existing.misfeed += row.misfeed;
-            existing.workedTimeFormatted.hours += row.workedTimeFormatted.hours;
-            existing.workedTimeFormatted.minutes += row.workedTimeFormatted.minutes;
+            existing.runtimeFormatted.hours += row.runtimeFormatted.hours;
+            existing.runtimeFormatted.minutes += row.runtimeFormatted.minutes;
           }
         }
 
         // Normalize time overflow
         for (const summary of grouped.values()) {
-          if (summary.workedTimeFormatted.minutes >= 60) {
-            summary.workedTimeFormatted.hours += Math.floor(summary.workedTimeFormatted.minutes / 60);
-            summary.workedTimeFormatted.minutes %= 60;
+          if (summary.runtimeFormatted.minutes >= 60) {
+            summary.runtimeFormatted.hours += Math.floor(summary.runtimeFormatted.minutes / 60);
+            summary.runtimeFormatted.minutes %= 60;
           }
-          const totalMs = summary.workedTimeFormatted.hours * 3600000 + summary.workedTimeFormatted.minutes * 60000;
+          const totalMs = summary.runtimeFormatted.hours * 3600000 + summary.runtimeFormatted.minutes * 60000;
           const hours = totalMs / 3600000;
           summary.pph = hours > 0 ? Math.round((summary.count / hours) * 100) / 100 : 0;
           summary.efficiency = summary.standard > 0 ? Math.round((summary.pph / summary.standard) * 10000) / 100 : 0;
@@ -140,16 +140,16 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
           const operatorTotal = {
             count: 0,
             misfeed: 0,
-            workedTimeMs: 0
+            runtimeMs: 0
           };
 
           for (const row of rows) {
             operatorTotal.count += row.count;
             operatorTotal.misfeed += row.misfeed;
-            operatorTotal.workedTimeMs += row.workedTimeFormatted.hours * 3600000 + row.workedTimeFormatted.minutes * 60000;
+            operatorTotal.runtimeMs += row.runtimeFormatted.hours * 3600000 + row.runtimeFormatted.minutes * 60000;
           }
 
-          const totalHours = operatorTotal.workedTimeMs / 3600000;
+          const totalHours = operatorTotal.runtimeMs / 3600000;
           const pph = totalHours > 0 ? operatorTotal.count / totalHours : 0;
 
           const proratedStandard = rows.reduce((acc, row) => {
@@ -163,7 +163,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
             'Operator': operatorName,
             'Machine': 'TOTAL',
             'Item': 'ALL ITEMS',
-            'Worked Time': `${Math.floor(operatorTotal.workedTimeMs / 3600000)}h ${Math.floor((operatorTotal.workedTimeMs % 3600000) / 60000)}m`,
+            'Time (Runtime)': `${Math.floor(operatorTotal.runtimeMs / 3600000)}h ${Math.floor((operatorTotal.runtimeMs % 3600000) / 60000)}m`,
             'Count': operatorTotal.count,
             'Misfeed': operatorTotal.misfeed,
             'PPH': Math.round(pph * 100) / 100,
@@ -176,7 +176,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
               'Operator': '  ' + row.operatorName,
               'Machine': row.machineName,
               'Item': row.itemName,
-              'Worked Time': `${row.workedTimeFormatted.hours}h ${row.workedTimeFormatted.minutes}m`,
+              'Time (Runtime)': `${row.runtimeFormatted.hours}h ${row.runtimeFormatted.minutes}m`,
               'Count': row.count,
               'Misfeed': row.misfeed,
               'PPH': row.pph,
@@ -211,7 +211,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
         doc.setFontSize(11);
         doc.text(`Date Range: ${this.startTime} to ${this.endTime}`, 14, 23);
 
-        const head = [['Operator', 'Machine', 'Item', 'Worked Time', 'Count', 'Misfeed', 'PPH', 'Standard', 'Efficiency']];
+        const head = [['Operator', 'Machine', 'Item', 'Time (Runtime)', 'Count', 'Misfeed', 'PPH', 'Standard', 'Efficiency']];
         const body = this.rows.map(row => [
           row['Operator'],
           row['Machine'],
