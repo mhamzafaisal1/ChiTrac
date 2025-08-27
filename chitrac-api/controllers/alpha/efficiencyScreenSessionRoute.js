@@ -277,5 +277,190 @@ module.exports = function (server) {
     return Math.round((Number(n) || 0) * 100) / 100;
   }
 
+  // end of helper functions ----
+
+  // end of route ----
+
+  // --- Machine-wide Efficiency Screen API (sessions-powered) ---
+
+
+  router.get('/analytics/machine-live-session-summary/machine', async (req, res) => {
+    try {
+      const { serial } = req.query;
+      if (!serial) return res.status(400).json({ error: 'Missing serial' });
+
+      const serialNum = Number(serial);
+
+      // Live status from ticker
+      const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker').findOne(
+        { 'machine.serial': serialNum },
+        { projection: { _id: 0, timestamp: 1, machine: 1, status: 1 } }
+      );
+
+      if (!ticker) {
+        return res.json({
+          laneData: {
+            status: { code: -1, name: 'Offline' },
+            machine: { serial: serialNum },
+            efficiency: zeroEff()
+          }
+        });
+      }
+
+      const now = DateTime.now();
+      const frames = {
+        lastSixMinutes: { start: now.minus({ minutes: 6 }), label: 'Last 6 Mins' },
+        lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: 'Last 15 Mins' },
+        lastHour: { start: now.minus({ hours: 1 }), label: 'Last Hour' },
+        today: { start: now.startOf('day'), label: 'All Day' }
+      };
+
+      let efficiency = zeroEff();
+
+      // If not running, mirror operator route: return zeros but keep status fields
+      if ((ticker.status?.code ?? 0) === 1) {
+        // Running: compute from machine-sessions
+        const results = await queryMachineTimeframes(db, serialNum, frames);
+
+        // If any frame is empty, try the most-recent open session and reuse it for all frames
+        if (Object.values(results).some(arr => arr.length === 0)) {
+          const open = await db
+            .collection(config.machineSessionCollectionName || 'machine-sessions')
+            .findOne(
+              { 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
+              { sort: { 'timestamps.start': -1 }, projection: projectMachineForPerf() }
+            );
+          if (open) for (const k of Object.keys(results)) results[k] = [open];
+        }
+
+        const effObj = {};
+        for (const [key, sessions] of Object.entries(results)) {
+          const { start, label } = frames[key];
+          const { runtimeSec, timeCreditSec } = sumWindowMachine(sessions, start, now);
+          const eff = runtimeSec > 0 ? Math.round((timeCreditSec / runtimeSec) * 100) : 0;
+          effObj[key] = { value: eff, label, color: eff >= 90 ? 'green' : eff >= 70 ? 'yellow' : 'red' };
+        }
+        efficiency = effObj;
+      }
+
+      return res.json({
+        laneData: {
+          status: ticker.status ?? { code: 0, name: 'Unknown' },
+          fault: ticker.status?.name ?? 'Unknown',
+          machine: { serial: serialNum, name: ticker.machine?.name || `Serial ${serialNum}` },
+          efficiency,                 // { lastSixMinutes, lastFifteenMinutes, lastHour, today }
+          oee: {},                    // kept for shape-compat
+          timers: { on: 0, ready: 0 }, // placeholders for UI parity
+          displayTimers: { on: '', run: '' }
+        }
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  /* ---------------------------- helpers ---------------------------- */
+
+  function projectMachineForPerf() {
+    return {
+      projection: {
+        _id: 0,
+        timestamps: 1,
+        items: 1,
+        machine: 1,
+        // Use session-embedded counts to avoid double-counting across operators
+        counts: { timestamp: 1, item: { id: 1, name: 1, standard: 1 }, misfeed: 1 }
+      }
+    };
+  }
+
+  async function queryMachineTimeframes(db, serialNum, frames) {
+    const coll = db.collection(config.machineSessionCollectionName || 'machine-sessions');
+    const nowJs = new Date();
+
+    const buildFilter = (windowStart) => ({
+      'machine.serial': serialNum,
+      'timestamps.start': { $lt: nowJs }, // started before now
+      $or: [
+        { 'timestamps.end': { $exists: false } },                // still open
+        { 'timestamps.end': { $gte: new Date(windowStart.toISO()) } } // or overlaps window
+      ]
+    });
+
+    const [six, fifteen, hour, today] = await Promise.all([
+      coll.find(buildFilter(frames.lastSixMinutes.start), projectMachineForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+      coll.find(buildFilter(frames.lastFifteenMinutes.start), projectMachineForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+      coll.find(buildFilter(frames.lastHour.start), projectMachineForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+      coll.find(buildFilter(frames.today.start), projectMachineForPerf()).sort({ 'timestamps.start': 1 }).toArray()
+    ]);
+
+    return {
+      lastSixMinutes: six,
+      lastFifteenMinutes: fifteen,
+      lastHour: hour,
+      today
+    };
+  }
+
+  function sumWindowMachine(sessions, windowStartDT, windowEndDT) {
+    const windowStart = new Date(windowStartDT.toISO());
+    const windowEnd = new Date(windowEndDT.toISO());
+
+    let runtimeSec = 0;
+    let timeCreditSec = 0;
+
+    for (const s of sessions) {
+      const sStart = new Date(s.timestamps.start);
+      const sEnd = s.timestamps.end ? new Date(s.timestamps.end) : windowEnd;
+
+      const effStart = sStart < windowStart ? windowStart : sStart;
+      const effEnd = sEnd > windowEnd ? windowEnd : sEnd;
+      if (effEnd <= effStart) continue;
+
+      // Machine runtime in window. Machine-sessions are non-overlapping, so no double count.
+      runtimeSec += (effEnd - effStart) / 1000;
+
+      // Time credit from in-window counts
+      const inWindowCounts = (Array.isArray(s.counts) ? s.counts : []).filter(c => {
+        const t = new Date(c.timestamp);
+        return t >= effStart && t <= effEnd && !c.misfeed;
+      });
+      timeCreditSec += calcTimeCredit(inWindowCounts);
+    }
+
+    return { runtimeSec: Math.round(runtimeSec), timeCreditSec: round2(timeCreditSec) };
+  }
+
+  function calcTimeCredit(counts) {
+    if (!Array.isArray(counts) || counts.length === 0) return 0;
+    const byItem = {};
+    for (const r of counts) {
+      const it = r.item || {};
+      const key = `${it.id}`;
+      if (!byItem[key]) byItem[key] = { n: 0, std: Number(it.standard) || 0 };
+      byItem[key].n += 1;
+    }
+    let total = 0;
+    for (const { n, std } of Object.values(byItem)) {
+      const perHour = std > 0 && std < 60 ? std * 60 : std; // treat <60 as PPM
+      if (perHour > 0) total += n / (perHour / 3600); // seconds
+    }
+    return total;
+  }
+
+  function zeroEff() {
+    return {
+      lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
+      lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
+      lastHour: { value: 0, label: 'Last Hour', color: 'red' },
+      today: { value: 0, label: 'All Day', color: 'red' }
+    };
+  }
+
+  function round2(n) {
+    return Math.round((Number(n) || 0) * 100) / 100;
+  }
+
   return router;
 };
