@@ -14,10 +14,13 @@ import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
+import { Subject, tap, takeUntil, debounceTime } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
-import { OperatorFaultHistoryService } from '../services/operator-fault-history.service';
+import { FaultHistoryService } from '../services/fault-history.service';
+import { PollingService } from '../services/polling-service.service';
+import { DateTimeService } from '../services/date-time.service';
 
 @Component({
     selector: 'app-operator-fault-history',
@@ -39,46 +42,101 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   @Input() endTime: string = '';
   @Input() operatorId: string = '';
   @Input() isModal: boolean = false;
-  @Input() mode: 'standalone' | 'dashboard' = 'standalone';
-  @Input() dashboardData?: any[];
 
   columns: string[] = [];
   rows: any[] = [];
   selectedRow: any | null = null;
   isDarkTheme: boolean = false;
   hasFetchedOnce = false;
+  liveMode: boolean = false;
+  isLoading: boolean = false;
   error: string | null = null;
 
-  lastFetchedData: { faultSummaries: any[] } | null = null;
+  lastFetchedData: { faultCycles: any[]; faultSummaries: any[] } | null = null;
+  lastParams: { startTime: string; endTime: string; operatorId: string } | null = null;
   private observer!: MutationObserver;
+  private pollingSubscription: any;
+  private destroy$ = new Subject<void>();
+  private fetchTrigger$ = new Subject<void>();
+
+  private readonly POLLING_INTERVAL = 6000; // 6 seconds
 
   constructor(
-    private operatorFaultHistoryService: OperatorFaultHistoryService,
+    private faultHistoryService: FaultHistoryService,
     private renderer: Renderer2,
-    private elRef: ElementRef
+    private elRef: ElementRef,
+    private pollingService: PollingService,
+    private dateTimeService: DateTimeService
   ) {}
 
   ngOnInit(): void {
     this.detectTheme();
     this.observeTheme();
+  
+    // Set up debounced fetch trigger
+    this.fetchTrigger$.pipe(
+      debounceTime(0), 
+      takeUntil(this.destroy$)
+    ).subscribe(() => this.checkAndFetch());
+  
+    // Subscribe to live mode changes
+    this.dateTimeService.liveMode$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((isLive: boolean) => {
+        this.liveMode = isLive;
 
-    if (this.mode === 'standalone' && this.isValidInput()) {
-      this.fetchData();
-    }
+        if (this.liveMode) {
+          const start = new Date();
+          start.setHours(0, 0, 0, 0);
+          this.startTime = this.formatDateForInput(start);
+          this.endTime = this.pollingService.updateEndTimestampToNow();
+          
+          // Set lastParams before fetching to prevent duplicate calls
+          this.lastParams = { startTime: this.startTime, endTime: this.endTime, operatorId: this.operatorId };
+          this.fetchData();
+          this.setupPolling();
+        } else {
+          this.stopPolling();
+          this.lastFetchedData = null;
+          this.rows = [];
+          this.columns = [];
+        }
+      });
+
+    // Subscribe to confirm action
+    this.dateTimeService.confirmTrigger$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        this.liveMode = false; // turn off polling
+        this.stopPolling();
+
+        // get times from the shared service
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+        
+        // Set lastParams before fetching to prevent duplicate calls
+        this.lastParams = { startTime: this.startTime, endTime: this.endTime, operatorId: this.operatorId };
+        this.fetchData(); // use them to fetch data
+      });
   }
-
+  
   ngOnChanges(changes: SimpleChanges): void {
-    if (this.mode === 'dashboard' && changes['dashboardData']?.currentValue) {
-      this.processDashboardData(changes['dashboardData'].currentValue);
-    } else if (this.mode === 'standalone' && 
-              (changes['startTime'] || changes['endTime'] || changes['operatorId']) &&
-              this.isValidInput()) {
-      this.fetchData();
+    // Handle input changes that require API calls
+    if (
+      changes['startTime'] ||
+      changes['endTime'] ||
+      changes['operatorId']
+    ) {
+      console.log('ngOnChanges: Input parameters changed, triggering debounced fetch');
+      this.fetchTrigger$.next();
     }
   }
 
   ngOnDestroy() {
     if (this.observer) this.observer.disconnect();
+    this.stopPolling();
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   private observeTheme() {
@@ -92,27 +150,67 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
     const el = this.elRef.nativeElement;
   }
 
-  private isValidInput(): boolean {
-    return !!this.startTime && !!this.endTime && !!this.operatorId;
+  private setupPolling(): void {
+    if (this.liveMode) {
+      this.pollingSubscription = this.pollingService
+        .poll(
+          () => {
+            this.endTime = this.pollingService.updateEndTimestampToNow();
+
+            return this.faultHistoryService
+              .getFaultHistoryByOperator(this.startTime, this.endTime, parseInt(this.operatorId))
+              .pipe(
+                tap((data: any) => {
+                  this.hasFetchedOnce = true;
+                  this.lastFetchedData = data;
+                  this.updateTable();
+                })
+              );
+          },
+          this.POLLING_INTERVAL,
+          this.destroy$,
+          false,
+          false
+        )
+        .subscribe();
+    }
   }
 
-  private processDashboardData(data: any[]): void {
-    try {
-      const operatorData = data.find(item => item.operator?.id === parseInt(this.operatorId));
-      if (!operatorData?.faultHistory) {
-        this.error = 'No fault history data available';
-        this.rows = [];
-        this.columns = [];
-        return;
-      }
+  private stopPolling(): void {
+    if (this.pollingSubscription) {
+      this.pollingSubscription.unsubscribe();
+      this.pollingSubscription = null;
+    }
+  }
 
-      this.lastFetchedData = operatorData.faultHistory;
-      this.updateTable();
-    } catch (error) {
-      console.error('Error processing dashboard data:', error);
-      this.error = 'Failed to process dashboard data';
-      this.rows = [];
-      this.columns = [];
+  private checkAndFetch() {
+    // Don't fetch if we don't have all required parameters
+    if (!this.startTime || !this.endTime || !this.operatorId) {
+      console.log('checkAndFetch: Missing required parameters, skipping fetch');
+      return;
+    }
+
+    const currentParams = {
+      startTime: this.startTime,
+      endTime: this.endTime,
+      operatorId: this.operatorId
+    };
+
+    // Only fetch if parameters have actually changed
+    if (
+      !this.lastParams ||
+      this.lastParams.startTime !== currentParams.startTime ||
+      this.lastParams.endTime !== currentParams.endTime ||
+      this.lastParams.operatorId !== currentParams.operatorId
+    ) {
+      console.log('checkAndFetch: Parameters changed, fetching new data', {
+        old: this.lastParams,
+        new: currentParams
+      });
+      this.lastParams = currentParams;
+      this.fetchData();
+    } else {
+      console.log('checkAndFetch: Parameters unchanged, skipping fetch');
     }
   }
 
@@ -125,19 +223,31 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
       return;
     }
 
+    console.log('fetchData: Making API call', {
+      startTime: this.startTime,
+      endTime: this.endTime,
+      operatorId: this.operatorId
+    });
+
     this.error = null;
-    this.operatorFaultHistoryService.getOperatorFaultHistory(this.startTime, this.endTime, operatorIdNum)
+    this.isLoading = true;
+    this.faultHistoryService.getFaultHistoryByOperator(this.startTime, this.endTime, operatorIdNum)
       .subscribe({
         next: (data) => {
+          console.log('fetchData: API call successful', data);
+          console.log('Debug: Fault summaries sample:', data.faultSummaries?.[0]);
+          console.log('Debug: Fault cycles sample:', data.faultCycles?.[0]);
           this.hasFetchedOnce = true;
           this.lastFetchedData = data;
           this.updateTable();
+          this.isLoading = false;
         },
         error: (error) => {
           console.error('Error fetching operator fault history:', error);
           this.error = 'Failed to fetch fault history. Please try again.';
           this.rows = [];
           this.columns = [];
+          this.isLoading = false;
         }
       });
   }
@@ -145,16 +255,34 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   updateTable(): void {
     if (!this.lastFetchedData) return;
 
+    // Process fault summaries (similar to machine fault history)
     this.rows = (this.lastFetchedData.faultSummaries || []).map(summary => {
-      const totalSeconds = Math.floor(summary.totalDuration / 1000);
+      // Backend already provides totalDurationSeconds in seconds, no need to divide by 1000
+      const totalSeconds = summary.totalDurationSeconds;
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
       const seconds = totalSeconds % 60;
 
+      console.log('Debug: Processing summary:', {
+        name: summary.name,
+        totalDurationSeconds: summary.totalDurationSeconds,
+        calculated: { hours, minutes, seconds }
+      });
+
+      // Format duration to show seconds when minutes are 0
+      let duration;
+      if (hours > 0) {
+        duration = `${hours}h ${minutes}m ${seconds}s`;
+      } else if (minutes > 0) {
+        duration = `${minutes}m ${seconds}s`;
+      } else {
+        duration = `${seconds}s`;
+      }
+
       return {
-        'Fault Type': summary.faultType,
+        'Fault Type': summary.name,
         'Count': summary.count,
-        'Total Duration': `${hours}h ${minutes}m ${seconds}s`
+        'Total Duration': duration
       };
     });
 
@@ -167,5 +295,14 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
       const element = document.querySelector('.mat-row.selected');
       element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 0);
+  }
+
+  private formatDateForInput(date: Date): string {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 }
