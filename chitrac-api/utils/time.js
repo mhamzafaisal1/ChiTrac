@@ -32,28 +32,77 @@ function parseAndValidateQueryParams(req) {
     end,
     serial,
     operatorId,
+    timeframe,
   } = req.query;
 
-  const startDate = startTime || start;
-  const endDate = endTime || end;
   const machineId = machineSerial || serial;
 
-  if (!startDate || !endDate) {
-    throw new Error("start/startTime and end/endTime are required");
+  let startDT, endDT;
+
+  if (timeframe) {
+    ({ startDT, endDT } = resolveTimeframe(timeframe));
+  } else {
+    const startDate = startTime || start;
+    const endDate = endTime || end;
+    if (!startDate || !endDate) {
+      throw new Error("start/startTime and end/endTime are required when 'timeframe' is not provided");
+    }
+    startDT = validateDateString(startDate);
+    endDT = validateDateString(endDate);
   }
 
-  const startDT = validateDateString(startDate);
-  const endDT = validateDateString(endDate);
+  // Clamp end to now to avoid future ranges
+  const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+  if (endDT > now) endDT = now;
+
   validateTimeRange(startDT, endDT);
 
   return {
     start: convertToMongoDate(startDT),
     end: convertToMongoDate(endDT),
-    serial: machineId ? parseInt(machineId) : null,
-    operatorId: operatorId ? parseInt(operatorId) : null,
+    serial: machineId ? (parseInt(machineId, 10) || null) : null,
+    operatorId: operatorId ? (parseInt(operatorId, 10) || null) : null,
     startLuxon: startDT,
     endLuxon: endDT,
+    timeframe: timeframe || null,
   };
+}
+
+/**
+ * Resolves timeframe values to start and end DateTime objects
+ * @param {string} tf - The timeframe value
+ * @returns {Object} Object containing startDT and endDT Luxon DateTime objects
+ */
+function resolveTimeframe(tf) {
+  const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+  let startDT, endDT = now;
+
+  switch (tf) {
+    case 'current':
+      startDT = now.minus({ minutes: 6 });
+      break;
+    case 'lastFifteen':
+      startDT = now.minus({ minutes: 15 });
+      break;
+    case 'lastHour':
+      startDT = now.minus({ hours: 1 });
+      break;
+    case 'today':
+      startDT = now.startOf('day');
+      break;
+    case 'thisWeek':
+      startDT = now.startOf('week');
+      break;
+    case 'thisMonth':
+      startDT = now.startOf('month');
+      break;
+    case 'thisYear':
+      startDT = now.startOf('year');
+      break;
+    default:
+      throw new Error(`Unsupported timeframe '${tf}'`);
+  }
+  return { startDT, endDT };
 }
 
 /**
@@ -340,6 +389,7 @@ module.exports = {
   TIME_CONSTANTS,
   SYSTEM_TIMEZONE,
   parseAndValidateQueryParams,
+  resolveTimeframe,
   createPaddedTimeRange,
   validateTimeRange,
   validateDateString,
