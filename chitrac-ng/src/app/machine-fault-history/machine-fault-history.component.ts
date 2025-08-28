@@ -67,7 +67,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   liveMode: boolean = false;
   isLoading: boolean = false;
 
-  lastFetchedData: { faultCycles: any[]; faultSummaries: any[] } | null = null;
+  lastFetchedData: any | null = null;
   lastParams: { startTime: string; endTime: string; serial: string } | null = null;
   private observer!: MutationObserver;
   private pollingSubscription: any;
@@ -188,7 +188,12 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
             return this.faultHistoryService
-              .getFaultHistoryBySerial(this.startTime, this.endTime, parseInt(this.serial))
+              .getFaultHistoryBySerial(
+                this.startTime, 
+                this.endTime, 
+                parseInt(this.serial),
+                this.viewType === 'summary' ? 'summaries' : 'cycles'
+              )
               .pipe(
                 tap((data: any) => {
                   this.hasFetchedOnce = true;
@@ -251,11 +256,21 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
     console.log('fetchData: Making API call', {
       startTime: this.startTime,
       endTime: this.endTime,
-      serial: this.serial
+      serial: this.serial,
+      viewType: this.viewType
     });
 
     this.isLoading = true;
-    this.faultHistoryService.getFaultHistoryBySerial(this.startTime, this.endTime, serialNumber)
+    
+    // Determine which data to include based on viewType
+    const includeParam = this.viewType === 'summary' ? 'summaries' : 'cycles';
+    
+    this.faultHistoryService.getFaultHistoryBySerial(
+      this.startTime, 
+      this.endTime, 
+      serialNumber,
+      includeParam
+    )
       .subscribe({
         next: (data) => {
           console.log('fetchData: API call successful', data);
@@ -281,7 +296,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
     if (this.viewType === 'summary') {
       console.log('Debug: Processing fault summaries:', this.lastFetchedData.faultSummaries);
       
-      this.rows = (this.lastFetchedData.faultSummaries || []).map(summary => {
+      this.rows = (this.lastFetchedData.faultSummaries || []).map((summary: any) => {
         // Backend already provides totalDurationSeconds in seconds, no need to divide by 1000
         const totalSeconds = summary.totalDurationSeconds;
         const hours = Math.floor(totalSeconds / 3600);
@@ -313,11 +328,11 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
     } else {
       // Sort fault cycles by start time (latest first) for default sorting
       const sortedFaultCycles = (this.lastFetchedData.faultCycles || [])
-        .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
+        .sort((a: any, b: any) => new Date(b.start).getTime() - new Date(a.start).getTime());
       
       console.log('Debug: Processing fault cycles:', sortedFaultCycles);
       
-      this.rows = sortedFaultCycles.map(cycle => {
+      this.rows = sortedFaultCycles.map((cycle: any) => {
         console.log('Debug: Processing cycle:', {
           id: cycle.id,
           start: cycle.start,

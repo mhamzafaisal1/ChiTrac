@@ -43,9 +43,12 @@ export interface FaultHistoryResponse {
     operatorId?: number;
     operatorName?: string;
   };
-  faultCycles: FaultCycle[];
-  faultSummaries: FaultSummary[];
+  faultCycles?: FaultCycle[];
+  faultSummaries?: FaultSummary[];
 }
+
+// New type for the include parameter
+export type FaultHistoryInclude = 'cycles' | 'summaries' | 'both';
 
 @Injectable({
   providedIn: 'root'
@@ -61,13 +64,15 @@ export class FaultHistoryService {
    * @param end End date string
    * @param serial Optional machine serial number
    * @param operatorId Optional operator ID
+   * @param include Optional parameter to specify which data to include ('cycles', 'summaries', or 'both')
    * @returns Observable with fault history data
    */
   getFaultHistory(
     start: string,
     end: string,
     serial?: number,
-    operatorId?: number
+    operatorId?: number,
+    include?: FaultHistoryInclude
   ): Observable<FaultHistoryResponse> {
     let params = new HttpParams()
       .set('start', start)
@@ -81,6 +86,10 @@ export class FaultHistoryService {
       params = params.set('operatorId', operatorId.toString());
     }
 
+    if (include != null) {
+      params = params.set('include', include);
+    }
+
     return this.http.get<FaultHistoryResponse>(`${this.apiUrl}/analytics/fault-sessions-history`, { params });
   }
 
@@ -89,14 +98,16 @@ export class FaultHistoryService {
    * @param start Start date string
    * @param end End date string
    * @param serial Machine serial number
+   * @param include Optional parameter to specify which data to include ('cycles', 'summaries', or 'both')
    * @returns Observable with fault history data for specific machine
    */
   getFaultHistoryBySerial(
     start: string,
     end: string,
-    serial: number
+    serial: number,
+    include?: FaultHistoryInclude
   ): Observable<FaultHistoryResponse> {
-    return this.getFaultHistory(start, end, serial);
+    return this.getFaultHistory(start, end, serial, undefined, include);
   }
 
   /**
@@ -104,13 +115,15 @@ export class FaultHistoryService {
    * @param start Start date string
    * @param end End date string
    * @param operatorId Operator ID
+   * @param include Optional parameter to specify which data to include ('cycles', 'summaries', or 'both')
    * @returns Observable with fault history data for specific operator
    */
   getFaultHistoryByOperator(
     start: string,
     end: string,
-    operatorId: number
+    operatorId: number,
+    include?: FaultHistoryInclude
   ): Observable<FaultHistoryResponse> {
-    return this.getFaultHistory(start, end, undefined, operatorId);
+    return this.getFaultHistory(start, end, undefined, operatorId, include);
   }
 }

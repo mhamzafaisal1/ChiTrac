@@ -293,12 +293,14 @@ Returns fault session history over a time window, optionally scoped to a specifi
 | end | ISO 8601 timestamp (UTC) | Yes | Window end (exclusive). |
 | serial | Integer | No | Restrict analytics to a specific machine serial. |
 | operatorId | Integer | No | Restrict analytics to a specific operator ID. |
+| include | String | No | Specify which data to include: 'cycles', 'summaries', or 'both' (defaults to 'both'). |
 
 **Validation Rules:**
 - `start` and `end` are required.
 - At least one of `serial` or `operatorId` must be provided.
 - If provided, `serial` must be numeric.
 - If provided, `operatorId` must be numeric.
+- If provided, `include` must be one of: 'cycles', 'summaries', or 'both'.
 - `start < end` must hold.
 
 **Behavior & Notes:**
@@ -307,10 +309,24 @@ Returns fault session history over a time window, optionally scoped to a specifi
 - Work time missed is calculated as `activeStations × durationSeconds`.
 - Fault summaries aggregate by fault code and name combination.
 - Results are sorted chronologically by fault start time.
+- The `include` parameter controls which data arrays are returned in the response:
+  - `'cycles'`: Returns only `faultCycles` array
+  - `'summaries'`: Returns only `faultSummaries` array  
+  - `'both'`: Returns both arrays (default behavior)
+  - If omitted, defaults to `'both'` for backward compatibility
 
 **Example Request:**
 ```
 GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&end=2025-05-01T14:00:00.000Z&serial=67808
+```
+
+**Example Request with Include Parameter:**
+```
+GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&end=2025-05-01T14:00:00.000Z&serial=67808&include=cycles
+```
+
+```
+GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&end=2025-05-01T14:00:00.000Z&operatorId=135790&include=summaries
 ```
 
 **Data Format:**
@@ -388,7 +404,7 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&e
 - `operatorName` (string|null): Operator name if available
 
 **faultCycles[]:**
-Array of individual fault sessions clipped to the time window:
+Array of individual fault sessions clipped to the time window (only present when `include` is 'cycles' or 'both'):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -406,7 +422,7 @@ Array of individual fault sessions clipped to the time window:
 | workTimeMissedSeconds | integer | Total work time missed (activeStations × duration) |
 
 **faultSummaries[]:**
-Aggregated fault statistics by code and name:
+Aggregated fault statistics by code and name (only present when `include` is 'summaries' or 'both'):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -435,6 +451,10 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T08:00:00.000Z&e
 
 ```json
 { "error": "serial and operatorId must be numbers when provided" }
+```
+
+```json
+{ "error": "include parameter must be 'cycles', 'summaries', or 'both'" }
 ```
 
 **500 Internal Server Error:**

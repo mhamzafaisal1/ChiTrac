@@ -42,6 +42,17 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   @Input() endTime: string = '';
   @Input() operatorId: string = '';
   @Input() isModal: boolean = false;
+  @Input() mode: 'standalone' | 'dashboard' = 'standalone';
+
+  private _viewType: 'summary' | 'cycles' = 'summary';
+  @Input()
+  set viewType(val: 'summary' | 'cycles') {
+    this._viewType = val;
+    if (this.hasFetchedOnce) this.updateTable();
+  }
+  get viewType() {
+    return this._viewType;
+  }
 
   columns: string[] = [];
   rows: any[] = [];
@@ -52,7 +63,7 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   isLoading: boolean = false;
   error: string | null = null;
 
-  lastFetchedData: { faultCycles: any[]; faultSummaries: any[] } | null = null;
+  lastFetchedData: any | null = null;
   lastParams: { startTime: string; endTime: string; operatorId: string } | null = null;
   private observer!: MutationObserver;
   private pollingSubscription: any;
@@ -121,7 +132,14 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   }
   
   ngOnChanges(changes: SimpleChanges): void {
-    // Handle input changes that require API calls
+    // Handle viewType changes separately - just update table display
+    if (changes['viewType'] && this.lastFetchedData) {
+      console.log('ngOnChanges: viewType changed, updating table display only');
+      this.updateTable();
+      return;
+    }
+
+    // Handle other input changes that require API calls
     if (
       changes['startTime'] ||
       changes['endTime'] ||
@@ -158,7 +176,12 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
             return this.faultHistoryService
-              .getFaultHistoryByOperator(this.startTime, this.endTime, parseInt(this.operatorId))
+              .getFaultHistoryByOperator(
+                this.startTime, 
+                this.endTime, 
+                parseInt(this.operatorId),
+                this.viewType === 'summary' ? 'summaries' : 'cycles'
+              )
               .pipe(
                 tap((data: any) => {
                   this.hasFetchedOnce = true;
@@ -226,12 +249,22 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
     console.log('fetchData: Making API call', {
       startTime: this.startTime,
       endTime: this.endTime,
-      operatorId: this.operatorId
+      operatorId: this.operatorId,
+      viewType: this.viewType
     });
 
     this.error = null;
     this.isLoading = true;
-    this.faultHistoryService.getFaultHistoryByOperator(this.startTime, this.endTime, operatorIdNum)
+    
+    // Determine which data to include based on viewType
+    const includeParam = this.viewType === 'summary' ? 'summaries' : 'cycles';
+    
+    this.faultHistoryService.getFaultHistoryByOperator(
+      this.startTime, 
+      this.endTime, 
+      operatorIdNum,
+      includeParam
+    )
       .subscribe({
         next: (data) => {
           console.log('fetchData: API call successful', data);
@@ -255,36 +288,77 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   updateTable(): void {
     if (!this.lastFetchedData) return;
 
-    // Process fault summaries (similar to machine fault history)
-    this.rows = (this.lastFetchedData.faultSummaries || []).map(summary => {
-      // Backend already provides totalDurationSeconds in seconds, no need to divide by 1000
-      const totalSeconds = summary.totalDurationSeconds;
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
+    if (this.viewType === 'summary') {
+      // Process fault summaries (similar to machine fault history)
+      this.rows = (this.lastFetchedData.faultSummaries || []).map((summary: any) => {
+        // Backend already provides totalDurationSeconds in seconds, no need to divide by 1000
+        const totalSeconds = summary.totalDurationSeconds;
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
 
-      console.log('Debug: Processing summary:', {
-        name: summary.name,
-        totalDurationSeconds: summary.totalDurationSeconds,
-        calculated: { hours, minutes, seconds }
+        console.log('Debug: Processing summary:', {
+          name: summary.name,
+          totalDurationSeconds: summary.totalDurationSeconds,
+          calculated: { hours, minutes, seconds }
+        });
+
+        // Format duration to show seconds when minutes are 0
+        let duration;
+        if (hours > 0) {
+          duration = `${hours}h ${minutes}m ${seconds}s`;
+        } else if (minutes > 0) {
+          duration = `${minutes}m ${seconds}s`;
+        } else {
+          duration = `${seconds}s`;
+        }
+
+        return {
+          'Fault Type': summary.name,
+          'Count': summary.count,
+          'Total Duration': duration
+        };
       });
-
-      // Format duration to show seconds when minutes are 0
-      let duration;
-      if (hours > 0) {
-        duration = `${hours}h ${minutes}m ${seconds}s`;
-      } else if (minutes > 0) {
-        duration = `${minutes}m ${seconds}s`;
-      } else {
-        duration = `${seconds}s`;
-      }
-
-      return {
-        'Fault Type': summary.name,
-        'Count': summary.count,
-        'Total Duration': duration
-      };
-    });
+    } else {
+      // Sort fault cycles by start time (latest first) for default sorting
+      const sortedFaultCycles = (this.lastFetchedData.faultCycles || [])
+        .sort((a: any, b: any) => new Date(b.start).getTime() - new Date(a.start).getTime());
+      
+      console.log('Debug: Processing fault cycles:', sortedFaultCycles);
+      
+      this.rows = sortedFaultCycles.map((cycle: any) => {
+        console.log('Debug: Processing cycle:', {
+          id: cycle.id,
+          start: cycle.start,
+          end: cycle.end,
+          durationSeconds: cycle.durationSeconds,
+          durationType: typeof cycle.durationSeconds,
+          name: cycle.name
+        });
+        
+        // Ensure durationSeconds is a valid number and handle edge cases
+        const durationSeconds = cycle.durationSeconds || 0;
+        const hours = Math.floor(durationSeconds / 3600);
+        const minutes = Math.floor((durationSeconds % 3600) / 60);
+        const seconds = durationSeconds % 60;
+        
+        // Format duration to show seconds when minutes are 0
+        let duration;
+        if (hours > 0) {
+          duration = `${hours}h ${minutes}m`;
+        } else if (minutes > 0) {
+          duration = `${minutes}m ${seconds}s`;
+        } else {
+          duration = `${seconds}s`;
+        }
+        
+        return {
+          'Fault Type': cycle.name,
+          'Start Time': new Date(cycle.start).toLocaleString(),
+          'Duration': duration
+        };
+      });
+    }
 
     this.columns = this.rows.length > 0 ? Object.keys(this.rows[0]) : [];
   }
