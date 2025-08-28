@@ -135,6 +135,10 @@ function constructor(server) {
   const itemSessionsRoutes = require("./itemSessions")(server);
   router.use("/", itemSessionsRoutes);
 
+  // Import fault session routes
+  const faultSessionRoutes = require("./faultSessionRoutes")(server);
+  router.use("/", faultSessionRoutes);
+
   // Import machine-details routes
   const machineDetailsRoutes = require("./machineDetails..js")(server);
   router.use("/", machineDetailsRoutes);
