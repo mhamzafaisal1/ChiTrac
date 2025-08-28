@@ -86,7 +86,7 @@ module.exports = function faultHistoryRoute(server) {
         });
       }
 
-      // Resolve names for labels (best effort)
+      
       let machineName = null;
       if (hasSerial) {
         machineName =
@@ -110,14 +110,15 @@ module.exports = function faultHistoryRoute(server) {
       const faultCycles = raw
         .map(r => {
           const durSec = Math.max(0, Math.floor((r.ovEnd - r.ovStart) / 1000));
-          const activeStations =
+          const fullActiveStations =
             typeof r.activeStations === "number" ? r.activeStations : (r.operators?.length ?? 0);
-          const workMissed = activeStations * durSec;
 
-          // If operatorId filter is set, keep only that operator in the cycle’s operators list
           const ops = hasOperator
             ? (r.operators || []).filter(o => o.id === operatorId)
             : (r.operators || []);
+
+          const finalActiveStations = hasOperator ? ops.length : fullActiveStations;
+          const finalWorkMissed = finalActiveStations * durSec;
 
           return {
             id: r._id,
@@ -130,8 +131,8 @@ module.exports = function faultHistoryRoute(server) {
             machineName: r.machine?.name ?? machineName ?? null,
             operators: ops.map(o => ({ id: o.id, name: o.name, station: o.station })),
             items: r.items || [],
-            activeStations,
-            workTimeMissedSeconds: workMissed,
+            activeStations: finalActiveStations,
+            workTimeMissedSeconds: finalWorkMissed,
           };
         })
         .sort((a, b) => a.start - b.start);
@@ -139,7 +140,7 @@ module.exports = function faultHistoryRoute(server) {
       // Summaries by fault code+name
       const summaryMap = new Map();
       for (const c of faultCycles) {
-        const key = `${c.code ?? "null"}|${c.name}`;
+        const key = `${c.code || 0}|${c.name}`;
         const prev = summaryMap.get(key) || {
           code: c.code ?? null,
           name: c.name,
