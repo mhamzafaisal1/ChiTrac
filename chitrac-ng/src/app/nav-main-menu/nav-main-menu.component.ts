@@ -20,6 +20,7 @@ import { map, shareReplay } from 'rxjs/operators';
 
 import { UserService } from '../user.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
+import { UserLoginComponent } from '../user-login/user-login.component';
 
 const left = [
   query(':enter, :leave', style({ position: 'absolute', width: '15em' })),
@@ -52,7 +53,8 @@ const right = [
         MatIconModule,
         MatSlideToggleModule,
         MatMenuModule,
-        DateTimeModalComponent
+        DateTimeModalComponent,
+        UserLoginComponent
     ],
     animations: [
         trigger('menuSlider', [
@@ -69,6 +71,7 @@ export class NavMainMenuComponent {
   @Output() darkModeToggleEvent = new EventEmitter();
   @Input() isDarkMode: boolean;
   @ViewChild('dateMenuTrigger') dateMenu: MatMenuTrigger;
+  @ViewChild('loginMenuTrigger') loginMenu: MatMenuTrigger;
 
 
   private breakpointObserver = inject(BreakpointObserver);
@@ -144,6 +147,15 @@ export class NavMainMenuComponent {
       if (this.dateMenu) {
         this.dateMenu.closeMenu();
         console.log('confirm button clicked');
+      }
+    });
+  }
+
+  onLoginModalClose(): void {
+    setTimeout(() => {
+      if (this.loginMenu) {
+        this.loginMenu.closeMenu();
+        console.log('login modal closed');
       }
     });
   }

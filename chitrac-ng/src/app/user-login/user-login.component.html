@@ -1,16 +1,25 @@
-<form [formGroup]="userLoginFormGroup" (submit)="onSubmit(user)">
-  <h2 mat-dialog-title>User Login</h2>
-  <mat-form-field>
-    <mat-label>Username</mat-label>
-    <input matInput type="text" formControlName="username" />
-  </mat-form-field>
-  <br />
-  <mat-form-field>
-    <mat-label>Password</mat-label>
-    <input matInput type="password" formControlName="password" />
-  </mat-form-field>
-  <br />
-  <button type="submit" mat-flat-button [disabled]="!userLoginFormGroup.valid">Log In</button>
-  <br />
-  <div *ngIf="error" style="text-align: center; width: 100%">Operator already exists</div>
-</form>
+<div class="login-popup">
+  <form [formGroup]="userLoginFormGroup" (submit)="onSubmit(user)">
+    <h3 class="login-title">Login</h3>
+    
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Username</mat-label>
+      <input matInput type="text" formControlName="username" placeholder="Enter username" />
+    </mat-form-field>
+    
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Password</mat-label>
+      <input matInput type="password" formControlName="password" placeholder="Enter password" />
+    </mat-form-field>
+    
+    <button type="submit" mat-flat-button color="primary" class="full-width login-btn" 
+            [disabled]="!userLoginFormGroup.valid">
+      <mat-icon>login</mat-icon>
+      Log In
+    </button>
+    
+    <div *ngIf="error" class="error-message">
+      {{ error }}
+    </div>
+  </form>
+</div>

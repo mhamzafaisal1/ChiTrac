@@ -95,7 +95,17 @@
   margin-right: 0.5rem;
 }
 
-.light-theme .calendar-icon {
+.login-btn {
+  margin-left: 0.5rem;
+}
+
+.calendar-icon,
+.passkey-icon {
+  color: var(--sg-color-white);
+}
+
+.light-theme .calendar-icon,
+.light-theme .passkey-icon {
   color: rgba(0, 0, 0, 0.87);
 }
 
