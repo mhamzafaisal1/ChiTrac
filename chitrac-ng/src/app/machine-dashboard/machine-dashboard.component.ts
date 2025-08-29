@@ -350,7 +350,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           const itemSummaryData = Object.values(
             machineData.itemSummary?.machineSummary?.itemSummaries || {}
           );
-          console.log("Item summary data:", itemSummaryData);
 
           const faultSummaryData = machineData.faultData?.faultSummaries || [];
           const faultCycleData = machineData.faultData?.faultCycles || [];
@@ -401,7 +400,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 endTime: this.endTime,
                 machineSerial,
                 isModal: this.isModal,
-                preloadedData: faultSummaryData,
               },
             },
             {
@@ -413,7 +411,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 endTime: this.endTime,
                 machineSerial,
                 isModal: this.isModal,
-                preloadedData: faultCycleData,
               },
             },
             {

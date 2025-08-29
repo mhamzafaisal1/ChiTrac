@@ -13,11 +13,30 @@ module.exports = function faultHistoryRoute(server) {
       const { start, end } = parseAndValidateQueryParams(req);
       const serialParam = req.query.serial;
       const operatorParam = req.query.operatorId;
+      const includeParam = req.query.include; // New parameter to control response content
 
       const hasSerial = serialParam != null;
       const hasOperator = operatorParam != null;
       if (!hasSerial && !hasOperator) {
         return res.status(400).json({ error: "Provide serial or operatorId" });
+      }
+
+      // Parse include parameter - can be 'cycles', 'summaries', or undefined (defaults to both)
+      let includeCycles = true;
+      let includeSummaries = true;
+      if (includeParam) {
+        if (includeParam === 'cycles') {
+          includeCycles = true;
+          includeSummaries = false;
+        } else if (includeParam === 'summaries') {
+          includeCycles = false;
+          includeSummaries = true;
+        } else if (includeParam === 'both') {
+          includeCycles = true;
+          includeSummaries = true;
+        } else {
+          return res.status(400).json({ error: "include parameter must be 'cycles', 'summaries', or 'both'" });
+        }
       }
 
       const serial = hasSerial ? Number(serialParam) : null;
@@ -79,11 +98,14 @@ module.exports = function faultHistoryRoute(server) {
         .toArray();
 
       if (!raw.length) {
-        return res.json({
+        const response = {
           context: { start: startDate, end: endDate, serial, operatorId },
-          faultCycles: [],
-          faultSummaries: [],
-        });
+        };
+        
+        if (includeCycles) response.faultCycles = [];
+        if (includeSummaries) response.faultSummaries = [];
+        
+        return res.json(response);
       }
 
       
@@ -106,75 +128,95 @@ module.exports = function faultHistoryRoute(server) {
         if (!operatorName) operatorName = `Operator ${operatorId}`;
       }
 
-      // Build cycles (one cycle per fault-session)
-      const faultCycles = raw
-        .map(r => {
+      // Build cycles (one cycle per fault-session) - only if requested
+      let faultCycles = [];
+      if (includeCycles) {
+        faultCycles = raw
+          .map(r => {
+            const durSec = Math.max(0, Math.floor((r.ovEnd - r.ovStart) / 1000));
+            const fullActiveStations =
+              typeof r.activeStations === "number" ? r.activeStations : (r.operators?.length ?? 0);
+
+            const ops = hasOperator
+              ? (r.operators || []).filter(o => o.id === operatorId)
+              : (r.operators || []);
+
+            const finalActiveStations = hasOperator ? ops.length : fullActiveStations;
+            const finalWorkMissed = finalActiveStations * durSec;
+
+            return {
+              id: r._id,
+              start: r.ovStart,
+              end: r.ovEnd,
+              durationSeconds: durSec,
+              code: r.code ?? null,
+              name: r.name ?? "Fault",
+              machineSerial: r.machine?.serial ?? null,
+              machineName: r.machine?.name ?? machineName ?? null,
+              operators: ops.map(o => ({ id: o.id, name: o.name, station: o.station })),
+              items: r.items || [],
+              activeStations: finalActiveStations,
+              workTimeMissedSeconds: finalWorkMissed,
+            };
+          })
+          .sort((a, b) => a.start - b.start);
+      }
+
+      // Summaries by fault code+name - only if requested
+      let faultSummaries = [];
+      if (includeSummaries) {
+        const summaryMap = new Map();
+        for (const r of raw) {
+          const code = r.code ?? null;
+          const name = r.name ?? "Fault";
+          const key = `${code}|${name}`;
           const durSec = Math.max(0, Math.floor((r.ovEnd - r.ovStart) / 1000));
           const fullActiveStations =
             typeof r.activeStations === "number" ? r.activeStations : (r.operators?.length ?? 0);
-
           const ops = hasOperator
             ? (r.operators || []).filter(o => o.id === operatorId)
             : (r.operators || []);
-
           const finalActiveStations = hasOperator ? ops.length : fullActiveStations;
           const finalWorkMissed = finalActiveStations * durSec;
-
-          return {
-            id: r._id,
-            start: r.ovStart,
-            end: r.ovEnd,
-            durationSeconds: durSec,
-            code: r.code ?? null,
-            name: r.name ?? "Fault",
-            machineSerial: r.machine?.serial ?? null,
-            machineName: r.machine?.name ?? machineName ?? null,
-            operators: ops.map(o => ({ id: o.id, name: o.name, station: o.station })),
-            items: r.items || [],
-            activeStations: finalActiveStations,
-            workTimeMissedSeconds: finalWorkMissed,
+          
+          const prev = summaryMap.get(key) || {
+            code: code,
+            name: name,
+            count: 0,
+            totalDurationSeconds: 0,
+            totalWorkTimeMissedSeconds: 0,
           };
-        })
-        .sort((a, b) => a.start - b.start);
+          prev.count += 1;
+          prev.totalDurationSeconds += durSec;
+          prev.totalWorkTimeMissedSeconds += finalWorkMissed;
+          summaryMap.set(key, prev);
+        }
 
-      // Summaries by fault code+name
-      const summaryMap = new Map();
-      for (const c of faultCycles) {
-        const key = `${c.code || 0}|${c.name}`;
-        const prev = summaryMap.get(key) || {
-          code: c.code ?? null,
-          name: c.name,
-          count: 0,
-          totalDurationSeconds: 0,
-          totalWorkTimeMissedSeconds: 0,
-        };
-        prev.count += 1;
-        prev.totalDurationSeconds += c.durationSeconds;
-        prev.totalWorkTimeMissedSeconds += c.workTimeMissedSeconds;
-        summaryMap.set(key, prev);
+        faultSummaries = Array.from(summaryMap.values()).map(s => {
+          const t = s.totalDurationSeconds;
+          return {
+            code: s.code,
+            name: s.name,
+            count: s.count,
+            totalDurationSeconds: t,
+            totalWorkTimeMissedSeconds: s.totalWorkTimeMissedSeconds,
+            formatted: {
+              hours: Math.floor(t / 3600),
+              minutes: Math.floor((t % 3600) / 60),
+              seconds: t % 60,
+            },
+          };
+        });
       }
 
-      const faultSummaries = Array.from(summaryMap.values()).map(s => {
-        const t = s.totalDurationSeconds;
-        return {
-          code: s.code,
-          name: s.name,
-          count: s.count,
-          totalDurationSeconds: t,
-          totalWorkTimeMissedSeconds: s.totalWorkTimeMissedSeconds,
-          formatted: {
-            hours: Math.floor(t / 3600),
-            minutes: Math.floor((t % 3600) / 60),
-            seconds: t % 60,
-          },
-        };
-      });
-
-      return res.json({
+      const response = {
         context: { start: startDate, end: endDate, serial, machineName, operatorId, operatorName },
-        faultCycles,
-        faultSummaries,
-      });
+      };
+      
+      if (includeCycles) response.faultCycles = faultCycles;
+      if (includeSummaries) response.faultSummaries = faultSummaries;
+
+      return res.json(response);
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       res.status(500).json({ error: "Failed to fetch fault history" });

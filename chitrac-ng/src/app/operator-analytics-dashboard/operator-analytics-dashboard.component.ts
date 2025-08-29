@@ -318,8 +318,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                   label: 'Fault History',
                   component: OperatorFaultHistoryComponent,
                   componentInputs: {
-                    mode: 'dashboard',
-                    dashboardData: [data],
+                    startTime: startTimeStr,
+                    endTime: endTimeStr,
                     operatorId: operatorId.toString(),
                     isModal: true
                   }

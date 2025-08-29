@@ -14,6 +14,7 @@ Returns fault session history over a time window, optionally scoped to a specifi
 | end | ISO 8601 timestamp (UTC) | Yes | Window end (exclusive). |
 | serial | Integer | No | Restrict analytics to a specific machine serial. |
 | operatorId | Integer | No | Restrict analytics to a specific operator ID. |
+| include | String | No | Specify which data to include: 'cycles', 'summaries', or 'both' (defaults to 'both'). |
 
 **Validation Rules**
 
@@ -21,6 +22,7 @@ Returns fault session history over a time window, optionally scoped to a specifi
 - At least one of `serial` or `operatorId` must be provided.
 - If provided, `serial` must be numeric.
 - If provided, `operatorId` must be numeric.
+- If provided, `include` must be one of: 'cycles', 'summaries', or 'both'.
 - `start < end` must hold.
 
 **Behavior & Notes**
@@ -30,11 +32,26 @@ Returns fault session history over a time window, optionally scoped to a specifi
 - Work time missed is calculated as `activeStations × durationSeconds`.
 - Fault summaries aggregate by fault code and name combination.
 - Results are sorted chronologically by fault start time.
+- The `include` parameter controls which data arrays are returned in the response:
+  - `'cycles'`: Returns only `faultCycles` array
+  - `'summaries'`: Returns only `faultSummaries` array  
+  - `'both'`: Returns both arrays (default behavior)
+  - If omitted, defaults to `'both'` for backward compatibility
 
 **Example Request**
 
 ```json
 GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&end=2025-05-01T14:00:00.000Z&serial=67808
+```
+
+**Example Request with Include Parameter**
+
+```json
+GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&end=2025-05-01T14:00:00.000Z&serial=67808&include=cycles
+```
+
+```json
+GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&end=2025-05-01T14:00:00.000Z&operatorId=135790&include=summaries
 ```
 
 **Example Response**
@@ -88,6 +105,72 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&e
 }
 ```
 
+**Example Response with Include=Cycles Only**
+
+```json
+{
+  "context": {
+    "start": "2025-05-01T12:00:00.000Z",
+    "end": "2025-05-01T14:00:00.000Z",
+    "serial": 67808,
+    "machineName": "SPF1",
+    "operatorId": null,
+    "operatorName": null
+  },
+  "faultCycles": [
+    {
+      "id": "64f8a1b2c3d4e5f6a7b8c9d0",
+      "start": "2025-05-01T12:15:30.000Z",
+      "end": "2025-05-01T12:20:45.000Z",
+      "durationSeconds": 315,
+      "code": 24,
+      "name": "Feeder Right Inlet Jam",
+      "machineSerial": 67808,
+      "machineName": "SPF1",
+      "operators": [
+        {
+          "id": 135790,
+          "name": "Lilliana Ashca",
+          "station": 1
+        }
+      ],
+      "items": [],
+      "activeStations": 1,
+      "workTimeMissedSeconds": 315
+    }
+  ]
+}
+```
+
+**Example Response with Include=Summaries Only**
+
+```json
+{
+  "context": {
+    "start": "2025-05-01T12:00:00.000Z",
+    "end": "2025-05-01T14:00:00.000Z",
+    "serial": 67808,
+    "machineName": "SPF1",
+    "operatorId": null,
+    "operatorName": null
+  },
+  "faultSummaries": [
+    {
+      "code": 24,
+      "name": "Feeder Right Inlet Jam",
+      "count": 1,
+      "totalDurationSeconds": 315,
+      "totalWorkTimeMissedSeconds": 315,
+      "formatted": {
+        "hours": 0,
+        "minutes": 5,
+        "seconds": 15
+      }
+    }
+  ]
+}
+```
+
 **Empty Data Response**
 
 ```json
@@ -103,6 +186,20 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&e
 }
 ```
 
+**Empty Data Response with Include=Cycles Only**
+
+```json
+{
+  "context": {
+    "start": "2025-05-01T12:00:00.000Z",
+    "end": "2025-05-01T14:00:00.000Z",
+    "serial": 67808,
+    "operatorId": null
+  },
+  "faultCycles": []
+}
+```
+
 **Field Reference**
 
 **context**
@@ -114,7 +211,7 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T12:00:00.000Z&e
 - `operatorName` (string|null): Operator name if available
 
 **faultCycles[]**
-Array of individual fault sessions clipped to the time window:
+Array of individual fault sessions clipped to the time window (only present when `include` is 'cycles' or 'both'):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -132,7 +229,7 @@ Array of individual fault sessions clipped to the time window:
 | workTimeMissedSeconds | integer | Total work time missed (activeStations × duration) |
 
 **faultSummaries[]**
-Aggregated fault statistics by code and name:
+Aggregated fault statistics by code and name (only present when `include` is 'summaries' or 'both'):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -165,6 +262,10 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T08:00:00.000Z&e
 { "error": "serial and operatorId must be numbers when provided" }
 ```
 
+```json
+{ "error": "include parameter must be 'cycles', 'summaries', or 'both'" }
+```
+
 **500 Internal Server Error**
 
 ```json
@@ -181,6 +282,7 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T08:00:00.000Z&e
 | end | ISO 8601 timestamp | Yes | Must be valid date, start < end |
 | serial | Integer | No* | Must be numeric if provided |
 | operatorId | Integer | No* | Must be numeric if provided |
+| include | String | No | Must be 'cycles', 'summaries', or 'both' if provided |
 
 *At least one of serial or operatorId must be provided.
 
