@@ -25,6 +25,7 @@ import { OperatorCyclePieChartComponent } from '../operator-cycle-pie-chart/oper
 import { OperatorFaultHistoryComponent } from '../operator-fault-history/operator-fault-history.component';
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
 import { OperatorLineChartComponent } from '../operator-line-chart/operator-line-chart.component';
+import { OperatorMachineSummaryComponent } from '../operator-machine-summary/operator-machine-summary.component';
 
 @Component({
     selector: 'app-operator-analytics-dashboard',
@@ -39,6 +40,7 @@ import { OperatorLineChartComponent } from '../operator-line-chart/operator-line
         MatButtonModule,
         OperatorPerformanceChartComponent,
         OperatorLineChartComponent,
+        OperatorMachineSummaryComponent,
         MatIconModule,
         MatSlideToggleModule
     ],
@@ -334,6 +336,16 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     isModal: true,
                     chartHeight: (this.chartHeight - 100),
                     chartWidth: this.chartWidth
+                  }
+                },
+                {
+                  label: 'Machine Summary',
+                  component: OperatorMachineSummaryComponent,
+                  componentInputs: {
+                    startTime: startTimeStr,
+                    endTime: endTimeStr,
+                    operatorId: operatorId.toString(),
+                    isModal: true
                   }
                 }
               ];
