@@ -10,26 +10,30 @@ import { startWith, switchMap, share, retry, debounceTime, distinctUntilChanged,
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatIconModule } from '@angular/material/icon';
 
 /*** Service Imports */
 import { UserService } from '../user.service';
 
 @Component({
     selector: 'app-user-login',
+    standalone: true,
     imports: [
         CommonModule,
         MatFormFieldModule,
         MatInputModule,
         FormsModule,
         ReactiveFormsModule,
-        MatButtonModule
+        MatButtonModule,
+        MatIconModule
     ],
     templateUrl: './user-login.component.html',
     styleUrl: './user-login.component.scss'
 })
-export class UserLoginComponent {
+export class UserLoginComponent implements OnInit {
 
   sub: Subscription;
+  @Output() closeModal = new EventEmitter<void>();
 
   userLoginFormGroup: FormGroup;
 
@@ -50,23 +54,7 @@ export class UserLoginComponent {
     
   }
 
-  onSubmit(user: any): void {
-    this.userService.postUserLogin(user).pipe(first())
-      .subscribe({
-        next: (user) => {
-          console.log(user);
-          // get return url from query parameters or default to home page
-          const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
-          this.router.navigateByUrl(returnUrl);
-        },
-        error: error => {
-          console.log(error);
-        }
-      });
-  }
-
-
-  ngOnInit() {
+  ngOnInit(): void {
     this.userLoginFormGroup = new FormGroup({
       username: new FormControl(this.user.username, [Validators.required, Validators.minLength(4)]),
       password: new FormControl(this.user.password, [Validators.required, Validators.minLength(6)]),
@@ -82,14 +70,23 @@ export class UserLoginComponent {
       this.user.password = res.password;
       this.user.active = res.active;
     });
-    /*this.dialogRef.backdropClick().subscribe(result => {
-      if (!this.userLoginFormGroup.pristine) {
-        console.log('Are you sure?');
-      } else {
-        this.dialogRef.close();
-      }
-    });*/
-  };
+  }
 
+  onSubmit(user: any): void {
+    this.userService.postUserLogin(user).pipe(first())
+      .subscribe({
+        next: (user) => {
+          console.log(user);
+          // get return url from query parameters or default to home page
+          const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
+          this.router.navigateByUrl(returnUrl);
+          // Emit close modal event for popup
+          this.closeModal.emit();
+        },
+        error: error => {
+          console.log(error);
+        }
+      });
+  }
 
 }

@@ -316,3 +316,9 @@ html, body {
 ::ng-deep .mat-sidenav-container {
   overflow: hidden !important;
 }
+
+/* Login Menu Panel Styles */
+::ng-deep .login-menu-panel.mat-mdc-menu-panel {
+  max-width: 420px;
+  overflow: hidden;
+}

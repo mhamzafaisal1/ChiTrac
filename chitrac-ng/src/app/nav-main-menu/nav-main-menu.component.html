@@ -28,9 +28,7 @@
       <a mat-list-item *ngIf="user.username" (click)="openMenu('settings')">
         <mat-icon>settings</mat-icon><span class="menu-item">Settings</span>
       </a>
-      <a mat-list-item *ngIf="!user.username" routerLink="/ng/login">
-        <mat-icon>login</mat-icon><span class="menu-item">Log In</span>
-      </a>
+      <!-- Login now handled by popup in toolbar -->
       <a mat-list-item *ngIf="user.username" (click)="logout()">
         <mat-icon>logout</mat-icon><span class="menu-item">Log Out as {{ user.username }}</span>
       </a>
@@ -152,12 +150,11 @@
       <!-- Spacer -->
       <span class="spacer"></span>
 
-      <!-- Right: calendar + dark mode controls -->
+      <!-- Right: calendar + dark mode controls + login -->
       <span class="toolbar-actions">
         <button #dateMenuTrigger="matMenuTrigger" mat-icon-button class="calendar-btn" [matMenuTriggerFor]="dateMenu">
           <mat-icon class="calendar-icon">calendar_today</mat-icon>
         </button>
-
 
         <mat-menu #dateMenu="matMenu" class="date-menu-wrapper" [overlapTrigger]="false" xPosition="after"
           yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''">
@@ -166,10 +163,21 @@
           </div>
         </mat-menu>
 
-
         <mat-icon class="light-icon">light_mode</mat-icon>
         <mat-slide-toggle class="dark-toggle" (click)="darkModeToggle()" [checked]="isDarkMode"></mat-slide-toggle>
         <mat-icon class="dark-icon">dark_mode</mat-icon>
+
+        <!-- Login Icon and Popup -->
+        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn" [matMenuTriggerFor]="loginMenu" *ngIf="!user.username">
+          <mat-icon class="passkey-icon">passkey</mat-icon>
+        </button>
+
+        <mat-menu #loginMenu="matMenu" class="login-menu-panel" [overlapTrigger]="false" xPosition="before"
+          yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''">
+          <div (click)="$event.stopPropagation()">
+            <app-user-login (closeModal)="onLoginModalClose()" />
+          </div>
+        </mat-menu>
       </span>
     </mat-toolbar>
 
