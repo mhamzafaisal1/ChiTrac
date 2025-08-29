@@ -212,6 +212,179 @@ module.exports = function (server) {
     }
   });
 
+  // ---- /api/alpha/analytics/operator-machine-summary ----
+  router.get("/analytics/operator-machine-summary", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const operatorId = Number(req.query.operatorId);
+      if (!operatorId || Number.isNaN(operatorId)) {
+        return res.status(400).json({ error: 'operatorId required and must be a number' });
+      }
+
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      // 1) Pull operator-sessions that overlap the window
+      const matchSessions = {
+        'operator.id': operatorId,
+        'timestamps.start': { $lte: endDate },
+        $or: [{ 'timestamps.end': { $exists: false } }, { 'timestamps.end': { $gte: startDate } }],
+      };
+
+      // Aggregate by machine and pre-summed fields.
+      // We avoid unwinding large counts[] arrays; use the precomputed fields on operator-session.
+      const sessionsAgg = await db.collection(config.operatorSessionCollectionName).aggregate([
+        { $match: matchSessions },
+        {
+          $addFields: {
+            _ovStart: { $cond: [{ $gt: ['$timestamps.start', startDate] }, '$timestamps.start', startDate] },
+            _ovEnd: {
+              $cond: [
+                { $gt: [{ $ifNull: ['$timestamps.end', endDate] }, endDate] },
+                endDate,
+                { $ifNull: ['$timestamps.end', endDate] },
+              ],
+            },
+          },
+        },
+        { $match: { $expr: { $lt: ['$_ovStart', '$_ovEnd'] } } },
+        // Pair items with per-item arrays for later rollups
+        {
+          $addFields: {
+            _itemsPaired: {
+              $map: {
+                input: { $range: [0, { $size: '$items' }] },
+                as: 'i',
+                in: {
+                  id: { $arrayElemAt: ['$items.id', '$$i'] },
+                  name: { $arrayElemAt: ['$items.name', '$$i'] },
+                  standard: { $arrayElemAt: ['$items.standard', '$$i'] },
+                  count: { $arrayElemAt: ['$totalCountByItem', '$$i'] },
+                  tci: { $arrayElemAt: ['$timeCreditByItem', '$$i'] },
+                },
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { serial: '$machine.serial', name: '$machine.name' },
+            sessions: { $sum: 1 },
+            // Totals across sessions
+            totalCount: { $sum: { $ifNull: ['$totalCount', 0] } },
+            totalMisfeed: { $sum: { $ifNull: ['$misfeedCount', 0] } },
+            totalTimeCredit: { $sum: { $ifNull: ['$totalTimeCredit', 0] } },
+            runtime: { $sum: { $ifNull: ['$runtime', 0] } },
+            itemsFlat: { $push: '$_itemsPaired' },
+            // Keep raw intervals for fault overlap test
+            intervals: { $push: { start: '$_ovStart', end: '$_ovEnd' } },
+          },
+        },
+        // Flatten itemsFlat and aggregate by item id
+        { $addFields: { itemsFlat: { $reduce: { input: '$itemsFlat', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } } } },
+        { $unwind: { path: '$itemsFlat', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: {
+              serial: '$_id.serial',
+              name: '$_id.name',
+              itemId: '$itemsFlat.id',
+              itemName: '$itemsFlat.name',
+              itemStd: '$itemsFlat.standard',
+            },
+            sessions: { $first: '$sessions' },
+            totalCount: { $first: '$totalCount' },
+            totalMisfeed: { $first: '$totalMisfeed' },
+            totalTimeCredit: { $first: '$totalTimeCredit' },
+            runtime: { $first: '$runtime' },
+            intervals: { $first: '$intervals' },
+            itemCount: { $sum: { $ifNull: ['$itemsFlat.count', 0] } },
+            itemTCI: { $sum: { $ifNull: ['$itemsFlat.tci', 0] } },
+          },
+        },
+        {
+          $group: {
+            _id: { serial: '$_id.serial', name: '$_id.name' },
+            sessions: { $first: '$sessions' },
+            totals: {
+              $first: {
+                totalCount: '$totalCount',
+                totalMisfeed: '$totalMisfeed',
+                totalTimeCredit: '$totalTimeCredit',
+                runtime: '$runtime',
+              },
+            },
+            intervals: { $first: '$intervals' },
+            items: {
+              $push: {
+                id: '$_id.itemId',
+                name: '$_id.itemName',
+                standard: '$_id.itemStd',
+                totalCount: '$itemCount',
+                totalTimeCredit: '$itemTCI',
+              },
+            },
+          },
+        },
+        // Remove null item rows that can appear if a session had zero items
+        { $addFields: { items: { $filter: { input: '$items', as: 'it', cond: { $ne: ['$$it.id', null] } } } } },
+        { $sort: { '_id.serial': 1 } },
+      ]).toArray();
+
+      if (!sessionsAgg.length) {
+        return res.json({ context: { operatorId, start: startDate, end: endDate }, machines: [] });
+      }
+
+      // 2) For each machine, count fault-sessions that overlap ANY operator-session interval for that machine.
+      const results = [];
+      for (const m of sessionsAgg) {
+        const serial = m._id.serial;
+
+        // Fetch candidate fault-sessions for this machine+operator in the window
+        const faults = await db.collection(config.faultSessionCollectionName).aggregate([
+          {
+            $match: {
+              'machine.serial': serial,
+              'operators.id': operatorId,
+              'timestamps.start': { $lte: endDate },
+              $or: [{ 'timestamps.end': { $exists: false } }, { 'timestamps.end': { $gte: startDate } }],
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              s: '$timestamps.start',
+              e: { $ifNull: ['$timestamps.end', endDate] },
+            },
+          },
+        ]).toArray();
+
+        // Merge operator-session intervals then count overlaps precisely
+        const merged = mergeIntervals(m.intervals.map(iv => ({ s: iv.start, e: iv.end })));
+        let faultsWhileRunning = 0;
+        for (const f of faults) {
+          if (overlapsAny({ s: f.s, e: f.e }, merged)) faultsWhileRunning += 1;
+        }
+
+        results.push({
+          machine: { serial, name: m._id.name },
+          sessions: m.sessions,
+          faultsWhileRunning,
+          totals: m.totals, // { totalCount, totalMisfeed, totalTimeCredit, runtime } summed over operator-sessions
+          items: coalesceItems(m.items), // merge same id rows across sessions already summed
+        });
+      }
+
+      return res.json({
+        context: { operatorId, start: startDate, end: endDate },
+        machines: results,
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: 'Failed to build operator machine summary' });
+    }
+  });
+
   /* ---------------- helpers (operator version) ---------------- */
 
   function clamp01(x) {
@@ -308,6 +481,47 @@ module.exports = function (server) {
     s.misfeeds = s.misfeeds.filter(inWindow);
 
     return recalcOperatorSession(s);
+  }
+
+  /* ---------------- helpers (operator-machine-summary version) ---------------- */
+
+  function mergeIntervals(intervals) {
+    const arr = intervals
+      .map(iv => ({ s: new Date(iv.s).getTime(), e: new Date(iv.e).getTime() }))
+      .filter(iv => Number.isFinite(iv.s) && Number.isFinite(iv.e) && iv.s < iv.e)
+      .sort((a, b) => a.s - b.s);
+
+    const out = [];
+    for (const iv of arr) {
+      if (!out.length || iv.s > out[out.length - 1].e) out.push({ ...iv });
+      else out[out.length - 1].e = Math.max(out[out.length - 1].e, iv.e);
+    }
+    return out;
+  }
+
+  function overlapsAny(iv, merged) {
+    const s = new Date(iv.s).getTime();
+    const e = new Date(iv.e).getTime();
+    if (!(s < e)) return false;
+    // binary scan or linear; linear is fine for small lists
+    for (const m of merged) {
+      if (e <= m.s) break;
+      if (s < m.e && e > m.s) return true;
+    }
+    return false;
+  }
+
+  function coalesceItems(items) {
+    const map = new Map();
+    for (const it of items) {
+      const key = it.id ?? '__null__';
+      if (!map.has(key)) map.set(key, { id: it.id, name: it.name, standard: it.standard, totalCount: 0, totalTimeCredit: 0 });
+      const curr = map.get(key);
+      curr.totalCount += it.totalCount || 0;
+      curr.totalTimeCredit += it.totalTimeCredit || 0;
+    }
+    // Remove null-id rows if any slipped in
+    return Array.from(map.values()).filter(x => x.id != null);
   }
 
   return router;
