@@ -1,5 +1,5 @@
 // charts/daily-count-bar-chart/daily-count-bar-chart.component.ts
-import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BarChartComponent, BarChartDataPoint } from '../../components/bar-chart/bar-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
@@ -13,7 +13,8 @@ import { takeUntil, tap, delay } from 'rxjs/operators';
   standalone: true,
   imports: [CommonModule, BarChartComponent],
   templateUrl: './daily-count-bar-chart.component.html',
-  styleUrls: ['./daily-count-bar-chart.component.scss']
+  styleUrls: ['./daily-count-bar-chart.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges {
   @Input() startDate = '';
@@ -36,6 +37,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   private destroy$ = new Subject<void>();
   private pollingSub: any;
   private readonly POLLING_INTERVAL = 6000;
+  private cdr = inject(ChangeDetectorRef);
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
@@ -138,6 +140,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
 
   private stopPolling(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
+    this.cdr.markForCheck();          // <— optional but safe
   }
 
   private fetchOnce(): Observable<any> {
@@ -177,6 +180,8 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       this.dummyMode = false;
       this.hasInitialData = normalized.length > 0;
       
+      this.cdr.markForCheck();        // <— critical
+      
       // Force change detection to ensure chart renders
       console.log('Chart data updated:', this.chartData);
       console.log('Normalized data:', normalized);
@@ -187,6 +192,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartData = [];
+    this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 
   // ---------- utils ----------

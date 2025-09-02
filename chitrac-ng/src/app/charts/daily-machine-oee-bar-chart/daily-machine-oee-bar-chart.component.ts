@@ -1,5 +1,5 @@
 // charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component.ts
-import { Component, Input, OnInit, OnDestroy } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BarChartComponent, BarChartDataPoint } from '../../components/bar-chart/bar-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
@@ -13,9 +13,10 @@ import { takeUntil, tap, delay } from 'rxjs/operators';
   standalone: true,
   imports: [CommonModule, BarChartComponent],
   templateUrl: './daily-machine-oee-bar-chart.component.html',
-  styleUrls: ['./daily-machine-oee-bar-chart.component.scss']
+  styleUrls: ['./daily-machine-oee-bar-chart.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy {
+export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnChanges {
   @Input() chartWidth = 600;
   @Input() chartHeight = 600;
 
@@ -32,6 +33,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private pollingSub: any;
   private readonly POLLING_INTERVAL = 6000;
+  private cdr = inject(ChangeDetectorRef);
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
@@ -42,6 +44,11 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy {
     new MutationObserver(() => {
       this.isDarkTheme = document.body.classList.contains('dark-theme');
     }).observe(document.body, { attributes: true });
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    console.log('DailyMachineOeeBarChart: Input changes:', changes);
+    console.log('DailyMachineOeeBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
   }
 
   ngOnInit(): void {
@@ -125,6 +132,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy {
 
   private stopPolling(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
+    this.cdr.markForCheck();          // <— optional but safe
   }
 
   private fetchOnce(): Observable<any> {
@@ -165,6 +173,8 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy {
       this.isLoading = false;          // set to false unconditionally
       this.dummyMode = false;
       this.hasInitialData = this.chartData.length > 0;
+      
+      this.cdr.markForCheck();        // <— critical
     };
 
   private enterDummy(): void {
@@ -172,6 +182,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy {
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartData = [];
+    this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 
   // ---- utils ----

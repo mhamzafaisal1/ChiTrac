@@ -39,44 +39,74 @@ import {
     @ViewChildren('slot', { read: ViewContainerRef })
     private slots!: QueryList<ViewContainerRef>;
 
-    private hostEl = inject(ElementRef<HTMLElement>);
-    private env = inject(EnvironmentInjector);
-    private cdr = inject(ChangeDetectorRef);
-    private refs: ComponentRef<any>[] = [];
+      private hostEl = inject(ElementRef<HTMLElement>);
+  private env = inject(EnvironmentInjector);
+  private cdr = inject(ChangeDetectorRef);
+  private refs: ComponentRef<any>[] = [];
 
-    // Stored for future scaling logic.
-    private containerWidth = 0;
-    private containerHeight = 0;
+  // Stored for future scaling logic.
+  private containerWidth = 0;
+  private containerHeight = 0;
+  private resizeObserver?: ResizeObserver;
   
-    ngAfterViewInit(): void {
-      if (this.components.length === 0) {
-        console.warn('LayoutGridTwoByTwoComponent: No components provided');
-        return;
-      }
-      
-      // Validate component count
-      if (this.components.length > 4) {
-        console.warn('LayoutGridTwoByTwoComponent: More than 4 components provided, using first 4');
-      }
-      
-      console.log('LayoutGridTwoByTwoComponent: Components received:', this.components.length);
+      ngAfterViewInit(): void {
+    if (this.components.length === 0) {
+      console.warn('LayoutGridTwoByTwoComponent: No components provided');
+      return;
+    }
+    
+    // Validate component count
+    if (this.components.length > 4) {
+      console.warn('LayoutGridTwoByTwoComponent: More than 4 components provided, using first 4');
+    }
+    
+    console.log('LayoutGridTwoByTwoComponent: Components received:', this.components.length);
+    
+    // Use requestAnimationFrame to ensure DOM is fully rendered
+    requestAnimationFrame(() => {
       this.measure();
-      this.mountAll();
-    }
+      // If dimensions are still 0, wait a bit more and try again
+      if (this.containerWidth === 0 || this.containerHeight === 0) {
+        setTimeout(() => {
+          this.measure();
+          // If still no dimensions, try one more time with a longer delay
+          if (this.containerWidth === 0 || this.containerHeight === 0) {
+            setTimeout(() => {
+              this.measure();
+              this.mountAll();
+            }, 200);
+          } else {
+            this.mountAll();
+          }
+        }, 100);
+      } else {
+        this.mountAll();
+      }
+    });
+    
+    // Set up ResizeObserver for better container size tracking
+    this.setupResizeObserver();
+  }
   
-    ngOnDestroy(): void {
-      // Clear resize timeout
-      if (this.resizeTimeout) {
-        clearTimeout(this.resizeTimeout);
-      }
-      
-      // Clean up component references
-      for (const ref of this.refs) {
-        (ref.instance as any)?.stopPolling?.();
-        ref.destroy();
-      }
-      this.refs = [];
+      ngOnDestroy(): void {
+    // Clear resize timeout
+    if (this.resizeTimeout) {
+      clearTimeout(this.resizeTimeout);
     }
+    
+    // Clean up ResizeObserver
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = undefined;
+    }
+    
+    // Clean up component references
+    for (const ref of this.refs) {
+      (ref.instance as any)?.stopPolling?.();
+      ref.destroy();
+    }
+    this.refs = [];
+  }
   
     @HostListener('window:resize')
     onResize(): void {
@@ -89,14 +119,44 @@ import {
     }
     
     private resizeTimeout: any;
-  
-    // Measure container size and store privately.
-    private measure(): void {
-      const rect = this.hostEl.nativeElement.getBoundingClientRect();
-      this.containerWidth = Math.max(0, Math.floor(rect.width));
-      this.containerHeight = Math.max(0, Math.floor(rect.height));
-      console.log('LayoutGridTwoByTwoComponent: Container size:', this.containerWidth, 'x', this.containerHeight);
+    
+    private setupResizeObserver(): void {
+      if (typeof ResizeObserver !== 'undefined') {
+        this.resizeObserver = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            if (entry.target === this.hostEl.nativeElement) {
+              // Debounce resize events to avoid excessive updates
+              clearTimeout(this.resizeTimeout);
+              this.resizeTimeout = setTimeout(() => {
+                this.measure();
+                this.updateChildSizes();
+              }, 100);
+            }
+          }
+        });
+        
+        this.resizeObserver.observe(this.hostEl.nativeElement);
+      }
     }
+  
+      // Measure container size and store privately.
+  private measure(): void {
+    const rect = this.hostEl.nativeElement.getBoundingClientRect();
+    this.containerWidth = Math.max(0, Math.floor(rect.width));
+    this.containerHeight = Math.max(0, Math.floor(rect.height));
+    console.log('LayoutGridTwoByTwoComponent: Container size:', this.containerWidth, 'x', this.containerHeight);
+    
+    // If we still don't have valid dimensions, try to get them from the parent
+    if (this.containerWidth === 0 || this.containerHeight === 0) {
+      const parent = this.hostEl.nativeElement.parentElement;
+      if (parent) {
+        const parentRect = parent.getBoundingClientRect();
+        this.containerWidth = Math.max(this.containerWidth, Math.floor(parentRect.width));
+        this.containerHeight = Math.max(this.containerHeight, Math.floor(parentRect.height));
+        console.log('LayoutGridTwoByTwoComponent: Using parent size:', this.containerWidth, 'x', this.containerHeight);
+      }
+    }
+  }
   
     private mountAll(): void {
       const slotsArr = this.slots.toArray();
@@ -139,6 +199,9 @@ import {
         }
       }
       this.cdr.markForCheck();
+      
+      // Trigger change detection once after all components are mounted
+      this.cdr.detectChanges();
     }
   
     private updateChildSizes(): void {
@@ -154,17 +217,21 @@ import {
       this.cdr.markForCheck();
     }
   
-    private cellWidth(): number {
-      const cols = this.getColumnCount();
-      const padding = 16; // Account for grid gap and padding
-      return Math.max(200, Math.floor((this.containerWidth - padding) / cols));
-    }
-    
-    private cellHeight(): number {
-      const rows = this.getRowCount();
-      const padding = 16; // Account for grid gap and padding
-      return Math.max(200, Math.floor((this.containerHeight - padding) / rows));
-    }
+      private cellWidth(): number {
+    const cols = this.getColumnCount();
+    const padding = 32; // Account for grid gap and padding (increased for better spacing)
+    const calculatedWidth = Math.floor((this.containerWidth - padding) / cols);
+    // Ensure reasonable minimum and maximum widths
+    return Math.max(300, Math.min(600, calculatedWidth));
+  }
+  
+  private cellHeight(): number {
+    const rows = this.getRowCount();
+    const padding = 32; // Account for grid gap and padding (increased for better spacing)
+    const calculatedHeight = Math.floor((this.containerHeight - padding) / rows);
+    // Ensure reasonable minimum and maximum heights
+    return Math.max(250, Math.min(400, calculatedHeight));
+  }
     
     private getColumnCount(): number {
       return window.innerWidth <= 768 ? 1 : 2;

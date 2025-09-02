@@ -1,5 +1,5 @@
 // charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component.ts
-import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StackedBarChartComponent, StackedBarChartData } from '../../components/stacked-bar-chart/stacked-bar-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
@@ -21,7 +21,8 @@ interface MachineStatus {
   standalone: true,
   imports: [CommonModule, StackedBarChartComponent],
   templateUrl: './daily-machine-stacked-bar-chart.component.html',
-  styleUrls: ['./daily-machine-stacked-bar-chart.component.scss']
+  styleUrls: ['./daily-machine-stacked-bar-chart.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, OnChanges {
   @Input() chartWidth = 600;
@@ -47,6 +48,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   private destroy$ = new Subject<void>();
   private pollingSub: any;
   private readonly POLLING_INTERVAL = 6000;
+  private cdr = inject(ChangeDetectorRef);
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
@@ -145,6 +147,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
 
   private stopPollingInternal(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
+    this.cdr.markForCheck();          // <— optional but safe
   }
 
   private fetchOnce(): Observable<any> {
@@ -187,6 +190,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
       this.dummyMode = false;
       this.hasInitialData = !!this.chartData; // or chartData.length > 0
       
+      this.cdr.markForCheck();        // <— critical
+      
       console.log('DailyMachineStackedBarChart: Data loaded:', {
         rowsCount: rows.length,
         hasChartData: !!this.chartData,
@@ -220,6 +225,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartData = null;
+    this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 
   // ---- grid interface methods ----

@@ -1,5 +1,5 @@
 // polling.service.ts
-import { Injectable } from '@angular/core';
+import { Injectable, NgZone, inject } from '@angular/core';
 import { Observable, timer, Subject, BehaviorSubject, of } from 'rxjs';
 import { switchMap, filter, takeUntil, tap, concatMap, delay, mergeMap } from 'rxjs/operators';
 import { DateTime } from 'luxon';
@@ -7,6 +7,7 @@ import { DateTime } from 'luxon';
 @Injectable({ providedIn: 'root' })
 export class PollingService {
   private modalOpen$ = new BehaviorSubject<boolean>(false);
+  private zone = inject(NgZone);
 
   setModalOpen(isOpen: boolean) {
     this.modalOpen$.next(isOpen);
@@ -40,22 +41,30 @@ export class PollingService {
     intervalMs: number,
     stop$: Observable<any>
   ): Observable<T> {
-    return pollFn().pipe(
-      takeUntil(stop$),
-      tap(result => {
-        console.log(`Polling: API call completed at ${new Date().toISOString()}`);
-      }),
-      // After each successful API call, wait for the interval and then make the next call
-      mergeMap(result => 
-        of(result).pipe(
-          tap(() => {
-            console.log(`Polling: Waiting ${intervalMs}ms before next call at ${new Date().toISOString()}`);
-          }),
-          delay(intervalMs),
-          mergeMap(() => this.createPollingStream(pollFn, intervalMs, stop$))
+    return new Observable<T>((subscriber) => {
+      const sub = pollFn().pipe(
+        takeUntil(stop$),
+        tap(result => {
+          console.log(`Polling: API call completed at ${new Date().toISOString()}`);
+        }),
+        // After each successful API call, wait for the interval and then make the next call
+        mergeMap(result => 
+          of(result).pipe(
+            tap(() => {
+              console.log(`Polling: Waiting ${intervalMs}ms before next call at ${new Date().toISOString()}`);
+            }),
+            delay(intervalMs),
+            mergeMap(() => this.createPollingStream(pollFn, intervalMs, stop$))
+          )
         )
-      )
-    );
+      ).subscribe({
+        next: (v) => this.zone.run(() => subscriber.next(v)),      // <—
+        error: (e) => this.zone.run(() => subscriber.error(e)),    // <—
+        complete: () => this.zone.run(() => subscriber.complete()) // <—
+      });
+
+      return () => sub.unsubscribe();
+    });
   }
   
   // Utility method to update end timestamp to now

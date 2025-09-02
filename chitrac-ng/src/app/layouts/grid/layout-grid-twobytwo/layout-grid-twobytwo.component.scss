@@ -1,7 +1,8 @@
 :host {
   display: block;
   width: 100%;
-  height: 100%;
+  height: calc(100vh - 100px); /* Account for toolbar and padding - increased height */
+  max-height: 900px; /* Prevent it from getting too tall - increased max height */
   overflow: hidden;
 }
 
@@ -52,27 +53,37 @@
 
 /* Collapse to single column on smaller screens */
 @media (max-width: 768px) {
+  :host {
+    height: calc(100vh - 80px); /* Slightly less space needed on mobile - increased height */
+    max-height: 700px;
+  }
+  
   .grid {
     grid-template-columns: 1fr;
-    grid-template-rows: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-rows: repeat(auto-fit, minmax(250px, 1fr));
     gap: 12px;
     padding: 12px;
   }
   
   .cell {
-    min-height: 300px;
+    min-height: 250px;
   }
 }
 
 /* Very small screens */
 @media (max-width: 480px) {
+  :host {
+    height: calc(100vh - 60px); /* Even less space on very small screens - increased height */
+    max-height: 600px;
+  }
+  
   .grid {
     gap: 8px;
     padding: 8px;
   }
   
   .cell {
-    min-height: 250px;
+    min-height: 200px;
   }
 }
   
