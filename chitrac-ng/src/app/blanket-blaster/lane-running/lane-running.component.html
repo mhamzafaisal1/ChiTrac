@@ -1,37 +1,34 @@
 <div class="container" style="padding-right: 0; padding-left: 0; height: 100%;">
     <div class="lane-background">
         <div class="lane" style="padding-top:15px;padding-bottom: 15px;height: 100%;">
-            <div id="OperatorBlock" [ngClass]="{'red': lane.efficiency.lastSixMinutes.color == 'red', 'green': lane.efficiency.lastSixMinutes.color == 'green', 'yellow': lane.efficiency.lastSixMinutes.color == 'yellow'}" class="row fs-3" style="height: 10%;margin: 0 15px 0 15px;">
-                <div class="col-12 text-uppercase">
-                    <div class="d-flex text-center align-bottom flex-column h-100 pt-3">{{lane.operator}}</div>
+            <div id="OperatorBlock" [ngClass]="{'red': lane.efficiency.lastSixMinutes.color == 'red', 'green': lane.efficiency.lastSixMinutes.color == 'green', 'yellow': lane.efficiency.lastSixMinutes.color == 'yellow'}" class="operator-block" style="height: 10%;margin: 0 15px 0 15px;">
+                <div class="operator-text">
+                    <div class="operator-content">{{lane.operator}}</div>
                 </div>
             </div>
-            <div id="DataBlock" class="row" style="height: 100%;margin: 0 15px 0 15px;">
-                <div class="col-12" [ngClass]="{'red': lane.efficiency.lastSixMinutes.color == 'red', 'green': lane.efficiency.lastSixMinutes.color == 'green', 'yellow': lane.efficiency.lastSixMinutes.color == 'yellow'}" style="height:30%">
-                    <div class="d-flex font-weight-bold text-center justify-content-center flex-column h-100 display-2">{{lane.efficiency.lastSixMinutes.value | number: '1.0-0'}}%</div>
+            <div id="DataBlock" class="data-block" style="height: 100%;margin: 0 15px 0 15px;">
+                <div class="efficiency-value" [ngClass]="{'red': lane.efficiency.lastSixMinutes.color == 'red', 'green': lane.efficiency.lastSixMinutes.color == 'green', 'yellow': lane.efficiency.lastSixMinutes.color == 'yellow'}" style="height:30%">
+                    <div class="value-text">{{lane.efficiency.lastSixMinutes.value | number: '1.0-0'}}%</div>
                 </div>
-                <div class="col-12" style="height:70%">
-                    <div class="row h-100">
-                        <ct-data-bar [efficiency]="lane.efficiency.lastFifteenMinutes" [margin]="'15px 10px 0 0'" class="col-4 p-0"></ct-data-bar>
-                        <ct-data-bar [efficiency]="lane.efficiency.lastHour" [margin]="'15px 5px 0 5px'" class="col-4 p-0"></ct-data-bar>
-                        <ct-data-bar [efficiency]="lane.efficiency.today" [margin]="'15px 0 0 10px'" class="col-4 p-0"></ct-data-bar>
+                <div class="bars-container" style="height:70%">
+                    <div class="bars">
+                        <ct-data-bar [efficiency]="lane.efficiency.lastFifteenMinutes" [margin]="'15px 10px 0 0'" class="bar"></ct-data-bar>
+                        <ct-data-bar [efficiency]="lane.efficiency.lastHour" [margin]="'15px 5px 0 5px'" class="bar"></ct-data-bar>
+                        <ct-data-bar [efficiency]="lane.efficiency.today" [margin]="'15px 0 0 10px'" class="bar"></ct-data-bar>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    <div id="ItemBlock" class="row w-100 fs-5 item-block-background">
-        <div class="d-flex text-center justify-content-center flex-column w-100">
-            {{lane.machine}}
-        </div>
-        <div class="d-flex text-center justify-content-center flex-column w-100">
-            {{lane.batch.item}}
-        </div>
-        <!-- <div class="d-flex text-center justify-content-center flex-column w-100">
+    <div id="ItemBlock" class="item-block item-block-background">
+        <div class="item-line">{{lane.machine}}</div>
+        <div class="item-line">{{lane.batch.item}}</div>
+        <!-- <div class="item-line">
             {{lane.batch.customer}} - {{lane.batch.code}}
         </div> -->
-        <div class="d-flex text-center justify-content-center flex-column w-100">
+        <div class="item-line">
         {{lane.batch.code}}
         </div>
     </div>
 </div>
+  

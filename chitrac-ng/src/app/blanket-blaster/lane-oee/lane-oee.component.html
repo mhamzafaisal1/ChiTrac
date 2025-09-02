@@ -1,28 +1,26 @@
 <div class="container" style="padding-right: 0; padding-left: 0; height: 100%;">
     <div class="lane-background" style="background-color: #333;height:84%;">
         <div class="lane" style="padding-top:15px;padding-bottom: 15px;height: 100%;">
-            <div id="OperatorBlock" [style.background-color]="lane.oee?.lastSixMinutes?.color || '#333'" class="row fs-3" style="height: 10%;margin: 0 15px 0 15px;">
-                <div class="col-12 text-uppercase">
-                    <div class="d-flex text-center align-bottom flex-column h-100 pt-3">OEE</div>
+            <div id="OperatorBlock" [style.background-color]="lane.oee?.lastSixMinutes?.color || '#333'" class="operator-block" style="height: 10%;margin: 0 15px 0 15px;">
+                <div class="operator-text">
+                    <div class="operator-content">OEE</div>
                 </div>
             </div>
-            <div id="DataBlock" class="row" style="height: 100%;margin: 0 15px 0 15px;">
-                <div class="col-12" [style.background-color]="lane.oee?.lastSixMinutes?.color || '#333'" style="height:30%">
-                    <div class="d-flex font-weight-bold text-center justify-content-center flex-column h-100 display-2">{{lane.oee?.lastSixMinutes?.value || 0 | number: '1.0-0'}}%</div>
+            <div id="DataBlock" class="data-block" style="height: 100%;margin: 0 15px 0 15px;">
+                <div class="efficiency-value" [style.background-color]="lane.oee?.lastSixMinutes?.color || '#333'" style="height:30%">
+                    <div class="value-text">{{lane.oee?.lastSixMinutes?.value || 0 | number: '1.0-0'}}%</div>
                 </div>
-                <div class="col-12" style="height:70%">
-                    <div class="row h-100">
-                        <ct-data-bar [efficiency]="lane.oee?.lastFifteenMinutes" [margin]="'15px 10px 0 0'" class="col-4 p-0"></ct-data-bar>
-                        <ct-data-bar [efficiency]="lane.oee?.lastHour" [margin]="'15px 5px 0 5px'" class="col-4 p-0"></ct-data-bar>
-                        <ct-data-bar [efficiency]="lane.oee?.today" [margin]="'15px 0 0 10px'" class="col-4 p-0"></ct-data-bar>
+                <div class="bars-container" style="height:70%">
+                    <div class="bars">
+                        <ct-data-bar [efficiency]="lane.oee?.lastFifteenMinutes" [margin]="'15px 10px 0 0'" class="bar"></ct-data-bar>
+                        <ct-data-bar [efficiency]="lane.oee?.lastHour" [margin]="'15px 5px 0 5px'" class="bar"></ct-data-bar>
+                        <ct-data-bar [efficiency]="lane.oee?.today" [margin]="'15px 0 0 10px'" class="bar"></ct-data-bar>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    <div id="ItemBlock" class="row w-100 fs-5" style="height:16%; border-top: 0.5em solid #1f1f1f; border-bottom: 1em solid #333; background-color: #333;margin:0 0 15px 0">
-        <div class="d-flex text-center justify-content-center flex-column w-100">
-            {{lane.machine}}
-        </div>
+    <div id="ItemBlock" class="item-block item-block-background" style="height:16%; border-top: 0.5em solid #1f1f1f; border-bottom: 1em solid #333; background-color: #333;margin:0 0 15px 0">
+        <div class="item-line">{{lane.machine}}</div>
     </div>
 </div>

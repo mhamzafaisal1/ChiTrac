@@ -12,6 +12,21 @@
   .lane-background {
     height: 84%;
     overflow: hidden;
+    background: repeating-linear-gradient(
+      135deg,
+      var(--sg-color-background),
+      var(--sg-color-background) 10px,
+      #ca6510 10px,
+      #ca6510 20px
+    );
+  }
+  
+  .item-block-background {
+    height:16%; 
+    background-color: var(--sg-color-blue-gray-light-200);
+    border-top: 0.5em solid var(--sg-color-blue-gray-light-200);
+    border-bottom: 1em solid var(--sg-color-blue-gray-light-300);
+    margin:0 0 15px 0;
   }
   
   .lane {
@@ -34,5 +49,118 @@
   #ItemBlock {
     height: 16%;
     overflow: hidden;
+  }
+
+  /* Operator Block Styling - matches Bootstrap fs-3, text-uppercase, d-flex, text-center, align-bottom, flex-column, h-100, pt-3 */
+  .operator-block {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--sg-color-yellow);
+    color: var(--sg-color-background);
+  }
+
+  .operator-text {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: flex-end; /* align-bottom equivalent */
+    justify-content: center;
+    text-transform: uppercase; /* text-uppercase */
+    text-align: center; /* text-center */
+    flex-direction: column; /* flex-column */
+    padding-top: 1rem; /* pt-3 equivalent */
+    font-size: 1.75rem; /* fs-3 equivalent */
+    line-height: 1.2;
+    color: var(--sg-color-background);
+    font-weight: 700;
+  }
+
+  .operator-content {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Data Block Styling */
+  .data-block {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--sg-color-yellow);
+    color: var(--sg-color-background);
+  }
+
+  /* Fault Display - matches Bootstrap col-12 */
+  .fault-display {
+    height: 90%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Fault Text - matches Bootstrap d-flex, fw-bold, text-center, justify-content-center, flex-column, text-uppercase, fs-1 */
+  .fault-text {
+    display: flex;
+    font-weight: bold; /* fw-bold */
+    text-align: center; /* text-center */
+    justify-content: center; /* justify-content-center */
+    flex-direction: column; /* flex-column */
+    text-transform: uppercase; /* text-uppercase */
+    font-size: 2.5rem; /* fs-1 equivalent */
+    line-height: 1;
+    color: var(--sg-color-background);
+  }
+
+  /* Fault Label - matches Bootstrap text-center, fs-4, text-uppercase */
+  .fault-label {
+    text-align: center; /* text-center */
+    font-size: 1.5rem; /* fs-4 equivalent */
+    text-transform: uppercase; /* text-uppercase */
+    color: var(--sg-color-background);
+  }
+
+  /* Fault Code - matches Bootstrap text-center, fs-5 */
+  .fault-code {
+    text-align: center; /* text-center */
+    font-size: 1.25rem; /* fs-5 equivalent */
+    color: var(--sg-color-background);
+  }
+
+  /* Timer Display - matches Bootstrap col-12, fs-5 */
+  .timer-display {
+    height: 10%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .timer-text {
+    display: flex;
+    text-align: center; /* text-center */
+    justify-content: center; /* justify-content-center */
+    flex-direction: column; /* flex-column */
+    height: 100%; /* h-100 */
+    font-size: 1.25rem; /* fs-5 equivalent */
+    color: var(--sg-color-background);
+  }
+
+  /* Item Block - matches Bootstrap row, w-100, fs-5 */
+  .item-block {
+    width: 100%; /* w-100 */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem; /* fs-5 equivalent */
+    text-align: center;
+  }
+
+  .item-line {
+    width: 100%; /* w-100 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex-direction: column;
   }
   

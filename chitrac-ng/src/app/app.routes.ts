@@ -28,8 +28,8 @@ import { MachineReportComponent } from './reports/machine-report/machine-report.
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
 import { AC360SixLaneComponent } from './ac360-six-lane/ac360-six-lane.component';
-import { BlanketBlasterone } from './blanket-blasterone/blanket-blasterone';
-import { BlanketBlastertwo } from './blanket-blastertwo/blanket-blastertwo';
+import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
+import { BlanketBlastertwoEfficiencyScreen } from './efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
 import { EfficiencyScreens } from './efficiency-screens/efficiency-screens.component';
 import { SplEfficiencyScreen } from './efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component';
@@ -74,8 +74,8 @@ export const routes: Routes = [
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },	
 	{ path: 'ng/ac360-six-lane', component: AC360SixLaneComponent },
-	{ path: 'ng/blanket-blaster-one', component: BlanketBlasterone },
-	{ path: 'ng/blanket-blaster-two', component: BlanketBlastertwo },
+	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },
+	{ path: 'ng/blanket-blaster-two', component: BlanketBlastertwoEfficiencyScreen },
 	{ path: 'ng/efficiency-screens', component: EfficiencyScreens },
 	{ path: 'ng/spl-efficiency-screen', component: SplEfficiencyScreen },
 	{ path: 'ng/lpl-efficiency-screen', component: LplEfficiencyScreen },

@@ -1,5 +1,5 @@
-<div class="row pr-3 pt-3" style="height: 900px;">
-    <div *ngFor="let lane of realDataArray; trackBy: ident" class="col pr-0">
+<div class="lanes-container" style="height: 900px;">
+    <div *ngFor="let lane of realDataArray; trackBy: ident" class="lane-column">
         <ng-container *ngIf="lane.status === 1">
             <ct-lane-running *ngIf="lane.operator != null" [lane]="lane"></ct-lane-running>
             <ct-lane-running-greyed *ngIf="lane.operator === null" [lane]="lane"></ct-lane-running-greyed>
@@ -12,8 +12,8 @@
     </div>
 </div>
 
-<!-- <div class="row mt-3 px-3">
-    <div class="col-auto">
+<!-- <div class="controls-container">
+    <div class="control-item">
         <mat-form-field appearance="fill" style="width: 250px;">
             <mat-label>Choose a date</mat-label>
             <input matInput [(ngModel)]="selectedDate" [matDatepicker]="picker">
@@ -21,13 +21,13 @@
             <mat-datepicker #picker></mat-datepicker>
         </mat-form-field>
     </div>
-    <div class="col-auto">
+    <div class="control-item">
         <mat-form-field appearance="fill" style="width: 180px;">
             <mat-label>Serial Number</mat-label>
             <input matInput [(ngModel)]="serialNumber" placeholder="Enter serial">
         </mat-form-field>
     </div>
-    <div class="col-auto d-flex align-items-center">
+    <div class="control-item control-button">
         <button mat-raised-button color="primary" (click)="fetchData()">Fetch Data</button>
     </div>
 </div> -->

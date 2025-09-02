@@ -167,9 +167,10 @@
         <mat-slide-toggle class="dark-toggle" (click)="darkModeToggle()" [checked]="isDarkMode"></mat-slide-toggle>
         <mat-icon class="dark-icon">dark_mode</mat-icon>
 
+
         <!-- Login Icon and Popup -->
         <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn" [matMenuTriggerFor]="loginMenu" *ngIf="!user.username">
-          <mat-icon class="passkey-icon">passkey</mat-icon>
+          <mat-icon>login</mat-icon>
         </button>
 
         <mat-menu #loginMenu="matMenu" class="login-menu-panel" [overlapTrigger]="false" xPosition="before"

@@ -9,27 +9,27 @@
       <div class="lane" style="padding-top: 15px; padding-bottom: 15px; height: 100%;">
         
         <!-- Operator -->
-        <div id="OperatorBlock" class="row fs-3" style="height: 10%; margin: 0 15px; background-color: var(--sg-color-yellow); color: var(--sg-color-background)">
-          <div class="col-12 text-uppercase">
-            <div class="d-flex text-center align-bottom flex-column h-100 pt-3">
+        <div id="OperatorBlock" class="operator-block" style="height: 10%; margin: 0 15px; background-color: var(--sg-color-yellow); color: var(--sg-color-background)">
+          <div class="operator-text">
+            <div class="operator-content">
               {{lane.operator}}
             </div>
           </div>
         </div>
   
         <!-- Fault Info -->
-        <div id="DataBlock" class="row" style="height: 90%; margin: 0 15px; background-color: var(--sg-color-yellow); color: var(--sg-color-background)">
-          <div class="col-12" style="height: 90%;">
+        <div id="DataBlock" class="data-block" style="height: 90%; margin: 0 15px; background-color: var(--sg-color-yellow); color: var(--sg-color-background)">
+          <div class="fault-display" style="height: 90%;">
             <div style="height: 40%;"></div>
-            <div class="d-flex fw-bold text-center justify-content-center flex-column text-uppercase fs-1" style="height: 15%;">
+            <div class="fault-text" style="height: 15%;">
               {{lane.fault}}
             </div>
-            <div class="text-center fs-4 text-uppercase" style="height: 5%;">FAULT</div>
-            <div class="text-center fs-5" style="height: 5%;">CODE: {{lane.status}}</div>
+            <div class="fault-label" style="height: 5%;">FAULT</div>
+            <div class="fault-code" style="height: 5%;">CODE: {{lane.status}}</div>
           </div>
   
-          <div class="col-12 fs-5" style="height: 10%;">
-            <div class="d-flex text-center justify-content-center flex-column h-100">
+          <div class="timer-display" style="height: 10%;">
+            <div class="timer-text">
               ELAPSED TIME: {{lane.displayTimers.on}}
             </div>
           </div>
@@ -39,17 +39,13 @@
     </div>
   
     <!-- Item Block -->
-    <div id="ItemBlock" class="row w-100 fs-5" style="height:16%; border-top: 0.5em solid var(--sg-color-blue-gray-light-200); border-bottom: 1em solid var(--sg-color-blue-gray-light-300); margin:0 0 15px 0">
-      <div class="d-flex text-center justify-content-center flex-column w-100">
-        {{lane.machine}}
-      </div>
-      <div class="d-flex text-center justify-content-center flex-column w-100">
-        {{lane.batch.item}}
-      </div>
-    <!-- <div class="d-flex text-center justify-content-center flex-column w-100">
+    <div id="ItemBlock" class="item-block item-block-background" style="height:16%; border-top: 0.5em solid var(--sg-color-blue-gray-light-200); border-bottom: 1em solid var(--sg-color-blue-gray-light-300); margin:0 0 15px 0">
+      <div class="item-line">{{lane.machine}}</div>
+      <div class="item-line">{{lane.batch.item}}</div>
+    <!-- <div class="item-line">
             {{lane.batch.customer}} - {{lane.batch.code}}
         </div> -->
-        <div class="d-flex text-center justify-content-center flex-column w-100">
+        <div class="item-line">
           {{lane.batch.code}}
           </div>
     </div>
