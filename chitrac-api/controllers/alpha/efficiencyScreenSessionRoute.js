@@ -148,10 +148,7 @@ module.exports = function (server) {
         items: 1,
         machine: 1,
         operator: 1,
-        counts: { // we compute time credit from counts in the window
-          timestamp: 1,
-          item: { id: 1, name: 1, standard: 1 }
-        }
+        counts: 1
       }
     };
   }

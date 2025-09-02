@@ -51,7 +51,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/machines', component: MachineGridComponent,  },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/login', component: UserLoginComponent },
-	{ path: 'ng/home', component: LeveloneDashboardComponent },
+	/*{ path: 'ng/home', component: LeveloneDashboardComponent },*/
 	{ path: 'ng/levelone-table', component: LeveloneTableComponent },
 	{ path: 'ng/levelone-table-v2', component: LeveloneTableV2Component },
 	{ path: 'ng/levelone-bar-chart', component: LeveloneBarChartComponent },
@@ -88,5 +88,7 @@ export const routes: Routes = [
 	{ path: 'ng/daily-plantwide-metrics-chart', component: PlantwideMetricsChartComponent },
 	{ path: 'ng/daily-ranked-operator-bar-chart', component: RankedOperatorBarChartComponent },
 	{ path: 'ng/item-stacked-chart', component: DataAwareItemStackedChartComponent },
-	{ path: 'ng/*', redirectTo: 'ng/home' }
+	{ path: 'ng/*', redirectTo: 'ng/machineAnalytics' },
+	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
+	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }
 	];
