@@ -46,6 +46,15 @@ export class OperatorAnalyticsService {
   
     return this.http.get('/api/alpha/analytics/operator-details', { params });
   }
+
+  getOperatorMachineSummary(start: string, end: string, operatorId: number): Observable<any> {
+    const params = new HttpParams()
+      .set('start', start)
+      .set('end', end)
+      .set('operatorId', operatorId.toString());
+  
+    return this.http.get('/api/alpha/analytics/operator-machine-summary', { params });
+  }
   
 
   getOperatorPerformance(startTime: string, endTime: string, operatorId?: number): Observable<any> {

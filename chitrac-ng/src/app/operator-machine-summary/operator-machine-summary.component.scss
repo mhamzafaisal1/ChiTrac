@@ -1,0 +1,43 @@
+/* operator-machine-summary.component.scss */
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .scroll-wrapper {
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+  
+  .summary-container {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    color: inherit;
+  }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+  }
+  
+  .inputs {
+    display: grid;
+    grid-template-columns: auto 160px auto 220px auto 220px auto;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  .loading {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  

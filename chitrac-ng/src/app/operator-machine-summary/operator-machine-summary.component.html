@@ -1,0 +1,27 @@
+<!-- operator-machine-summary.component.html -->
+<div class="scroll-wrapper">
+    <div class="summary-container" [ngClass]="{ 'dark-mode': isDarkTheme, 'light-mode': !isDarkTheme }">
+      <div class="header" *ngIf="!isModal">
+        <div class="inputs">
+          <label>Operator ID</label>
+          <input type="number" [(ngModel)]="operatorId" />
+          <label>Start</label>
+          <input type="datetime-local" [(ngModel)]="startTime" />
+          <label>End</label>
+          <input type="datetime-local" [(ngModel)]="endTime" />
+          <button (click)="checkAndFetch()" [disabled]="!operatorId || !startTime || !endTime">Fetch</button>
+        </div>
+      </div>
+  
+      <base-table
+        [columns]="columns"
+        [rows]="rows"
+        [selectedRow]="selectedRow"
+        [disableSorting]="false"
+        (rowClicked)="onRowSelected($event)"
+      ></base-table>
+  
+      <div class="loading" *ngIf="isLoading">Loading…</div>
+    </div>
+  </div>
+  
