@@ -3,7 +3,14 @@
   width: 100%;
   height: auto; /* Let it size based on content */
   min-height: 0; /* Allow flex shrinking */
-  overflow: hidden;
+  overflow: visible; /* Allow overflow on mobile for single column stacking */
+}
+
+/* On mobile, allow the container to expand vertically */
+@media (max-width: 768px) {
+  :host {
+    overflow: visible; /* Ensure overflow is visible for single column layout */
+  }
 }
 
 /* Ensure the grid component fills the container */

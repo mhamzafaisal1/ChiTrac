@@ -6,6 +6,13 @@
   overflow: hidden;
 }
 
+/* On mobile, allow overflow for single column stacking */
+@media (max-width: 768px) {
+  :host {
+    overflow: visible; /* Allow vertical scrolling for single column layout */
+  }
+}
+
 .grid-root {
   width: 100%;
   height: 100%;
@@ -54,36 +61,42 @@
 /* Collapse to single column on smaller screens */
 @media (max-width: 768px) {
   :host {
-    height: calc(100vh - 80px); /* Slightly less space needed on mobile - increased height */
-    max-height: 700px;
+    height: auto; /* Allow height to expand for single column layout */
+    min-height: calc(100vh - 80px);
+    max-height: none; /* Remove height constraint for single column */
   }
   
   .grid {
     grid-template-columns: 1fr;
-    grid-template-rows: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-rows: repeat(auto-fit, minmax(300px, auto)); /* Allow rows to size based on content */
     gap: 12px;
     padding: 12px;
+    height: auto; /* Allow grid to expand vertically */
   }
   
   .cell {
-    min-height: 250px;
+    min-height: 300px;
+    height: auto; /* Allow cells to size based on content */
   }
 }
 
 /* Very small screens */
 @media (max-width: 480px) {
   :host {
-    height: calc(100vh - 60px); /* Even less space on very small screens - increased height */
-    max-height: 600px;
+    height: auto; /* Allow height to expand for single column layout */
+    min-height: calc(100vh - 60px);
+    max-height: none; /* Remove height constraint for single column */
   }
   
   .grid {
     gap: 8px;
     padding: 8px;
+    height: auto; /* Allow grid to expand vertically */
   }
   
   .cell {
-    min-height: 200px;
+    min-height: 250px;
+    height: auto; /* Allow cells to size based on content */
   }
 }
   

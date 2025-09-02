@@ -228,8 +228,14 @@ import {
   private cellHeight(): number {
     const rows = this.getRowCount();
     const padding = 32; // Account for grid gap and padding (increased for better spacing)
+    
+    // For single column layout (mobile), use a fixed height that allows for proper stacking
+    if (window.innerWidth <= 768) {
+      return Math.max(300, Math.min(450, this.containerHeight / Math.max(1, this.components.length)));
+    }
+    
+    // For 2x2 grid layout (desktop), use the calculated height
     const calculatedHeight = Math.floor((this.containerHeight - padding) / rows);
-    // Ensure reasonable minimum and maximum heights
     return Math.max(250, Math.min(400, calculatedHeight));
   }
     
