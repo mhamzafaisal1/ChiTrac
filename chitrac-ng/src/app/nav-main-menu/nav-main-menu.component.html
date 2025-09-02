@@ -173,6 +173,10 @@
           <mat-icon>login</mat-icon>
         </button>
 
+        <button mat-icon-button class="logout-btn" *ngIf="user.username" (click)="logout()">
+          <mat-icon>logout</mat-icon>
+        </button>
+
         <mat-menu #loginMenu="matMenu" class="login-menu-panel" [overlapTrigger]="false" xPosition="before"
           yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''">
           <div (click)="$event.stopPropagation()">
