@@ -1,8 +1,8 @@
 <div class="data-bar-container" [style.margin]="margin">
   <div class="bar-chart" style="height: 87%; overflow: hidden;">
+    <div class="bar-value" style="bottom: 0; position:absolute; z-index: 100;">{{efficiency.value | number: '1.0-0'}}%</div>
     <div class="bar-fill" [style.height.%]="efficiency.value" 
      [ngClass]="{'red': efficiency.color == 'red', 'green': efficiency.color == 'green', 'yellow': efficiency.color == 'yellow'}" style="bottom: 0; width: 100%; position:absolute; overflow: hidden;">
-      <div class="bar-value" style="bottom: 0; position:absolute;">{{efficiency.value | number: '1.0-0'}}%</div>
     </div>
   </div>
   <div class="bar-label" style="height: 10%;">{{efficiency.label}}</div>
