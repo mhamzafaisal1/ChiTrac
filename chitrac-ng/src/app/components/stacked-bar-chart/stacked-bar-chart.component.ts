@@ -5,6 +5,8 @@ import {
   ViewChild,
   AfterViewInit,
   OnDestroy,
+  OnChanges,
+  SimpleChanges,
 } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import * as d3 from "d3";
@@ -27,16 +29,22 @@ export type StackedBarChartMode = "time" | "machine";
   templateUrl: "./stacked-bar-chart.component.html",
   styleUrl: "./stacked-bar-chart.component.scss",
 })
-export class StackedBarChartComponent implements AfterViewInit, OnDestroy {
+export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnChanges {
   @ViewChild("chartContainer", { static: true })
   private chartContainer!: ElementRef;
   @Input() data: StackedBarChartData | null = null;
   @Input() mode: StackedBarChartMode = "time";
+  @Input() chartWidth: number = 600;
+  @Input() chartHeight: number = 450;
   // @Input() isDarkTheme: boolean = true;
-
-  private chartWidth = 600;
-  private chartHeight = 450; // Default height for normal mode
   private margin = { top: 40, right: 60, bottom: 100, left: 60 };
+
+  // Method to set chart dimensions from parent
+  setAvailableSize(width: number, height: number): void {
+    this.chartWidth = width;
+    this.chartHeight = height;
+    this.createChart(); // Re-render with new dimensions
+  }
   private observer!: MutationObserver;
   private fullscreenListener!: () => void;
 
@@ -55,6 +63,14 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy {
     "#ec407a",
   ];
   private static nextColorIndex = 0;
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if ((changes['data'] && this.data) || 
+        changes['chartWidth'] || 
+        changes['chartHeight']) {
+      this.createChart();
+    }
+  }
 
   ngAfterViewInit(): void {
     this.observer = new MutationObserver(() => {

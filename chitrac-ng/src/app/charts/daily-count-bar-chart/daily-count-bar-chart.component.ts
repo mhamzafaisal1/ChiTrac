@@ -173,9 +173,9 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       }));
       
       this.chartData = normalized;
-      this.hasInitialData = normalized.length > 0;
-      this.isLoading = false;
+      this.isLoading = false;          // set to false unconditionally
       this.dummyMode = false;
+      this.hasInitialData = normalized.length > 0;
       
       // Force change detection to ensure chart renders
       console.log('Chart data updated:', this.chartData);

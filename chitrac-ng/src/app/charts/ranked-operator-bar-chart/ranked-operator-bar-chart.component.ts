@@ -163,9 +163,9 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy {
         label: op.name
       }));
 
-      this.hasInitialData = this.chartData.length > 0;
-      this.isLoading = false;
+      this.isLoading = false;          // set to false unconditionally
       this.dummyMode = false;
+      this.hasInitialData = this.chartData.length > 0;
     };
 
   private enterDummy(): void {

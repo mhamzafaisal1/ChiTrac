@@ -162,9 +162,9 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy {
         label: m.name
       }));
 
-      this.hasInitialData = this.chartData.length > 0;
-      this.isLoading = false;
+      this.isLoading = false;          // set to false unconditionally
       this.dummyMode = false;
+      this.hasInitialData = this.chartData.length > 0;
     };
 
   private enterDummy(): void {
