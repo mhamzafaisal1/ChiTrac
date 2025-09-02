@@ -1,0 +1,13 @@
+<div class="custom-container">
+    <div class="lane-wrapper">
+        <div *ngFor="let lane of lanes; trackBy: ident" class="lane-card">
+            <ng-container *ngIf="lane.status === 1">
+                <ct-lane-running *ngIf="lane.operator != null" [lane]="lane"></ct-lane-running>
+                <ct-lane-running-greyed *ngIf="lane.operator === null" [lane]="lane"></ct-lane-running-greyed>
+            </ng-container>
+            
+            <ct-lane-fault *ngIf="lane.status > 1" [lane]="lane"></ct-lane-fault>
+            <ct-lane-stop *ngIf="lane.status === 0 || lane.status === -1" [lane]="lane"></ct-lane-stop>
+        </div>
+    </div>
+</div>

@@ -12,6 +12,15 @@
   .lane-background {
     height: 84%;
     overflow: hidden;
+    background-color: #333;
+  }
+  
+  .item-block-background {
+    height:16%; 
+    background-color: #333;
+    border-top: 0.5em solid #1f1f1f;
+    border-bottom: 1em solid #333;
+    margin:0 0 15px 0;
   }
   
   .lane {
@@ -34,5 +43,99 @@
   #ItemBlock {
     height: 16%;
     overflow: hidden;
+  }
+
+  /* Operator Block Styling - matches Bootstrap fs-3, text-uppercase, d-flex, text-center, align-bottom, flex-column, h-100, pt-3 */
+  .operator-block {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .operator-text {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: flex-end; /* align-bottom equivalent */
+    justify-content: center;
+    text-transform: uppercase; /* text-uppercase */
+    text-align: center; /* text-center */
+    flex-direction: column; /* flex-column */
+    padding-top: 1rem; /* pt-3 equivalent */
+    font-size: 1.75rem; /* fs-3 equivalent */
+    line-height: 1.2;
+    color: var(--sg-color-background);
+    font-weight: 700;
+  }
+
+  .operator-content {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Data Block Styling */
+  .data-block {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Efficiency Value - matches Bootstrap d-flex, font-weight-bold, text-center, justify-content-center, flex-column, h-100, display-2 */
+  .efficiency-value {
+    height: 30%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  .value-text {
+    text-align: center;
+    font-weight: bold; /* font-weight-bold */
+    font-size: 4.5rem; /* display-2 equivalent */
+    line-height: 1;
+    color: var(--sg-color-background);
+  }
+
+  /* Bars Container - matches Bootstrap row, h-100 */
+  .bars-container {
+    height: 70%;
+    display: flex;
+    align-items: stretch;
+  }
+
+  .bars {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* Individual bars - matches Bootstrap col-4, p-0 */
+  .bar {
+    flex: 1;
+    padding: 0; /* p-0 */
+    height: 100%;
+  }
+
+  /* Item Block - matches Bootstrap row, w-100, fs-5 */
+  .item-block {
+    width: 100%; /* w-100 */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem; /* fs-5 equivalent */
+    text-align: center;
+  }
+
+  .item-line {
+    width: 100%; /* w-100 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex-direction: column;
   }
   

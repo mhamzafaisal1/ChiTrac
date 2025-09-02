@@ -1,3 +1,63 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Data Bar Container - matches Bootstrap h-100 */
+.data-bar-container {
+  height: 100%; /* h-100 equivalent */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Bar Chart - matches Bootstrap position-relative */
+.bar-chart {
+  position: relative; /* position-relative equivalent */
+  height: 87%;
+  overflow: hidden;
+}
+
+/* Bar Fill - matches Bootstrap justify-content-center */
+.bar-fill {
+  display: flex;
+  justify-content: center; /* justify-content-center equivalent */
+  align-items: center;
+  bottom: 0;
+  width: 100%;
+  position: absolute;
+  overflow: hidden;
+}
+
+/* Bar Value - matches Bootstrap d-flex, text-center, justify-content-center, flex-column, w-100, fs-4 */
+.bar-value {
+  display: flex; /* d-flex equivalent */
+  text-align: center; /* text-center equivalent */
+  justify-content: center; /* justify-content-center equivalent */
+  flex-direction: column; /* flex-column equivalent */
+  width: 100%; /* w-100 equivalent */
+  font-size: 1.5rem; /* fs-4 equivalent */
+  line-height: 1;
+  color: white; /* White text for dark mode */
+  font-weight: 600;
+}
+
+/* Bar Label - matches Bootstrap d-flex, text-center, justify-content-center, flex-column, border-light, fs-6 */
+.bar-label {
+  display: flex; /* d-flex equivalent */
+  text-align: center; /* text-center equivalent */
+  justify-content: center; /* justify-content-center equivalent */
+  flex-direction: column; /* flex-column equivalent */
+  border: 1px solid var(--sg-color-blue-gray-light-200); /* border-light equivalent */
+  font-size: 1rem; /* fs-6 equivalent */
+  line-height: 1.2;
+  color: white; /* White text for dark mode */
+  background-color: var(--sg-color-blue-gray-light-200);
+  padding: 0.25rem;
+}
+
+/* Color Classes */
 .green {
   background-color: var(--sg-color-green);
   color: var(--sg-color-background);
@@ -10,8 +70,10 @@
 
 .red {
   background-color: var(--sg-color-red);
+  color: var(--sg-color-background);
 }
 
 .white {
   background-color: var(--sg-color-white);
+  color: var(--sg-color-background);
 }

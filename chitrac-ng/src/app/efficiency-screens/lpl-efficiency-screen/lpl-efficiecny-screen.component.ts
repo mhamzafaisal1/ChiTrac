@@ -27,8 +27,8 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
   pollingActive: boolean = false;
   private destroy$ = new Subject<void>();
   private readonly POLL_INTERVAL = 6000;
-  private readonly SERIAL_NUMBER = 67798;
-  private readonly LPL2_SERIAL_NUMBER = 67799;
+  private readonly SERIAL_NUMBER = 90007;
+  private readonly LPL2_SERIAL_NUMBER = 90008;
   private currentSerialNumber: number = this.SERIAL_NUMBER; // Default to LPL1
 
   constructor(
