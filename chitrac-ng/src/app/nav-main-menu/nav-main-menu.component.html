@@ -13,7 +13,7 @@
 
     <!-- Main Menu -->
     <mat-nav-list *ngIf="shownMenu == 'main'" [@menuSwap]>
-      <a mat-list-item routerLink="/">
+      <a mat-list-item routerLink="/ng/home">
         <mat-icon>home</mat-icon><span class="menu-item">Home</span>
       </a>
       <a mat-list-item (click)="openMenu('dashboards')">

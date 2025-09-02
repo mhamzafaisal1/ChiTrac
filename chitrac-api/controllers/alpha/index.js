@@ -299,6 +299,169 @@ function constructor(server) {
           upsert: true,
         });
       const stateResult = await db.collection("state").insertOne(state);
+
+      const machineSessionArray = await db.collection('machine-session').find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        if (machineSessionArray.length) {
+            let session = machineSessionArray[0];
+            const sessionID = session['_id'];
+            if (stateType == 'status' && state.status.code != 1) {
+                //Open session needs to close
+                const now = new Date.now();
+                const standard = 240;
+
+                const runtime = now - session.timestamps.start;
+                const workTime = runtime * 2;
+                const totalCount = session.counts.length;
+                const totalCountByItem = [totalCount];
+                const totalTimeCredit = totalCount * (standard / 3600);
+                const timeCreditByItem = [totalTimeCredit];
+
+                const update = {
+                    '$set': {
+                        'timestamps.end': now,
+                        'endState': state,
+                        'program': program,
+                        'runtime': runtime,
+                        'workTime': workTime,
+                        'totalCount': totalCount,
+                        'totalCountByItem': totalCountByItem,
+                        'totalTimeCredit': totalTimeCredit,
+                        'timeCreditByItem': timeCreditByItem
+                    },
+                    '$push': {
+                        'states': state
+                    }
+                }
+                const updatedSession = await db.collection('machine-session').updateOne({ '_id': sessionID }, update);
+            } else {
+                //Open session for this machine exists and is open, append
+                const now = new Date.now();
+                const standard = 240;
+
+                const runtime = now - session.timestamps.start;
+                const workTime = runtime * 2;
+                const totalCount = session.counts.length;
+                const totalCountByItem = [totalCount];
+                const totalTimeCredit = totalCount * (standard / 3600);
+                const timeCreditByItem = [totalTimeCredit];
+
+                const update = {
+                    '$set': {
+                        'program': program,
+                        'items': items,
+                        'runtime': runtime,
+                        'workTime': workTime,
+                        'totalCount': totalCount,
+                        'totalCountByItem': totalCountByItem,
+                        'totalTimeCredit': totalTimeCredit,
+                        'timeCreditByItem': timeCreditByItem
+                    },
+                    '$push': {
+                        'states': state
+                    }
+                }
+                const updatedSession = await db.collection('machine-session').updateOne({ '_id': sessionID }, update);
+            }
+        } else {
+            //Session doesn't exist, start one
+            const newSession = {
+                timestamps: {
+                    start: new Date.now()
+                },
+                counts: [],
+                misfeeds: [],
+                states: [state],
+                program: program,
+                items: items,
+                operators: operators,
+                startState: state,
+                machine: machine
+            }
+            const insertNewSession = await db.collection('machine-session').insertOne(newSession);
+        }
+
+        operators.forEach(async (operator) => {
+            const operatorSessionArray = await db.collection('operator-session').find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+            if (operatorSessionArray.length) {
+                let session = operatorSessionArray[0];
+                const sessionID = session['_id'];
+                if (stateType == 'status' && state.status.code != 1) {
+                    //Open session needs to close
+                    const now = new Date.now();
+                    const itemDefinition = getItemDefinition(item.id);
+                    const standard = itemDefinition ? itemDefinition.standard : 180;
+
+                    const runtime = now - session.timestamps.start;
+                    const workTime = runtime * 2;
+                    const totalCount = session.counts.length;
+                    const totalCountByItem = [totalCount];
+                    const totalTimeCredit = totalCount * (standard / 3600);
+                    const timeCreditByItem = [totalTimeCredit];
+                    const update = {
+                        '$set': {
+                            'timestamps.end': new Date.now(),
+                            'endState': state,
+                            'program': program,
+                            'runtime': runtime,
+                            'workTime': workTime,
+                            'totalCount': totalCount,
+                            'totalCountByItem': totalCountByItem,
+                            'totalTimeCredit': totalTimeCredit,
+                            'timeCreditByItem': timeCreditByItem
+                        },
+                        '$push': {
+                            'states': state
+                        }
+                    }
+                    const updatedSession = await db.collection('operator-session').updateOne({ '_id': sessionID }, update);
+                } else {
+                    const now = new Date.now();
+                    const itemDefinition = getItemDefinition(item.id);
+                    const standard = itemDefinition ? itemDefinition.standard : 180;
+
+                    const runtime = now - session.timestamps.start;
+                    const workTime = runtime * 2;
+                    const totalCount = session.counts.length;
+                    const totalCountByItem = [totalCount];
+                    const totalTimeCredit = totalCount * (standard / 3600);
+                    const timeCreditByItem = [totalTimeCredit];
+                    //Open session for this operator exists and is open, append
+                    const update = {
+                        '$set': {
+                            'program': program,
+                            'items': items,
+                            'program': program,
+                            'runtime': runtime,
+                            'workTime': workTime,
+                            'totalCount': totalCount,
+                            'totalCountByItem': totalCountByItem,
+                            'totalTimeCredit': totalTimeCredit,
+                            'timeCreditByItem': timeCreditByItem
+                        },
+                        '$push': {
+                            'states': state
+                        }
+                    }
+                    const updatedSession = await db.collection('operator-session').updateOne({ '_id': sessionID }, update);
+                }
+            } else {
+                //Session doesn't exist, start one
+                const newSession = {
+                    timestamps: {
+                        start: new Date.now()
+                    },
+                    counts: [],
+                    misfeeds: [],
+                    states: [state],
+                    program: program,
+                    items: items,
+                    operator: operator,
+                    startState: state,
+                    machine: machine
+                }
+                const insertNewSession = await db.collection('operator-session').insertOne(newSession);
+            }
+        });
     } else if (storeJSON.item) {
       collection = db.collection("ac360-count");
 

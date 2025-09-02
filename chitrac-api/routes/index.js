@@ -240,7 +240,11 @@ function init(app, server) {
 
     app.use('/api/history', historyRoutes);
 
+    app.use('/fonts/normal', express.static(path.join(server.appRoot.path, 'fonts/Montserrat-VariableFont_wght.ttf')));
+    app.use('/fonts/bold', express.static(path.join(server.appRoot.path, 'fonts/Montserrat-VariableFont_wght.ttf')));
+    app.use('/icons', express.static(path.join(server.appRoot.path, 'icons/MaterialSymbolsOutlined_Filled-Regular.ttf')));
     app.use(['/ng/*', '/'], express.static(path.join(server.appRoot.path, 'ng/browser/')));
+    
 
     app.use('/api', machineRoutes);
     app.use('/api', itemRoutes);
