@@ -1,4 +1,3 @@
-<!-- charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component.html -->
 <div class="chart-container" [class.dark-mode]="isDarkTheme">
   <div class="loading-overlay" *ngIf="isLoading">
     <div class="loading-content">
@@ -12,11 +11,20 @@
       [data]="chartData"
       mode="machine"
       [chartWidth]="chartWidth"
-      [chartHeight]="chartHeight">
+      [chartHeight]="chartHeight"
+      [marginTop]="marginTop"
+      [marginRight]="marginRight"
+      [marginBottom]="marginBottom"
+      [marginLeft]="marginLeft"
+      [showLegend]="showLegend"
+      [legendPosition]="legendPosition"
+      [legendWidthPx]="legendWidthPx">
     </app-stacked-bar-chart>
   </div>
 
-  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
-    <div class="loading-spinner dummy-chart">⏳</div>
-  </div>
+  <ng-template #dummy>
+    <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+      <div class="loading-spinner dummy-chart">⏳</div>
+    </div>
+  </ng-template>
 </div>

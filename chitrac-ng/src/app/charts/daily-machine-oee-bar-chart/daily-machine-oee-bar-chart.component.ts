@@ -17,8 +17,15 @@ import { takeUntil, tap, delay } from 'rxjs/operators';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnChanges {
-  @Input() chartWidth = 600;
-  @Input() chartHeight = 600;
+  @Input() chartWidth!: number;
+  @Input() chartHeight!: number;
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: "top" | "right";
+  @Input() legendWidthPx!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
 
   chartData: BarChartDataPoint[] = [];
   isDarkTheme = false;
@@ -47,8 +54,8 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    console.log('DailyMachineOeeBarChart: Input changes:', changes);
-    console.log('DailyMachineOeeBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+    // console.log('DailyMachineOeeBarChart: Input changes:', changes);
+    // console.log('DailyMachineOeeBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
   }
 
   ngOnInit(): void {

@@ -5,7 +5,7 @@ import { StackedBarChartComponent, StackedBarChartData } from '../../components/
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
-import { Subject, Observable } from 'rxjs';
+import { Subject, Observable, EMPTY } from 'rxjs';
 import { takeUntil, tap, delay } from 'rxjs/operators';
 
 interface MachineStatus {
@@ -25,14 +25,21 @@ interface MachineStatus {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, OnChanges {
-  @Input() chartWidth = 600;
-  @Input() chartHeight = 400;
+  @Input() chartWidth!: number;
+  @Input() chartHeight!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: "top" | "right";
+  @Input() legendWidthPx!: number;
+  @Input() serial?: number; // optional filter
 
   ngOnChanges(changes: SimpleChanges): void {
-    console.log('DailyMachineStackedBarChart: Input changes:', changes);
-    console.log('DailyMachineStackedBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+    // console.log('DailyMachineStackedBarChart: Input changes:', changes);
+    // console.log('DailyMachineStackedBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
   }
-  @Input() serial?: number; // optional filter
 
   chartData: StackedBarChartData | null = null;
 
@@ -151,7 +158,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   }
 
   private fetchOnce(): Observable<any> {
-    if (!this.startTime || !this.endTime) return new Observable();
+    if (!this.startTime || !this.endTime) return EMPTY;
     this.isLoading = true;
     return this.dailyDashboardService.getDailyMachineStatus(this.startTime, this.endTime, this.serial)
       .pipe(
@@ -192,15 +199,6 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
       
       this.cdr.markForCheck();        // <— critical
       
-      console.log('DailyMachineStackedBarChart: Data loaded:', {
-        rowsCount: rows.length,
-        hasChartData: !!this.chartData,
-        chartDataType: typeof this.chartData,
-        chartDataKeys: this.chartData ? Object.keys(this.chartData) : 'null',
-        isLoading: this.isLoading,
-        hasInitialData: this.hasInitialData,
-        dummyMode: this.dummyMode
-      });
     };
 
   // ---- mapping ----
@@ -248,6 +246,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     this.chartWidth = w;
     this.chartHeight = h;
   }
+
+
 
   // ---- utils ----
   private formatDateForInput(date: Date): string {

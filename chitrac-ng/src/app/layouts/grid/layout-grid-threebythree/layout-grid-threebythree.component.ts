@@ -3,6 +3,8 @@ import {
     Input,
     AfterViewInit,
     OnDestroy,
+    OnChanges,
+    SimpleChanges,
     ViewChildren,
     QueryList,
     ViewContainerRef,
@@ -32,7 +34,7 @@ import {
     styleUrls: ['./layout-grid-threebythree.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
   })
-  export class LayoutGridThreeByThreeComponent implements AfterViewInit, OnDestroy {
+  export class LayoutGridThreeByThreeComponent implements AfterViewInit, OnDestroy, OnChanges {
     // Provide 1–9 component types. Required input.
     @Input() components: Type<unknown>[] = [];
 
@@ -48,6 +50,10 @@ import {
   private containerWidth = 0;
   private containerHeight = 0;
   private resizeObserver?: ResizeObserver;
+
+  ngOnChanges(_changes: SimpleChanges): void {
+    if (this.slots) { this.measure(); this.mountAll(); }
+  }
   
       ngAfterViewInit(): void {
     if (this.components.length === 0) {
@@ -125,12 +131,8 @@ import {
         this.resizeObserver = new ResizeObserver((entries) => {
           for (const entry of entries) {
             if (entry.target === this.hostEl.nativeElement) {
-              // Debounce resize events to avoid excessive updates
-              clearTimeout(this.resizeTimeout);
-              this.resizeTimeout = setTimeout(() => {
-                this.measure();
-                this.updateChildSizes();
-              }, 100);
+              // Reuse the same debounce logic as window:resize
+              this.onResize();
             }
           }
         });
@@ -183,12 +185,20 @@ import {
               const height = this.cellHeight();
               console.log(`LayoutGridThreeByThreeComponent: Mounting component ${i}, size: ${width}x${height}`);
 
-              // Set chart dimensions using setInput for proper change detection
+              // Set chart dimensions and all required inputs using setInput for proper change detection
               ref.setInput('chartWidth', width);
               ref.setInput('chartHeight', height);
               
+              // Set default values for all required chart inputs
+              ref.setInput('marginTop', 30);
+              ref.setInput('marginRight', 15);
+              ref.setInput('marginBottom', 60);
+              ref.setInput('marginLeft', 25);
+              ref.setInput('showLegend', true);
+              ref.setInput('legendPosition', 'right');
+              ref.setInput('legendWidthPx', 120);
+              
               // Call optional methods if they exist
-              (ref.instance as any)?.setAvailableSize?.(width, height);
               (ref.instance as any)?.startPolling?.();
 
               ref.changeDetectorRef.detectChanges();
@@ -211,7 +221,14 @@ import {
       for (const ref of this.refs) {
         ref.setInput('chartWidth', width);
         ref.setInput('chartHeight', height);
-        (ref.instance as any)?.setAvailableSize?.(width, height);
+        // Update all required chart inputs on resize
+        ref.setInput('marginTop', 30);
+        ref.setInput('marginRight', 15);
+        ref.setInput('marginBottom', 60);
+        ref.setInput('marginLeft', 25);
+        ref.setInput('showLegend', true);
+        ref.setInput('legendPosition', 'right');
+        ref.setInput('legendWidthPx', 120);
         ref.changeDetectorRef.markForCheck();
       }
       this.cdr.markForCheck();
@@ -219,24 +236,23 @@ import {
   
       private cellWidth(): number {
     const cols = this.getColumnCount();
-    const padding = 32; // Account for grid gap and padding (increased for better spacing)
-    const calculatedWidth = Math.floor((this.containerWidth - padding) / cols);
-    // Ensure reasonable minimum and maximum widths
-    return Math.max(250, Math.min(400, calculatedWidth));
+    const padding = 8; // tighter grid
+    const w = Math.floor((this.containerWidth - padding) / cols);
+    // clamp to requested max 620, keep a sane min for labels
+    return Math.max(320, Math.min(620, w));
   }
   
   private cellHeight(): number {
     const rows = this.getRowCount();
-    const padding = 32; // Account for grid gap and padding (increased for better spacing)
-    
-    // For single column layout (mobile), use a fixed height that allows for proper stacking
+    const padding = 8; // tighter grid
     if (window.innerWidth <= 768) {
-      return Math.max(250, Math.min(350, this.containerHeight / Math.max(1, this.components.length)));
+      // stacked modes: keep a bit taller to avoid crowding
+      const h = this.containerHeight / Math.max(1, this.components.length);
+      return Math.max(240, Math.min(320, Math.floor(h)));
     }
-    
-    // For 3x3 grid layout (desktop), use the calculated height
-    const calculatedHeight = Math.floor((this.containerHeight - padding) / rows);
-    return Math.max(200, Math.min(300, calculatedHeight));
+    const h = Math.floor((this.containerHeight - padding) / rows);
+    // clamp to the requested max 280
+    return Math.max(220, Math.min(280, h));
   }
     
     private getColumnCount(): number {

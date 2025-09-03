@@ -352,20 +352,20 @@ html, body {
 
 //for the efficiency screens
 .mat-drawer-transition .mat-drawer-content {
-  overflow-y: hidden !important;
+  // overflow-y: hidden !important;
 }
 
 // Additional Material Design drawer overrides to prevent scrollbars
 ::ng-deep .mat-drawer-container {
-  overflow: hidden !important;
+  // overflow: hidden !important;
 }
 
 ::ng-deep .mat-drawer-content {
-  overflow: hidden !important;
+  // overflow: hidden !important;
 }
 
 ::ng-deep .mat-sidenav-container {
-  overflow: hidden !important;
+  // overflow: hidden !important;
 }
 
 /* Login Menu Panel Styles */

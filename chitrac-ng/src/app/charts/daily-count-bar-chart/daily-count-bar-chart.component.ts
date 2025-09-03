@@ -22,14 +22,21 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   @Input() chartWidth = 600;
   @Input() chartHeight = 400;
 
-  // derived state
+  // pass-through props (added to mirror other charts)
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: 'top' | 'right';
+  @Input() legendWidthPx!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
+
   chartData: BarChartDataPoint[] = [];
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
   dummyMode = true;
 
-  // date/time + live
   startTime = '';
   endTime = '';
   liveMode = false;
@@ -51,25 +58,19 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   }
 
   ngOnInit(): void {
-    // Use input values if provided, otherwise use defaults
     if (this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
     } else {
-      // default [start,end] = [midnight, now]
       const now = new Date();
       const start = new Date(); start.setHours(0,0,0,0);
       this.startTime = this.formatDateForInput(start);
       this.endTime = this.formatDateForInput(now);
     }
 
-    // initial dummy
     this.enterDummy();
-
-    // Always fetch data on init
     this.fetchOnce().subscribe();
 
-    // liveMode wiring
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
       .subscribe((live: boolean) => {
@@ -77,7 +78,6 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         if (live) this.startLive(); else this.stopLive();
       });
 
-    // confirm wiring
     this.dateTimeService.confirmTrigger$
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
@@ -91,7 +91,6 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    // Handle input changes
     if ((changes['startDate'] || changes['endDate']) && this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
@@ -104,14 +103,12 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     this.stopPolling();
   }
 
-  // ---------- core flow ----------
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0,0,0,0);
     this.startTime = this.formatDateForInput(start);
     this.endTime = this.pollingService.updateEndTimestampToNow();
 
-    // initial fetch + poll
     this.fetchOnce().subscribe();
     this.setupPolling();
   }
@@ -140,7 +137,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
 
   private stopPolling(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-    this.cdr.markForCheck();          // <— optional but safe
+    this.cdr.markForCheck();
   }
 
   private fetchOnce(): Observable<any> {
@@ -157,34 +154,25 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
-      console.log('Raw API response:', res);
-      
-      // Handle the nested response structure
       let rows: any[] = [];
       if (res && res.dailyCounts && Array.isArray(res.dailyCounts)) {
         rows = res.dailyCounts;
       } else if (Array.isArray(res)) {
         rows = res;
       }
-      
-      console.log('Processed rows:', rows);
-      
+
       const normalized = rows.map((r: any, i: number) => ({
         hour: i,
         counts: r.count ?? r.counts ?? 0,
         label: r.date ?? r.label ?? ''
       }));
-      
+
       this.chartData = normalized;
-      this.isLoading = false;          // set to false unconditionally
+      this.isLoading = false;
       this.dummyMode = false;
       this.hasInitialData = normalized.length > 0;
-      
-      this.cdr.markForCheck();        // <— critical
-      
-      // Force change detection to ensure chart renders
-      console.log('Chart data updated:', this.chartData);
-      console.log('Normalized data:', normalized);
+
+      this.cdr.markForCheck();
     };
 
   private enterDummy(): void {
@@ -192,10 +180,9 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartData = [];
-    this.cdr.markForCheck();          // <— ensure overlay shows/hides
+    this.cdr.markForCheck();
   }
 
-  // ---------- utils ----------
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
