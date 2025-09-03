@@ -2,7 +2,7 @@ import { Component, OnInit } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { BlanketBlasterModule } from "../blanket-blaster/blanket-blaster.module";
 import { DailyMachineItemStackedBarChartComponent } from "../charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component";
-import { LayoutGridTwoByTwoComponent } from "../layouts/grid/layout-grid-twobytwo/layout-grid-twobytwo.component";
+import { LayoutGridThreeByThreeComponent } from "../layouts/grid/layout-grid-threebythree/layout-grid-threebythree.component";
 import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component";
 import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component";
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
@@ -15,7 +15,7 @@ import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/dai
         CommonModule,
         BlanketBlasterModule,
         DailyMachineItemStackedBarChartComponent,
-        LayoutGridTwoByTwoComponent,
+        LayoutGridThreeByThreeComponent,
         DailyMachineStackedBarChartComponent,
         DailyMachineOeeBarChartComponent,
         RankedOperatorBarChartComponent,
@@ -25,19 +25,21 @@ import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/dai
     styleUrls: ["./test.component.scss"]
 })
 export class TestComponent implements OnInit {
-  // Component references for the grid
-  DailyMachineStackedBarChartComponent = DailyMachineStackedBarChartComponent;
-  DailyMachineOeeBarChartComponent = DailyMachineOeeBarChartComponent;
-  RankedOperatorBarChartComponent = RankedOperatorBarChartComponent;
-  DailyCountBarChartComponent = DailyCountBarChartComponent;
+  // Component references for the 3x3 grid (reusing the same components)
+  threeByThreeComponents = [
+    DailyMachineStackedBarChartComponent,
+    DailyMachineOeeBarChartComponent,
+    RankedOperatorBarChartComponent,
+    DailyCountBarChartComponent,
+    DailyMachineStackedBarChartComponent, // Reuse
+    DailyMachineOeeBarChartComponent,     // Reuse
+    RankedOperatorBarChartComponent,      // Reuse
+    DailyCountBarChartComponent,          // Reuse
+    DailyMachineStackedBarChartComponent  // Reuse
+  ];
 
   ngOnInit(): void {
     console.log('TestComponent: Initialized');
-    console.log('TestComponent: Components available:', {
-      DailyMachineStackedBarChartComponent: !!this.DailyMachineStackedBarChartComponent,
-      DailyMachineOeeBarChartComponent: !!this.DailyMachineOeeBarChartComponent,
-      RankedOperatorBarChartComponent: !!this.RankedOperatorBarChartComponent,
-      DailyCountBarChartComponent: !!this.DailyCountBarChartComponent
-    });
+    console.log('TestComponent: 3x3 Components count:', this.threeByThreeComponents.length);
   }
 }
