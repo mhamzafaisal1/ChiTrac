@@ -1,5 +1,5 @@
 // charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component.ts
-import { Component, Input, OnInit, OnDestroy } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StackedBarChartComponent, StackedBarChartData } from '../../components/stacked-bar-chart/stacked-bar-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
@@ -21,11 +21,17 @@ interface MachineStatus {
   standalone: true,
   imports: [CommonModule, StackedBarChartComponent],
   templateUrl: './daily-machine-stacked-bar-chart.component.html',
-  styleUrls: ['./daily-machine-stacked-bar-chart.component.scss']
+  styleUrls: ['./daily-machine-stacked-bar-chart.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy {
+export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, OnChanges {
   @Input() chartWidth = 600;
   @Input() chartHeight = 400;
+
+  ngOnChanges(changes: SimpleChanges): void {
+    console.log('DailyMachineStackedBarChart: Input changes:', changes);
+    console.log('DailyMachineStackedBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+  }
   @Input() serial?: number; // optional filter
 
   chartData: StackedBarChartData | null = null;
@@ -42,6 +48,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private pollingSub: any;
   private readonly POLLING_INTERVAL = 6000;
+  private cdr = inject(ChangeDetectorRef);
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
@@ -85,17 +92,24 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
         this.liveMode = false;
-        this.stopPolling();
+        this.stopPollingInternal();
         this.enterDummy();
         this.startTime = this.dateTimeService.getStartTime();
         this.endTime   = this.dateTimeService.getEndTime();
         this.fetchOnce().subscribe();
       });
+
+    // Optional sanity check: fetch once if nothing has loaded within the first tick
+    setTimeout(() => {
+      if (!this.hasInitialData && this.isLoading) {
+        this.fetchOnce().subscribe();
+      }
+    }, 0);
   }
 
   ngOnDestroy(): void {
     this.destroy$.next(); this.destroy$.complete();
-    this.stopPolling();
+    this.stopPollingInternal();
   }
 
   // ---- flow ----
@@ -110,14 +124,14 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy {
   }
 
   private stopLive(): void {
-    this.stopPolling();
+    this.stopPollingInternal();
     this.hasInitialData = false;
     this.chartData = null;
     this.enterDummy();
   }
 
   private setupPolling(): void {
-    this.stopPolling();
+    this.stopPollingInternal();
     this.pollingSub = this.pollingService.poll(
       () => {
         this.endTime = this.pollingService.updateEndTimestampToNow();
@@ -128,11 +142,12 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy {
       this.destroy$,
       false,
       false
-    ).subscribe({ error: () => this.stopPolling() });
+    ).subscribe({ error: () => this.stopPollingInternal() });
   }
 
-  private stopPolling(): void {
+  private stopPollingInternal(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
+    this.cdr.markForCheck();          // <— optional but safe
   }
 
   private fetchOnce(): Observable<any> {
@@ -171,9 +186,21 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy {
       }
 
       this.chartData = rows.length ? this.formatMachineData(rows) : null;
-      this.hasInitialData = !!this.chartData;
-      this.isLoading = false;
+      this.isLoading = false;          // set to false unconditionally
       this.dummyMode = false;
+      this.hasInitialData = !!this.chartData; // or chartData.length > 0
+      
+      this.cdr.markForCheck();        // <— critical
+      
+      console.log('DailyMachineStackedBarChart: Data loaded:', {
+        rowsCount: rows.length,
+        hasChartData: !!this.chartData,
+        chartDataType: typeof this.chartData,
+        chartDataKeys: this.chartData ? Object.keys(this.chartData) : 'null',
+        isLoading: this.isLoading,
+        hasInitialData: this.hasInitialData,
+        dummyMode: this.dummyMode
+      });
     };
 
   // ---- mapping ----
@@ -198,6 +225,28 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy {
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartData = null;
+    this.cdr.markForCheck();          // <— ensure overlay shows/hides
+  }
+
+  // ---- grid interface methods ----
+  startPolling(): void {
+    // ensure one immediate fetch
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    this.startTime = this.formatDateForInput(start);
+    this.endTime   = this.pollingService.updateEndTimestampToNow();
+
+    this.enterDummy();
+    this.fetchOnce().subscribe();
+    this.setupPolling();
+  }
+
+  stopPolling(): void {
+    this.stopLive(); // calls the existing private stopPolling method
+  }
+
+  setAvailableSize(w: number, h: number): void {
+    this.chartWidth = w;
+    this.chartHeight = h;
   }
 
   // ---- utils ----

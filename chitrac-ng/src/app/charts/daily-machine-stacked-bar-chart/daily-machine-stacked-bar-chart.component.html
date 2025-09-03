@@ -10,7 +10,9 @@
   <div class="chart-content" *ngIf="hasInitialData && chartData">
     <app-stacked-bar-chart
       [data]="chartData"
-      mode="machine">
+      mode="machine"
+      [chartWidth]="chartWidth"
+      [chartHeight]="chartHeight">
     </app-stacked-bar-chart>
   </div>
 
