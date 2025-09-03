@@ -9,7 +9,6 @@ import { MatIconModule } from '@angular/material/icon';
 
 import { OeeDataService } from '../services/oee-data.service';
 import { MultipleLineChartComponent } from '../components/multiple-line-chart/multiple-line-chart.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
 
 @Component({
     selector: 'app-operator-performance-chart',
@@ -20,8 +19,7 @@ import { DateTimePickerComponent } from '../components/date-time-picker/date-tim
         MatInputModule,
         MatButtonModule,
         MatIconModule,
-        MultipleLineChartComponent,
-        DateTimePickerComponent
+        MultipleLineChartComponent
     ],
     templateUrl: './operator-performance-chart.component.html',
     styleUrls: ['./operator-performance-chart.component.scss']

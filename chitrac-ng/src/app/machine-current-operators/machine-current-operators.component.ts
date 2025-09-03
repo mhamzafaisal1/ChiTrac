@@ -5,7 +5,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
 import { MachineAnalyticsService } from '../services/machine-analytics.service';
 
 type OperatorRow = {
@@ -22,7 +21,7 @@ type OperatorRow = {
 @Component({
   selector: 'app-machine-current-operators',
   standalone: true,
-  imports: [CommonModule, FormsModule, BaseTableComponent, DateTimePickerComponent, MatButtonModule],
+  imports: [CommonModule, FormsModule, BaseTableComponent, MatButtonModule],
   templateUrl: './machine-current-operators.component.html',
   styleUrls: ['./machine-current-operators.component.scss']
 })

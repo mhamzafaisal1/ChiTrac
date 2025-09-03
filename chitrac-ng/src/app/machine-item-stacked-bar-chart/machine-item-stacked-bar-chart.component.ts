@@ -2,7 +2,6 @@ import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
 import { StackedBarChartV2Component, StackedBarChartV2Data } from '../components/stacked-bar-chart-v2/stacked-bar-chart-v2.component';
 import { MachineAnalyticsService } from '../services/machine-analytics.service';
 
@@ -12,7 +11,6 @@ import { MachineAnalyticsService } from '../services/machine-analytics.service';
         CommonModule,
         FormsModule,
         MatButtonModule,
-        DateTimePickerComponent,
         StackedBarChartV2Component
     ],
     templateUrl: './machine-item-stacked-bar-chart.component.html',

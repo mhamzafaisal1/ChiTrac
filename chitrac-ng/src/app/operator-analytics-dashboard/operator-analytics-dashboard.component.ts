@@ -11,7 +11,6 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
 import { OperatorAnalyticsService } from '../services/operator-analytics.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
 import { PollingService } from '../services/polling-service.service';
@@ -23,7 +22,6 @@ import { OperatorItemSummaryTableComponent } from '../operator-item-summary-tabl
 import { OperatorCountbyitemChartComponent } from '../operator-countbyitem-chart/operator-countbyitem-chart.component';
 import { OperatorCyclePieChartComponent } from '../operator-cycle-pie-chart/operator-cycle-pie-chart.component';
 import { OperatorFaultHistoryComponent } from '../operator-fault-history/operator-fault-history.component';
-import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
 import { OperatorLineChartComponent } from '../operator-line-chart/operator-line-chart.component';
 import { OperatorMachineSummaryComponent } from '../operator-machine-summary/operator-machine-summary.component';
 
@@ -34,13 +32,9 @@ import { OperatorMachineSummaryComponent } from '../operator-machine-summary/ope
         HttpClientModule,
         FormsModule,
         BaseTableComponent,
-        DateTimePickerComponent,
         MatTableModule,
         MatSortModule,
         MatButtonModule,
-        OperatorPerformanceChartComponent,
-        OperatorLineChartComponent,
-        OperatorMachineSummaryComponent,
         MatIconModule,
         MatSlideToggleModule
     ],

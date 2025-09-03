@@ -5,7 +5,6 @@ import { OperatorGridComponent } from './operator-grid/operator-grid.component';
 import { ItemGridComponent } from './item-grid/item-grid.component';
 import { UserLoginComponent } from './user-login/user-login.component';
 import { UserRegisterComponent } from './user-register/user-register.component';
-import { LeveloneDashboardComponent } from './levelone-dashboard/levelone-dashboard.component';
 import { LeveloneTableComponent } from './levelone-table/levelone-table.component';
 import { LeveloneTableV2Component } from './levelone-table-v2/levelone-table-v2.component';
 import { LeveloneBarChartComponent } from './levelone-bar-chart/levelone-bar-chart.component';

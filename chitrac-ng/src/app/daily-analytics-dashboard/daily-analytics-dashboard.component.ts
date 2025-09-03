@@ -2,7 +2,6 @@ import { Component, OnInit, Renderer2, ElementRef, Input, OnDestroy, ChangeDetec
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from "@angular/common";
 import { DailyDashboardService } from "../services/daily-dashboard.service";
-import { DateTimePickerComponent } from "../components/date-time-picker/date-time-picker.component";
 import { ChartTileComponent } from "../components/chart-tile/chart-tile.component";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
@@ -25,13 +24,7 @@ import { MatButtonModule } from '@angular/material/button';
     selector: 'app-daily-analytics-dashboard',
     imports: [
         CommonModule,
-        DateTimePickerComponent,
         ChartTileComponent,
-        DailyMachineStackedBarChartComponent,
-        DailyMachineOeeBarChartComponent,
-        DailyMachineItemStackedBarChartComponent,
-        RankedOperatorBarChartComponent,
-        PlantwideMetricsChartComponent,
         ComponentOutletInjectorModule,
         DynamicIoDirective,
         MatIconModule,

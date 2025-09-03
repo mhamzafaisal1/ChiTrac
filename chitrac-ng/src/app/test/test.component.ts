@@ -12,14 +12,7 @@ import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/dai
     selector: "app-test",
     standalone: true,
     imports: [
-        CommonModule,
-        BlanketBlasterModule,
-        DailyMachineItemStackedBarChartComponent,
-        LayoutGridThreeByThreeComponent,
-        DailyMachineStackedBarChartComponent,
-        DailyMachineOeeBarChartComponent,
-        RankedOperatorBarChartComponent,
-        DailyCountBarChartComponent
+      LayoutGridThreeByThreeComponent
     ],
     templateUrl: "./test.component.html",
     styleUrls: ["./test.component.scss"]

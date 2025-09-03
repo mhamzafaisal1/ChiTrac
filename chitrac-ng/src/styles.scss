@@ -17,7 +17,7 @@ $testcolor2: mat.get-theme-color($light-theme, primary, 60);
 }
 
 @mixin create-light-theme() {
-  @include mat.all-component-themes(chitrac-styleguide-dark.$light-theme);
+  @include mat.all-component-colors(chitrac-styleguide-dark.$light-theme);
 }
 
 :root {

@@ -16,7 +16,6 @@ import { MatDialog } from "@angular/material/dialog";
 import { Subject, tap, takeUntil } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
-import { DateTimePickerComponent } from "../components/date-time-picker/date-time-picker.component";
 import { MachineAnalyticsService } from "../services/machine-analytics.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
@@ -39,8 +38,7 @@ import { OperatorPerformanceChartComponent } from "../operator-performance-chart
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    BaseTableComponent,
-    DateTimePickerComponent,
+    BaseTableComponent
   ],
   templateUrl: "./machine-dashboard.component.html",
   styleUrls: ["./machine-dashboard.component.scss"],

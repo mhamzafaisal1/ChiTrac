@@ -1,6 +1,5 @@
 import { Component, OnInit, OnDestroy } from "@angular/core";
 import { CommonModule } from "@angular/common";
-import { DateTimePickerComponent } from "../components/date-time-picker/date-time-picker.component";
 import { ChartTileComponent } from "../components/chart-tile/chart-tile.component";
 
 import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component";
@@ -14,7 +13,6 @@ import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-char
     selector: 'app-daily-analytics-dashboard-split',
     imports: [
         CommonModule,
-        DateTimePickerComponent,
         ChartTileComponent,
         DailyMachineStackedBarChartComponent,
         DailyMachineOeeBarChartComponent,
