@@ -183,9 +183,18 @@ import {
               const height = this.cellHeight();
               console.log(`LayoutGridTwoByTwoComponent: Mounting component ${i}, size: ${width}x${height}`);
 
-              // Set chart dimensions using setInput for proper change detection
+              // Set chart dimensions and all required inputs using setInput for proper change detection
               ref.setInput('chartWidth', width);
               ref.setInput('chartHeight', height);
+              
+              // Set default values for all required chart inputs
+              ref.setInput('marginTop', 30);
+              ref.setInput('marginRight', 15);
+              ref.setInput('marginBottom', 60);
+              ref.setInput('marginLeft', 25);
+              ref.setInput('showLegend', true);
+              ref.setInput('legendPosition', 'right');
+              ref.setInput('legendWidthPx', 120);
               
               // Call optional methods if they exist
               (ref.instance as any)?.setAvailableSize?.(width, height);
@@ -211,6 +220,14 @@ import {
       for (const ref of this.refs) {
         ref.setInput('chartWidth', width);
         ref.setInput('chartHeight', height);
+        // Update all required chart inputs on resize
+        ref.setInput('marginTop', 30);
+        ref.setInput('marginRight', 15);
+        ref.setInput('marginBottom', 60);
+        ref.setInput('marginLeft', 25);
+        ref.setInput('showLegend', true);
+        ref.setInput('legendPosition', 'right');
+        ref.setInput('legendWidthPx', 120);
         (ref.instance as any)?.setAvailableSize?.(width, height);
         ref.changeDetectorRef.markForCheck();
       }

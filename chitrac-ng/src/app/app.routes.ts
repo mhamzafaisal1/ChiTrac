@@ -43,6 +43,8 @@ import { PlantwideMetricsChartComponent } from './charts/plantwide-metrics-chart
 import { RankedOperatorBarChartComponent } from './charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component';
 import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
 import { DataAwareItemStackedChartComponent } from './charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component';
+import { TwobytwoDashboardComponent } from './dashboards/2x2/twobytwo-dashboard.component';
+import { ThreebythreeDashboardComponent } from './dashboards/3x3/threebythree-dashboard.component';
 
 export const routes: Routes = [
 	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
@@ -88,6 +90,8 @@ export const routes: Routes = [
 	{ path: 'ng/daily-plantwide-metrics-chart', component: PlantwideMetricsChartComponent },
 	{ path: 'ng/daily-ranked-operator-bar-chart', component: RankedOperatorBarChartComponent },
 	{ path: 'ng/item-stacked-chart', component: DataAwareItemStackedChartComponent },
+	{ path: 'ng/dashboards/2x2', component: TwobytwoDashboardComponent },
+	{ path: 'ng/dashboards/3x3', component: ThreebythreeDashboardComponent },
 	{ path: 'ng/*', redirectTo: 'ng/machineAnalytics' },
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
 	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }
