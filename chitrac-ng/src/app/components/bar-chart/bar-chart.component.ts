@@ -12,35 +12,47 @@ import { CommonModule } from '@angular/common';
 import * as d3 from 'd3';
 
 export interface BarChartDataPoint {
-  hour: number;      // for 'time' mode this is actual hour
-  counts: number;    // bar height (e.g., count or oee %)
-  label?: string;    // optional label for oee mode
+  hour: number;
+  counts: number;
+  label?: string;
 }
 
 @Component({
-    selector: 'bar-chart',
-    imports: [CommonModule],
-    templateUrl: './bar-chart.component.html',
-    styleUrls: ['./bar-chart.component.scss']
+  selector: 'bar-chart',
+  imports: [CommonModule],
+  templateUrl: './bar-chart.component.html',
+  styleUrls: ['./bar-chart.component.scss']
 })
 export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
   @Input() data: BarChartDataPoint[] = [];
   @Input() title: string = '';
   @Input() mode: 'time' | 'oee' | 'count' = 'time';
-  @Input() chartWidth: number = 600;
-  @Input() chartHeight: number = 600;
+  @Input() chartWidth!: number;
+  @Input() chartHeight!: number;
   @Input() extraBottomMargin: boolean = false;
+  @Input() showLegend: boolean = false;          // left as prop
+  @Input() legendPosition: 'top' | 'right' = 'right'; // left as prop
+  @Input() legendWidthPx: number = 120;          // left as prop
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
   @ViewChild('chartContainer', { static: true }) chartContainer!: ElementRef;
 
   private observer!: MutationObserver;
-  private fullscreenListener!: () => void;
-  private isFullscreen: boolean = false;
 
   ngOnChanges(changes: SimpleChanges): void {
     if ((changes['data'] && this.data.length > 0) || 
         changes['chartWidth'] || 
         changes['chartHeight'] || 
-        changes['extraBottomMargin']) {
+        changes['extraBottomMargin'] ||
+        changes['showLegend'] ||
+        changes['legendPosition'] ||
+        changes['legendWidthPx'] ||
+        changes['marginTop'] ||
+        changes['marginRight'] ||
+        changes['marginBottom'] ||
+        changes['marginLeft']) {
       this.renderChart();
     }
   }
@@ -51,51 +63,27 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
       attributes: true,
       attributeFilter: ['class']
     });
-
-    // Add fullscreen mode listener
-    this.setupFullscreenListener();
   }
 
   ngOnDestroy(): void {
     if (this.observer) {
       this.observer.disconnect();
     }
-    
-    // Remove fullscreen listener
-    if (this.fullscreenListener) {
-      window.removeEventListener('resize', this.fullscreenListener);
-      document.removeEventListener('fullscreenchange', this.fullscreenListener);
-    }
-  }
-
-  private setupFullscreenListener(): void {
-    this.fullscreenListener = () => {
-      const wasFullscreen = this.isFullscreen;
-      this.isFullscreen =
-        !!document.fullscreenElement ||
-        window.innerHeight === screen.height;
-
-      // Only re-render if fullscreen state actually changed
-      if (wasFullscreen !== this.isFullscreen) {
-        this.renderChart();
-      }
-    };
-
-    // Listen for both F11-style fullscreen (resize) and programmatic fullscreen
-    window.addEventListener('resize', this.fullscreenListener);
-    document.addEventListener('fullscreenchange', this.fullscreenListener);
   }
 
   renderChart(): void {
     const element = this.chartContainer.nativeElement;
     element.innerHTML = '';
 
-    // Adjust bottom margin based on fullscreen state
-    const bottomMargin = this.isFullscreen 
-      ? (this.extraBottomMargin ? 120 : 80)
-      : (this.extraBottomMargin ? 150 : 120);
+    const bottomMargin = this.extraBottomMargin ? 150 : this.marginBottom;
 
-    const margin = { top: 40, right: 60, bottom: bottomMargin, left: 60 };
+    const margin = { 
+      top: this.marginTop, 
+      right: this.marginRight, 
+      bottom: bottomMargin, 
+      left: this.marginLeft 
+    };
+    
     const width = this.chartWidth - margin.left - margin.right;
     const height = this.chartHeight - margin.top - margin.bottom;
 
@@ -104,14 +92,12 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
 
     const svg = d3.select(element)
       .append('svg')
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom)
-        //.style('font-family', `'Inter', sans-serif`)
+        .attr('width', this.chartWidth)
+        .attr('height', this.chartHeight)
         .style('font-size', '0.875rem');
 
-    // Move title to the top of the SVG
     svg.append('text')
-      .attr('x', (width + margin.left + margin.right) / 2)
+      .attr('x', this.chartWidth / 2)
       .attr('y', 20)
       .attr('text-anchor', 'middle')
       .style('font-size', '16px')
@@ -123,7 +109,7 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
 
     const xLabels = this.mode === 'time'
       ? this.data.map(d => this.formatHour(d.hour))
-      : this.data.map(d => d.label || `#${d.hour + 1}`);
+      : this.data.map((d, i) => d.label || `#${i + 1}`);
 
     const x = d3.scaleBand()
       .domain(xLabels)
@@ -150,20 +136,19 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
         .style('fill', textColor)
         .style('font-size', '14px');
 
-        chartGroup.selectAll('.bar')
-        .data(this.data)
-        .enter()
-        .append('rect')
-          .attr('class', 'bar')
-          .attr('x', (d, i) => {
-            const label = this.mode === 'time' ? this.formatHour(d.hour) : (d.label || `#${i + 1}`);
-            return x(label)!;
-          })
-          .attr('y', d => y(d.counts))
-          .attr('width', x.bandwidth())
-          .attr('height', d => height - y(d.counts))
-          .attr('fill', d => this.getBarColor(d.counts));
-      
+    chartGroup.selectAll('.bar')
+      .data(this.data)
+      .enter()
+      .append('rect')
+        .attr('class', 'bar')
+        .attr('x', (d, i) => {
+          const label = this.mode === 'time' ? this.formatHour(d.hour) : (d.label || `#${i + 1}`);
+          return x(label)!;
+        })
+        .attr('y', d => y(d.counts))
+        .attr('width', x.bandwidth())
+        .attr('height', d => height - y(d.counts))
+        .attr('fill', d => this.getBarColor(d.counts));
   }
 
   private formatHour(hour: number): string {
@@ -174,12 +159,11 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
   }
 
   private getBarColor(value: number): string {
-    // unified, cohesive palette + thresholds
     if (this.mode === 'count') {
-      return '#42a5f5';    // primary blue
+      return '#42a5f5';
     }
-    if (value >= 85) return '#66bb6a';   // green
-    if (value >= 60) return '#ffca28';   // amber
-    return '#ef5350';                    // softened red
+    if (value >= 85) return '#66bb6a';
+    if (value >= 60) return '#ffca28';
+    return '#ef5350';
   }
 }

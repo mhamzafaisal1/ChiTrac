@@ -19,8 +19,15 @@ type OperatorRow = { name: string; efficiency: number };
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnChanges {
-  @Input() chartWidth = 600;
-  @Input() chartHeight = 400;
+  @Input() chartWidth!: number;
+  @Input() chartHeight!: number;
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: 'top' | 'right';
+  @Input() legendWidthPx!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
 
   chartData: BarChartDataPoint[] = [];
   isDarkTheme = false;
@@ -49,8 +56,9 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    console.log('RankedOperatorBarChart: Input changes:', changes);
-    console.log('RankedOperatorBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+    // optional logs
+    // console.log('RankedOperatorBarChart: Input changes:', changes);
+    // console.log('RankedOperatorBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
   }
 
   ngOnInit(): void {
@@ -95,7 +103,6 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.stopPolling();
   }
 
-  // flow
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -130,7 +137,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
   private stopPolling(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-    this.cdr.markForCheck();          // <— optional but safe
+    this.cdr.markForCheck();
   }
 
   private fetchOnce(): Observable<any> {
@@ -147,9 +154,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private consumeResponse =
     (_: 'once' | 'poll') =>
     (res: any) => {
-      // Handle the API response structure with topOperators array
       let rows: OperatorRow[] = [];
-      
       if (res && res.topOperators && Array.isArray(res.topOperators)) {
         rows = res.topOperators.map((r: any) => ({
           name: String(r.name ?? r.operator ?? r.id ?? 'Unknown'),
@@ -162,7 +167,6 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         }));
       }
 
-      // rank desc and take top 10
       const top = rows.sort((a, b) => b.efficiency - a.efficiency).slice(0, 10);
 
       this.chartData = top.map((op, i) => ({
@@ -171,11 +175,11 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         label: op.name
       }));
 
-      this.isLoading = false;          // set to false unconditionally
+      this.isLoading = false;
       this.dummyMode = false;
       this.hasInitialData = this.chartData.length > 0;
-      
-      this.cdr.markForCheck();        // <— critical
+
+      this.cdr.markForCheck();
     };
 
   private enterDummy(): void {
@@ -183,10 +187,9 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartData = [];
-    this.cdr.markForCheck();          // <— ensure overlay shows/hides
+    this.cdr.markForCheck();
   }
 
-  // utils
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
