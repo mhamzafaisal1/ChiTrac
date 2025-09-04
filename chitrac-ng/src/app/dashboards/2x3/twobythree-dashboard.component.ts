@@ -13,11 +13,6 @@ import { PlantwideMetricsChartComponent } from "../../charts/plantwide-metrics-c
     imports: [
         CommonModule,
         LayoutGridTwoByThreeComponent,
-        DailyMachineStackedBarChartComponent,
-        DailyMachineOeeBarChartComponent,
-        RankedOperatorBarChartComponent,
-        DailyCountBarChartComponent,
-        PlantwideMetricsChartComponent,
     ],
     templateUrl: "./twobythree-dashboard.component.html",
     styleUrls: ["./twobythree-dashboard.component.scss"]
