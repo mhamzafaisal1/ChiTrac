@@ -32,6 +32,16 @@ export class MultipleBarAndLineChartComponent implements OnChanges, OnDestroy, A
   @Input() chartWidth: number = 900;
   @Input() chartHeight: number = 500;
   @Input() title: string = '';
+
+  // pass-through props (added to mirror other charts)
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: 'top' | 'right';
+  @Input() legendWidthPx!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
+
   @ViewChild('chartContainer', { static: true }) chartContainer!: ElementRef;
 
   private observer!: MutationObserver;
@@ -63,7 +73,12 @@ export class MultipleBarAndLineChartComponent implements OnChanges, OnDestroy, A
     const element = this.chartContainer.nativeElement;
     element.innerHTML = '';
 
-    const margin = { top: 40, right: 40, bottom: 100, left: 40 };
+    const margin = { 
+      top: this.marginTop || 40, 
+      right: this.marginRight || 40, 
+      bottom: this.marginBottom || 100, 
+      left: this.marginLeft || 40 
+    };
     const width = this.chartWidth - margin.left - margin.right;
     const height = this.chartHeight - margin.top - margin.bottom;
 
@@ -94,10 +109,10 @@ export class MultipleBarAndLineChartComponent implements OnChanges, OnDestroy, A
     const chartGroup = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Render legend at the top, horizontal
+    // Render legend at the top, horizontal (if enabled)
     const barMetrics = ['Availability', 'Efficiency', 'Throughput'];
-    const legendHeight = this.renderLegend(chartGroup, [...barMetrics, 'OEE'], seriesColors, textColor, width);
-    const chartTop = legendHeight + 10; // 10px gap below legend
+    const legendHeight = this.showLegend !== false ? this.renderLegend(chartGroup, [...barMetrics, 'OEE'], seriesColors, textColor, width) : 0;
+    const chartTop = this.showLegend !== false ? legendHeight + 10 : 0; // 10px gap below legend
 
     const x = d3.scaleBand()
       .domain(this.data.data.hours.map(h => this.formatHour(h)))
