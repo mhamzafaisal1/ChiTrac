@@ -1,6 +1,7 @@
 import { Component, Input, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BlanketBlasterModule } from '../../../blanket-blaster/blanket-blaster.module';
+import { CmOperatorEfficiencyComponent } from '../../../modules/column/cm-operator-efficiency/cm-operator-efficiency.component';
 
 @Component({
   selector: 'ct-column-layout',
@@ -8,7 +9,8 @@ import { BlanketBlasterModule } from '../../../blanket-blaster/blanket-blaster.m
   styleUrls: ['./column-layout.component.scss'],
   imports: [
     CommonModule,
-    BlanketBlasterModule
+    BlanketBlasterModule,
+    CmOperatorEfficiencyComponent
   ],
   standalone: true
 })
