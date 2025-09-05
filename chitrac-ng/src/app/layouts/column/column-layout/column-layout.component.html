@@ -1,0 +1,7 @@
+<div class="column-layout-container">
+  <div class="columns-grid">
+    <div *ngFor="let column of columnsToDisplay; trackBy: trackByIndex" class="column-item">
+      <ct-lane-fault [lane]="column" style="height: 100%; width: 100%;"></ct-lane-fault>
+    </div>
+  </div>
+</div>

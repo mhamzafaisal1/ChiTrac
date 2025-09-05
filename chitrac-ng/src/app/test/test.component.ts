@@ -7,12 +7,14 @@ import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-st
 import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component";
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
 import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/daily-count-bar-chart.component";
+import { ColumnLayoutComponent } from "../layouts/column/column-layout/column-layout.component";
 
 @Component({
     selector: "app-test",
     standalone: true,
     imports: [
-      LayoutGridThreeByThreeComponent
+      LayoutGridThreeByThreeComponent,
+      ColumnLayoutComponent
     ],
     templateUrl: "./test.component.html",
     styleUrls: ["./test.component.scss"]
