@@ -1,0 +1,25 @@
+<div class="test-container">
+  <div class="header">
+    <h1>CM Operator Efficiency Test Screen</h1>
+    <p>SPL1 Machine (Serial: 90011) - Four Operators from API</p>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-state">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Loading operator data...</div>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error && !loading" class="error-state">
+    <div class="error-icon">⚠️</div>
+    <div class="error-text">{{ error }}</div>
+    <div class="error-subtext">Using mock data for testing</div>
+  </div>
+
+  <!-- Main Content using Column Layout -->
+  <div *ngIf="!loading" class="main-content">
+    <ct-column-layout [columnModules]="columnModules">
+    </ct-column-layout>
+  </div>
+</div>
