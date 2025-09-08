@@ -3,7 +3,8 @@
     <div *ngFor="let column of columnsToDisplay; trackBy: trackByIndex" class="column-item">
       <cm-operator-efficiency 
         [operatorId]="column.inputs?.operatorId || column.operatorId || column.operator" 
-        [machineSerial]="column.inputs?.machineSerial || column.machineSerial || 90011" 
+        [machineSerial]="column.inputs?.machineSerial || column.machineSerial || 90011"
+        [station]="column.inputs?.station || column.station || 0"
         style="height: 100%; width: 100%;">
       </cm-operator-efficiency>
     </div>

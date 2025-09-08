@@ -47,6 +47,7 @@ import { ThreebythreeDashboardComponent } from './dashboards/3x3/threebythree-da
 import { TwobythreeDashboardComponent } from './dashboards/2x3/twobythree-dashboard.component';
 import { ColumnLayoutComponent } from './layouts/column/column-layout/column-layout.component';
 import { CmOperatorEfficiencyTestComponent } from './modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component';
+import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
 
 export const routes: Routes = [
 	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
@@ -97,6 +98,7 @@ export const routes: Routes = [
 	{ path: 'ng/dashboards/2x3', component: TwobythreeDashboardComponent },
 	{ path: 'ng/column-layout', component: ColumnLayoutComponent },
 	{ path: 'ng/cm-operator-efficiency-test', component: CmOperatorEfficiencyTestComponent },
+	{ path: 'ng/spl-col-efficiency-screen', component: SplColEfficiencyScreenComponent },
 	{ path: 'ng/*', redirectTo: 'ng/machineAnalytics' },
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
 	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }

@@ -22,7 +22,11 @@ export class EfficiencyScreensService {
       { params }
     );
   }
-  
 
-
+  getOperatorEfficiency(serial: number, station: number): Observable<any> {
+    const params = new HttpParams()
+      .set('serial', serial.toString())
+      .set('station', station.toString());
+    return this.http.get('/api/alpha/analytics/machine-live-session-summary/operator', { params });
+  }
 }
