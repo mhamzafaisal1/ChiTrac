@@ -27,6 +27,15 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
   @Input() chartWidth = 600;
   @Input() chartHeight = 400;
 
+  // pass-through props (added to mirror other charts)
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: 'top' | 'right';
+  @Input() legendWidthPx!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
+
   chartInputData: any = null;
 
   isDarkTheme = false;
