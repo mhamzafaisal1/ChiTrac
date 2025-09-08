@@ -459,5 +459,192 @@ module.exports = function (server) {
     return Math.round((Number(n) || 0) * 100) / 100;
   }
 
+  // --- Operator Efficiency API (for cm-operator-efficiency component) ---
+
+  router.get('/analytics/machine-live-session-summary/operator', async (req, res) => {
+    try {
+      const { serial, station } = req.query;
+      if (!serial || !station) {
+        return res.status(400).json({ error: 'Missing serial or station' });
+      }
+
+      const serialNum = Number(serial);
+      const stationNum = Number(station);
+
+      // Get machine ticker to find operator at specified station
+      const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
+        .findOne(
+          { 'machine.serial': serialNum },
+          {
+            projection: {
+              _id: 0,
+              timestamp: 1,
+              machine: 1,
+              program: 1,
+              status: 1,
+              operators: 1
+            }
+          }
+        );
+
+      // No ticker: Machine offline
+      if (!ticker) {
+        return res.json({
+          status: { code: -1, name: 'Offline' },
+          fault: 'Offline',
+          operator: null,
+          machine: `Serial ${serialNum}`,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: {},
+          batch: { item: '', code: 10000001 }
+        });
+      }
+
+      // Check for blocked station (67801/67802 station 2 skip)
+      const blockedStation =
+        [67801, 67802].includes(serialNum) && stationNum === 2;
+
+      const operator = (Array.isArray(ticker.operators) ? ticker.operators : [])
+        .find(op => op && op.station === stationNum);
+
+      const hasOperator = !!operator && operator.id !== -1 && !blockedStation;
+
+      // No operator at station (or blocked station)
+      if (!hasOperator) {
+        // If not running: zeros like legacy behavior
+        if ((ticker.status?.code ?? 0) !== 1) {
+          return res.json({
+            status: ticker.status?.code ?? 0,
+            fault: ticker.status?.name ?? 'Unknown',
+            operator: null,
+            machine: ticker.machine?.name || `Serial ${serialNum}`,
+            timers: { on: 0, ready: 0 },
+            displayTimers: { on: '', run: '' },
+            efficiency: buildZeroEfficiencyPayload(),
+            oee: {},
+            batch: { item: '', code: 10000001 }
+          });
+        }
+
+        // Running: compute efficiency from MACHINE sessions for this window set
+        const now = DateTime.now();
+        const frames = {
+          lastSixMinutes: { start: now.minus({ minutes: 6 }), label: 'Last 6 Mins' },
+          lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: 'Last 15 Mins' },
+          lastHour: { start: now.minus({ hours: 1 }), label: 'Last Hour' },
+          today: { start: now.startOf('day'), label: 'All Day' }
+        };
+
+        const results = await queryMachineTimeframes(db, serialNum, frames);
+
+        // Fallback: if any frame empty, reuse most recent open machine session for all
+        if (Object.values(results).some(arr => arr.length === 0)) {
+          const open = await db.collection(config.machineSessionCollectionName || 'machine-sessions')
+            .findOne(
+              { 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
+              { sort: { 'timestamps.start': -1 }, projection: projectMachineForPerf() }
+            );
+          if (open) for (const k of Object.keys(results)) results[k] = [open];
+        }
+
+        const effObj = {};
+        for (const [key, arr] of Object.entries(results)) {
+          const { start, label } = frames[key];
+          const { runtimeSec, timeCreditSec } = sumWindowMachine(arr, start, now);
+          const eff = runtimeSec > 0 ? Math.round((timeCreditSec / runtimeSec) * 100) : 0;
+          effObj[key] = { value: eff, label, color: eff >= 90 ? 'green' : eff >= 70 ? 'yellow' : 'red' };
+        }
+
+        return res.json({
+          status: ticker.status?.code ?? 0,
+          fault: ticker.status?.name ?? 'Unknown',
+          operator: null,
+          machine: ticker.machine?.name || `Serial ${serialNum}`,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: effObj,
+          oee: {},
+          batch: { item: '', code: 10000001 }
+        });
+      }
+
+      // If machine is NOT running, return zero efficiency but keep operator info
+      if ((ticker.status?.code ?? 0) !== 1) {
+        const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
+        return res.json({
+          status: ticker.status?.code ?? 0,
+          fault: ticker.status?.name ?? 'Unknown',
+          operator: operator.name || 'Unknown',
+          operatorId: operator.id,
+          machine: ticker.machine?.name || `Serial ${serialNum}`,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: {},
+          batch: { item: batchItem, code: 10000001 }
+        });
+      }
+
+      // Running: compute performance from operator-sessions over four windows
+      const now = DateTime.now();
+      const frames = {
+        lastSixMinutes: { start: now.minus({ minutes: 6 }), label: 'Last 6 Mins' },
+        lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: 'Last 15 Mins' },
+        lastHour: { start: now.minus({ hours: 1 }), label: 'Last Hour' },
+        today: { start: now.startOf('day'), label: 'All Day' }
+      };
+
+      // Run the four timeframe queries in parallel
+      const results = await queryOperatorTimeframes(db, serialNum, operator.id, frames);
+
+      // If ANY timeframe came back empty, fetch most recent OPEN session and use it for all frames
+      if (Object.values(results).some(arr => arr.length === 0)) {
+        const open = await db.collection(config.operatorSessionCollectionName)
+          .findOne(
+            { 'operator.id': operator.id, 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
+            { sort: { 'timestamps.start': -1 }, projection: projectSessionForPerf() }
+          );
+        if (open) {
+          for (const k of Object.keys(results)) results[k] = [open];
+        }
+      }
+
+      // Compute efficiency% per timeframe from sessions (truncate overlap at frame start)
+      const efficiencyObj = {};
+      for (const [key, arr] of Object.entries(results)) {
+        const { start, label } = frames[key];
+        const { runtimeSec, totalTimeCreditSec } = sumWindow(arr, start, now);
+        const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+        efficiencyObj[key] = {
+          value: Math.round(eff * 100),
+          label,
+          color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
+        };
+      }
+
+      // Batch item: concatenate current items if multiple (prefer the most recent session; fallback to union)
+      const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
+
+      return res.json({
+        status: ticker.status?.code ?? 0,
+        fault: ticker.status?.name ?? 'Unknown',
+        operator: operator.name || 'Unknown',
+        operatorId: operator.id,
+        machine: ticker.machine?.name || `Serial ${serialNum}`,
+        timers: { on: 0, ready: 0 },
+        displayTimers: { on: '', run: '' },
+        efficiency: efficiencyObj,
+        oee: {},
+        batch: { item: batchItem, code: 10000001 }
+      });
+
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   return router;
 };
