@@ -1,0 +1,66 @@
+<!-- Loading State -->
+<div *ngIf="loading" class="loading-display">
+  <div class="loading-spinner"></div>
+  <p>Loading machine data...</p>
+</div>
+
+<!-- Error State -->
+<div *ngIf="error && !loading" class="error-display">
+  <p>{{ error }}</p>
+</div>
+
+<!-- RUNNING: machine OEE -->
+<div *ngIf="!loading && !error && isRunning" 
+     class="lane-background"
+     [ngClass]="{ green: color==='green', yellow: color==='yellow', red: color==='red' }">
+  <div class="lane" style="padding-top:15px;padding-bottom:15px;height:100%;">
+    <div id="OperatorBlock"
+         class="operator-block" style="height:10%;margin:0 15px;">
+      <div class="operator-text"><div class="operator-content">{{ laneData.machine }} • OEE</div></div>
+    </div>
+
+    <div id="DataBlock" class="data-block" style="height:100%;margin:0 15px;">
+      <div class="efficiency-value" style="height:30%">
+        <div class="value-text">{{ laneData.metric.lastSixMinutes?.value | number:'1.0-0' }}%</div>
+      </div>
+      <div class="bars-container" style="height:70%">
+        <div class="bars">
+          <ct-data-bar [efficiency]="laneData.metric.lastFifteenMinutes" class="bar" [margin]="'15px 10px 0 0'"></ct-data-bar>
+          <ct-data-bar [efficiency]="laneData.metric.lastHour"           class="bar" [margin]="'15px 5px 0 5px'"></ct-data-bar>
+          <ct-data-bar [efficiency]="laneData.metric.today"              class="bar" [margin]="'15px 0 0 10px'"></ct-data-bar>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fault State -->
+<div *ngIf="isFault && !loading && !error" class="fault-display">
+  <div class="fault-info">
+    <h3>Fault</h3>
+    <p class="fault-name">{{ laneData?.fault || 'Unknown Fault' }}</p>
+    <p class="machine-name">{{ laneData?.machine || 'Machine' }}</p>
+  </div>
+  
+  <div class="timer-display">
+    <div class="timer">
+      <span class="label">Fault Time:</span>
+      <span class="value">{{ laneData?.displayTimers?.on || '00:00:00' }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Stop/Offline State -->
+<div *ngIf="isStop && !loading && !error" class="stop-display">
+  <div class="stop-info">
+    <h3>{{ laneData?.status === -1 ? 'Offline' : 'Stopped' }}</h3>
+    <p class="machine-name">{{ laneData?.machine || 'Machine' }}</p>
+  </div>
+  
+  <div class="timer-display">
+    <div class="timer">
+      <span class="label">Down Time:</span>
+      <span class="value">{{ laneData?.displayTimers?.on || '00:00:00' }}</span>
+    </div>
+  </div>
+</div>
