@@ -44,6 +44,7 @@ import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboa
 import { DataAwareItemStackedChartComponent } from './charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component';
 import { TwobytwoDashboardComponent } from './dashboards/2x2/twobytwo-dashboard.component';
 import { ThreebythreeDashboardComponent } from './dashboards/3x3/threebythree-dashboard.component';
+import { TwobythreeDashboardComponent } from './dashboards/2x3/twobythree-dashboard.component';
 
 export const routes: Routes = [
 	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
@@ -91,6 +92,7 @@ export const routes: Routes = [
 	{ path: 'ng/item-stacked-chart', component: DataAwareItemStackedChartComponent },
 	{ path: 'ng/dashboards/2x2', component: TwobytwoDashboardComponent },
 	{ path: 'ng/dashboards/3x3', component: ThreebythreeDashboardComponent },
+	{ path: 'ng/dashboards/2x3', component: TwobythreeDashboardComponent },
 	{ path: 'ng/*', redirectTo: 'ng/machineAnalytics' },
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
 	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }
