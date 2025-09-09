@@ -1,0 +1,32 @@
+<!-- charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component.html -->
+<div class="chart-container" [class.dark-mode]="isDarkTheme">
+    <div class="loading-overlay" *ngIf="isLoading">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading data...</div>
+      </div>
+    </div>
+  
+    <div class="chart-content" *ngIf="hasInitialData && chartData.length">
+      <bar-chart-with-tooltip
+        [data]="chartData"
+        [title]="'Top 10 Operator Efficiency %'"
+        [mode]="'oee'"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+        [showLegend]="showLegend"
+        [legendPosition]="legendPosition"
+        [legendWidthPx]="legendWidthPx"
+        [marginTop]="marginTop"
+        [marginRight]="marginRight"
+        [marginBottom]="marginBottom"
+        [marginLeft]="marginLeft"
+        [extraBottomMargin]="true">
+      </bar-chart-with-tooltip>
+    </div>
+  
+    <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+      <div class="loading-spinner dummy-chart">⏳</div>
+    </div>
+  </div>
+  
