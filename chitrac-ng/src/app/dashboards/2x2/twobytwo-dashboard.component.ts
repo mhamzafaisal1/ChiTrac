@@ -11,11 +11,7 @@ import { DailyCountBarChartComponent } from "../../charts/daily-count-bar-chart/
     standalone: true,
     imports: [
         CommonModule,
-        LayoutGridTwoByTwoComponent,
-        DailyMachineStackedBarChartComponent,
-        DailyMachineOeeBarChartComponent,
-        RankedOperatorBarChartComponent,
-        DailyCountBarChartComponent
+        LayoutGridTwoByTwoComponent
     ],
     templateUrl: "./twobytwo-dashboard.component.html",
     styleUrls: ["./twobytwo-dashboard.component.scss"]

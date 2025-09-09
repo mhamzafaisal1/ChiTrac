@@ -11,11 +11,7 @@ import { DailyCountBarChartComponent } from "../../charts/daily-count-bar-chart/
     standalone: true,
     imports: [
         CommonModule,
-        LayoutGridThreeByThreeComponent,
-        DailyMachineStackedBarChartComponent,
-        DailyMachineOeeBarChartComponent,
-        RankedOperatorBarChartComponent,
-        DailyCountBarChartComponent
+        LayoutGridThreeByThreeComponent
     ],
     templateUrl: "./threebythree-dashboard.component.html",
     styleUrls: ["./threebythree-dashboard.component.scss"]

@@ -1,0 +1,38 @@
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+    // background-color: var(--panel-bg, #ffffff);
+  }
+  
+  // :host-context(.dark-theme) {
+  //   background-color: #1e1e1e;
+  //   box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  // }
+  
+  .bar-chart-container {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  
+  svg text {
+    fill: var(--text-color, #333);
+  }
+  
+  :host-context(.dark-theme) svg text {
+    fill: #e0e0e0;
+  }
+  
+  /* very subtle depth on bars */
+  .bar-chart-container rect {
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));
+  }
+    
