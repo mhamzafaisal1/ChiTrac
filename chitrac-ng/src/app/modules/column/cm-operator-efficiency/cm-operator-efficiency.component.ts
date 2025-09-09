@@ -16,6 +16,7 @@ export class CmOperatorEfficiencyComponent implements OnInit, OnDestroy, OnChang
   
   @Input() operatorId: string | number = '';
   @Input() machineSerial: number = 0;
+  @Input() station: number = 0; // New input for station number
   
   laneData: any = null;
   loading: boolean = true;
@@ -27,19 +28,23 @@ export class CmOperatorEfficiencyComponent implements OnInit, OnDestroy, OnChang
   constructor(private efficiencyService: EfficiencyScreensService) {}
 
   ngOnInit() {
-    if (this.operatorId && this.machineSerial) {
+    if (this.shouldStartPolling()) {
       this.startPolling();
     }
   }
 
   ngOnChanges(changes: SimpleChanges) {
-    if (changes['operatorId'] || changes['machineSerial']) {
-      if (this.operatorId && this.machineSerial) {
+    if (changes['operatorId'] || changes['machineSerial'] || changes['station']) {
+      if (this.shouldStartPolling()) {
         this.startPolling();
       } else {
         this.stopPolling();
       }
     }
+  }
+
+  private shouldStartPolling(): boolean {
+    return this.machineSerial > 0 && (!!this.operatorId || this.station > 0);
   }
 
   ngOnDestroy() {
@@ -50,22 +55,30 @@ export class CmOperatorEfficiencyComponent implements OnInit, OnDestroy, OnChang
     this.stopPolling();
     this.loading = true;
     this.error = '';
+    
+    // Choose API based on available inputs
+    const apiCall = this.station > 0 
+      ? this.efficiencyService.getOperatorEfficiency(this.machineSerial, this.station)
+      : this.efficiencyService.getLiveEfficiencySummary(this.machineSerial, new Date().toISOString());
+    
     this.pollSub = timer(0, this.POLL_INTERVAL)
-      .pipe(
-        switchMap(() => this.efficiencyService.getLiveEfficiencySummary(
-          this.machineSerial,
-          new Date().toISOString()
-        ))
-      )
+      .pipe(switchMap(() => apiCall))
       .subscribe({
         next: (res) => {
           this.loading = false;
           this.error = '';
-          const lanes = res?.flipperData ?? [];
-          this.laneData = lanes.find((lane: any) =>
-            (String(lane.operatorId) === String(this.operatorId) || String(lane.operator) === String(this.operatorId)) &&
-            (lane.serial === this.machineSerial || res?.serial === this.machineSerial)
-          ) ?? null;
+          
+          if (this.station > 0) {
+            // Direct response from operator API
+            this.laneData = res;
+          } else {
+            // Legacy response from flipperData API
+            const lanes = res?.flipperData ?? [];
+            this.laneData = lanes.find((lane: any) =>
+              (String(lane.operatorId) === String(this.operatorId) || String(lane.operator) === String(this.operatorId)) &&
+              (lane.serial === this.machineSerial || res?.serial === this.machineSerial)
+            ) ?? null;
+          }
         },
         error: (err) => {
           this.loading = false;
