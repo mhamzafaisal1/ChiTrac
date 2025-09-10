@@ -1,7 +1,7 @@
 // charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BarChartComponent, BarChartDataPoint } from '../../components/bar-chart/bar-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
@@ -11,7 +11,7 @@ import { takeUntil, tap, delay } from 'rxjs/operators';
 @Component({
   selector: 'app-daily-machine-oee-bar-chart',
   standalone: true,
-  imports: [CommonModule, BarChartComponent],
+  imports: [CommonModule, CartesianChartComponent],
   templateUrl: './daily-machine-oee-bar-chart.component.html',
   styleUrls: ['./daily-machine-oee-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -27,7 +27,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
 
-  chartData: BarChartDataPoint[] = [];
+  chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
@@ -118,7 +118,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   private stopLive(): void {
     this.stopPolling();
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.enterDummy();
   }
 
@@ -171,24 +171,58 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
         oee: Number(m.oee ?? m.efficiency ?? 0)
       })).sort((a, b) => b.oee - a.oee);
 
-      this.chartData = normalized.map((m, i) => ({
-        hour: i,
-        counts: m.oee,
-        label: m.name
-      }));
-
+      this.chartConfig = normalized.length ? this.formatChartData(normalized) : null;
       this.isLoading = false;          // set to false unconditionally
       this.dummyMode = false;
-      this.hasInitialData = this.chartData.length > 0;
+      this.hasInitialData = !!this.chartConfig;
       
       this.cdr.markForCheck();        // <— critical
     };
+
+  private formatChartData(data: Array<{name: string, oee: number}>): CartesianChartConfig {
+    // Convert machine OEE data to cartesian chart format with color-coded bars
+    const series: XYSeries[] = data.map((machine, index) => ({
+      id: `machine-${index}`,
+      title: machine.name,
+      type: 'bar',
+      data: [{ x: machine.name, y: machine.oee }],
+      color: this.getOeeColor(machine.oee) // Color based on OEE percentage
+    }));
+
+    return {
+      title: 'Ranked OEE% by Machine',
+      width: this.chartWidth,
+      height: this.chartHeight,
+      orientation: 'vertical',
+      xType: 'category',
+      xLabel: 'Machine',
+      yLabel: 'OEE (%)',
+      margin: {
+        top: Math.max(this.marginTop || 50, 60),
+        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: Math.max(this.marginBottom || 50, 80),
+        left: this.marginLeft || 50
+      },
+      legend: {
+        show: false,  // No legend needed for individual machine bars
+        position: 'top'  // Required property, but not used since show is false
+      },
+      series: series
+    };
+  }
+
+  private getOeeColor(oee: number): string {
+    // Same color logic as BarChartComponent for OEE mode
+    if (oee >= 85) return '#66bb6a';  // Green: Excellent (85%+)
+    if (oee >= 60) return '#ffca28';  // Yellow: Good (60-84%)
+    return '#ef5350';                 // Red: Poor (<60%)
+  }
 
   private enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 

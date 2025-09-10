@@ -1,7 +1,7 @@
 // charts/daily-count-bar-chart/daily-count-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BarChartComponent, BarChartDataPoint } from '../../components/bar-chart/bar-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
@@ -11,7 +11,7 @@ import { takeUntil, tap, delay } from 'rxjs/operators';
 @Component({
   selector: 'app-daily-count-bar-chart',
   standalone: true,
-  imports: [CommonModule, BarChartComponent],
+  imports: [CommonModule, CartesianChartComponent],
   templateUrl: './daily-count-bar-chart.component.html',
   styleUrls: ['./daily-count-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -31,7 +31,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
 
-  chartData: BarChartDataPoint[] = [];
+  chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
@@ -116,7 +116,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   private stopLive(): void {
     this.stopPolling();
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.enterDummy();
   }
 
@@ -161,25 +161,56 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         rows = res;
       }
 
-      const normalized = rows.map((r: any, i: number) => ({
-        hour: i,
-        counts: r.count ?? r.counts ?? 0,
-        label: r.date ?? r.label ?? ''
-      }));
-
-      this.chartData = normalized;
+      this.chartConfig = rows.length ? this.formatChartData(rows) : null;
       this.isLoading = false;
       this.dummyMode = false;
-      this.hasInitialData = normalized.length > 0;
+      this.hasInitialData = !!this.chartConfig;
 
       this.cdr.markForCheck();
     };
+
+  private formatChartData(data: any[]): CartesianChartConfig {
+    // Convert daily count data to cartesian chart format
+    const series: XYSeries[] = [
+      {
+        id: 'counts',
+        title: 'Counts',
+        type: 'bar',
+        data: data.map((d: any, i: number) => ({ 
+          x: d.date ?? d.label ?? `Hour ${i}`, 
+          y: d.count ?? d.counts ?? 0 
+        })),
+        color: '#42a5f5'
+      }
+    ];
+
+    return {
+      title: 'Daily Count Totals',
+      width: this.chartWidth,
+      height: this.chartHeight,
+      orientation: 'vertical',
+      xType: 'category',
+      xLabel: 'Time',
+      yLabel: 'Count',
+      margin: {
+        top: Math.max(this.marginTop || 50, 60),
+        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: Math.max(this.marginBottom || 50, 80), // Increased bottom margin for more space
+        left: this.marginLeft || 50
+      },
+      legend: {
+        show: this.showLegend !== false,
+        position: this.legendPosition || 'top'
+      },
+      series: series
+    };
+  }
 
   private enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.cdr.markForCheck();
   }
 

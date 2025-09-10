@@ -1,7 +1,7 @@
 // charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BarChartComponent, BarChartDataPoint } from '../../components/bar-chart/bar-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
@@ -13,7 +13,7 @@ type OperatorRow = { name: string; efficiency: number };
 @Component({
   selector: 'app-ranked-operator-bar-chart',
   standalone: true,
-  imports: [CommonModule, BarChartComponent],
+  imports: [CommonModule, CartesianChartComponent],
   templateUrl: './ranked-operator-bar-chart.component.html',
   styleUrls: ['./ranked-operator-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -29,7 +29,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
 
-  chartData: BarChartDataPoint[] = [];
+  chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
@@ -116,7 +116,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private stopLive(): void {
     this.stopPolling();
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.enterDummy();
   }
 
@@ -169,24 +169,56 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
       const top = rows.sort((a, b) => b.efficiency - a.efficiency).slice(0, 10);
 
-      this.chartData = top.map((op, i) => ({
-        hour: i,
-        counts: op.efficiency,
-        label: op.name
-      }));
-
+      this.chartConfig = top.length ? this.formatChartData(top) : null;
       this.isLoading = false;
       this.dummyMode = false;
-      this.hasInitialData = this.chartData.length > 0;
+      this.hasInitialData = !!this.chartConfig;
 
       this.cdr.markForCheck();
     };
+
+  private formatChartData(data: OperatorRow[]): CartesianChartConfig {
+    // Convert operator data to cartesian chart format with horizontal bars
+    const series: XYSeries[] = [
+      {
+        id: 'efficiency',
+        title: 'Efficiency',
+        type: 'bar',
+        data: data.map((op, i) => ({ 
+          x: op.name,  // operator names on Y-axis (horizontal bars)
+          y: op.efficiency  // efficiency values on X-axis
+        })),
+        color: '#42a5f5'
+      }
+    ];
+
+    return {
+      title: 'Top Operators by Efficiency',
+      width: this.chartWidth,
+      height: this.chartHeight,
+      orientation: 'horizontal', // horizontal bars
+      xType: 'linear', // efficiency values are numeric
+      xLabel: 'Efficiency (%)',
+      yLabel: 'Operator',
+      margin: {
+        top: Math.max(this.marginTop || 50, 60),
+        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: Math.max(this.marginBottom || 50, 80),
+        left: Math.max(this.marginLeft || 50, 120) // more space for operator names
+      },
+      legend: {
+        show: this.showLegend !== false,
+        position: this.legendPosition || 'top'
+      },
+      series: series
+    };
+  }
 
   private enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.cdr.markForCheck();
   }
 

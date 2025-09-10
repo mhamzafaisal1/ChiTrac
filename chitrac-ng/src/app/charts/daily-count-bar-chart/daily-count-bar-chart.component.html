@@ -7,21 +7,8 @@
     </div>
   </div>
 
-  <div class="chart-content" *ngIf="hasInitialData && chartData.length">
-    <bar-chart
-      [data]="chartData"
-      [title]="'Daily Total Counts (Last 28 Days)'"
-      [mode]="'count'"
-      [chartWidth]="chartWidth"
-      [chartHeight]="chartHeight"
-      [showLegend]="showLegend"
-      [legendPosition]="legendPosition"
-      [legendWidthPx]="legendWidthPx"
-      [marginTop]="marginTop"
-      [marginRight]="marginRight"
-      [marginBottom]="marginBottom"
-      [marginLeft]="marginLeft">
-    </bar-chart>
+  <div class="chart-content" *ngIf="hasInitialData && chartConfig">
+    <cartesian-chart [config]="chartConfig"></cartesian-chart>
   </div>
 
   <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
