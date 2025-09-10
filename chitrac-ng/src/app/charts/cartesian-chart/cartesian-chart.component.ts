@@ -254,18 +254,41 @@ import {
   
       // ===== Series Render =====
       // bars (grouped/stacked), areas (stacked/normal), lines, dots, lollipops
-      // Bars
+      // ===== Bars =====
       const barSeries = cfg.series.filter(s => s.type === 'bar');
-      const barStacks = this.groupByStack(barSeries);
-      barStacks.forEach(stackGroup => {
-        if (stackGroup.length === 1 || stackGroup.every(s => !s.stack)) {
-          // grouped (or single)
-          this.renderGroupedBars(g, stackGroup, cfg, xScale, yScale, yScaleH, innerW, innerH, isHorizontal);
+      if (barSeries.length) {
+        // Check for stacked bars first (priority over other routing)
+        const barStacks = this.groupByStack(barSeries);
+        const hasStackedBars = barStacks.some(stackGroup => 
+          stackGroup.length > 1 && stackGroup.every(s => s.stack)
+        );
+        
+        if (hasStackedBars) {
+          // Stacked bars (Daily Machine Status, etc.)
+          barStacks.forEach(stackGroup => {
+            if (stackGroup.length === 1 || stackGroup.every(s => !s.stack)) {
+              this.renderGroupedBars(g, stackGroup, cfg, xScale, yScale, yScaleH, innerW, innerH, isHorizontal);
+            } else {
+              this.renderStackedBars(g, stackGroup, cfg, xScale, yScale, yScaleH, allX, innerW, innerH, isHorizontal);
+            }
+          });
+        } else if (this.isSingletonBarSeries(barSeries)) {
+          // Ranked OEE – one bar per machine, full width (no sub-banding)
+          this.renderSingletonBars(g, barSeries, cfg, xScale, yScale, yScaleH, innerW, innerH, isHorizontal);
+        } else if (cfg.xType === 'category' && this.haveCommonCategories(barSeries)) {
+          // Plantwide (Availability/Efficiency/Throughput grouped per hour)
+          this.renderGroupedBarsByCategory(g, barSeries, cfg, xScale, yScale, yScaleH, innerW, innerH, isHorizontal);
         } else {
-          // stacked (all share same stack label)
-          this.renderStackedBars(g, stackGroup, cfg, xScale, yScale, yScaleH, allX, innerW, innerH, isHorizontal);
+          // Original behavior (grouped bars)
+          barStacks.forEach(stackGroup => {
+            if (stackGroup.length === 1 || stackGroup.every(s => !s.stack)) {
+              this.renderGroupedBars(g, stackGroup, cfg, xScale, yScale, yScaleH, innerW, innerH, isHorizontal);
+            } else {
+              this.renderStackedBars(g, stackGroup, cfg, xScale, yScale, yScaleH, allX, innerW, innerH, isHorizontal);
+            }
+          });
         }
-      });
+      }
   
       // Areas
       const areaSeries = cfg.series.filter(s => s.type === 'area');
@@ -387,17 +410,30 @@ import {
         .range([0, innerW]);
     }
   
-    private groupByStack(series: XYSeries[]): XYSeries[][] {
-      if (!series.length) return [];
-      // group by stack label; no stack goes as its own group
-      const map = new Map<string, XYSeries[]>();
-      series.forEach(s => {
-        const k = s.stack || `__no_stack__${s.id}`;
-        if (!map.has(k)) map.set(k, []);
-        map.get(k)!.push(s);
-      });
-      return Array.from(map.values());
-    }
+  private groupByStack(series: XYSeries[]): XYSeries[][] {
+    if (!series.length) return [];
+    const map = new Map<string, XYSeries[]>();
+    series.forEach(s => {
+      const k = s.stack ?? '__no_stack__';   // <-- single bucket for "no stack"
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(s);
+    });
+    return Array.from(map.values());
+  }
+
+  /** Do all bar series share the same category set (e.g., Plantwide grouped-by-hour)? */
+  private haveCommonCategories(series: XYSeries[]): boolean {
+    if (!series.length) return false;
+    const union = Array.from(new Set(series.flatMap(s => s.data.map(p => String(p.x)))));
+    return union.length > 0 && series.every(s => s.data.length === union.length);
+  }
+
+  /** Is this the "one bar per category" case (e.g., Ranked OEE: each series has 1 datum, all x unique)? */
+  private isSingletonBarSeries(series: XYSeries[]): boolean {
+    if (!series.length) return false;
+    const xs = series.map(s => s.data?.[0]?.x).filter(v => v !== undefined).map(String);
+    return series.every(s => s.type === 'bar' && s.data.length === 1) && new Set(xs).size === xs.length;
+  }
   
     private colorForSeries(id: string): string {
       const palette = d3.schemeTableau10;
@@ -458,6 +494,87 @@ import {
         });
       });
     }
+
+  /** Draw one full-width bar per category (each series supplies a single category). */
+  private renderSingletonBars(
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    series: XYSeries[],
+    cfg: CartesianChartConfig,
+    xScale: any, yScale: any, yScaleH: any,
+    innerW: number, innerH: number, isHorizontal: boolean
+  ) {
+    const items = series
+      .filter(s => s.data.length)
+      .map(s => ({
+        key: String(s.data[0].x),
+        y: +s.data[0].y || 0,
+        color: s.color || this.colorForSeries(s.id),
+      }));
+
+    const barPadding = series[0]?.options?.barPadding ?? 0.2;
+    const band = (cfg.xType === 'category'
+        ? (isHorizontal ? yScale : xScale)
+        : d3.scaleBand<string>().domain(items.map(i => i.key))
+            .range(isHorizontal ? [0, innerH] : [0, innerW]).padding(barPadding)
+      ) as d3.ScaleBand<string>;
+
+    const grp = g.append('g').attr('class', 'cc-bars-single');
+    items.forEach(it => {
+      if (isHorizontal) {
+        const y = band(it.key)!;
+        const w = (yScaleH as d3.ScaleLinear<number, number>)(it.y);
+        grp.append('rect').attr('x', 0).attr('y', y)
+          .attr('width', w).attr('height', band.bandwidth()).attr('fill', it.color);
+      } else {
+        const x = band(it.key)!;
+        const y = (yScale as d3.ScaleLinear<number, number>)(it.y);
+        grp.append('rect').attr('x', x).attr('y', y)
+          .attr('width', band.bandwidth()).attr('height', innerH - y).attr('fill', it.color);
+      }
+    });
+  }
+
+  /** Grouped bars where multiple series share the same categories (Plantwide). */
+  private renderGroupedBarsByCategory(
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    series: XYSeries[],
+    cfg: CartesianChartConfig,
+    xScale: any, yScale: any, yScaleH: any,
+    innerW: number, innerH: number, isHorizontal: boolean
+  ) {
+    const xKeys = Array.from(new Set(series.flatMap(s => s.data.map(p => String(p.x)))));
+    const barPadding = series[0]?.options?.barPadding ?? 0.2;
+
+    const band = (cfg.xType === 'category'
+        ? (isHorizontal ? yScale : xScale)
+        : d3.scaleBand<string>().domain(xKeys)
+            .range(isHorizontal ? [0, innerH] : [0, innerW]).padding(barPadding)
+      ) as d3.ScaleBand<string>;
+
+    const sub = d3.scaleBand<string>()
+      .domain(series.map(s => s.id))
+      .range([0, band.bandwidth()])
+      .padding(0.05);
+
+    series.forEach(s => {
+      const color = s.color || this.colorForSeries(s.id);
+      const grp = g.append('g').attr('class','cc-bar-group').attr('fill', color);
+      s.data.forEach(p => {
+        const key = String(p.x);
+        if (isHorizontal) {
+          const y = band(key)! + sub(s.id)!;
+          const w = (yScaleH as d3.ScaleLinear<number, number>)(+p.y || 0);
+          grp.append('rect').attr('x', 0).attr('y', y)
+            .attr('width', w).attr('height', sub.bandwidth());
+        } else {
+          const x = band(key)! + sub(s.id)!;
+          const y = (yScale as d3.ScaleLinear<number, number>)(+p.y || 0);
+          grp.append('rect').attr('x', x).attr('y', y)
+            .attr('width', sub.bandwidth()).attr('height', innerH - y);
+        }
+      });
+    });
+  }
   
     private renderStackedBars(
       g: d3.Selection<SVGGElement, unknown, null, undefined>,

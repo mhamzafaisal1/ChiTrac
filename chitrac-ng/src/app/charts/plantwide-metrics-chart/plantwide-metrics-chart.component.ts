@@ -1,25 +1,18 @@
 // charts/plantwide-metrics-chart/plantwide-metrics-chart.component.ts
 import { Component, Input, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MultipleBarAndLineChartComponent } from '../../components/multiple-bar-and-line-chart/multiple-bar-and-line-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../../charts/cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay } from 'rxjs/operators';
 
-type MetricsRow = {
-  hour: number;
-  availability: number;
-  efficiency: number;
-  throughput: number;
-  oee: number;
-};
 
 @Component({
   selector: 'app-plantwide-metrics-chart',
   standalone: true,
-  imports: [CommonModule, MultipleBarAndLineChartComponent],
+  imports: [CommonModule, CartesianChartComponent],
   templateUrl: './plantwide-metrics-chart.component.html',
   styleUrls: ['./plantwide-metrics-chart.component.scss']
 })
@@ -36,7 +29,7 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
 
-  chartInputData: any = null;
+  chartConfig: CartesianChartConfig | null = null;
 
   isDarkTheme = false;
   isLoading = false;
@@ -120,7 +113,7 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
   private stopLive(): void {
     this.stopPolling();
     this.hasInitialData = false;
-    this.chartInputData = null;
+    this.chartConfig = null;
     this.enterDummy();
   }
 
@@ -157,32 +150,57 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
-      // Handle the API response structure with plantwideMetrics array
-      let rows: MetricsRow[] = [];
-      
-      if (res && res.plantwideMetrics && Array.isArray(res.plantwideMetrics)) {
-        rows = res.plantwideMetrics;
-      } else if (Array.isArray(res)) {
-        rows = res;
-      }
-
-      // Ensure hours are sorted ascending and contiguous inputs handled
-      rows.sort((a, b) => (a.hour ?? 0) - (b.hour ?? 0));
+      type Row = { hour:number; availability:number; efficiency:number; throughput:number; oee:number };
+      let rows: Row[] = Array.isArray(res?.plantwideMetrics) ? res.plantwideMetrics : (Array.isArray(res) ? res : []);
+      rows.sort((a,b)=>(a.hour??0)-(b.hour??0));
 
       const hours = rows.map(r => Number(r.hour ?? 0));
-      const series = {
-        Availability: rows.map(r => Number(r.availability ?? 0)),
-        Efficiency:   rows.map(r => Number(r.efficiency   ?? 0)),
-        Throughput:   rows.map(r => Number(r.throughput   ?? 0)),
-        OEE:          rows.map(r => Number(r.oee          ?? 0)),
-      };
+      const fmt = (h:number) => h===0?'12am':h===12?'12pm':h<12?`${h}am`:`${h-12}pm`;
+      const labels = hours.map(fmt);
 
-      this.chartInputData = {
+      const series: XYSeries[] = [
+        {
+          id:'availability', title:'Availability', type:'bar', color:'#66bb6a',
+          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.availability ?? 0) })),
+          options:{ barPadding:0.2 }
+        },
+        {
+          id:'efficiency', title:'Efficiency', type:'bar', color:'#ffca28',
+          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.efficiency ?? 0) }))
+        },
+        {
+          id:'throughput', title:'Throughput', type:'bar', color:'#ef5350',
+          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.throughput ?? 0) }))
+        },
+        {
+          id:'oee', title:'OEE', type:'line', color:'#ab47bc',
+          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.oee ?? 0) })),
+          options:{ showDots:true, radius:3 }
+        }
+      ];
+
+      this.chartConfig = {
         title: 'Plantwide Metrics by Hour',
-        data: { hours, series }
+        width:  this.chartWidth,
+        height: this.chartHeight,
+        orientation: 'vertical',
+        xType: 'category',
+        xLabel: 'Hour',
+        yLabel: 'Value',
+        margin: {
+          top:    Math.max(this.marginTop ?? 50, 60),
+          right:  Math.max(this.marginRight ?? 30, (this.legendPosition === 'right' ? 120 : 30)),
+          bottom: Math.max(this.marginBottom ?? 56, 92), // space for rotated ticks + label
+          left:   this.marginLeft ?? 50
+        },
+        legend: {
+          show: this.showLegend !== false,
+          position: this.legendPosition || 'top'
+        },
+        series
       };
 
-      this.hasInitialData = hours.length > 0;
+      this.hasInitialData = rows.length > 0;
       this.isLoading = false;
       this.dummyMode = false;
     };
@@ -191,7 +209,7 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
-    this.chartInputData = null;
+    this.chartConfig = null;
   }
 
   // utils
