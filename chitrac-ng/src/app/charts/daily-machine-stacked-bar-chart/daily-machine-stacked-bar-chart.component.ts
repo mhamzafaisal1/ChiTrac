@@ -1,7 +1,7 @@
 // charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { StackedBarChartComponent, StackedBarChartData } from '../../components/stacked-bar-chart/stacked-bar-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
@@ -19,7 +19,7 @@ interface MachineStatus {
 @Component({
   selector: 'app-daily-machine-stacked-bar-chart',
   standalone: true,
-  imports: [CommonModule, StackedBarChartComponent],
+  imports: [CommonModule, CartesianChartComponent],
   templateUrl: './daily-machine-stacked-bar-chart.component.html',
   styleUrls: ['./daily-machine-stacked-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -41,7 +41,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     // console.log('DailyMachineStackedBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
   }
 
-  chartData: StackedBarChartData | null = null;
+  chartConfig: CartesianChartConfig | null = null;
 
   isDarkTheme = false;
   isLoading = false;
@@ -133,7 +133,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   private stopLive(): void {
     this.stopPollingInternal();
     this.hasInitialData = false;
-    this.chartData = null;
+    this.chartConfig = null;
     this.enterDummy();
   }
 
@@ -192,29 +192,67 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         }));
       }
 
-      this.chartData = rows.length ? this.formatMachineData(rows) : null;
+      this.chartConfig = rows.length ? this.formatMachineData(rows) : null;
       this.isLoading = false;          // set to false unconditionally
       this.dummyMode = false;
-      this.hasInitialData = !!this.chartData; // or chartData.length > 0
+      this.hasInitialData = !!this.chartConfig; // or chartConfig.length > 0
       
       this.cdr.markForCheck();        // <— critical
       
     };
 
   // ---- mapping ----
-  private formatMachineData(data: MachineStatus[]): StackedBarChartData {
+  private formatMachineData(data: MachineStatus[]): CartesianChartConfig {
     const toHours = (ms: number) => ms / 3_600_000;
+    
+    
+    // Convert machine data to cartesian chart format
+    const series: XYSeries[] = [
+      {
+        id: 'running',
+        title: 'Running',
+        type: 'bar',
+        stack: 'status', // This groups them for stacking
+        data: data.map(d => ({ x: d.name, y: toHours(d.runningMs) })),
+        color: '#66bb6a'
+      },
+      {
+        id: 'paused',
+        title: 'Paused',
+        type: 'bar',
+        stack: 'status', // Same stack group for stacking
+        data: data.map(d => ({ x: d.name, y: toHours(d.pausedMs) })),
+        color: '#ffca28'
+      },
+      {
+        id: 'faulted',
+        title: 'Faulted',
+        type: 'bar',
+        stack: 'status', // Same stack group for stacking
+        data: data.map(d => ({ x: d.name, y: toHours(d.faultedMs) })),
+        color: '#ef5350'
+      }
+    ];
+
     return {
       title: 'Daily Machine Status',
-      data: {
-        hours: [], // not used by machine mode
-        operators: {
-          'Running': data.map(d => toHours(d.runningMs)),
-          'Paused':  data.map(d => toHours(d.pausedMs)),
-          'Faulted': data.map(d => toHours(d.faultedMs))
-        },
-        machineNames: data.map(d => d.name)
-      }
+      width: this.chartWidth,
+      height: this.chartHeight,
+      orientation: 'vertical',
+      xType: 'category',
+      xLabel: 'Machine',
+      yLabel: 'Hours',
+      margin: {
+        top: Math.max(this.marginTop || 50, 60), // Ensure enough space for legend
+        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)), // Space for right legend
+        bottom: this.marginBottom || 50,
+        left: this.marginLeft || 50
+      },
+      legend: {
+        show: this.showLegend !== false,
+        position: this.legendPosition || 'right' // Now supports both 'top' and 'right'
+      },
+      series: series
     };
   }
 
@@ -222,7 +260,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
-    this.chartData = null;
+    this.chartConfig = null;
     this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 

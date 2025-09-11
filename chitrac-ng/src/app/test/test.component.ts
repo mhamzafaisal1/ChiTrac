@@ -8,6 +8,7 @@ import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-ba
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
 import { RankedOperatorBarChartWithTooltipComponent } from "../charts/ranked-operator-bar-chart-with-tooltip/ranked-operator-bar-chart-with-tooltip.component";
 import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/daily-count-bar-chart.component";
+import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-chart/plantwide-metrics-chart.component";
 import { ColumnLayoutComponent } from "../layouts/column/column-layout/column-layout.component";
 
 @Component({
@@ -30,7 +31,7 @@ export class TestComponent implements OnInit {
     DailyMachineStackedBarChartComponent, // Reuse
     DailyMachineOeeBarChartComponent,     // Reuse
     RankedOperatorBarChartWithTooltipComponent,     
-    DailyCountBarChartComponent,          // Reuse
+    PlantwideMetricsChartComponent,
     DailyMachineStackedBarChartComponent  // Reuse
   ];
 

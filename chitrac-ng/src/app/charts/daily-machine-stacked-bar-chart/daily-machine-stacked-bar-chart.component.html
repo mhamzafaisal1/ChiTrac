@@ -6,20 +6,8 @@
     </div>
   </div>
 
-  <div class="chart-content" *ngIf="hasInitialData && chartData">
-    <app-stacked-bar-chart
-      [data]="chartData"
-      mode="machine"
-      [chartWidth]="chartWidth"
-      [chartHeight]="chartHeight"
-      [marginTop]="marginTop"
-      [marginRight]="marginRight"
-      [marginBottom]="marginBottom"
-      [marginLeft]="marginLeft"
-      [showLegend]="showLegend"
-      [legendPosition]="legendPosition"
-      [legendWidthPx]="legendWidthPx">
-    </app-stacked-bar-chart>
+  <div class="chart-content" *ngIf="hasInitialData && chartConfig">
+    <cartesian-chart [config]="chartConfig"></cartesian-chart>
   </div>
 
   <ng-template #dummy>
