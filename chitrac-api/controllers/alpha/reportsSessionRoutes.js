@@ -447,7 +447,7 @@ module.exports = function (server) {
           });
         }
 
-        // Always add to runtime totals for summary math (including synthetic rows)
+        // Always add to runtime totals for summary math
         bucket.totalRuntimeMs += runtimeMs;
 
         const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
@@ -521,7 +521,7 @@ module.exports = function (server) {
         // Recalculate runtime from actual sessions (excluding synthetic totals)
         const actualRuntimeMs = b.sessions.reduce((sum, session) => sum + session.runtimeMs, 0);
         
-        // Use worked time for PPH calculation (per staffed time)
+        // Use worked time for PPH calculation
         const USE_WORKED_TIME = true;
         const hours = USE_WORKED_TIME ? (b.totalWorkedMs / 3600000) : (actualRuntimeMs / 3600000);
         const machinePph = hours > 0 ? b.totalCount / hours : 0;
@@ -545,7 +545,7 @@ module.exports = function (server) {
       }
   
       // ---------- 2) Status stacked (durations) ----------
-      // NOTE: expects a document per state change in config.stateTickerCollectionName
+      
       const statusAggRaw = await db
         .collection(config.stateTickerCollectionName)
         .aggregate([
@@ -612,7 +612,7 @@ module.exports = function (server) {
       }
 
       // ---------- 3) Faults stacked (durations by fault type) ----------
-      // NOTE: expects a doc per fault occurrence in config.faultSessionCollectionName
+      
       const faultsAggRaw = await db
         .collection(config.faultSessionCollectionName)
         .aggregate([
@@ -669,7 +669,6 @@ module.exports = function (server) {
         faultsByMachine.set(s, compressSlicesPerBar(rec));
       }
 
-      // Ensure we have fault data for all machines in results
       for (const result of results) {
         const serial = result.machine.serial;
         if (!faultsByMachine.has(serial)) {
@@ -692,7 +691,7 @@ module.exports = function (server) {
       for (const m of faultsByMachine.keys()) unionSerials.add(m);
       const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
 
-      // ---------- 5) Items stacked (top-9 + Other per machine) ----------
+      // ---------- 5) Items stacked  ----------
       const itemsByMachine = new Map();
       for (const r of results) {
         const m = {};
@@ -712,7 +711,6 @@ module.exports = function (server) {
         timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
         results,                  // original detailed per-machine results (unchanged shape)
         charts: {
-          // Use these directly with your unified cartesian component
           statusStacked: {
             title: "Machine Status Stacked Bar",
             orientation: "horizontal",
@@ -722,15 +720,15 @@ module.exports = function (server) {
             series: statusStacked
           },
           efficiencyRanked: {
-            title: "Ranked Efficiency% by Machine", 
+            title: "Ranked OEE% by Machine", 
             orientation: "horizontal",
             xType: "category",
             xLabel: "Machine",
-            yLabel: "Efficiency (%)",
+            yLabel: "OEE (%)",
             series: [
               {
-                id: "Efficiency",
-                title: "Efficiency",
+                id: "OEE",
+                title: "OEE",
                 type: "bar",
                 data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
               },
