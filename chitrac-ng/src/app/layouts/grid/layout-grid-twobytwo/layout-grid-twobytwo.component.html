@@ -1,7 +1,7 @@
 <!-- Root must fill parent -->
 <div class="grid-root">
-    <!-- 2x2 on wide, 1xN on narrow -->
-    <div class="grid">
+    <!-- Dynamic grid based on component count -->
+    <div class="grid" [ngClass]="'grid-' + components.length">
       <div class="cell">
         <ng-container #slot></ng-container>
       </div>

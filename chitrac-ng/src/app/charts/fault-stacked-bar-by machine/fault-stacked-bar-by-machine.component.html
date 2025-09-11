@@ -1,0 +1,19 @@
+<div class="chart-container" [class.dark-mode]="isDarkTheme">
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading fault data...</div>
+    </div>
+  </div>
+
+  <div class="chart-content">
+    <cartesian-chart
+      *ngIf="chartConfig"
+      [config]="chartConfig">
+    </cartesian-chart>
+  </div>
+
+  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+    <div class="loading-spinner dummy-chart">⏳</div>
+  </div>
+</div>

@@ -108,4 +108,16 @@ getItemsSummary(start: string, end: string, serial?: number) {
     return this.http.get(`${this.apiUrl}/analytics/daily/count-totals`, { params });
   }
 
+  getMachineItemSessionsSummary(start: string, end: string, serial?: number): Observable<any> {
+    let params = new HttpParams()
+      .set('start', start)
+      .set('end', end);
+
+    if (serial) {
+      params = params.set('serial', serial.toString());
+    }
+
+    return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary`, { params });
+  }
+
 }
