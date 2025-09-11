@@ -545,58 +545,110 @@ module.exports = function (server) {
       }
   
       // ---------- 2) Status stacked (durations) ----------
+      // Calculate actual status durations using machine-session and fault-session collections
+      // Similar to the daily dashboard machine status approach
       
-      const statusAggRaw = await db
-        .collection(config.stateTickerCollectionName)
-        .aggregate([
-          {
-            $match: {
-              ...(serial ? { "machine.serial": serial } : {}),
-              "timestamps.start": { $lte: exactEnd },
-              $or: [
-                { "timestamps.end": { $exists: false } },
-                { "timestamps.end": { $gte: exactStart } },
-              ],
-            },
-          },
-          {
-            $addFields: {
-              ovStart: { $max: ["$timestamps.start", exactStart] },
-              ovEnd: { $min: [{ $ifNull: ["$timestamps.end", exactEnd] }, exactEnd] },
-            },
-          },
-          { $addFields: { sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] } } },
-          {
-            $project: {
-              machine: 1,
-              sliceMs: 1,
-              label: {
-                $ifNull: [
-                  "$status.label",
-                  { $ifNull: ["$state.label", { $ifNull: ["$state", "Unknown"] }] },
-                ],
-              },
-            },
-          },
-          { $match: { sliceMs: { $gt: 0 } } },
-          {
-            $group: {
-              _id: { serial: "$machine.serial", label: "$label" },
-              name: { $first: "$machine.name" },
-              totalMs: { $sum: "$sliceMs" },
-            },
-          },
-        ])
-        .toArray();
+      const msColl = db.collection(config.machineSessionCollectionName);
+      const fsColl = db.collection(config.faultSessionCollectionName);
+
+      // Get all machines that have sessions in the time window
+      const machineSerials = await msColl.distinct("machine.serial", {
+        "timestamps.start": { $lt: exactEnd },
+        $or: [
+          { "timestamps.end": { $gt: exactStart } }, 
+          { "timestamps.end": { $exists: false } }, 
+          { "timestamps.end": null }
+        ],
+        ...(serial ? { "machine.serial": serial } : {})
+      });
 
       const statusByMachine = new Map();
-      for (const row of statusAggRaw) {
-        const s = row._id.serial;
-        const label = String(row._id.label || "Unknown");
-        const val = Number(row.totalMs || 0) / 3600000; // Convert ms to hours
-        if (!statusByMachine.has(s)) statusByMachine.set(s, {});
-        statusByMachine.get(s)[label] = (statusByMachine.get(s)[label] || 0) + val;
-        if (!serialToName.has(s)) serialToName.set(s, row.name || s);
+
+      // Helper function to calculate overlap
+      const overlap = (sStart, sEnd, wStart, wEnd) => {
+        const ss = new Date(sStart);
+        const se = new Date(sEnd || wEnd);
+        const os = ss > wStart ? ss : wStart;
+        const oe = se < wEnd ? se : wEnd;
+        const ovSec = Math.max(0, (oe - os) / 1000);
+        const fullSec = Math.max(0, (se - ss) / 1000);
+        const f = fullSec > 0 ? ovSec / fullSec : 0;
+        return { ovSec, fullSec, factor: f };
+      };
+
+      const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+
+      for (const machineSerial of machineSerials) {
+        const [msessions, fsessions] = await Promise.all([
+          msColl.find({
+            "machine.serial": machineSerial,
+            "timestamps.start": { $lt: exactEnd },
+            $or: [
+              { "timestamps.end": { $gt: exactStart } }, 
+              { "timestamps.end": { $exists: false } }, 
+              { "timestamps.end": null }
+            ]
+          }).project({
+            _id: 0, machine: 1, timestamps: 1, runtime: 1
+          }).toArray(),
+          fsColl.find({
+            "machine.serial": machineSerial,
+            "timestamps.start": { $lt: exactEnd },
+            $or: [
+              { "timestamps.end": { $gt: exactStart } }, 
+              { "timestamps.end": { $exists: false } }, 
+              { "timestamps.end": null }
+            ]
+          }).project({
+            _id: 0, timestamps: 1, faulttime: 1
+          }).toArray()
+        ]);
+
+        if (!msessions.length) continue;
+
+        // Calculate runtime (Running status)
+        let runtimeSec = 0;
+        for (const s of msessions) {
+          const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, exactStart, exactEnd);
+          runtimeSec += safe(s.runtime) * factor; // runtime is stored in seconds
+        }
+
+        // Calculate fault time (Faulted status)
+        let faultSec = 0;
+        for (const fs of fsessions) {
+          const sStart = fs.timestamps?.start;
+          const sEnd = fs.timestamps?.end || exactEnd;
+          const { ovSec, fullSec } = overlap(sStart, sEnd, exactStart, exactEnd);
+          if (ovSec === 0) continue;
+          const ft = safe(fs.faulttime);
+          if (ft > 0 && fullSec > 0) {
+            const factor = ovSec / fullSec;
+            faultSec += ft * factor;
+          } else {
+            // open/unfinished or unrecalculated fault-session → use overlap duration
+            faultSec += ovSec;
+          }
+        }
+
+        // Calculate downtime (Paused/Idle status)
+        const windowMs = exactEnd - exactStart;
+        const runningMs = Math.round(runtimeSec * 1000);
+        const faultedMs = Math.round(faultSec * 1000);
+        const downtimeMs = Math.max(0, windowMs - (runningMs + faultedMs));
+
+        // Convert to hours for chart display
+        const runningHours = runningMs / 3600000;
+        const faultedHours = faultedMs / 3600000;
+        const downtimeHours = downtimeMs / 3600000;
+
+        const machineName = msessions[0]?.machine?.name || `Serial ${machineSerial}`;
+        serialToName.set(machineSerial, machineName);
+
+        statusByMachine.set(machineSerial, {
+          "Running": runningHours,
+          "Faulted": faultedHours,
+          "Paused": downtimeHours
+        });
       }
       // compress per machine
       for (const [s, rec] of statusByMachine) {
