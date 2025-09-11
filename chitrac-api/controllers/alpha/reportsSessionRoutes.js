@@ -8,14 +8,318 @@ module.exports = function (server) {
   const db = server.db;
   const logger = server.logger;
 
+  // analytics/machine-item-sessions-summary (without chart content)
+
+  // router.get("/analytics/machine-item-sessions-summary", async (req, res) => {
+  //   try {
+  //     const { start, end, serial } = parseAndValidateQueryParams(req);
+  //     const exactStart = new Date(start);
+  //     const exactEnd = new Date(end);
+
+  //     // Pull machine-sessions that overlap the window.
+  //     // If still-open sessions (no timestamps.end), treat end as "now".
+  //     const match = {
+  //       ...(serial ? { "machine.serial": serial } : {}),
+  //       "timestamps.start": { $lte: exactEnd },
+  //       $or: [
+  //         { "timestamps.end": { $exists: false } },
+  //         { "timestamps.end": { $gte: exactStart } },
+  //       ],
+  //     };
+
+  //     // Use an aggregation so we only carry the counts inside the window.
+  //     // Note: we still keep session-level info for computing worked time.
+  //     const sessions = await db
+  //       .collection(config.machineSessionCollectionName)
+  //       .aggregate([
+  //         { $match: match },
+  //         // Compute overlap window and slice length in Mongo
+  //         {
+  //           $addFields: {
+  //             ovStart: { $max: ["$timestamps.start", exactStart] },
+  //             ovEnd: {
+  //               $min: [
+  //                 { $ifNull: ["$timestamps.end", exactEnd] },
+  //                 exactEnd,
+  //               ],
+  //             },
+  //           },
+  //         },
+  //         {
+  //           $addFields: {
+  //             sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] },
+  //           },
+  //         },
+  //         {
+  //           $project: {
+  //             _id: 0,
+  //             timestamps: 1,
+  //             machine: 1,
+  //             operators: 1, // to compute activeStations (exclude dummy -1)
+  //             // Keep only fields used and filter arrays to [start,end], then project minimal subfields
+  //             countsFiltered: {
+  //               $map: {
+  //                 input: {
+  //                   $filter: {
+  //                     input: "$counts",
+  //                     as: "c",
+  //                     cond: {
+  //                       $and: [
+  //                         { $gte: ["$$c.timestamp", exactStart] },
+  //                         { $lte: ["$$c.timestamp", exactEnd] },
+  //                       ],
+  //                     },
+  //                   },
+  //                 },
+  //                 as: "c",
+  //                 in: {
+  //                   timestamp: "$$c.timestamp",
+  //                   item: {
+  //                     id: "$$c.item.id",
+  //                     name: "$$c.item.name",
+  //                     standard: "$$c.item.standard",
+  //                   },
+  //                 },
+  //               },
+  //             },
+  //             ovStart: 1,
+  //             ovEnd: 1,
+  //             sliceMs: 1,
+  //           },
+  //         },
+  //         // Keep all sessions (even with no counts) since they contribute worked time
+  //       ])
+  //       .toArray();
+
+  //     if (!sessions.length) return res.json([]);
+
+  //     // Group by machine.serial (preserve old route’s multi-machine behavior)
+  //     const grouped = new Map();
+  //     for (const s of sessions) {
+  //       const key = s.machine?.serial;
+  //       if (!key) continue;
+  //       if (!grouped.has(key)) {
+  //         grouped.set(key, {
+  //           machine: {
+  //             name: s.machine?.name || "Unknown",
+  //             serial: key,
+  //           },
+  //           sessions: [],
+  //           // per-item running aggregates across sessions in the window
+  //           itemAgg: new Map(), // itemId -> { name, standard, count, workedTimeMs }
+  //           totalCount: 0,
+  //           totalWorkedMs: 0,
+  //           totalRuntimeMs: 0,
+  //         });
+  //       }
+  //       const bucket = grouped.get(key);
+
+  //       // Use precomputed overlap slice
+  //       if (!s.sliceMs || s.sliceMs <= 0) continue;
+
+  //       // Active stations = operators excluding dummy (-1)
+  //       const activeStations = Array.isArray(s.operators)
+  //         ? s.operators.filter((op) => op && op.id !== -1).length
+  //         : 0;
+
+  //       // Worked time for this clipped slice
+  //       const workedTimeMs = Math.max(0, s.sliceMs * activeStations);
+  //       const runtimeMs = Math.max(0, s.sliceMs);
+
+  //       // Session entry for response 
+  //       bucket.sessions.push({
+  //         start: new Date(s.ovStart).toISOString(),
+  //         end: new Date(s.ovEnd).toISOString(),
+  //         workedTimeMs,
+  //         workedTimeFormatted: formatDuration(workedTimeMs),
+  //         runtimeMs,
+  //         runtimeFormatted: formatDuration(runtimeMs),
+  //       });
+
+  //       // Counts inside the clipped slice (already filtered by the pipeline)
+  //       const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+  //       if (!counts.length) {
+  //         continue;
+  //       }
+
+  //       // Group counts by item id
+  //       const byItem = new Map();
+  //       for (const c of counts) {
+  //         const it = c.item || {};
+  //         const id = it.id;
+  //         if (id == null) continue;
+  //         if (!byItem.has(id)) {
+  //           byItem.set(id, {
+  //             id,
+  //             name: it.name || "Unknown",
+  //             standard: Number(it.standard) || 0,
+  //             count: 0,
+  //           });
+  //         }
+  //         byItem.get(id).count += 1;
+  //       }
+
+  //       for (const [, itm] of byItem) {
+  //         const rec = bucket.itemAgg.get(itm.id) || {
+  //           name: itm.name,
+  //           standard: itm.standard,
+  //           count: 0,
+  //           workedTimeMs: 0,
+  //         };
+  //         rec.count += itm.count;
+  //         rec.workedTimeMs += workedTimeMs; // full credit to each item that appeared in this slice
+  //         bucket.itemAgg.set(itm.id, rec);
+
+  //         bucket.totalCount += itm.count;
+  //         bucket.totalWorkedMs += workedTimeMs;
+  //         bucket.totalRuntimeMs += runtimeMs;
+  //       }
+  //     }
+
+  //     // Build final per-machine results (same shape as before)
+  //     const results = [];
+  //     for (const [, b] of grouped) {
+  //       if (!b.sessions.length) {
+  //         results.push({
+  //           machine: b.machine,
+  //           sessions: [],
+  //           machineSummary: {
+  //             totalCount: 0,
+  //             workedTimeMs: 0,
+  //             workedTimeFormatted: formatDuration(0),
+  //             pph: 0,
+  //             proratedStandard: 0,
+  //             efficiency: 0,
+  //             itemSummaries: {},
+  //           },
+  //         });
+  //         continue;
+  //       }
+
+  //       // Per-item summaries + prorated standard
+  //       let proratedStandard = 0;
+  //       const itemSummaries = {};
+  //       for (const [itemId, s] of b.itemAgg.entries()) {
+  //         const hours = s.workedTimeMs / 3600000;
+  //         const pph = hours > 0 ? s.count / hours : 0;
+
+  //         // Efficiency = PPH / standard
+  //         const eff = s.standard > 0 ? pph / s.standard : 0;
+
+  //         // weight for prorated standard
+  //         const weight = b.totalCount > 0 ? s.count / b.totalCount : 0;
+  //         proratedStandard += weight * s.standard;
+
+  //         itemSummaries[itemId] = {
+  //           name: s.name,
+  //           standard: s.standard,
+  //           countTotal: s.count,
+  //           workedTimeFormatted: formatDuration(s.workedTimeMs),
+  //           pph: Math.round(pph * 100) / 100,
+  //           efficiency: Math.round(eff * 10000) / 100,
+  //         };
+  //       }
+
+  //       const totalHours = b.totalRuntimeMs / 3600000;
+  //       const machinePph = totalHours > 0 ? b.totalCount / totalHours : 0;
+  //       const machineEff = proratedStandard > 0 ? machinePph / proratedStandard : 0;
+
+  //       results.push({
+  //         machine: b.machine,
+  //         sessions: b.sessions,
+  //         machineSummary: {
+  //           totalCount: b.totalCount,
+  //           workedTimeMs: b.totalWorkedMs,
+  //           workedTimeFormatted: formatDuration(b.totalWorkedMs),
+  //           runtimeMs: b.totalRuntimeMs,
+  //           runtimeFormatted: formatDuration(b.totalRuntimeMs),
+  //           pph: Math.round(machinePph * 100) / 100,
+  //           proratedStandard: Math.round(proratedStandard * 100) / 100,
+  //           efficiency: Math.round(machineEff * 10000) / 100,
+  //           itemSummaries,
+  //         },
+  //       });
+  //     }
+
+  //     res.json(results);
+  //   } catch (error) {
+  //     logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+  //     res
+  //       .status(500)
+  //       .json({ error: "Failed to generate machine item summary" });
+  //   }
+  // });
+
+
+  // analytics/machine-item-sessions-summary (with chart content)
+
   router.get("/analytics/machine-item-sessions-summary", async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
-
-      // Pull machine-sessions that overlap the window.
-      // If still-open sessions (no timestamps.end), treat end as "now".
+  
+      // ---------- helpers (local to route) ----------
+      const topNSlicesPerBar = 10;
+      const OTHER_LABEL = "Other";
+  
+      // Merge-slices so each bar has at most N slices (Top N-1 + "Other")
+      function compressSlicesPerBar(
+        perLabelTotals,
+        N = topNSlicesPerBar,
+        otherLabel = OTHER_LABEL
+      ) {
+        const entries = Object.entries(perLabelTotals);
+        if (entries.length <= N) return perLabelTotals;
+  
+        entries.sort((a, b) => b[1] - a[1]);
+        const keep = entries.slice(0, N - 1);
+        const rest = entries.slice(N - 1);
+        const otherSum = rest.reduce((s, [, v]) => s + v, 0);
+  
+        const out = {};
+        for (const [k, v] of keep) out[k] = v;
+        out[otherLabel] = otherSum;
+        return out;
+      }
+  
+      // Convert {serial -> {label -> value}} into XY-style stacked series
+      function toStackedSeries(
+        byMachine,
+        serialToName,
+        orderSerials,
+        stackId
+      ) {
+        // union of labels (after compression)
+        const labels = new Set();
+        for (const s of orderSerials) {
+          const m = byMachine.get(s);
+          if (!m) continue;
+          Object.keys(m).forEach((k) => labels.add(k));
+        }
+        
+        // Sort labels by total descending for stable legend order
+        const sortedLabels = [...labels].sort((a, b) => {
+          const totalA = orderSerials.reduce((sum, serial) => sum + (byMachine.get(serial)?.[a] || 0), 0);
+          const totalB = orderSerials.reduce((sum, serial) => sum + (byMachine.get(serial)?.[b] || 0), 0);
+          return totalB - totalA;
+        });
+        
+        // make one series per label
+        const series = sortedLabels.map((label) => ({
+          id: label,
+          title: label,
+          type: "bar",
+          stack: stackId,
+          data: orderSerials.map((serial) => ({
+            x: serialToName.get(serial) || serial,
+            y: (byMachine.get(serial) && byMachine.get(serial)[label]) || 0,
+          })),
+        }));
+        return series;
+      }
+  
+      // ---------- 1) Sessions & Items (existing logic) ----------
       const match = {
         ...(serial ? { "machine.serial": serial } : {}),
         "timestamps.start": { $lte: exactEnd },
@@ -24,22 +328,16 @@ module.exports = function (server) {
           { "timestamps.end": { $gte: exactStart } },
         ],
       };
-
-      // Use an aggregation so we only carry the counts inside the window.
-      // Note: we still keep session-level info for computing worked time.
+  
       const sessions = await db
         .collection(config.machineSessionCollectionName)
         .aggregate([
           { $match: match },
-          // Compute overlap window and slice length in Mongo
           {
             $addFields: {
               ovStart: { $max: ["$timestamps.start", exactStart] },
               ovEnd: {
-                $min: [
-                  { $ifNull: ["$timestamps.end", exactEnd] },
-                  exactEnd,
-                ],
+                $min: [{ $ifNull: ["$timestamps.end", exactEnd] }, exactEnd],
               },
             },
           },
@@ -53,8 +351,7 @@ module.exports = function (server) {
               _id: 0,
               timestamps: 1,
               machine: 1,
-              operators: 1, // to compute activeStations (exclude dummy -1)
-              // Keep only fields used and filter arrays to [start,end], then project minimal subfields
+              operators: 1,
               countsFiltered: {
                 $map: {
                   input: {
@@ -85,26 +382,34 @@ module.exports = function (server) {
               sliceMs: 1,
             },
           },
-          // Keep all sessions (even with no counts) since they contribute worked time
         ])
         .toArray();
+  
+      if (!sessions.length) {
+        return res.json({
+          timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+          results: [],
+          charts: {
+            statusStacked: { title:"Machine Status Stacked Bar", orientation:"horizontal", xType:"category", xLabel:"Machine", yLabel:"Duration (hours)", series: [] },
+            efficiencyRanked: { title:"Ranked Efficiency% by Machine", orientation:"horizontal", xType:"category", xLabel:"Machine", yLabel:"Efficiency (%)", series:[{ id:"Efficiency", title:"Efficiency", type:"bar", data:[] }] },
+            itemsStacked: { title:"Item Stacked Bar by Machine", orientation:"horizontal", xType:"category", xLabel:"Machine", yLabel:"Item Count", series: [] },
+            faultsStacked: { title:"Fault Stacked Bar by Machine", orientation:"horizontal", xType:"category", xLabel:"Machine", yLabel:"Fault Duration (hours)", series: [] },
+            order: []
+          }
+        });
+      }
+  
+      // Group for original results + for building charts
+      const grouped = new Map(); // serial -> bucket
 
-      if (!sessions.length) return res.json([]);
-
-      // Group by machine.serial (preserve old route’s multi-machine behavior)
-      const grouped = new Map();
       for (const s of sessions) {
         const key = s.machine?.serial;
         if (!key) continue;
         if (!grouped.has(key)) {
           grouped.set(key, {
-            machine: {
-              name: s.machine?.name || "Unknown",
-              serial: key,
-            },
+            machine: { name: s.machine?.name || "Unknown", serial: key },
             sessions: [],
-            // per-item running aggregates across sessions in the window
-            itemAgg: new Map(), // itemId -> { name, standard, count, workedTimeMs }
+            itemAgg: new Map(),
             totalCount: 0,
             totalWorkedMs: 0,
             totalRuntimeMs: 0,
@@ -112,35 +417,42 @@ module.exports = function (server) {
         }
         const bucket = grouped.get(key);
 
-        // Use precomputed overlap slice
         if (!s.sliceMs || s.sliceMs <= 0) continue;
 
-        // Active stations = operators excluding dummy (-1)
         const activeStations = Array.isArray(s.operators)
           ? s.operators.filter((op) => op && op.id !== -1).length
           : 0;
 
-        // Worked time for this clipped slice
         const workedTimeMs = Math.max(0, s.sliceMs * activeStations);
         const runtimeMs = Math.max(0, s.sliceMs);
 
-        // Session entry for response 
-        bucket.sessions.push({
-          start: new Date(s.ovStart).toISOString(),
-          end: new Date(s.ovEnd).toISOString(),
-          workedTimeMs,
-          workedTimeFormatted: formatDuration(workedTimeMs),
-          runtimeMs,
-          runtimeFormatted: formatDuration(runtimeMs),
-        });
+        // Check if this is a synthetic "total" session spanning the whole timeRange
+        const sessionStart = new Date(s.ovStart);
+        const sessionEnd = new Date(s.ovEnd);
+        const isSyntheticTotal = (
+          Math.abs(sessionStart.getTime() - exactStart.getTime()) < 1000 && // within 1 second of exact start
+          Math.abs(sessionEnd.getTime() - exactEnd.getTime()) < 1000 &&     // within 1 second of exact end
+          s.sliceMs > (exactEnd.getTime() - exactStart.getTime()) * 0.9     // covers >90% of time range
+        );
 
-        // Counts inside the clipped slice (already filtered by the pipeline)
-        const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
-        if (!counts.length) {
-          continue;
+        // Only add to sessions array if it's not a synthetic total
+        if (!isSyntheticTotal) {
+          bucket.sessions.push({
+            start: new Date(s.ovStart).toISOString(),
+            end: new Date(s.ovEnd).toISOString(),
+            workedTimeMs,
+            workedTimeFormatted: formatDuration(workedTimeMs),
+            runtimeMs,
+            runtimeFormatted: formatDuration(runtimeMs),
+          });
         }
 
-        // Group counts by item id
+        // Always add to runtime totals for summary math
+        bucket.totalRuntimeMs += runtimeMs;
+
+        const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+        if (!counts.length) continue;
+  
         const byItem = new Map();
         for (const c of counts) {
           const it = c.item || {};
@@ -156,55 +468,43 @@ module.exports = function (server) {
           }
           byItem.get(id).count += 1;
         }
+  
+        // Apportion worked time across items by count share
+        const totalSessionItemCount = [...byItem.values()].reduce((s, it) => s + it.count, 0) || 1;
 
         for (const [, itm] of byItem) {
-          const rec = bucket.itemAgg.get(itm.id) || {
-            name: itm.name,
-            standard: itm.standard,
-            count: 0,
-            workedTimeMs: 0,
-          };
+          const share = itm.count / totalSessionItemCount;
+          const workedShare = workedTimeMs * share;
+
+          const rec =
+            bucket.itemAgg.get(itm.id) || {
+              name: itm.name,
+              standard: itm.standard,
+              count: 0,
+              workedTimeMs: 0,
+            };
           rec.count += itm.count;
-          rec.workedTimeMs += workedTimeMs; // full credit to each item that appeared in this slice
+          rec.workedTimeMs += workedShare;
           bucket.itemAgg.set(itm.id, rec);
 
           bucket.totalCount += itm.count;
-          bucket.totalWorkedMs += workedTimeMs;
-          bucket.totalRuntimeMs += runtimeMs;
+          bucket.totalWorkedMs += workedShare;   // track worked time consistently
         }
       }
-
-      // Build final per-machine results (same shape as before)
+  
       const results = [];
+      const serialToName = new Map();
+  
       for (const [, b] of grouped) {
-        if (!b.sessions.length) {
-          results.push({
-            machine: b.machine,
-            sessions: [],
-            machineSummary: {
-              totalCount: 0,
-              workedTimeMs: 0,
-              workedTimeFormatted: formatDuration(0),
-              pph: 0,
-              proratedStandard: 0,
-              efficiency: 0,
-              itemSummaries: {},
-            },
-          });
-          continue;
-        }
+        serialToName.set(b.machine.serial, b.machine.name);
 
-        // Per-item summaries + prorated standard
         let proratedStandard = 0;
         const itemSummaries = {};
+
         for (const [itemId, s] of b.itemAgg.entries()) {
           const hours = s.workedTimeMs / 3600000;
           const pph = hours > 0 ? s.count / hours : 0;
-
-          // Efficiency = PPH / standard
           const eff = s.standard > 0 ? pph / s.standard : 0;
-
-          // weight for prorated standard
           const weight = b.totalCount > 0 ? s.count / b.totalCount : 0;
           proratedStandard += weight * s.standard;
 
@@ -218,8 +518,13 @@ module.exports = function (server) {
           };
         }
 
-        const totalHours = b.totalRuntimeMs / 3600000;
-        const machinePph = totalHours > 0 ? b.totalCount / totalHours : 0;
+        // Recalculate runtime from actual sessions (excluding synthetic totals)
+        const actualRuntimeMs = b.sessions.reduce((sum, session) => sum + session.runtimeMs, 0);
+        
+        // Use worked time for PPH calculation
+        const USE_WORKED_TIME = true;
+        const hours = USE_WORKED_TIME ? (b.totalWorkedMs / 3600000) : (actualRuntimeMs / 3600000);
+        const machinePph = hours > 0 ? b.totalCount / hours : 0;
         const machineEff = proratedStandard > 0 ? machinePph / proratedStandard : 0;
 
         results.push({
@@ -229,8 +534,8 @@ module.exports = function (server) {
             totalCount: b.totalCount,
             workedTimeMs: b.totalWorkedMs,
             workedTimeFormatted: formatDuration(b.totalWorkedMs),
-            runtimeMs: b.totalRuntimeMs,
-            runtimeFormatted: formatDuration(b.totalRuntimeMs),
+            runtimeMs: actualRuntimeMs,
+            runtimeFormatted: formatDuration(actualRuntimeMs),
             pph: Math.round(machinePph * 100) / 100,
             proratedStandard: Math.round(proratedStandard * 100) / 100,
             efficiency: Math.round(machineEff * 10000) / 100,
@@ -238,15 +543,275 @@ module.exports = function (server) {
           },
         });
       }
+  
+      // ---------- 2) Status stacked (durations) ----------
+      // Calculate actual status durations using machine-session and fault-session collections
+      // Similar to the daily dashboard machine status approach
+      
+      const msColl = db.collection(config.machineSessionCollectionName);
+      const fsColl = db.collection(config.faultSessionCollectionName);
 
-      res.json(results);
+      // Get all machines that have sessions in the time window
+      const machineSerials = await msColl.distinct("machine.serial", {
+        "timestamps.start": { $lt: exactEnd },
+        $or: [
+          { "timestamps.end": { $gt: exactStart } }, 
+          { "timestamps.end": { $exists: false } }, 
+          { "timestamps.end": null }
+        ],
+        ...(serial ? { "machine.serial": serial } : {})
+      });
+
+      const statusByMachine = new Map();
+
+      // Helper function to calculate overlap
+      const overlap = (sStart, sEnd, wStart, wEnd) => {
+        const ss = new Date(sStart);
+        const se = new Date(sEnd || wEnd);
+        const os = ss > wStart ? ss : wStart;
+        const oe = se < wEnd ? se : wEnd;
+        const ovSec = Math.max(0, (oe - os) / 1000);
+        const fullSec = Math.max(0, (se - ss) / 1000);
+        const f = fullSec > 0 ? ovSec / fullSec : 0;
+        return { ovSec, fullSec, factor: f };
+      };
+
+      const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+
+      for (const machineSerial of machineSerials) {
+        const [msessions, fsessions] = await Promise.all([
+          msColl.find({
+            "machine.serial": machineSerial,
+            "timestamps.start": { $lt: exactEnd },
+            $or: [
+              { "timestamps.end": { $gt: exactStart } }, 
+              { "timestamps.end": { $exists: false } }, 
+              { "timestamps.end": null }
+            ]
+          }).project({
+            _id: 0, machine: 1, timestamps: 1, runtime: 1
+          }).toArray(),
+          fsColl.find({
+            "machine.serial": machineSerial,
+            "timestamps.start": { $lt: exactEnd },
+            $or: [
+              { "timestamps.end": { $gt: exactStart } }, 
+              { "timestamps.end": { $exists: false } }, 
+              { "timestamps.end": null }
+            ]
+          }).project({
+            _id: 0, timestamps: 1, faulttime: 1
+          }).toArray()
+        ]);
+
+        if (!msessions.length) continue;
+
+        // Calculate runtime (Running status)
+        let runtimeSec = 0;
+        for (const s of msessions) {
+          const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, exactStart, exactEnd);
+          runtimeSec += safe(s.runtime) * factor; // runtime is stored in seconds
+        }
+
+        // Calculate fault time (Faulted status)
+        let faultSec = 0;
+        for (const fs of fsessions) {
+          const sStart = fs.timestamps?.start;
+          const sEnd = fs.timestamps?.end || exactEnd;
+          const { ovSec, fullSec } = overlap(sStart, sEnd, exactStart, exactEnd);
+          if (ovSec === 0) continue;
+          const ft = safe(fs.faulttime);
+          if (ft > 0 && fullSec > 0) {
+            const factor = ovSec / fullSec;
+            faultSec += ft * factor;
+          } else {
+            // open/unfinished or unrecalculated fault-session → use overlap duration
+            faultSec += ovSec;
+          }
+        }
+
+        // Calculate downtime (Paused/Idle status)
+        const windowMs = exactEnd - exactStart;
+        const runningMs = Math.round(runtimeSec * 1000);
+        const faultedMs = Math.round(faultSec * 1000);
+        const downtimeMs = Math.max(0, windowMs - (runningMs + faultedMs));
+
+        // Convert to hours for chart display
+        const runningHours = runningMs / 3600000;
+        const faultedHours = faultedMs / 3600000;
+        const downtimeHours = downtimeMs / 3600000;
+
+        const machineName = msessions[0]?.machine?.name || `Serial ${machineSerial}`;
+        serialToName.set(machineSerial, machineName);
+
+        statusByMachine.set(machineSerial, {
+          "Running": runningHours,
+          "Faulted": faultedHours,
+          "Paused": downtimeHours
+        });
+      }
+      // compress per machine
+      for (const [s, rec] of statusByMachine) {
+        statusByMachine.set(s, compressSlicesPerBar(rec));
+      }
+
+      // Ensure we have status data for all machines in results
+      for (const result of results) {
+        const serial = result.machine.serial;
+        if (!statusByMachine.has(serial)) {
+          statusByMachine.set(serial, { "No Data": 0 });
+        }
+      }
+
+      // ---------- 3) Faults stacked (durations by fault type) ----------
+      
+      const faultsAggRaw = await db
+        .collection(config.faultSessionCollectionName)
+        .aggregate([
+          {
+            $match: {
+              ...(serial ? { "machine.serial": serial } : {}),
+              "timestamps.start": { $lte: exactEnd },
+              $or: [
+                { "timestamps.end": { $exists: false } },
+                { "timestamps.end": { $gte: exactStart } },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              ovStart: { $max: ["$timestamps.start", exactStart] },
+              ovEnd: { $min: [{ $ifNull: ["$timestamps.end", exactEnd] }, exactEnd] },
+            },
+          },
+          { $addFields: { sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] } } },
+          {
+            $project: {
+              machine: 1,
+              sliceMs: 1,
+              label: {
+                $ifNull: [
+                  "$fault.type",
+                  { $ifNull: ["$fault.label", { $ifNull: ["$code", "Unknown"] }] },
+                ],
+              },
+            },
+          },
+          { $match: { sliceMs: { $gt: 0 } } },
+          {
+            $group: {
+              _id: { serial: "$machine.serial", label: "$label" },
+              name: { $first: "$machine.name" },
+              totalMs: { $sum: "$sliceMs" },
+            },
+          },
+        ])
+        .toArray();
+
+      const faultsByMachine = new Map();
+      for (const row of faultsAggRaw) {
+        const s = row._id.serial;
+        const label = String(row._id.label || "Unknown");
+        const val = Number(row.totalMs || 0) / 3600000; // Convert ms to hours
+        if (!faultsByMachine.has(s)) faultsByMachine.set(s, {});
+        faultsByMachine.get(s)[label] = (faultsByMachine.get(s)[label] || 0) + val;
+        if (!serialToName.has(s)) serialToName.set(s, row.name || s);
+      }
+      for (const [s, rec] of faultsByMachine) {
+        faultsByMachine.set(s, compressSlicesPerBar(rec));
+      }
+
+      for (const result of results) {
+        const serial = result.machine.serial;
+        if (!faultsByMachine.has(serial)) {
+          faultsByMachine.set(serial, { "No Faults": 0 });
+        }
+      }
+
+      // ---------- 4) Efficiency ranking order ----------
+      const efficiencyRanked = results
+        .map(r => ({
+          serial: r.machine.serial,
+          name: r.machine.name,
+          efficiency: Number(r.machineSummary?.efficiency || 0),
+        }))
+        .sort((a, b) => b.efficiency - a.efficiency);
+
+      // Build comprehensive machine ordering from all data sources
+      const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
+      for (const m of statusByMachine.keys()) unionSerials.add(m);
+      for (const m of faultsByMachine.keys()) unionSerials.add(m);
+      const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
+
+      // ---------- 5) Items stacked  ----------
+      const itemsByMachine = new Map();
+      for (const r of results) {
+        const m = {};
+        for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
+          const label = s.name || String(id);
+          const count = Number(s.countTotal || 0);
+          m[label] = (m[label] || 0) + count;
+        }
+        itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
+      }
+      const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
+      const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
+      const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
+  
+      // ---------- 6) Final payload ----------
+      res.json({
+        timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+        results,                  // original detailed per-machine results (unchanged shape)
+        charts: {
+          statusStacked: {
+            title: "Machine Status Stacked Bar",
+            orientation: "horizontal",
+            xType: "category",
+            xLabel: "Machine",
+            yLabel: "Duration (hours)",
+            series: statusStacked
+          },
+          efficiencyRanked: {
+            title: "Ranked OEE% by Machine", 
+            orientation: "horizontal",
+            xType: "category",
+            xLabel: "Machine",
+            yLabel: "OEE (%)",
+            series: [
+              {
+                id: "OEE",
+                title: "OEE",
+                type: "bar",
+                data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
+              },
+            ]
+          },
+          itemsStacked: {
+            title: "Item Stacked Bar by Machine",
+            orientation: "horizontal", 
+            xType: "category",
+            xLabel: "Machine",
+            yLabel: "Item Count",
+            series: itemsStacked
+          },
+          faultsStacked: {
+            title: "Fault Stacked Bar by Machine",
+            orientation: "horizontal",
+            xType: "category", 
+            xLabel: "Machine",
+            yLabel: "Fault Duration (hours)",
+            series: faultsStacked
+          },
+          order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
+        },
+      });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
-      res
-        .status(500)
-        .json({ error: "Failed to generate machine item summary" });
+      res.status(500).json({ error: "Failed to generate machine item summary" });
     }
   });
+  
+
 
 
 
