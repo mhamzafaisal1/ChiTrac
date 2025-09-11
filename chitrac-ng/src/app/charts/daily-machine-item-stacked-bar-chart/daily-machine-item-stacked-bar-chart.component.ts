@@ -79,7 +79,7 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
         this.liveMode = false;
-        this.stopPolling();
+        this.stopPollingInternal();
         this.enterDummy();
         this.startTime = this.dateTimeService.getStartTime();
         this.endTime = this.dateTimeService.getEndTime();
@@ -98,7 +98,7 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
 
   ngOnDestroy(): void {
     this.destroy$.next(); this.destroy$.complete();
-    this.stopPolling();
+    this.stopPollingInternal();
   }
 
   // ---------- core flow ----------
@@ -114,14 +114,14 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   }
 
   private stopLive(): void {
-    this.stopPolling();
+    this.stopPollingInternal();
     this.hasInitialData = false;
     this.chartData = null;
     this.enterDummy();
   }
 
   private setupPolling(): void {
-    this.stopPolling();
+    this.stopPollingInternal();
     this.pollingSub = this.pollingService.poll(
       () => {
         this.endTime = this.pollingService.updateEndTimestampToNow();
@@ -132,10 +132,10 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
       this.destroy$,
       false,
       false
-    ).subscribe({ error: () => this.stopPolling() });
+    ).subscribe({ error: () => this.stopPollingInternal() });
   }
 
-  private stopPolling(): void {
+  private stopPollingInternal(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
   }
 
@@ -179,6 +179,20 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartData = null;
+  }
+
+  // ---------- grid interface methods ----------
+  startPolling(): void {
+    this.startLive();
+  }
+
+  stopPolling(): void {
+    this.stopLive();
+  }
+
+  setAvailableSize(w: number, h: number): void {
+    this.chartWidth = w;
+    this.chartHeight = h;
   }
 
   // ---------- utils ----------

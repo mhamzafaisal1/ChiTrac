@@ -47,6 +47,13 @@
     }
   }
   
+  .grid-container {
+    margin-bottom: 1rem;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+  }
+
   .table-container {
     flex: 1;
     overflow: auto;

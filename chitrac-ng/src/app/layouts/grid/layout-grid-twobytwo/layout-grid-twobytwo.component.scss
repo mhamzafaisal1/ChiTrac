@@ -1,7 +1,7 @@
 :host {
   display: block;
   width: 100%;
-  height: calc(100vh - 100px); /* Account for toolbar and padding - increased height */
+  height: var(--grid-height, calc(100vh - 100px)); /* Use CSS variable for height */
   max-height: 900px; /* Prevent it from getting too tall - increased max height */
   overflow: hidden;
 }

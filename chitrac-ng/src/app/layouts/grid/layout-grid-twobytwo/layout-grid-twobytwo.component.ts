@@ -35,6 +35,9 @@ import {
   export class LayoutGridTwoByTwoComponent implements AfterViewInit, OnDestroy {
     // Provide 1–4 component types. Required input.
     @Input() components: Type<unknown>[] = [];
+    
+    // Optional height input - defaults to 93% if not provided
+    @Input() height: string = '93%';
 
     @ViewChildren('slot', { read: ViewContainerRef })
     private slots!: QueryList<ViewContainerRef>;
@@ -59,6 +62,9 @@ import {
     if (this.components.length > 4) {
       console.warn('LayoutGridTwoByTwoComponent: More than 4 components provided, using first 4');
     }
+    
+    // Set the height CSS variable
+    this.hostEl.nativeElement.style.setProperty('--grid-height', this.height);
     
     console.log('LayoutGridTwoByTwoComponent: Components received:', this.components.length);
     

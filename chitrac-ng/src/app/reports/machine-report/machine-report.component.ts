@@ -14,6 +14,9 @@ import { MachineAnalyticsService } from '../../services/machine-analytics.servic
 import { MachineItemSummaryService } from '../../services/machine-item-summary.service';
 import { DateTimePickerComponent } from '../../components/date-time-picker/date-time-picker.component';
 import { getStatusDotByCode } from '../../../utils/status-utils';
+import { LayoutGridTwoByTwoComponent } from '../../layouts/grid/layout-grid-twobytwo/layout-grid-twobytwo.component';
+import { DailyMachineItemStackedBarChartComponent } from '../../charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component';
+import { DailyMachineStackedBarChartComponent } from '../../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component';
 
 @Component({
     selector: 'app-machine-report',
@@ -26,7 +29,8 @@ import { getStatusDotByCode } from '../../../utils/status-utils';
         MatButtonModule,
         MatIconModule,
         BaseTableComponent,
-        DateTimePickerComponent
+        DateTimePickerComponent,
+        LayoutGridTwoByTwoComponent
     ],
     templateUrl: './machine-report.component.html',
     styleUrls: ['./machine-report.component.scss'] // ❗️Use plural: styleUrls
@@ -42,6 +46,15 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
   private observer!: MutationObserver;
+
+  // 2x2 Grid properties
+  showGrid: boolean = false;
+  gridComponents = [
+    DailyMachineStackedBarChartComponent,
+    DailyMachineStackedBarChartComponent,
+    DailyMachineStackedBarChartComponent,
+    DailyMachineStackedBarChartComponent
+  ];
 
   constructor(
     private analyticsService: MachineAnalyticsService,
@@ -120,6 +133,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
         this.columns = Object.keys(formattedData[0]);
         this.rows = formattedData;
         this.isLoading = false;
+        this.showGrid = true; // Show the 2x2 grid after data is loaded
       },
       error: (error) => {
         console.error('Error fetching machine item summary:', error);
