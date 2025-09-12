@@ -20,13 +20,35 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, 1fr);
   gap: 8px;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
   padding: 8px;
+}
+
+// Default 2x2 grid
+.grid.grid-4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+// 3 components - 2 on top row, 1 on bottom row
+.grid.grid-3 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+// 2 components - side by side
+.grid.grid-2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+// 1 component - full width
+.grid.grid-1 {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
 }
 
 .cell {
@@ -56,6 +78,17 @@
   align-items: stretch;
   justify-content: stretch;
   overflow: hidden;
+  
+  // Ensure child components fill the entire cell
+  > * {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+// Hide empty cells to prevent them from taking up space
+.cell:empty {
+  display: none;
 }
 
 /* Collapse to single column on smaller screens */
@@ -67,8 +100,8 @@
   }
   
   .grid {
-    grid-template-columns: 1fr;
-    grid-template-rows: repeat(auto-fit, minmax(300px, auto)); /* Allow rows to size based on content */
+    grid-template-columns: 1fr !important;
+    grid-template-rows: repeat(auto-fit, minmax(300px, auto)) !important; /* Allow rows to size based on content */
     gap: 12px;
     padding: 12px;
     height: auto; /* Allow grid to expand vertically */
@@ -89,6 +122,8 @@
   }
   
   .grid {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: repeat(auto-fit, minmax(250px, auto)) !important;
     gap: 8px;
     padding: 8px;
     height: auto; /* Allow grid to expand vertically */

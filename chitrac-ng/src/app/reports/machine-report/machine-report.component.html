@@ -55,12 +55,12 @@
   </div>
 
   <!-- 2x2 Grid - only show after data is loaded -->
-  <div class="grid-container" *ngIf="showGrid">
-    <layout-grid-twobytwo 
-      [components]="gridComponents" 
-      height="800px">
-    </layout-grid-twobytwo>
-  </div>
+  <layout-grid-twobytwo 
+    *ngIf="showGrid"
+    [components]="gridComponents"
+    [chartData]="chartDataArray"
+    height="800px">
+  </layout-grid-twobytwo>
 
   <div class="table-container" [class.loading]="isLoading">
     <base-table

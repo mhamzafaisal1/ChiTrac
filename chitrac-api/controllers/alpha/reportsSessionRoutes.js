@@ -664,6 +664,7 @@ module.exports = function (server) {
       }
 
       // ---------- 3) Faults stacked (durations by fault type) ----------
+      // Based on faultSessionRoutes.js structure - extract fault info from startState
       
       const faultsAggRaw = await db
         .collection(config.faultSessionCollectionName)
@@ -691,8 +692,8 @@ module.exports = function (server) {
               sliceMs: 1,
               label: {
                 $ifNull: [
-                  "$fault.type",
-                  { $ifNull: ["$fault.label", { $ifNull: ["$code", "Unknown"] }] },
+                  "$startState.status.name",
+                  { $ifNull: ["$startState.status.code", "Unknown"] },
                 ],
               },
             },
@@ -717,8 +718,38 @@ module.exports = function (server) {
         faultsByMachine.get(s)[label] = (faultsByMachine.get(s)[label] || 0) + val;
         if (!serialToName.has(s)) serialToName.set(s, row.name || s);
       }
+      // Global compression: find top fault types across all machines
+      const globalFaultTotals = new Map();
+      for (const [, rec] of faultsByMachine) {
+        for (const [faultType, hours] of Object.entries(rec)) {
+          globalFaultTotals.set(faultType, (globalFaultTotals.get(faultType) || 0) + hours);
+        }
+      }
+      
+      // Get top fault types globally
+      const sortedGlobalFaults = Array.from(globalFaultTotals.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, topNSlicesPerBar - 1)
+        .map(([type]) => type);
+      
+      // Apply global compression to each machine
       for (const [s, rec] of faultsByMachine) {
-        faultsByMachine.set(s, compressSlicesPerBar(rec));
+        const compressed = {};
+        let otherSum = 0;
+        
+        for (const [faultType, hours] of Object.entries(rec)) {
+          if (sortedGlobalFaults.includes(faultType)) {
+            compressed[faultType] = hours;
+          } else {
+            otherSum += hours;
+          }
+        }
+        
+        if (otherSum > 0) {
+          compressed[OTHER_LABEL] = otherSum;
+        }
+        
+        faultsByMachine.set(s, compressed);
       }
 
       for (const result of results) {
@@ -765,7 +796,7 @@ module.exports = function (server) {
         charts: {
           statusStacked: {
             title: "Machine Status Stacked Bar",
-            orientation: "horizontal",
+            orientation: "vertical",
             xType: "category",
             xLabel: "Machine",
             yLabel: "Duration (hours)",
@@ -788,7 +819,7 @@ module.exports = function (server) {
           },
           itemsStacked: {
             title: "Item Stacked Bar by Machine",
-            orientation: "horizontal", 
+            orientation: "vertical", 
             xType: "category",
             xLabel: "Machine",
             yLabel: "Item Count",
@@ -796,7 +827,7 @@ module.exports = function (server) {
           },
           faultsStacked: {
             title: "Fault Stacked Bar by Machine",
-            orientation: "horizontal",
+            orientation: "vertical",
             xType: "category", 
             xLabel: "Machine",
             yLabel: "Fault Duration (hours)",

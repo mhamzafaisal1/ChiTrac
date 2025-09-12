@@ -47,12 +47,7 @@
     }
   }
   
-  .grid-container {
-    margin-bottom: 1rem;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-  }
+  // Grid styling is now handled by layout-grid-twobytwo component
 
   .table-container {
     flex: 1;
