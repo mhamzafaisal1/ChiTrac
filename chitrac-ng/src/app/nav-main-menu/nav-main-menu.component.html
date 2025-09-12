@@ -178,8 +178,8 @@
         </button>
 
         <mat-menu #loginMenu="matMenu" class="login-menu-panel" [overlapTrigger]="false" xPosition="before"
-          yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''">
-          <div (click)="$event.stopPropagation()">
+          yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''" (keydown)="onKeyDown($event)">
+          <div (click)="$event.stopPropagation()" (keydown)="onKeyDown($event)">
             <app-user-login (closeModal)="onLoginModalClose()" />
           </div>
         </mat-menu>
