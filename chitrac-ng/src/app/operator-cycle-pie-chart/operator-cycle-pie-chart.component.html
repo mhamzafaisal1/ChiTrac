@@ -14,19 +14,24 @@
   </div>
 
   <div class="chart-content">
-    <div *ngIf="loading" class="loading">Loading...</div>
-    <div *ngIf="error" class="error">{{ error }}</div>
-    <div *ngIf="!loading && !error && pieData.length === 0" class="no-data">No data available</div>
-    <div *ngIf="!loading && !error && pieData.length > 0" class="data-display">
-      <div class="chart-wrapper">
-        <h3 class="chart-title">{{ title }}</h3>
-        <pie-chart 
-          [data]="pieData" 
-          [title]="title"
-          [chartWidth]="chartWidth"
-          [chartHeight]="chartHeight">
-        </pie-chart>
+    <div class="loading-overlay" *ngIf="loading">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading data...</div>
       </div>
     </div>
+
+    <div class="chart-display" *ngIf="!loading && chartConfig">
+      <cartesian-chart [config]="chartConfig"></cartesian-chart>
+    </div>
+
+    <div class="no-data" *ngIf="!loading && !chartConfig && !error">
+      <div class="no-data-content">
+        <div class="no-data-icon">📊</div>
+        <div class="no-data-text">No data available for the selected time range</div>
+      </div>
+    </div>
+
+    <div class="error" *ngIf="error">{{ error }}</div>
   </div>
 </div>

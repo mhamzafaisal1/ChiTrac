@@ -7,7 +7,7 @@ import {
   
   /* ===== Public Types (use everywhere) ===== */
   export type XYOrientation = 'vertical' | 'horizontal';
-  export type SeriesType = 'bar' | 'line' | 'area' | 'dot' | 'lollipop';
+  export type SeriesType = 'bar' | 'line' | 'area' | 'dot' | 'lollipop' | 'pie' | 'donut';
   export type XType = 'category' | 'time' | 'linear';
   
   export interface XYPoint { x: string | number | Date; y: number; }
@@ -40,6 +40,7 @@ import {
     yTickFormat?: (v:number)=>string;
     margin?: { top:number; right:number; bottom:number; left:number };
     legend?: { show: boolean; position: 'top'|'right' };
+    pie?: { padAngle?: number; cornerRadius?: number; innerRatio?: number }; // innerRatio for donut, e.g. 0.6
     series: XYSeries[];
   }
   
@@ -105,8 +106,14 @@ import {
         this.initSvg();
         return;
       }
-  
+
       const cfg = this.withDefaults(this.config);
+      const hasPie = cfg.series.some(s => s.type === 'pie' || s.type === 'donut');
+      if (hasPie) { 
+        this.renderPie(this.rootG, cfg); 
+        return; 
+      }
+
       const { width, height, margin, orientation } = cfg;
   
       // size
@@ -444,7 +451,119 @@ import {
     private hash(s: string) { let h=0; for (let i=0;i<s.length;i++) h=((h<<5)-h)+s.charCodeAt(i)|0; return h; }
   
     /* ===== Renderers ===== */
-  
+
+    private renderPie(
+      g: d3.Selection<SVGGElement, unknown, null, undefined>,
+      cfg: CartesianChartConfig
+    ) {
+      const { width, height, margin } = cfg;
+      
+      // Set SVG dimensions
+      this.svg
+        .attr('width', width)
+        .attr('height', height);
+      
+      // Clear existing content
+      g.selectAll('*').remove();
+      
+      const innerW = Math.max(10, width - margin.left - margin.right);
+      const innerH = Math.max(10, height - margin.top - margin.bottom);
+      const isDark = document.body.classList.contains('dark-theme');
+      const textColor = isDark ? '#e0e0e0' : '#333';
+
+      // Guard against mixing pie with Cartesian types
+      const mixed = cfg.series.some(s => s.type !== 'pie' && s.type !== 'donut');
+      if (mixed) {
+        console.warn('Pie cannot mix with Cartesian types in one render. Showing pie only.');
+      }
+
+      // assume a single pie series; if multiple, merge or draw first
+      const s = cfg.series.find(ss => ss.type === 'pie' || ss.type === 'donut')!;
+      const data = s.data.map(d => ({ name: String(d.x), value: +d.y }));
+      const center = g.append('g')
+        .attr('transform', `translate(${margin.left + innerW/2}, ${margin.top + innerH/2})`);
+
+      const r = Math.min(innerW, innerH) / 2;
+      const innerRatio = (s.type === 'donut' ? (cfg.pie?.innerRatio ?? 0.6) : 0);
+      const innerR = Math.max(0, r * innerRatio);
+
+      const color = d3.scaleOrdinal<string,string>()
+        .domain(data.map(d => d.name))
+        .range(d3.schemeSet2 as unknown as string[]);
+
+      const pie = d3.pie<{name:string; value:number}>()
+        .value(d => d.value)
+        .sort(null)
+        .padAngle(cfg.pie?.padAngle ?? 0);
+
+      const arc = d3.arc<d3.PieArcDatum<{name:string; value:number}>>()
+        .innerRadius(innerR)
+        .outerRadius(r)
+        .cornerRadius(cfg.pie?.cornerRadius ?? 0);
+
+      const arcs = pie(data);
+
+      center.selectAll('path')
+        .data(arcs)
+        .enter()
+        .append('path')
+        .attr('d', arc as any)
+        .attr('fill', d => color(d.data.name))
+        .attr('stroke', isDark ? '#1f1f1f' : '#fff')
+        .style('stroke-width', '2px');
+
+      // callout lines + labels
+      const labelR = r * 1.15;
+      const breakR = r * 1.02;
+
+      const polys = center.selectAll('polyline')
+        .data(arcs)
+        .enter()
+        .append('polyline')
+        .attr('stroke', textColor)
+        .attr('fill', 'none')
+        .attr('stroke-width', 1);
+
+      const labels = center.selectAll('text.cc-pie-label')
+        .data(arcs)
+        .enter()
+        .append('text')
+        .attr('class','cc-pie-label')
+        .attr('dy','0.35em')
+        .style('fill', textColor)
+        .style('font-size','12px');
+
+      arcs.forEach((d, i) => {
+        const mid = (d.startAngle + d.endAngle) / 2;
+        const start = arc.centroid(d);
+        const breakPt = [Math.sin(mid) * breakR, -Math.cos(mid) * breakR];
+        const endPt = [Math.sin(mid) * labelR, -Math.cos(mid) * labelR];
+        const align = mid < Math.PI ? 'start' : 'end';
+        const shift = mid < Math.PI ? 12 : -12;
+
+        (polys.nodes()[i] as SVGPolylineElement)
+          .setAttribute('points', `${start} ${breakPt} ${endPt}`);
+
+        const total = data.reduce((a,b)=>a+b.value,0) || 1;
+        const pct = Math.round((d.data.value/total)*100);
+
+        d3.select(labels.nodes()[i])
+          .attr('transform', `translate(${endPt[0] + shift}, ${endPt[1]})`)
+          .style('text-anchor', align)
+          .text(`${d.data.name} (${pct}%)`);
+      });
+
+      if (cfg.title) {
+        g.append('text')
+          .attr('x', width/2)
+          .attr('y', Math.max(18, margin.top/2))
+          .attr('text-anchor','middle')
+          .style('fill', textColor)
+          .style('font-size','14px')
+          .text(cfg.title);
+      }
+    }
+
     private renderGroupedBars(
       g: d3.Selection<SVGGElement, unknown, null, undefined>,
       series: XYSeries[],

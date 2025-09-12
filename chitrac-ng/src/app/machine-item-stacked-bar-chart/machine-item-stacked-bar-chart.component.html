@@ -1,11 +1,24 @@
 <div class="chart-container" [class.dark-mode]="isDarkTheme">
-  <div class="chart-content">
-    <div *ngIf="loading" class="loading">Loading chart data...</div>
-    <div *ngIf="error" class="error">{{ error }}</div>
-    <app-stacked-bar-chart-v2
-      *ngIf="chartData"
-      [data]="chartData"
-      mode="time"
-    ></app-stacked-bar-chart-v2>
+  <div class="loading-overlay" *ngIf="loading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading chart data...</div>
+    </div>
   </div>
+
+  <div class="chart-content" *ngIf="!loading && chartConfig">
+    <cartesian-chart [config]="chartConfig"></cartesian-chart>
+  </div>
+
+  <div class="no-data" *ngIf="!loading && !chartConfig && !error">
+    <div class="no-data-content">
+      <div class="no-data-icon">📊</div>
+      <div class="no-data-text">No chart data available</div>
+      <div class="no-data-debug" *ngIf="mode === 'dashboard'">
+        <small>Mode: {{ mode }}, Has preloaded data: {{ !!preloadedData }}</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="error" *ngIf="error">{{ error }}</div>
 </div>

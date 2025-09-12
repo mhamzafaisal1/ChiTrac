@@ -61,6 +61,18 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   chartHeight = 700;
   chartWidth = 1000;
 
+  responsiveChartSizes: {
+    [breakpoint: number]: { width: number; height: number };
+  } = {
+    1600: { width: 800, height: 700 },
+    1210: { width: 700, height: 700 },
+    1024: { width: 600, height: 600 },
+    900: { width: 500, height: 500 },
+    768: { width: 400, height: 400 },
+    480: { width: 300, height: 300 },
+    0: { width: 300, height: 350 }, // fallback for very small screens
+  };
+
   constructor(
     private analyticsService: OperatorAnalyticsService,
     private dialog: MatDialog,
@@ -72,6 +84,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.updateChartDimensions();
+    window.addEventListener("resize", this.updateChartDimensions.bind(this));
 
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
@@ -155,11 +169,28 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
+    window.removeEventListener("resize", this.updateChartDimensions.bind(this));
   }
 
   detectTheme(): void {
     const isDark = document.body.classList.contains('dark-theme');
     this.isDarkTheme = isDark;
+  }
+
+  private updateChartDimensions(): void {
+    const width = window.innerWidth;
+
+    const breakpoints = Object.keys(this.responsiveChartSizes)
+      .map(Number)
+      .sort((a, b) => b - a); // sort descending
+
+    for (const bp of breakpoints) {
+      if (width >= bp) {
+        this.chartWidth = this.responsiveChartSizes[bp].width;
+        this.chartHeight = this.responsiveChartSizes[bp].height;
+        return;
+      }
+    }
   }
 
   private setupPolling(): void {
@@ -295,7 +326,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     operatorId,
                     isModal: true,
                     chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth
+                    chartWidth: this.chartWidth,
+                    marginTop: 30,
+                    marginRight: 15,
+                    marginBottom: 60,
+                    marginLeft: 25,
+                    showLegend: true,
+                    legendPosition: 'right',
+                    legendWidthPx: 120
                   }
                 },
                 {
@@ -306,8 +344,15 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId,
                     isModal: true,
-                    chartHeight: (this.chartHeight - 200),
-                    chartWidth: this.chartWidth
+                    chartHeight: this.chartHeight,
+                    chartWidth: this.chartWidth,
+                    marginTop: 30,
+                    marginRight: 15,
+                    marginBottom: 60,
+                    marginLeft: 25,
+                    showLegend: true,
+                    legendPosition: 'right',
+                    legendWidthPx: 120
                   }
                 },
                 {
@@ -328,8 +373,15 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId: operatorId.toString(),
                     isModal: true,
-                    chartHeight: (this.chartHeight - 100),
-                    chartWidth: this.chartWidth
+                    chartHeight: this.chartHeight,
+                    chartWidth: this.chartWidth,
+                    marginTop: 30,
+                    marginRight: 15,
+                    marginBottom: 60,
+                    marginLeft: 25,
+                    showLegend: true,
+                    legendPosition: 'right',
+                    legendWidthPx: 120
                   }
                 },
                 {

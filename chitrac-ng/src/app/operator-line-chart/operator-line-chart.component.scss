@@ -72,37 +72,96 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    min-height: 0;
+    padding: 1rem;
+    position: relative;
+    background-color: inherit;
+  }
 
-    h2 {
-      margin: 0;
-      font-size: 1.5rem;
-      font-weight: 500;
+  .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.8);
+    z-index: 10;
+
+    .loading-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
     }
 
-    .time-range {
-      margin: 0;
-      font-size: 0.9rem;
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .loading-text {
+      font-size: 1rem;
       color: #666;
     }
   }
 
-  .loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    font-size: 1.2rem;
+  .chart-display {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+  }
+
+  .no-data {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     color: #666;
+    text-align: center;
+    z-index: 1;
+
+    .no-data-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .no-data-icon {
+      font-size: 2rem;
+      opacity: 0.5;
+    }
+
+    .no-data-text {
+      font-size: 1rem;
+      font-weight: 500;
+    }
   }
 
   .error {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     color: #f44336;
-    font-size: 1.2rem;
+    background-color: rgba(244, 67, 54, 0.1);
+    padding: 1rem;
+    border-radius: 4px;
+    font-size: 1rem;
+    text-align: center;
+    z-index: 1;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 }
 
@@ -114,17 +173,17 @@
     }
 
     .chart-content {
-      h2 {
-        color: #e0e0e0;
+      .loading-overlay {
+        background-color: rgba(0, 0, 0, 0.8);
+        
+        .loading-text {
+          color: #9e9e9e;
+        }
       }
 
-      .time-range {
+      .no-data {
         color: #9e9e9e;
       }
-    }
-
-    .loading {
-      color: #9e9e9e;
     }
   }
 }

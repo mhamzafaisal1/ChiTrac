@@ -9,12 +9,15 @@ import { MatIconModule } from '@angular/material/icon';
 
 import { OperatorCountbyitemService } from '../services/operator-countbyitem.service';
 import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
-import { StackedBarChartV2Component, StackedBarChartV2Data } from '../components/stacked-bar-chart-v2/stacked-bar-chart-v2.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
 interface CountByItemData {
-  hour: string;
-  items: {
-    [key: string]: number;
+  title: string;
+  data: {
+    hours: number[];
+    operators: {
+      [itemName: string]: number[];
+    };
   };
 }
 
@@ -29,7 +32,7 @@ interface CountByItemData {
         MatInputModule,
         MatIconModule,
         DateTimePickerComponent,
-        StackedBarChartV2Component
+        CartesianChartComponent
     ],
     templateUrl: './operator-countbyitem-chart.component.html',
     styleUrl: './operator-countbyitem-chart.component.scss'
@@ -43,8 +46,15 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
   @Input() chartWidth: number = 800;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
   @Input() dashboardData?: any[];
+  @Input() marginTop: number = 30;
+  @Input() marginRight: number = 15;
+  @Input() marginBottom: number = 60;
+  @Input() marginLeft: number = 25;
+  @Input() showLegend: boolean = true;
+  @Input() legendPosition: 'top' | 'right' = 'right';
+  @Input() legendWidthPx: number = 120;
 
-  chartData: StackedBarChartV2Data | null = null;
+  chartConfig: CartesianChartConfig | null = null;
   loading = false;
   error: string | null = null;
   isDarkTheme = false;
@@ -92,18 +102,40 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
   private processDashboardData(data: any[]): void {
     this.loading = true;
     try {
+      // Debug: Log the received data structure
+      console.log('Count by Item Dashboard Data:', {
+        dataLength: data.length,
+        operatorId: this.operatorId,
+        firstItem: data[0],
+        operatorData: data.find(item => item.operator?.id === this.operatorId)
+      });
+
       // Find the operator data from the dashboard data
-      const operatorData = data.find(item => item.operator?.id === this.operatorId);
-      if (!operatorData?.countByItem) {
-        this.error = 'No count by item data available';
+      const operatorData = data.find(item => item.operator?.id === parseInt(this.operatorId.toString()));
+      if (!operatorData) {
+        this.error = 'No operator data found';
         return;
       }
 
-      // The data is already in the correct format, just use it directly
-      this.chartData = {
-        title: `Operator ${operatorData.operator?.name || this.operatorId} - Count by Item`,
-        data: operatorData.countByItem.data
-      };
+      console.log('Found operator data:', operatorData);
+      console.log('Available data properties:', Object.keys(operatorData));
+      console.log('Count by item data:', operatorData.countByItem);
+
+      // Check for countByItem data or alternative data properties
+      let countByItemData = operatorData.countByItem;
+      if (!countByItemData) {
+        // Try alternative data properties
+        countByItemData = operatorData.itemCount || operatorData.itemSummary || operatorData.items;
+        console.log('Trying alternative data properties:', countByItemData);
+      }
+
+      if (!countByItemData) {
+        this.error = 'No count by item data available. Available properties: ' + Object.keys(operatorData).join(', ');
+        return;
+      }
+
+      // Transform the data to cartesian chart format
+      this.chartConfig = this.transformDataToCartesianConfig(countByItemData, operatorData.operator?.name || this.operatorId);
     } catch (error) {
       console.error('Error processing dashboard data:', error);
       this.error = 'Failed to process dashboard data';
@@ -112,29 +144,100 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
     }
   }
 
-  private transformData(rawData: CountByItemData[]): StackedBarChartV2Data {
-    const hours = rawData.map(d => {
-      const date = new Date(d.hour);
-      return date.getHours();
+  private transformDataToCartesianConfig(rawData: any, operatorName?: string): CartesianChartConfig | null {
+    // Handle the actual data structure from the API
+    if (!rawData || !rawData.data) {
+      return null;
+    }
+
+    const { hours, operators } = rawData.data;
+    if (!hours || !operators || !Array.isArray(hours)) {
+      return null;
+    }
+
+    // Get all item names from the operators object
+    const items = Object.keys(operators);
+    if (items.length === 0) {
+      return null;
+    }
+
+    // Create series for each item
+    const series: XYSeries[] = [];
+    
+    items.forEach((item, index) => {
+      const itemData = operators[item];
+      if (!Array.isArray(itemData)) {
+        return;
+      }
+
+      const dataPoints = hours.map((hour: number, hourIndex: number) => ({
+        x: hour,
+        y: itemData[hourIndex] || 0
+      }));
+
+      series.push({
+        id: item,
+        title: item,
+        type: 'bar',
+        data: dataPoints,
+        stack: 'itemStack', // Stack all series together
+        color: this.getColorForSeries(index)
+      });
     });
 
-    const items = new Set<string>();
-    rawData.forEach(d => {
-      Object.keys(d.items).forEach(item => items.add(item));
+    // Debug: Log chart dimensions and data
+    console.log('Count by Item Chart Debug:', {
+      chartWidth: this.chartWidth,
+      chartHeight: this.chartHeight,
+      hoursLength: hours.length,
+      itemsCount: items.length,
+      seriesCount: series.length,
+      firstDataPoint: series[0]?.data?.[0],
+      allSeriesData: series.map(s => ({ id: s.id, dataLength: s.data.length, sampleData: s.data.slice(0, 3) })),
+      rawDataStructure: { hours: hours.slice(0, 5), operators: Object.keys(operators) }
     });
 
-    const operators: { [key: string]: number[] } = {};
-    items.forEach(item => {
-      operators[item] = rawData.map(d => d.items[item] || 0);
-    });
+    // Check if we have valid data
+    if (series.length === 0) {
+      console.warn('No series created - no items found in data');
+      return null;
+    }
+
+    // Check if all series have data
+    const hasData = series.some(s => s.data.length > 0 && s.data.some(d => d.y > 0));
+    if (!hasData) {
+      console.warn('No valid data points found in any series');
+      return null;
+    }
 
     return {
-      title: `Operator ${this.operatorId} - Count by Item`,
-      data: {
-        hours,
-        operators
-      }
+      title: `Operator ${operatorName || this.operatorId} - Count by Item`,
+      width: this.chartWidth || 800,  // Fallback to 800 if undefined
+      height: this.chartHeight || 400, // Fallback to 400 if undefined
+      orientation: 'vertical',
+      xType: 'linear',
+      xLabel: 'Hour',
+      yLabel: 'Count',
+      margin: {
+        top: this.marginTop,
+        right: this.marginRight,
+        bottom: this.marginBottom,
+        left: this.marginLeft
+      },
+      legend: {
+        show: this.showLegend,
+        position: this.legendPosition
+      },
+      series: series
     };
+  }
+
+  private getColorForSeries(index: number): string {
+    const colors = [
+      '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+      '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ];
+    return colors[index % colors.length];
   }
 
   fetchData(): void {
@@ -146,7 +249,7 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
     this.countByItemService.getOperatorCountByItem(this.startTime, this.endTime, this.operatorId)
       .subscribe({
         next: (data) => {
-          this.chartData = data;
+          this.chartConfig = this.transformDataToCartesianConfig(data.data, data.operator?.name);
           this.loading = false;
         },
         error: (err) => {
@@ -160,6 +263,21 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
   onTimeRangeChange(): void {
     if (this.mode === 'standalone') {
       this.fetchData();
+    }
+  }
+
+  // Method to update chart size (for grid layout compatibility)
+  setAvailableSize(width: number, height: number): void {
+    this.chartWidth = width;
+    this.chartHeight = height;
+    
+    // Update the chart config if it exists
+    if (this.chartConfig) {
+      this.chartConfig = {
+        ...this.chartConfig,
+        width: width,
+        height: height
+      };
     }
   }
 }
