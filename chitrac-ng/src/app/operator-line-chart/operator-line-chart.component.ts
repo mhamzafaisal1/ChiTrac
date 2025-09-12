@@ -17,7 +17,7 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { OeeDataService } from '../services/oee-data.service';
 import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
-import { LineChartComponent, LineChartDataPoint } from '../components/line-chart/line-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
 function toDateTimeLocalString(dateStr: string): string {
   if (!dateStr) return '';
@@ -35,7 +35,7 @@ function toDateTimeLocalString(dateStr: string): string {
         MatInputModule,
         MatButtonModule,
         DateTimePickerComponent,
-        LineChartComponent
+        CartesianChartComponent
     ],
     templateUrl: './operator-line-chart.component.html',
     styleUrls: ['./operator-line-chart.component.scss']
@@ -49,13 +49,20 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
   @Input() chartHeight: number;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
   @Input() dashboardData?: any[];
+  @Input() marginTop: number = 30;
+  @Input() marginRight: number = 15;
+  @Input() marginBottom: number = 60;
+  @Input() marginLeft: number = 25;
+  @Input() showLegend: boolean = true;
+  @Input() legendPosition: 'top' | 'right' = 'right';
+  @Input() legendWidthPx: number = 120;
 
   @ViewChild('chartContainer') private chartContainer!: ElementRef;
 
   pickerStartTime: string = '';
   pickerEndTime: string = '';
 
-  efficiencyData: LineChartDataPoint[] = [];
+  chartConfig: CartesianChartConfig | null = null;
   operatorName = '';
   loading = false;
   error: string | null = null;
@@ -138,14 +145,64 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
       }
 
       this.operatorName = operatorData.dailyEfficiency.operator.name;
-      this.efficiencyData = operatorData.dailyEfficiency.data.map((entry: any) => ({
-        label: new Date(entry.date).toLocaleDateString(),
-        value: entry.efficiency
-      }));
+      this.chartConfig = this.transformDataToCartesianConfig(operatorData.dailyEfficiency.data, this.operatorName);
     } catch (error) {
       console.error('Error processing dashboard data:', error);
       this.error = 'Failed to process dashboard data';
     }
+  }
+
+  private transformDataToCartesianConfig(efficiencyData: any[], operatorName?: string): CartesianChartConfig | null {
+    if (!efficiencyData || !Array.isArray(efficiencyData) || efficiencyData.length === 0) {
+      return null;
+    }
+
+    // Create data points for the line chart
+    const dataPoints = efficiencyData.map((entry: any) => ({
+      x: new Date(entry.date).toLocaleDateString(),
+      y: entry.efficiency || 0
+    }));
+
+    const series: XYSeries[] = [{
+      id: 'efficiency',
+      title: 'Efficiency',
+      type: 'line',
+      data: dataPoints,
+      color: this.getColorForSeries(0),
+      options: {
+        showDots: true,
+        radius: 3
+      }
+    }];
+
+    return {
+      title: `Operator ${operatorName || this.operatorId} - Daily Efficiency`,
+      width: this.chartWidth,
+      height: this.chartHeight,
+      orientation: 'vertical',
+      xType: 'category',
+      xLabel: 'Date',
+      yLabel: 'Efficiency (%)',
+      margin: {
+        top: this.marginTop,
+        right: this.marginRight,
+        bottom: this.marginBottom,
+        left: this.marginLeft
+      },
+      legend: {
+        show: this.showLegend,
+        position: this.legendPosition
+      },
+      series: series
+    };
+  }
+
+  private getColorForSeries(index: number): string {
+    const colors = [
+      '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+      '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ];
+    return colors[index % colors.length];
   }
 
   fetchData(): void {
@@ -160,10 +217,7 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
     this.oeeService.getOperatorDailyEfficiency(this.startTime, this.endTime, this.operatorId).subscribe({
       next: (response) => {
         this.operatorName = response.operator.name;
-        this.efficiencyData = response.data.map(entry => ({
-          label: new Date(entry.date).toLocaleDateString(),
-          value: entry.efficiency
-        }));
+        this.chartConfig = this.transformDataToCartesianConfig(response.data, this.operatorName);
         this.loading = false;
       },
       error: (err) => {
@@ -187,6 +241,21 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
       this.pickerEndTime = newValue;
       this.endTime = new Date(newValue).toISOString();
       this.fetchData();
+    }
+  }
+
+  // Method to update chart size (for grid layout compatibility)
+  setAvailableSize(width: number, height: number): void {
+    this.chartWidth = width;
+    this.chartHeight = height;
+    
+    // Update the chart config if it exists
+    if (this.chartConfig) {
+      this.chartConfig = {
+        ...this.chartConfig,
+        width: width,
+        height: height
+      };
     }
   }
 }

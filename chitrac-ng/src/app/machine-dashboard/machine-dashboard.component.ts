@@ -352,6 +352,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           const faultSummaryData = machineData.faultData?.faultSummaries || [];
           const faultCycleData = machineData.faultData?.faultCycles || [];
 
+          // Debug: Log the machine data structure
+          console.log('MachineDashboard: Full machine data:', machineData);
+          console.log('MachineDashboard: Item hourly stack data:', machineData.itemHourlyStack);
+          console.log('MachineDashboard: Operator efficiency data:', machineData.operatorEfficiency);
+
+          console.log('MachineDashboard: Creating carousel tabs with machine data:', machineData);
+          
           const carouselTabs = [
             {
               label: "Item Summary",
@@ -387,6 +394,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 isModal: this.isModal,
                 mode: "dashboard",
                 preloadedData: machineData.itemHourlyStack,
+                marginTop: 30,
+                marginRight: 15,
+                marginBottom: 60,
+                marginLeft: 25,
+                showLegend: true,
+                legendPosition: "right",
+                legendWidthPx: 120,
               },
             },
             {
@@ -433,6 +447,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   },
                   hourlyData: machineData.operatorEfficiency ?? [],
                 },
+                marginTop: 30,
+                marginRight: 15,
+                marginBottom: 60,
+                marginLeft: 25,
+                showLegend: true,
+                legendPosition: "right",
+                legendWidthPx: 120,
               },
             },
           ];

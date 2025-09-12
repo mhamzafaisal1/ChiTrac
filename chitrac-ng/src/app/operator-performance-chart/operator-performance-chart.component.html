@@ -1,10 +1,14 @@
 <div class="chart-container" [class.dark-mode]="isDarkTheme">
-  <div class="chart-content">
-    <div *ngIf="loading" class="loading">Loading data...</div>
-    <div *ngIf="error" class="error">{{ error }}</div>
-      <app-multiple-line-chart
-      [data]="chartData"
-      [isDarkTheme]="isDarkTheme">
-    </app-multiple-line-chart>
+  <div class="loading-overlay" *ngIf="loading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading data...</div>
+    </div>
   </div>
+
+  <div class="chart-content" *ngIf="!loading && chartConfig">
+    <cartesian-chart [config]="chartConfig"></cartesian-chart>
+  </div>
+
+  <div class="error" *ngIf="error">{{ error }}</div>
 </div>

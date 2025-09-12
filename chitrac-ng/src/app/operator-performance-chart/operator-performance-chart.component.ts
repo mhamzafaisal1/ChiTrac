@@ -8,7 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import { OeeDataService } from '../services/oee-data.service';
-import { MultipleLineChartComponent } from '../components/multiple-line-chart/multiple-line-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
 @Component({
     selector: 'app-operator-performance-chart',
@@ -19,7 +19,7 @@ import { MultipleLineChartComponent } from '../components/multiple-line-chart/mu
         MatInputModule,
         MatButtonModule,
         MatIconModule,
-        MultipleLineChartComponent
+        CartesianChartComponent
     ],
     templateUrl: './operator-performance-chart.component.html',
     styleUrls: ['./operator-performance-chart.component.scss']
@@ -30,11 +30,18 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
   @Input() isModal: boolean = false;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
   @Input() preloadedData: any = null;
+  @Input() marginTop: number = 30;
+  @Input() marginRight: number = 15;
+  @Input() marginBottom: number = 60;
+  @Input() marginLeft: number = 25;
+  @Input() showLegend: boolean = true;
+  @Input() legendPosition: 'top' | 'right' = 'right';
+  @Input() legendWidthPx: number = 120;
 
   startTime = '';
   endTime = '';
   machineSerial = '';
-  chartData: any = null;
+  chartConfig: CartesianChartConfig | null = null;
   loading = false;
   error: string | null = null;
   isDarkTheme = false;
@@ -69,7 +76,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
     this.observeTheme();
     
     if (this.mode === 'dashboard' && this.preloadedData) {
-      this.chartData = this.preloadedData;
+      this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
       return;
     }
 
@@ -108,7 +115,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
 
     this.oeeService.getOperatorEfficiency(this.startTime, this.endTime, this.machineSerial).subscribe({
       next: (data) => {
-        this.chartData = data;
+        this.chartConfig = this.transformDataToCartesianConfig(data);
         this.loading = false;
       },
       error: (err) => {
@@ -117,5 +124,95 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
         this.loading = false;
       }
     });
+  }
+
+  private transformDataToCartesianConfig(data: any): CartesianChartConfig | null {
+    if (!data || !data.hourlyData || !Array.isArray(data.hourlyData)) {
+      return null;
+    }
+
+    // Create series for each operator
+    const series: XYSeries[] = [];
+    const operatorMap = new Map<string, { name: string; data: { x: string; y: number }[] }>();
+
+    // Process hourly data to group by operator
+    data.hourlyData.forEach((hourData: any) => {
+      if (hourData.operators && Array.isArray(hourData.operators)) {
+        hourData.operators.forEach((operator: any) => {
+          if (!operatorMap.has(operator.name)) {
+            operatorMap.set(operator.name, {
+              name: operator.name,
+              data: []
+            });
+          }
+          
+          operatorMap.get(operator.name)!.data.push({
+            x: hourData.hour,
+            y: operator.efficiency || 0
+          });
+        });
+      }
+    });
+
+    // Convert map to series array
+    let index = 0;
+    operatorMap.forEach((operatorData, operatorName) => {
+      series.push({
+        id: operatorName,
+        title: operatorName,
+        type: 'line',
+        data: operatorData.data,
+        color: this.getColorForSeries(index),
+        options: {
+          showDots: true,
+          radius: 3
+        }
+      });
+      index++;
+    });
+
+    return {
+      title: `Operator Performance - ${data.machine?.name || 'Machine'}`,
+      width: this.chartWidth || 600,
+      height: this.chartHeight || 400,
+      orientation: 'vertical',
+      xType: 'category',
+      xLabel: 'Hour',
+      yLabel: 'Efficiency (%)',
+      margin: {
+        top: this.marginTop,
+        right: this.marginRight,
+        bottom: this.marginBottom,
+        left: this.marginLeft
+      },
+      legend: {
+        show: this.showLegend,
+        position: this.legendPosition
+      },
+      series: series
+    };
+  }
+
+  private getColorForSeries(index: number): string {
+    const colors = [
+      '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+      '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ];
+    return colors[index % colors.length];
+  }
+
+  // Method to update chart size (for grid layout compatibility)
+  setAvailableSize(width: number, height: number): void {
+    this.chartWidth = width;
+    this.chartHeight = height;
+    
+    // Update the chart config if it exists
+    if (this.chartConfig) {
+      this.chartConfig = {
+        ...this.chartConfig,
+        width: width,
+        height: height
+      };
+    }
   }
 }
