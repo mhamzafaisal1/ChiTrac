@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 
 /*** Material Imports */
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
-import { PageEvent, MatPaginator } from '@angular/material/paginator';
+import { PageEvent, MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,7 +17,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 
 /*** rxjs Imports */
 import { Subscription, timer } from 'rxjs';
-import { startWith, switchMap, share, retry } from 'rxjs/operators';
+import { startWith, switchMap, share, retry, take } from 'rxjs/operators';
 
 /*** Model Imports */
 import { OperatorConfig } from '../shared/models/operator.model';
@@ -31,7 +31,7 @@ import { ConfigurationService } from '../configuration.service';
 
 @Component({
     selector: 'operator-grid',
-    imports: [CommonModule, MatTableModule, MatPaginator, MatSortModule, MatCheckboxModule, MatDividerModule, MatButtonModule, MatIconModule],
+    imports: [CommonModule, MatTableModule, MatPaginatorModule, MatSortModule, MatCheckboxModule, MatDividerModule, MatButtonModule, MatIconModule],
     templateUrl: './operator-grid.component.html',
     styleUrl: './operator-grid.component.scss'
 })
@@ -56,8 +56,9 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
    }
 
   private getOpsSubFunction = (res: OperatorConfig[]) => {
-    this.operators = Object.assign({}, res);
-    this.dataSource = new MatTableDataSource(res);
+    this.operators = res;
+    if (!this.dataSource) this.dataSource = new MatTableDataSource<OperatorConfig>(res);
+    else this.dataSource.data = res;
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
   }
@@ -71,68 +72,71 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
 
   readonly dialog = inject(MatDialog);
 
+  private sanitize(op: any): OperatorConfig {
+    const { _id, code, name, active } = op ?? {};
+    return new OperatorConfig().deserialize({
+      _id, code: typeof code === 'string' ? +code : code, name, active: !!active
+    });
+  }
+
+  private refreshTable() {
+    if (this.sub) this.sub.unsubscribe();
+    this.sub = this.getOps.subscribe(this.getOpsSubFunction);
+  }
+
+  private applyLocalUpdate(updated: OperatorConfig) {
+    const arr = this.dataSource?.data ?? [];
+    const i = arr.findIndex(x => x._id === updated._id);
+    this.dataSource.data = i >= 0
+      ? [...arr.slice(0, i), new OperatorConfig().deserialize({ ...arr[i], ...updated }), ...arr.slice(i + 1)]
+      : [...arr, updated];
+  }
+
   ngOnInit() {
     this.sub = this.getOps.subscribe(this.getOpsSubFunction);
   }
 
-  openDialog(operator: OperatorConfig): void {
-    if (!operator) {
-      operator = this.emptyOperator;
-    }
-    
-    let dialogRef = this.dialog.open(OperatorDialogCuComponent, {
-      data: operator,
-      disableClose: true
-    });
+  openDialog(operator: OperatorConfig | null): void {
+    const data = operator ? { ...operator } : { ...this.emptyOperator }; // clone
+    const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data, disableClose: true });
 
-    dialogRef.afterClosed().subscribe(dialogOperator => {
-      if(!dialogOperator) {
-        console.log('Exited');
-        //cancelled
-      } else if (dialogOperator._id) {
-        console.log('Editing submit');
-        //Editing existing operator
-      const submitSub = this.configurationService.putOperatorConfig(dialogOperator).subscribe(res => {
-        console.log(res);
-        this.sub.unsubscribe();
-        this.sub = this.getOps.subscribe(this.getOpsSubFunction);
-        this.selectionModel.clear();
-      }, err => {
-        dialogOperator.error = err;
-        dialogRef = this.dialog.open(OperatorDialogCuComponent, {
-          data: dialogOperator,
-          disableClose: true,
-          panelClass: 'error-dialog',
-        });
+    dialogRef.componentInstance.submitEvent.pipe(take(1)).subscribe(op => {
+      const payload = this.sanitize(op);
+      const req$ = payload._id
+        ? this.configurationService.putOperatorConfig(payload)
+        : this.configurationService.postOperatorConfig(payload);
+
+      const sub = req$.subscribe({
+        next: saved => {
+          this.applyLocalUpdate(saved || payload); // optimistic UI
+          this.selectionModel.clear();
+          dialogRef.close('saved');
+          this.refreshTable();                     // server is source of truth
+          sub.unsubscribe();
+        },
+        error: err => {
+          const msg = err?.error?.message || err?.error || 'Update failed';
+          dialogRef.componentInstance.error = { message: msg }; // surface 409 text
+          sub.unsubscribe();
+        }
       });
-    } else if (dialogOperator.name) {
-        console.log('Creating submit');
-        const submitSub = this.configurationService.postOperatorConfig(dialogOperator).subscribe(res => {
-          console.log(res);
-          this.sub.unsubscribe();
-          this.sub = this.getOps.subscribe(this.getOpsSubFunction);
-        }, err => {
-          dialogOperator.error = err;
-          dialogRef = this.dialog.open(OperatorDialogCuComponent, {
-            data: dialogOperator,
-            disableClose: true,
-            panelClass: 'error-dialog',
-          });
-        });          
-      } else {
-        console.log('Cancel');
-        //cancelled
-      }
     });
   }
 
   deleteOperator(operator: OperatorConfig): void {
     if (operator) {
-      const submitSub = this.configurationService.deleteOperatorConfig(operator._id).subscribe(res => {
-        this.sub.unsubscribe();
-        this.sub = this.getOps.subscribe(this.getOpsSubFunction);
+      const submitSub = this.configurationService.deleteOperatorConfig(operator._id).subscribe({
+        next: (res) => {
+          console.log('Operator deleted:', res);
+          this.refreshTable();
+          this.selectionModel.clear();
+          submitSub.unsubscribe();
+        },
+        error: (err) => {
+          console.error('Error deleting operator:', err);
+          submitSub.unsubscribe();
+        }
       });
-
     }
   }
 

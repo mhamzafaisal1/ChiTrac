@@ -70,7 +70,7 @@ export class OperatorDialogCuComponent implements OnInit {
     this.operatorFormGroup = new FormGroup({
       code: new FormControl(this.operator.code, [Validators.required, Validators.min(100000)]),
       name: new FormControl(this.operator.name, [Validators.required, Validators.minLength(4)]),
-      active: new FormControl(this.operator.active, [Validators.required])
+      active: new FormControl(this.operator.active) // no Validators.required
     });
 
     if (this.error) this.operatorFormGroup.markAsDirty();
@@ -83,12 +83,6 @@ export class OperatorDialogCuComponent implements OnInit {
         this.operator.name = res.name;
         this.operator.active = res.active;
       });
-    this.dialogRef.backdropClick().subscribe(result => {
-    if (!this.operatorFormGroup.pristine) {
-        console.log('Are you sure?');
-      } else {
-      this.dialogRef.close();
-      }
-    });
+    // Removed backdrop auto-close to prevent surprise closures
   };
 }

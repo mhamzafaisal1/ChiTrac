@@ -17,8 +17,10 @@
   </mat-dialog-content>
   <mat-dialog-actions>
     <button mat-button cdkFocusInitial [mat-dialog-close]="'cancel'">Cancel</button>
-    <button type="submit" mat-button [mat-dialog-close]="operator" [disabled]="!operatorFormGroup.valid">Ok</button>
+    <button type="button" mat-button (click)="submitEvent.emit(operator)" [disabled]="!operatorFormGroup.valid">Ok</button>
   </mat-dialog-actions>
   <br />
-  <div *ngIf="error" style="text-align: center; width: 100%">Operator already exists</div>
+  <div *ngIf="error" class="error" style="text-align: center; width: 100%; color: red; margin-top: 10px;">
+    {{ error?.message || 'Update failed' }}
+  </div>
 </form>

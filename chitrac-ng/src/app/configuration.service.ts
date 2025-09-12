@@ -34,16 +34,16 @@ export class ConfigurationService {
     return this.http.get<OperatorConfig[]>('/api/operator/config');
   }
 
-  public postOperatorConfig(operator: OperatorConfig): Observable<OperatorConfig> {
+  public postOperatorConfig(operator: OperatorConfig) {
     return this.http.post<OperatorConfig>('/api/operator/config', operator);
   }
 
-  public putOperatorConfig(operator: OperatorConfig): Observable<OperatorConfig> {
-    return this.http.put<OperatorConfig>('/api/operator/config', operator);
+  public putOperatorConfig(operator: OperatorConfig) {
+    return this.http.put<OperatorConfig>(`/api/operator/config/${operator._id}`, operator);
   }
 
-  public deleteOperatorConfig(_id: string): Observable<OperatorConfig> {
-    return this.http.delete<OperatorConfig>('/api/operator/config/' + _id);
+  public deleteOperatorConfig(id: string) {
+    return this.http.delete<OperatorConfig>(`/api/operator/config/${id}`);
   }
 
   /** Item */
