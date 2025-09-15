@@ -120,4 +120,16 @@ getItemsSummary(start: string, end: string, serial?: number) {
     return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary`, { params });
   }
 
+  getOperatorItemSessionsSummary(start: string, end: string, operatorId?: number): Observable<any> {
+    let params = new HttpParams()
+      .set('start', start)
+      .set('end', end);
+
+    if (operatorId) {
+      params = params.set('operatorId', operatorId.toString());
+    }
+
+    return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary`, { params });
+  }
+
 }

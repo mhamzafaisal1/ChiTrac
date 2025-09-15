@@ -846,7 +846,211 @@ module.exports = function (server) {
 
 
 
-  // /analytics/operator-item-summary (sessions-based)
+//   // /analytics/operator-item-summary (sessions-based)
+// router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
+//     try {
+//       const { start, end } = parseAndValidateQueryParams(req);
+//       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
+//       const exactStart = new Date(start);
+//       const exactEnd = new Date(end);
+  
+//       // Pull operator-sessions that overlap the window
+//       const match = {
+//         ...(operatorId ? { "operator.id": operatorId } : {}),
+//         "timestamps.start": { $lte: exactEnd },
+//         $or: [
+//           { "timestamps.end": { $exists: false } },
+//           { "timestamps.end": { $gte: exactStart } }
+//         ]
+//       };
+  
+//       // Filter counts/misfeeds to exact [start,end] in Mongo; only use padded for session overlap
+//       const sessions = await db
+//         .collection(config.operatorSessionCollectionName)
+//         .aggregate([
+//           { $match: match },
+//           // Compute overlap window and slice length in Mongo
+//           {
+//             $addFields: {
+//               ovStart: { $max: ["$timestamps.start", exactStart] },
+//               ovEnd: {
+//                 $min: [
+//                   { $ifNull: ["$timestamps.end", exactEnd] },
+//                   exactEnd
+//                 ]
+//               }
+//             }
+//           },
+//           {
+//             $addFields: {
+//               sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] }
+//             }
+//           },
+//           {
+//             $project: {
+//               _id: 0,
+//               timestamps: 1,
+//               operator: 1,
+//               machine: 1,
+//               // Only what we need out of the arrays
+//               countsFiltered: {
+//                 $map: {
+//                   input: {
+//                     $filter: {
+//                       input: "$counts",
+//                       as: "c",
+//                       cond: {
+//                         $and: [
+//                           { $gte: ["$$c.timestamp", exactStart] },
+//                           { $lte: ["$$c.timestamp", exactEnd] }
+//                         ]
+//                       }
+//                     }
+//                   },
+//                   as: "c",
+//                   in: {
+//                     timestamp: "$$c.timestamp",
+//                     item: {
+//                       id: "$$c.item.id",
+//                       name: "$$c.item.name",
+//                       standard: "$$c.item.standard"
+//                     }
+//                   }
+//                 }
+//               },
+//               misfeedsFiltered: {
+//                 $map: {
+//                   input: {
+//                     $filter: {
+//                       input: "$misfeeds",
+//                       as: "m",
+//                       cond: {
+//                         $and: [
+//                           { $gte: ["$$m.timestamp", exactStart] },
+//                           { $lte: ["$$m.timestamp", exactEnd] }
+//                         ]
+//                       }
+//                     }
+//                   },
+//                   as: "m",
+//                   in: {
+//                     timestamp: "$$m.timestamp",
+//                     item: {
+//                       id: "$$m.item.id",
+//                       name: "$$m.item.name",
+//                       standard: "$$m.item.standard"
+//                     }
+//                   }
+//                 }
+//               },
+//               ovStart: 1,
+//               ovEnd: 1,
+//               sliceMs: 1
+//             }
+//           },
+//           // Sorting not required for aggregation accuracy
+//         ])
+//         .toArray();
+  
+//       if (!sessions.length) return res.json([]);
+  
+//       // Aggregate by operator-machine pair
+//       const pairMap = new Map(); // key = `${opId}-${serial}`
+  
+//       for (const s of sessions) {
+//         const opId = s.operator?.id;
+//         const serial = s.machine?.serial;
+//         if (typeof opId !== "number" || opId === -1 || !serial) continue;
+  
+//         const key = `${opId}-${serial}`;
+//         if (!pairMap.has(key)) {
+//           pairMap.set(key, {
+//             operatorName: s.operator?.name || "Unknown",
+//             machineName: s.machine?.name || "Unknown",
+//             operatorId: opId,
+//             machineSerial: serial,
+//             totalRunMs: 0,
+//             items: new Map(), // itemId -> { name, standard, count, misfeed }
+//           });
+//         }
+//         const bucket = pairMap.get(key);
+  
+//         // Use precomputed overlap slice
+//         if (!s.sliceMs || s.sliceMs <= 0) continue;
+  
+//         // Operator session represents RUN time for that operator
+//         bucket.totalRunMs += Math.max(0, s.sliceMs);
+  
+//         // Inside-window counts/misfeeds already filtered in Mongo to [start,end]
+//         const counts = s.countsFiltered || [];
+//         const misfeeds = s.misfeedsFiltered || [];
+  
+//         // Group counts by item
+//         for (const c of counts) {
+//           const it = c.item || {};
+//           const id = it.id;
+//           if (id == null) continue;
+//           const rec = bucket.items.get(id) || {
+//             name: it.name || "Unknown",
+//             standard: Number(it.standard) || 666,
+//             count: 0,
+//             misfeed: 0
+//           };
+//           rec.count += 1;
+//           bucket.items.set(id, rec);
+//         }
+  
+//         // Group misfeeds by item
+//         for (const m of misfeeds) {
+//           const it = m.item || {};
+//           const id = it.id;
+//           if (id == null) continue;
+//           const rec = bucket.items.get(id) || {
+//             name: it.name || "Unknown",
+//             standard: Number(it.standard) || 666,
+//             count: 0,
+//             misfeed: 0
+//           };
+//           rec.misfeed += 1;
+//           bucket.items.set(id, rec);
+//         }
+//       }
+  
+//       // Build per-item rows per operator-machine pair (same shape as current route)
+//       const rows = [];
+//       for (const [, b] of pairMap) {
+//         if (b.items.size === 0) continue; // match current route behavior
+  
+//         const hours = b.totalRunMs / 3_600_000;
+//         const runtimeFormatted = formatDuration(b.totalRunMs);
+  
+//         for (const [, it] of b.items) {
+//           const pph = hours > 0 ? it.count / hours : 0;
+//           const standard = it.standard > 0 ? it.standard : 666;
+//           const efficiency = standard > 0 ? pph / standard : 0;
+  
+//           rows.push({
+//             operatorName: b.operatorName,
+//             machineName: b.machineName,
+//             itemName: it.name,
+//             runtimeFormatted,
+//             count: it.count,
+//             misfeed: it.misfeed,
+//             pph: Math.round(pph * 100) / 100,
+//             standard,
+//             efficiency: Math.round(efficiency * 10000) / 100
+//           });
+//         }
+//       }
+  
+//       res.json(rows);
+//     } catch (err) {
+//       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+//       res.status(500).json({ error: "Failed to generate operator item summary report" });
+//     }
+//   });
+
+// /analytics/operator-item-sessions-summary (dashboard payload)
 router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
@@ -854,45 +1058,80 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
   
-      // Pull operator-sessions that overlap the window
+    const topNSlicesPerBar = 10;
+    const OTHER_LABEL = "Other";
+    const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+
+    function compressSlicesPerBar(perLabelTotals, N = topNSlicesPerBar, otherLabel = OTHER_LABEL) {
+      const entries = Object.entries(perLabelTotals);
+      if (entries.length <= N) return perLabelTotals;
+      entries.sort((a, b) => b[1] - a[1]);
+      const keep = entries.slice(0, N - 1);
+      const rest = entries.slice(N - 1);
+      const otherSum = rest.reduce((s, [, v]) => s + v, 0);
+      const out = {};
+      for (const [k, v] of keep) out[k] = v;
+      out[otherLabel] = otherSum;
+      return out;
+    }
+
+    function toStackedSeries(byKey, keyToName, orderKeys, stackId) {
+      const labels = new Set();
+      for (const k of orderKeys) {
+        const m = byKey.get(k);
+        if (!m) continue;
+        Object.keys(m).forEach((lab) => labels.add(lab));
+      }
+      const sortedLabels = [...labels].sort((a, b) => {
+        const totalA = orderKeys.reduce((sum, k) => sum + (byKey.get(k)?.[a] || 0), 0);
+        const totalB = orderKeys.reduce((sum, k) => sum + (byKey.get(k)?.[b] || 0), 0);
+        return totalB - totalA;
+      });
+      return sortedLabels.map((label) => ({
+        id: label,
+        title: label,
+        type: "bar",
+        stack: stackId,
+        data: orderKeys.map((k) => ({
+          x: keyToName.get(k) || String(k),
+          y: (byKey.get(k) && byKey.get(k)[label]) || 0,
+        })),
+      }));
+    }
+
+    function formatMs(ms) {
+      const m = Math.max(0, Math.floor(ms / 60000));
+      const h = Math.floor(m / 60);
+      const mm = m % 60;
+      return { hours: h, minutes: mm };
+    }
+
       const match = {
         ...(operatorId ? { "operator.id": operatorId } : {}),
         "timestamps.start": { $lte: exactEnd },
         $or: [
           { "timestamps.end": { $exists: false } },
-          { "timestamps.end": { $gte: exactStart } }
-        ]
+        { "timestamps.end": { $gte: exactStart } },
+      ],
       };
   
-      // Filter counts/misfeeds to exact [start,end] in Mongo; only use padded for session overlap
-      const sessions = await db
+    const opSessions = await db
         .collection(config.operatorSessionCollectionName)
         .aggregate([
           { $match: match },
-          // Compute overlap window and slice length in Mongo
           {
             $addFields: {
               ovStart: { $max: ["$timestamps.start", exactStart] },
-              ovEnd: {
-                $min: [
-                  { $ifNull: ["$timestamps.end", exactEnd] },
-                  exactEnd
-                ]
-              }
-            }
+            ovEnd: { $min: [{ $ifNull: ["$timestamps.end", exactEnd] }, exactEnd] },
           },
-          {
-            $addFields: {
-              sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] }
-            }
-          },
+        },
+        { $addFields: { sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] } } },
           {
             $project: {
               _id: 0,
               timestamps: 1,
               operator: 1,
               machine: 1,
-              // Only what we need out of the arrays
               countsFiltered: {
                 $map: {
                   input: {
@@ -902,153 +1141,486 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
                       cond: {
                         $and: [
                           { $gte: ["$$c.timestamp", exactStart] },
-                          { $lte: ["$$c.timestamp", exactEnd] }
-                        ]
-                      }
-                    }
+                        { $lte: ["$$c.timestamp", exactEnd] },
+                      ],
+                    },
+                  },
                   },
                   as: "c",
                   in: {
                     timestamp: "$$c.timestamp",
-                    item: {
-                      id: "$$c.item.id",
-                      name: "$$c.item.name",
-                      standard: "$$c.item.standard"
-                    }
-                  }
-                }
+                  item: { id: "$$c.item.id", name: "$$c.item.name", standard: "$$c.item.standard" },
+                },
               },
-              misfeedsFiltered: {
-                $map: {
-                  input: {
-                    $filter: {
-                      input: "$misfeeds",
-                      as: "m",
-                      cond: {
-                        $and: [
-                          { $gte: ["$$m.timestamp", exactStart] },
-                          { $lte: ["$$m.timestamp", exactEnd] }
-                        ]
-                      }
-                    }
-                  },
-                  as: "m",
-                  in: {
-                    timestamp: "$$m.timestamp",
-                    item: {
-                      id: "$$m.item.id",
-                      name: "$$m.item.name",
-                      standard: "$$m.item.standard"
-                    }
-                  }
-                }
               },
               ovStart: 1,
               ovEnd: 1,
-              sliceMs: 1
-            }
+            sliceMs: 1,
           },
-          // Sorting not required for aggregation accuracy
+        },
         ])
         .toArray();
   
-      if (!sessions.length) return res.json([]);
-  
-      // Aggregate by operator-machine pair
-      const pairMap = new Map(); // key = `${opId}-${serial}`
-  
-      for (const s of sessions) {
-        const opId = s.operator?.id;
-        const serial = s.machine?.serial;
-        if (typeof opId !== "number" || opId === -1 || !serial) continue;
-  
-        const key = `${opId}-${serial}`;
-        if (!pairMap.has(key)) {
-          pairMap.set(key, {
-            operatorName: s.operator?.name || "Unknown",
-            machineName: s.machine?.name || "Unknown",
-            operatorId: opId,
-            machineSerial: serial,
+    if (!opSessions.length) {
+      return res.json({
+        timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+        results: [],
+        charts: {
+          statusStacked: { title:"Operator Status Stacked Bar", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Duration (hours)", series: [] },
+          efficiencyRanked: { title:"Ranked OEE% by Operator", orientation:"horizontal", xType:"category", xLabel:"Operator", yLabel:"OEE (%)", series:[{ id:"OEE", title:"OEE", type:"bar", data:[] }] },
+          itemsStacked: { title:"Item Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Item Count", series: [] },
+          faultsStacked: { title:"Fault Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Fault Duration (hours)", series: [] },
+          order: []
+        }
+      });
+    }
+
+    const grouped = new Map(); // opId -> bucket
+    const opIdToName = new Map();
+
+    // Helper functions
+    const validId = id => Number.isInteger(id) && id >= 0;
+    const canonicalName = (name, id) => (name && name.trim()) || `Operator ${id}`;
+
+    for (const s of opSessions) {
+      const op = s.operator?.id;
+      if (!validId(op)) continue;
+
+      const opName = canonicalName(s.operator?.name, op);
+
+      if (!grouped.has(op)) {
+        grouped.set(op, {
+          operator: { id: op, name: opName },
             totalRunMs: 0,
-            items: new Map(), // itemId -> { name, standard, count, misfeed }
+          totalWorkedMs: 0,
+          totalCount: 0,
+          itemAgg: new Map(), // itemId -> { name, standard, count, workedTimeMs }
+          sessions: [],       // for display, non-synthetic windows
           });
         }
-        const bucket = pairMap.get(key);
+      opIdToName.set(op, opName);
+      const bucket = grouped.get(op);
   
-        // Use precomputed overlap slice
         if (!s.sliceMs || s.sliceMs <= 0) continue;
   
-        // Operator session represents RUN time for that operator
-        bucket.totalRunMs += Math.max(0, s.sliceMs);
-  
-        // Inside-window counts/misfeeds already filtered in Mongo to [start,end]
-        const counts = s.countsFiltered || [];
-        const misfeeds = s.misfeedsFiltered || [];
-  
-        // Group counts by item
+      // Check if this is a synthetic "total" session spanning the whole timeRange
+      const sessionStart = new Date(s.ovStart);
+      const sessionEnd = new Date(s.ovEnd);
+      const isSyntheticTotal = (
+        Math.abs(sessionStart.getTime() - exactStart.getTime()) < 1000 && // within 1 second of exact start
+        Math.abs(sessionEnd.getTime() - exactEnd.getTime()) < 1000 &&     // within 1 second of exact end
+        s.sliceMs > (exactEnd.getTime() - exactStart.getTime()) * 0.9     // covers >90% of time range
+      );
+
+      // Only add to sessions array if it's not a synthetic total
+      if (!isSyntheticTotal) {
+        bucket.sessions.push({
+          start: new Date(s.ovStart).toISOString(),
+          end: new Date(s.ovEnd).toISOString(),
+          runtimeMs: s.sliceMs,
+          runtimeFormatted: formatMs(s.sliceMs),
+        });
+      }
+
+      // Always add to runtime totals for summary math
+      bucket.totalRunMs += s.sliceMs;
+
+      const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+      if (!counts.length) continue;
+
+      const byItem = new Map();
         for (const c of counts) {
           const it = c.item || {};
           const id = it.id;
           if (id == null) continue;
-          const rec = bucket.items.get(id) || {
-            name: it.name || "Unknown",
-            standard: Number(it.standard) || 666,
-            count: 0,
-            misfeed: 0
-          };
-          rec.count += 1;
-          bucket.items.set(id, rec);
+        if (!byItem.has(id)) {
+          byItem.set(id, { id, name: it.name || "Unknown", standard: Number(it.standard) || 0, count: 0 });
         }
-  
-        // Group misfeeds by item
-        for (const m of misfeeds) {
-          const it = m.item || {};
-          const id = it.id;
-          if (id == null) continue;
-          const rec = bucket.items.get(id) || {
-            name: it.name || "Unknown",
-            standard: Number(it.standard) || 666,
-            count: 0,
-            misfeed: 0
-          };
-          rec.misfeed += 1;
-          bucket.items.set(id, rec);
-        }
+        byItem.get(id).count += 1;
       }
-  
-      // Build per-item rows per operator-machine pair (same shape as current route)
-      const rows = [];
-      for (const [, b] of pairMap) {
-        if (b.items.size === 0) continue; // match current route behavior
-  
-        const hours = b.totalRunMs / 3_600_000;
-        const runtimeFormatted = formatDuration(b.totalRunMs);
-  
-        for (const [, it] of b.items) {
-          const pph = hours > 0 ? it.count / hours : 0;
-          const standard = it.standard > 0 ? it.standard : 666;
-          const efficiency = standard > 0 ? pph / standard : 0;
-  
-          rows.push({
-            operatorName: b.operatorName,
-            machineName: b.machineName,
-            itemName: it.name,
-            runtimeFormatted,
-            count: it.count,
-            misfeed: it.misfeed,
-            pph: Math.round(pph * 100) / 100,
-            standard,
-            efficiency: Math.round(efficiency * 10000) / 100
-          });
-        }
+
+      // Apportion worked time across items by count share
+      const totalSessionItemCount = [...byItem.values()].reduce((sum, it) => sum + it.count, 0) || 1;
+
+      for (const [, it] of byItem) {
+        const share = it.count / totalSessionItemCount;
+        const workedShare = s.sliceMs * share;
+
+        const rec = bucket.itemAgg.get(it.id) || { name: it.name, standard: it.standard, count: 0, workedTimeMs: 0 };
+        rec.count += it.count;
+        rec.workedTimeMs += workedShare;
+        bucket.itemAgg.set(it.id, rec);
+
+        bucket.totalCount += it.count;
+        bucket.totalWorkedMs += workedShare;   // track worked time consistently
       }
-  
-      res.json(rows);
-    } catch (err) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
-      res.status(500).json({ error: "Failed to generate operator item summary report" });
     }
-  });
+
+    // Build results and efficiency
+    const results = [];
+    for (const [, b] of grouped) {
+      let proratedStandard = 0;
+      const itemSummaries = {};
+      for (const [itemId, s] of b.itemAgg.entries()) {
+        const hours = s.workedTimeMs / 3600000;
+        const pph = hours > 0 ? s.count / hours : 0;
+        const eff = s.standard > 0 ? pph / s.standard : 0;
+        const weight = b.totalCount > 0 ? s.count / b.totalCount : 0;
+        proratedStandard += weight * s.standard;
+
+        itemSummaries[itemId] = {
+          name: s.name,
+          standard: s.standard,
+          countTotal: s.count,
+          workedTimeFormatted: formatMs(s.workedTimeMs),
+          pph: Math.round(pph * 100) / 100,
+          efficiency: Math.round(eff * 10000) / 100,
+        };
+      }
+
+      // Recalculate runtime from actual sessions (excluding synthetic totals)
+      const actualRuntimeMs = b.sessions.reduce((sum, session) => sum + session.runtimeMs, 0);
+      
+      // Use worked time for PPH calculation
+      const USE_WORKED_TIME = true;
+      const hours = USE_WORKED_TIME ? (b.totalWorkedMs / 3600000) : (actualRuntimeMs / 3600000);
+      const operatorPph = hours > 0 ? b.totalCount / hours : 0;
+      const operatorEff = proratedStandard > 0 ? operatorPph / proratedStandard : 0;
+
+      results.push({
+        operator: b.operator,
+        sessions: b.sessions,
+        operatorSummary: {
+          totalCount: b.totalCount,
+          workedTimeMs: b.totalWorkedMs,
+          workedTimeFormatted: formatMs(b.totalWorkedMs),
+          runtimeMs: actualRuntimeMs,
+          runtimeFormatted: formatMs(actualRuntimeMs),
+          pph: Math.round(operatorPph * 100) / 100,
+          proratedStandard: Math.round(proratedStandard * 100) / 100,
+          efficiency: Math.round(operatorEff * 10000) / 100,
+          itemSummaries,
+        },
+      });
+    }
+
+    // ---------- 2) Status stacked (durations) ----------
+    // Calculate actual status durations using operator-session and fault-session collections
+    // Similar to the daily dashboard machine status approach but for operators
+    
+    const opColl = db.collection(config.operatorSessionCollectionName);
+    const fsColl = db.collection(config.faultSessionCollectionName);
+
+    // Get all operators that have sessions in the time window
+    const allOperatorIds = await opColl.distinct("operator.id", {
+      "timestamps.start": { $lt: exactEnd },
+      $or: [
+        { "timestamps.end": { $gt: exactStart } }, 
+        { "timestamps.end": { $exists: false } }, 
+        { "timestamps.end": null }
+      ],
+      ...(operatorId ? { "operator.id": operatorId } : {})
+    });
+    
+    // Filter to only valid operator IDs
+    const operatorIds = allOperatorIds.filter(validId);
+
+    const statusByOperator = new Map();
+
+    // Helper function to calculate overlap
+    const overlap = (sStart, sEnd, wStart, wEnd) => {
+      const ss = new Date(sStart);
+      const se = new Date(sEnd || wEnd);
+      const os = ss > wStart ? ss : wStart;
+      const oe = se < wEnd ? se : wEnd;
+      const ovSec = Math.max(0, (oe - os) / 1000);
+      const fullSec = Math.max(0, (se - ss) / 1000);
+      const f = fullSec > 0 ? ovSec / fullSec : 0;
+      return { ovSec, fullSec, factor: f };
+    };
+
+    // Helper function to detect synthetic sessions
+    const isSynthetic = (s) => {
+      const ss = new Date(s.timestamps?.start);
+      const se = new Date(s.timestamps?.end || exactEnd);
+      return Math.abs(ss - exactStart) < 1000 &&
+             Math.abs(se - exactEnd) < 1000 &&
+             (se - ss) > 0.9 * (exactEnd - exactStart);
+    };
+
+    for (const opId of operatorIds) {
+      const [opSessions, fsessions] = await Promise.all([
+        opColl.find({
+          "operator.id": opId,
+          "timestamps.start": { $lt: exactEnd },
+          $or: [
+            { "timestamps.end": { $gt: exactStart } }, 
+            { "timestamps.end": { $exists: false } }, 
+            { "timestamps.end": null }
+          ]
+        }).project({
+          _id: 0, operator: 1, timestamps: 1
+        }).toArray(),
+        fsColl.find({
+          "operator.id": opId,
+          "timestamps.start": { $lt: exactEnd },
+          $or: [
+            { "timestamps.end": { $gt: exactStart } }, 
+            { "timestamps.end": { $exists: false } }, 
+            { "timestamps.end": null }
+          ]
+        }).project({
+          _id: 0, timestamps: 1, faulttime: 1
+        }).toArray()
+      ]);
+
+      if (!opSessions.length) continue;
+
+      // Calculate runtime (Running status) - operator session time
+      // Exclude synthetic totals from status calculation
+      let runtimeSec = 0;
+      for (const s of opSessions) {
+        if (isSynthetic(s)) continue; // skip synthetic sessions
+        const { ovSec } = overlap(s.timestamps?.start, s.timestamps?.end, exactStart, exactEnd);
+        runtimeSec += ovSec;
+      }
+      
+      // Optional hard clamp (safety)
+      runtimeSec = Math.min(runtimeSec, (exactEnd - exactStart) / 1000);
+
+      // Calculate fault time (Faulted status)
+      let faultSec = 0;
+      for (const fs of fsessions) {
+        const sStart = fs.timestamps?.start;
+        const sEnd = fs.timestamps?.end || exactEnd;
+        const { ovSec, fullSec } = overlap(sStart, sEnd, exactStart, exactEnd);
+        if (ovSec === 0) continue;
+        const ft = safe(fs.faulttime);
+        if (ft > 0 && fullSec > 0) {
+          const factor = ovSec / fullSec;
+          faultSec += ft * factor;
+        } else {
+          // open/unfinished or unrecalculated fault-session → use overlap duration
+          faultSec += ovSec;
+        }
+      }
+
+      // Calculate downtime (Paused/Idle status)
+      const windowMs = exactEnd - exactStart;
+      const runningMs = Math.round(runtimeSec * 1000);
+      const faultedMs = Math.round(faultSec * 1000);
+      const downtimeMs = Math.max(0, windowMs - (runningMs + faultedMs));
+
+      // Convert to hours for chart display
+      const runningHours = runningMs / 3600000;
+      const faultedHours = faultedMs / 3600000;
+      const downtimeHours = downtimeMs / 3600000;
+
+      const operatorName = canonicalName(opSessions[0]?.operator?.name, opId);
+      opIdToName.set(opId, operatorName);
+
+      statusByOperator.set(opId, {
+        "Running": runningHours,
+        "Faulted": faultedHours,
+        "Paused": downtimeHours
+      });
+    }
+    // compress per operator
+    for (const [s, rec] of statusByOperator) {
+      statusByOperator.set(s, compressSlicesPerBar(rec));
+    }
+
+    // Ensure we have status data for all operators in results
+    for (const result of results) {
+      const opId = result.operator.id;
+      if (!statusByOperator.has(opId)) {
+        statusByOperator.set(opId, { "No Data": 0 });
+      }
+    }
+
+    // ---------- 3) Faults stacked (durations by fault type) ----------
+    // Based on faultSessionRoutes.js structure - extract fault info from startState
+    
+    const faultsAggRaw = await db
+      .collection(config.faultSessionCollectionName)
+      .aggregate([
+        {
+          $match: {
+            ...(operatorId ? { "operator.id": operatorId } : {}),
+            "timestamps.start": { $lte: exactEnd },
+            $or: [
+              { "timestamps.end": { $exists: false } },
+              { "timestamps.end": { $gte: exactStart } },
+            ],
+          },
+        },
+        {
+          $addFields: {
+            ovStart: { $max: ["$timestamps.start", exactStart] },
+            ovEnd: { $min: [{ $ifNull: ["$timestamps.end", exactEnd] }, exactEnd] },
+          },
+        },
+        { $addFields: { sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] } } },
+        {
+          $project: {
+            operator: 1,
+            sliceMs: 1,
+            label: {
+              $ifNull: [
+                "$startState.status.name",
+                { $ifNull: ["$startState.status.code", "Unknown"] },
+              ],
+            },
+          },
+        },
+        { $match: { sliceMs: { $gt: 0 } } },
+        {
+          $group: {
+            _id: { operatorId: "$operator.id", label: "$label" },
+            name: { $first: "$operator.name" },
+            totalMs: { $sum: "$sliceMs" },
+          },
+        },
+      ])
+      .toArray();
+
+    const faultsByOperator = new Map();
+    for (const row of faultsAggRaw) {
+      const opId = row._id.operatorId;
+      if (!validId(opId)) continue; // skip invalid operator IDs
+      
+      const label = String(row._id.label || "Unknown");
+      const val = Number(row.totalMs || 0) / 3600000; // Convert ms to hours
+      if (!faultsByOperator.has(opId)) faultsByOperator.set(opId, {});
+      faultsByOperator.get(opId)[label] = (faultsByOperator.get(opId)[label] || 0) + val;
+      if (!opIdToName.has(opId)) opIdToName.set(opId, canonicalName(row.name, opId));
+    }
+    // Global compression: find top fault types across all operators
+    const globalFaultTotals = new Map();
+    for (const [, rec] of faultsByOperator) {
+      for (const [faultType, hours] of Object.entries(rec)) {
+        globalFaultTotals.set(faultType, (globalFaultTotals.get(faultType) || 0) + hours);
+      }
+    }
+    
+    // Get top fault types globally
+    const sortedGlobalFaults = Array.from(globalFaultTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, topNSlicesPerBar - 1)
+      .map(([type]) => type);
+    
+    // Apply global compression to each operator
+    for (const [opId, rec] of faultsByOperator) {
+      const compressed = {};
+      let otherSum = 0;
+      
+      for (const [faultType, hours] of Object.entries(rec)) {
+        if (sortedGlobalFaults.includes(faultType)) {
+          compressed[faultType] = hours;
+        } else {
+          otherSum += hours;
+        }
+      }
+      
+      if (otherSum > 0) {
+        compressed[OTHER_LABEL] = otherSum;
+      }
+      
+      faultsByOperator.set(opId, compressed);
+    }
+
+    for (const result of results) {
+      const opId = result.operator.id;
+      if (!faultsByOperator.has(opId)) {
+        faultsByOperator.set(opId, { "No Faults": 0 });
+      }
+    }
+
+    // ---------- 4) Efficiency ranking order ----------
+    const efficiencyRanked = results
+      .map(r => ({
+        operatorId: r.operator.id,
+        name: r.operator.name,
+        efficiency: Number(r.operatorSummary?.efficiency || 0),
+      }))
+      .sort((a, b) => b.efficiency - a.efficiency);
+
+    // Build comprehensive operator ordering from all data sources
+    const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
+    for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
+    for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
+    const finalOrderOperatorIds = [...unionOperatorIds]
+      .filter(validId)
+      .filter(id => opIdToName.has(id));
+
+    // ---------- 5) Items stacked  ----------
+    const itemsByOperator = new Map();
+    for (const r of results) {
+      const m = {};
+      for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
+        const label = s.name || String(id);
+        const count = Number(s.countTotal || 0);
+        m[label] = (m[label] || 0) + count;
+      }
+      itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
+    }
+    const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
+    const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
+    const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
+
+    // ---------- 6) Final payload ----------
+    res.json({
+      timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+      results,                  // original detailed per-operator results (unchanged shape)
+      charts: {
+        statusStacked: {
+          title: "Operator Status Stacked Bar",
+          orientation: "vertical",
+          xType: "category",
+          xLabel: "Operator",
+          yLabel: "Duration (hours)",
+          series: statusStacked
+        },
+        efficiencyRanked: {
+          title: "Ranked OEE% by Operator", 
+          orientation: "horizontal",
+          xType: "category",
+          xLabel: "Operator",
+          yLabel: "OEE (%)",
+          series: [
+            {
+              id: "OEE",
+              title: "OEE",
+              type: "bar",
+              data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
+            },
+          ]
+        },
+        itemsStacked: {
+          title: "Item Stacked Bar by Operator",
+          orientation: "vertical", 
+          xType: "category",
+          xLabel: "Operator",
+          yLabel: "Item Count",
+          series: itemsStacked
+        },
+        faultsStacked: {
+          title: "Fault Stacked Bar by Operator",
+          orientation: "vertical",
+          xType: "category", 
+          xLabel: "Operator",
+          yLabel: "Fault Duration (hours)",
+          series: faultsStacked
+        },
+        order: finalOrderOperatorIds.map(s => opIdToName.get(s) || s), // operator display order (ranked)
+      },
+    });
+  } catch (err) {
+    logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+    res.status(500).json({ error: "Failed to generate operator item summary report" });
+  }
+});
+
 
 
   // API route for item summary (sessions-based)
