@@ -197,6 +197,41 @@ module.exports = function (server) {
     return rows.sort((a,b) => b.efficiency - a.efficiency).slice(0, 10);
   }
 
+  // ---- HELPER FUNCTIONS ----
+
+  // Fast machine status using daily totals cache
+  async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd) {
+    try {
+      // Query the daily totals cache instead of machine sessions
+      const dailyTotals = await db.collection('totals-daily').find({
+        dateObj: { $gte: dayStart, $lte: dayEnd }
+      }).sort({ machineSerial: 1 }).toArray();
+
+      if (dailyTotals.length === 0) {
+        logger.warn('No daily totals found for machine status calculation');
+        return [];
+      }
+
+      // Transform daily totals to machine status format
+      const machineStatus = dailyTotals.map(total => {
+        return {
+          serial: total.machineSerial,
+          name: total.machineName || `Serial ${total.machineSerial}`,
+          runningMs: total.runtimeMs || 0,
+          pausedMs: total.pausedTimeMs || 0,
+          faultedMs: total.faultTimeMs || 0
+        };
+      });
+
+      logger.info(`Built machine status from daily totals for ${machineStatus.length} machines`);
+      return machineStatus;
+      
+    } catch (error) {
+      logger.error('Error building machine status from daily totals:', error);
+      throw error;
+    }
+  }
+
   // ---- INDIVIDUAL ROUTES ----
 
   // Route 1: Machine Status Breakdowns
@@ -215,6 +250,25 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch machine status data" });
+    }
+  });
+
+  // Route 1B: Machine Status Breakdowns (Fast - using daily totals cache)
+  router.get('/analytics/daily/machine-status-fast', async (req, res) => {
+    try {
+      const now = DateTime.now();
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const machineStatus = await buildMachineStatusFromDailyTotals(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        machineStatus
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch fast machine status data" });
     }
   });
 
