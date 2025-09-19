@@ -1,4 +1,4 @@
-import { Component, inject, model, OnInit, EventEmitter, Output } from '@angular/core';
+import { Component, inject, model, OnInit, EventEmitter, Output, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -34,6 +34,8 @@ export class UserLoginComponent implements OnInit {
 
   sub: Subscription;
   @Output() closeModal = new EventEmitter<void>();
+  @ViewChild('usernameInput') usernameInput: ElementRef;
+  @ViewChild('passwordInput') passwordInput: ElementRef;
 
   userLoginFormGroup: FormGroup;
 
@@ -87,6 +89,14 @@ export class UserLoginComponent implements OnInit {
           console.log(error);
         }
       });
+  }
+
+  @HostListener('keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent): void {
+    // Prevent event from bubbling up to parent menu which might close it
+    if (event.key === 'Tab') {
+      event.stopPropagation();
+    }
   }
 
 }
