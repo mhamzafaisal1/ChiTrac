@@ -38,7 +38,7 @@
         {{
           isLoading && isDownloading
             ? "Downloading..."
-            : "Download Operator Summary PDF"
+            : "Download Operator Report PDF"
         }}
       </button>
 
@@ -52,6 +52,15 @@
         {{ isLoading && isDownloadingCsv ? "Downloading..." : "Download CSV" }}
       </button>
     </div>
+  </div>
+
+  <!-- 2x2 Grid Layout for Charts -->
+  <div class="charts-container" *ngIf="showGrid && chartDataArray.length > 0">
+    <layout-grid-twobytwo
+      [components]="gridComponents"
+      [chartData]="chartDataArray"
+      height="800px"
+    ></layout-grid-twobytwo>
   </div>
 
   <div class="table-container" [class.loading]="isLoading">
