@@ -142,7 +142,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     this.pollingSub = this.pollingService.poll(
       () => {
         this.endTime = this.pollingService.updateEndTimestampToNow();
-        return this.dailyDashboardService.getDailyMachineStatus(this.startTime, this.endTime, this.serial)
+        return this.dailyDashboardService.getDailyMachineStatusFast(this.startTime, this.endTime, this.serial)
           .pipe(tap(this.consumeResponse('poll')));
       },
       this.POLLING_INTERVAL,
@@ -160,7 +160,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   private fetchOnce(): Observable<any> {
     if (!this.startTime || !this.endTime) return EMPTY;
     this.isLoading = true;
-    return this.dailyDashboardService.getDailyMachineStatus(this.startTime, this.endTime, this.serial)
+    return this.dailyDashboardService.getDailyMachineStatusFast(this.startTime, this.endTime, this.serial)
       .pipe(
         takeUntil(this.destroy$),
         tap(this.consumeResponse('once')),
