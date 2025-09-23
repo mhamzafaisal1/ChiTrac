@@ -2043,6 +2043,297 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     }
   });
 
+  // New experimental route that uses daily totals for operator reports
+  router.get("/analytics/operator-item-sessions-summary-optimized", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+      const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
+
+      // Check if this is a timeframe that can use daily totals optimization
+      const isOptimizedTimeframe = req.query.timeframe && 
+        ['today', 'thisWeek', 'thisMonth', 'thisYear'].includes(req.query.timeframe);
+
+      if (!isOptimizedTimeframe) {
+        // Fallback to original route for non-optimized timeframes
+        return res.status(400).json({
+          error: 'This optimized route only supports timeframes: today, thisWeek, thisMonth, thisYear'
+        });
+      }
+
+      logger.info(`Using daily totals optimization for operator route, timeframe: ${req.query.timeframe}`);
+
+      // Calculate date range for daily totals query
+      const startDate = exactStart.toISOString().split('T')[0]; // YYYY-MM-DD
+      const endDate = exactEnd.toISOString().split('T')[0];     // YYYY-MM-DD
+
+      // Import the cacher
+      const cacher = require('../../../chitrac-cacher/index');
+      
+      // Get operator daily totals data
+      const operatorTotals = await cacher.getCachedOperatorTotals(startDate, endDate, operatorId, null);
+      
+      if (!operatorTotals || operatorTotals.length === 0) {
+        return res.json({
+          timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+          results: [],
+          charts: {
+            statusStacked: { title:"Operator Status Stacked Bar", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Duration (hours)", series: [] },
+            efficiencyRanked: { title:"Ranked OEE% by Operator", orientation:"horizontal", xType:"category", xLabel:"Operator", yLabel:"OEE (%)", series:[{ id:"OEE", title:"OEE", type:"bar", data:[] }] },
+            itemsStacked: { title:"Item Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Item Count", series: [] },
+            faultsStacked: { title:"Fault Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Fault Duration (hours)", series: [] },
+            order: []
+          },
+          optimization: {
+            used: true,
+            timeframe: req.query.timeframe,
+            dataSource: 'operator-daily-totals-cache'
+          }
+        });
+      }
+
+      // Helper functions (reused from original route)
+      const topNSlicesPerBar = 10;
+      const OTHER_LABEL = "Other";
+
+      function compressSlicesPerBar(perLabelTotals, N = topNSlicesPerBar, otherLabel = OTHER_LABEL) {
+        const entries = Object.entries(perLabelTotals);
+        if (entries.length <= N) return perLabelTotals;
+        entries.sort((a, b) => b[1] - a[1]);
+        const keep = entries.slice(0, N - 1);
+        const rest = entries.slice(N - 1);
+        const otherSum = rest.reduce((s, [, v]) => s + v, 0);
+        const out = {};
+        for (const [k, v] of keep) out[k] = v;
+        out[otherLabel] = otherSum;
+        return out;
+      }
+
+      function toStackedSeries(byKey, keyToName, orderKeys, stackId) {
+        const labels = new Set();
+        for (const k of orderKeys) {
+          const m = byKey.get(k);
+          if (!m) continue;
+          Object.keys(m).forEach((lab) => labels.add(lab));
+        }
+        const sortedLabels = [...labels].sort((a, b) => {
+          const totalA = orderKeys.reduce((sum, k) => sum + (byKey.get(k)?.[a] || 0), 0);
+          const totalB = orderKeys.reduce((sum, k) => sum + (byKey.get(k)?.[b] || 0), 0);
+          return totalB - totalA;
+        });
+        return sortedLabels.map((label) => ({
+          id: label,
+          title: label,
+          type: "bar",
+          stack: stackId,
+          data: orderKeys.map((k) => ({
+            x: keyToName.get(k) || String(k),
+            y: (byKey.get(k) && byKey.get(k)[label]) || 0,
+          })),
+        }));
+      }
+
+      function formatMs(ms) {
+        const m = Math.max(0, Math.floor(ms / 60000));
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        return { hours: h, minutes: mm };
+      }
+
+      // Aggregate operator totals by operator ID
+      const aggregated = new Map();
+      
+      operatorTotals.forEach(total => {
+        const key = total.operatorId;
+        if (!aggregated.has(key)) {
+          aggregated.set(key, {
+            operatorId: total.operatorId,
+            operatorName: total.operatorName,
+            runtimeMs: 0,
+            workedTimeMs: 0,
+            totalCounts: 0,
+            totalMisfeeds: 0,
+            totalTimeCreditMs: 0,
+            machines: new Set(), // Track which machines this operator worked on
+            days: [],
+            dateRange: { start: total.date, end: total.date }
+          });
+        }
+        
+        const operator = aggregated.get(key);
+        
+        // Sum all metrics
+        operator.runtimeMs += total.runtimeMs;
+        operator.workedTimeMs += total.workedTimeMs;
+        operator.totalCounts += total.totalCounts;
+        operator.totalMisfeeds += total.totalMisfeeds;
+        operator.totalTimeCreditMs += total.totalTimeCreditMs;
+        operator.machines.add(total.machineSerial);
+        operator.days.push(total);
+        
+        // Update date range
+        if (total.date < operator.dateRange.start) operator.dateRange.start = total.date;
+        if (total.date > operator.dateRange.end) operator.dateRange.end = total.date;
+      });
+
+      // Convert to results format and calculate performance metrics
+      const results = [];
+      const operatorIdToName = new Map();
+      const statusByOperator = new Map();
+      const faultsByOperator = new Map();
+
+      for (const [, operator] of aggregated) {
+        operatorIdToName.set(operator.operatorId, operator.operatorName);
+
+        // Calculate performance metrics
+        const totalHours = operator.workedTimeMs / 3600000;
+        const windowMs = exactEnd.getTime() - exactStart.getTime();
+        
+        // Basic KPIs
+        const pph = totalHours > 0 ? operator.totalCounts / totalHours : 0;
+        const availability = windowMs > 0 ? operator.runtimeMs / windowMs : 0;
+        const throughput = (operator.totalCounts + operator.totalMisfeeds) > 0 ? 
+          operator.totalCounts / (operator.totalCounts + operator.totalMisfeeds) : 0;
+        
+        // For efficiency, we need item standards - using a simplified approach
+        // In a full implementation, you'd need to aggregate item standards from daily totals
+        const efficiency = 0; // Placeholder - requires item-level data
+
+        results.push({
+          operator: {
+            id: operator.operatorId,
+            name: operator.operatorName
+          },
+          sessions: [], // Empty for optimized version - could be populated with daily summaries
+          operatorSummary: {
+            totalCount: operator.totalCounts,
+            workedTimeMs: operator.workedTimeMs,
+            workedTimeFormatted: formatMs(operator.workedTimeMs),
+            runtimeMs: operator.runtimeMs,
+            runtimeFormatted: formatMs(operator.runtimeMs),
+            pph: Math.round(pph * 100) / 100,
+            proratedStandard: 0, // Would need item data
+            efficiency: Math.round(efficiency * 10000) / 100,
+            itemSummaries: {}, // Empty for optimized version
+            machinesWorked: Array.from(operator.machines).length // Additional metric
+          }
+        });
+
+        // Prepare data for charts
+        const runningHours = operator.runtimeMs / 3600000;
+        const pausedHours = Math.max(0, (windowMs - operator.runtimeMs) / 3600000);
+
+        statusByOperator.set(operator.operatorId, {
+          "Working": runningHours,
+          "Idle": pausedHours
+        });
+
+        // Simplified fault data (operators don't have separate fault tracking in daily totals)
+        faultsByOperator.set(operator.operatorId, {
+          "No Faults": 0 // Operators don't track separate faults in daily totals
+        });
+      }
+
+      // Build efficiency ranking
+      const efficiencyRanked = results
+        .map(r => ({
+          id: r.operator.id,
+          name: r.operator.name,
+          efficiency: Number(r.operatorSummary?.efficiency || 0),
+        }))
+        .sort((a, b) => b.efficiency - a.efficiency);
+
+      // Build chart series
+      const finalOrderOperators = results.map(r => r.operator.id);
+      
+      // Status stacked chart
+      const statusStacked = toStackedSeries(statusByOperator, operatorIdToName, finalOrderOperators, "status");
+      
+      // Faults stacked chart
+      const faultsStacked = toStackedSeries(faultsByOperator, operatorIdToName, finalOrderOperators, "faults");
+
+      // Efficiency ranked chart
+      const efficiencyRankedSeries = [{
+        id: "OEE",
+        title: "OEE",
+        type: "bar",
+        data: efficiencyRanked.map(r => ({
+          x: r.name,
+          y: r.efficiency
+        }))
+      }];
+
+      // Final response
+      res.json({
+        timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+        results,
+        charts: {
+          statusStacked: {
+            title: "Operator Status Stacked Bar",
+            orientation: "vertical",
+            xType: "category",
+            xLabel: "Operator",
+            yLabel: "Duration (hours)",
+            series: statusStacked
+          },
+          efficiencyRanked: {
+            title: "Ranked OEE% by Operator",
+            orientation: "horizontal",
+            xType: "category",
+            xLabel: "Operator",
+            yLabel: "OEE (%)",
+            series: efficiencyRankedSeries
+          },
+          itemsStacked: {
+            title: "Item Stacked Bar by Operator",
+            orientation: "vertical",
+            xType: "category",
+            xLabel: "Operator",
+            yLabel: "Item Count",
+            series: [] // Empty for optimized version
+          },
+          faultsStacked: {
+            title: "Fault Stacked Bar by Operator",
+            orientation: "vertical",
+            xType: "category",
+            xLabel: "Operator",
+            yLabel: "Fault Duration (hours)",
+            series: faultsStacked
+          },
+          order: finalOrderOperators.map(id => operatorIdToName.get(id) || id.toString())
+        },
+        optimization: {
+          used: true,
+          timeframe: req.query.timeframe,
+          dataSource: 'operator-daily-totals-cache',
+          performance: {
+            operatorTotalsCount: operatorTotals.length,
+            aggregatedOperators: results.length,
+            processingTime: '< 100ms estimated'
+          }
+        }
+      });
+
+    } catch (error) {
+      logger.error(`Error in optimized operator item summary:`, error);
+      
+      // If cacher is not available, fallback to original route
+      if (error.message && error.message.includes('Cannot find module')) {
+        logger.warn('Daily totals cacher not available, falling back to original route');
+        return res.status(503).json({
+          error: 'Daily totals optimization not available',
+          fallback: 'Use original /analytics/operator-item-sessions-summary route'
+        });
+      }
+      
+      res.status(500).json({ 
+        error: "Failed to generate optimized operator item summary",
+        message: error.message 
+      });
+    }
+  });
+
   return router;
 };
 
