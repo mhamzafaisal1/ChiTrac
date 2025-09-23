@@ -199,85 +199,35 @@ module.exports = function (server) {
 
   // ---- HELPER FUNCTIONS ----
 
-  // Fast plantwide metrics using daily totals cache
-  async function buildPlantwideMetricsFromDailyTotals(db, dayStart, dayEnd) {
+  // Fast machine status using daily totals cache
+  async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd) {
     try {
       // Query the daily totals cache instead of machine sessions
       const dailyTotals = await db.collection('totals-daily').find({
         dateObj: { $gte: dayStart, $lte: dayEnd }
-      }).toArray();
+      }).sort({ machineSerial: 1 }).toArray();
 
       if (dailyTotals.length === 0) {
-        logger.warn('No daily totals found for plantwide metrics calculation');
+        logger.warn('No daily totals found for machine status calculation');
         return [];
       }
 
-      // Create hourly intervals (same as original function)
-      const { Interval } = require('luxon');
-      const intervals = Interval
-        .fromDateTimes(DateTime.fromJSDate(dayStart).startOf("hour"), DateTime.fromJSDate(dayEnd).endOf("hour"))
-        .splitBy({ hours: 1 })
-        .map(iv => ({ start: iv.start.toJSDate(), end: iv.end.toJSDate() }));
+      // Transform daily totals to machine status format
+      const machineStatus = dailyTotals.map(total => {
+        return {
+          serial: total.machineSerial,
+          name: total.machineName || `Serial ${total.machineSerial}`,
+          runningMs: total.runtimeMs || 0,
+          pausedMs: total.pausedTimeMs || 0,
+          faultedMs: total.faultTimeMs || 0
+        };
+      });
 
-      const hourlyMetrics = [];
-
-      // For each hour interval, calculate plantwide metrics
-      for (const iv of intervals) {
-        const slotMs = iv.end - iv.start; // Hour duration in milliseconds
-        
-        // Since daily totals are per-day, we need to estimate hourly distribution
-        // For simplicity, we'll assume even distribution across the day for now
-        // In a more sophisticated version, we could use hourly breakdowns
-        
-        let totalRuntimeMs = 0;
-        let totalWorkedTimeMs = 0;
-        let totalTimeCreditMs = 0;
-        let totalValidCounts = 0;
-        let totalMisfeeds = 0;
-
-        // Aggregate across all machines for this time period
-        for (const machineTotal of dailyTotals) {
-          // For single-day queries, use the full daily totals
-          // For multi-day queries, we'd need to filter by specific day
-          const dayMatch = new Date(machineTotal.date + 'T00:00:00.000Z');
-          const hourDay = new Date(iv.start);
-          hourDay.setHours(0, 0, 0, 0);
-          
-          if (dayMatch.getTime() === hourDay.getTime()) {
-            // Estimate hourly portion (1/24th of daily total)
-            // This is a simplification - real implementation might use hourly session data
-            const hourlyFactor = 1 / 24;
-            
-            totalRuntimeMs += (machineTotal.runtimeMs || 0) * hourlyFactor;
-            totalWorkedTimeMs += (machineTotal.workedTimeMs || 0) * hourlyFactor;
-            totalTimeCreditMs += (machineTotal.totalTimeCreditMs || 0) * hourlyFactor;
-            totalValidCounts += (machineTotal.totalCounts || 0) * hourlyFactor;
-            totalMisfeeds += (machineTotal.totalMisfeeds || 0) * hourlyFactor;
-          }
-        }
-
-        // Calculate plantwide metrics for this hour (same logic as original)
-        const availability = slotMs > 0 ? (totalRuntimeMs / slotMs) : 0;
-        const efficiency = totalWorkedTimeMs > 0 ? (totalTimeCreditMs / totalWorkedTimeMs) : 0;
-        const throughput = (totalValidCounts + totalMisfeeds) > 0 ? (totalValidCounts / (totalValidCounts + totalMisfeeds)) : 0;
-        const oee = availability * efficiency * throughput;
-
-        // Only include hours with meaningful data (same as original)
-        if (availability || efficiency || throughput || oee) {
-          hourlyMetrics.push({
-            hour: iv.start.getHours(),
-            availability: +(availability * 100).toFixed(2),
-            efficiency: +(efficiency * 100).toFixed(2), 
-            throughput: +(throughput * 100).toFixed(2),
-            oee: +(oee * 100).toFixed(2)
-          });
-        }
-      }
-
-      return hourlyMetrics;
+      logger.info(`Built machine status from daily totals for ${machineStatus.length} machines`);
+      return machineStatus;
       
     } catch (error) {
-      logger.error('Error building plantwide metrics from daily totals:', error);
+      logger.error('Error building machine status from daily totals:', error);
       throw error;
     }
   }
@@ -300,6 +250,25 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch machine status data" });
+    }
+  });
+
+  // Route 1B: Machine Status Breakdowns (Fast - using daily totals cache)
+  router.get('/analytics/daily/machine-status-fast', async (req, res) => {
+    try {
+      const now = DateTime.now();
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const machineStatus = await buildMachineStatusFromDailyTotals(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        machineStatus
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch fast machine status data" });
     }
   });
 
