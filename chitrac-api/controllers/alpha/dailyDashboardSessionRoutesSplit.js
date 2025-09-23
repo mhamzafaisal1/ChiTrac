@@ -348,6 +348,25 @@ module.exports = function (server) {
     }
   });
 
+  // Route 5B: Plant-wide Metrics (Fast - using daily totals cache)
+  router.get('/analytics/daily/plantwide-metrics-fast', async (req, res) => {
+    try {
+      const now = DateTime.now();
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const plantwideMetrics = await buildPlantwideMetricsFromDailyTotals(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        plantwideMetrics
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch fast plant-wide metrics data" });
+    }
+  });
+
   // Route 6: Daily Count Totals
   router.get('/analytics/daily/count-totals', async (req, res) => {
     try {
