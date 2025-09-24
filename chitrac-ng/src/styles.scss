@@ -336,11 +336,6 @@ body.dark-theme {
   margin-right: 0.5em;
 }
 
-::ng-deep .mat-mdc-menu-panel.date-menu-wrapper {
-  min-width: unset !important;
-  max-width: unset !important;
-  width: auto !important;
-}
 
 
 
@@ -348,6 +343,25 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+}
+
+/* Override Angular Material's default menu panel constraints for date menu specifically */
+.mat-mdc-menu-panel.date-menu-panel {
+  min-width: 600px !important;
+  max-width: 800px !important;
+  width: auto !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+.mat-mdc-menu-panel.date-menu-panel .mat-mdc-menu-content {
+  padding: 0 !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+.mat-mdc-menu-panel {
+  max-width: none !important;
 }
 
 //for the efficiency screens

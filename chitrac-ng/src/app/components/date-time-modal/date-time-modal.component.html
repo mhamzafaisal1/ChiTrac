@@ -39,7 +39,27 @@
     <mat-radio-group [(ngModel)]="mode" (change)="onModeChange(mode)">
       <mat-radio-button value="live">Live Mode</mat-radio-button>
       <mat-radio-button value="manual">Manual</mat-radio-button>
-    </mat-radio-group>    
+    </mat-radio-group>
+    
+    <div class="timeframe-section">
+      <h4>Quick Select</h4>
+      <div class="timeframe-buttons">
+        <button 
+          mat-stroked-button 
+          [class.selected]="selectedTimeframe === 'thisWeek'"
+          (click)="onTimeframeSelect('thisWeek')"
+          [disabled]="mode === 'live'">
+          This Week
+        </button>
+        <button 
+          mat-stroked-button 
+          [class.selected]="selectedTimeframe === 'thisMonth'"
+          (click)="onTimeframeSelect('thisMonth')"
+          [disabled]="mode === 'live'">
+          This Month
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="action-row">
