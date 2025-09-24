@@ -101,8 +101,58 @@ module.exports = function (server) {
     }
   });
 
-  // ---- /api/alpha/analytics/machines-summary ----
+  // ---- /api/alpha/analytics/machines-summary-cached ----
+  router.get("/analytics/machines-summary-cached", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      
+      // Get today's date string in Chicago timezone (same as cache service)
+      const today = new Date();
+      const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
+      const dateStr = chicagoTime.toISOString().split('T')[0];
+      
+      logger.info(`[machineSessions] Fetching cached machines summary for date: ${dateStr}`);
+      
+      // Query the machines-summary-cache-today collection directly
+      const data = await db.collection('machines-summary-cache-today')
+        .find({ 
+          date: dateStr,
+          _id: { $ne: 'metadata' }
+        })
+        .toArray();
+      
+      if (data.length === 0) {
+        logger.warn(`[machineSessions] No cached data found for date: ${dateStr}, falling back to real-time calculation`);
+        // Fallback to real-time calculation
+        return await getMachinesSummaryRealTime(req, res);
+      }
+      
+      logger.info(`[machineSessions] Retrieved ${data.length} cached machine records for date: ${dateStr}`);
+      res.json(data);
+      
+    } catch (err) {
+      logger.error(`[machineSessions] Error in cached machines-summary route:`, err);
+      
+      // Check if it's a validation error
+      if (err.message.includes('Start and end dates are required') ||
+        err.message.includes('Invalid date format') ||
+        err.message.includes('Start date must be before end date')) {
+        return res.status(400).json({ error: err.message });
+      }
+      
+      // Fallback to real-time calculation on any error
+      logger.info(`[machineSessions] Falling back to real-time calculation due to error`);
+      return await getMachinesSummaryRealTime(req, res);
+    }
+  });
+
+  // ---- /api/alpha/analytics/machines-summary (real-time calculation) ----
   router.get("/analytics/machines-summary", async (req, res) => {
+    return await getMachinesSummaryRealTime(req, res);
+  });
+
+  // Helper function for real-time calculation (extracted from original route)
+  async function getMachinesSummaryRealTime(req, res) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const queryStart = new Date(start);
@@ -225,7 +275,7 @@ module.exports = function (server) {
 
       res.status(500).json({ error: "Failed to build machines summary" });
     }
-  });
+  }
 
   /* -------------------- helpers -------------------- */
 
