@@ -12,7 +12,7 @@ module.exports = function (server) {
 
   // Helper function to parse and validate query parameters
   function parseAndValidateQueryParams(req) {
-    const { start, end } = req.query;
+    const { start, end, serial } = req.query;
 
     if (!start || !end) {
       throw new Error('Start and end dates are required');
@@ -29,7 +29,11 @@ module.exports = function (server) {
       throw new Error('Start date must be before end date');
     }
 
-    return { start: startDate, end: endDate };
+    return { 
+      start: startDate, 
+      end: endDate, 
+      serial: serial ? parseInt(serial) : null 
+    };
   }
 
   // Debug route to check database state
@@ -149,6 +153,59 @@ module.exports = function (server) {
   // ---- /api/alpha/analytics/machines-summary (real-time calculation) ----
   router.get("/analytics/machines-summary", async (req, res) => {
     return await getMachinesSummaryRealTime(req, res);
+  });
+
+  // ---- /api/alpha/machine-dashboard-cached ----
+  router.get("/analytics/machine-dashboard-cached", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+      
+      // Get today's date string in Chicago timezone (same as cache service)
+      const today = new Date();
+      const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
+      const dateStr = chicagoTime.toISOString().split('T')[0];
+      
+      logger.info(`[machineSessions] Fetching cached machine dashboard for date: ${dateStr}, serial: ${serial || 'all'}`);
+      
+      // Build query filter
+      const filter = { 
+        date: dateStr,
+        _id: { $ne: 'metadata' }
+      };
+      
+      // Add serial filter if specified
+      if (serial) {
+        filter['machine.serial'] = parseInt(serial);
+      }
+      
+      // Query the machine-dashboard-summary-cache-today collection directly
+      const data = await db.collection('machine-dashboard-summary-cache-today')
+        .find(filter)
+        .toArray();
+      
+      if (data.length === 0) {
+        logger.warn(`[machineSessions] No cached dashboard data found for date: ${dateStr}, falling back to real-time calculation`);
+        // Fallback to real-time calculation
+        return await getMachineDashboardRealTime(req, res);
+      }
+      
+      logger.info(`[machineSessions] Retrieved ${data.length} cached dashboard records for date: ${dateStr}`);
+      res.json(data);
+      
+    } catch (err) {
+      logger.error(`[machineSessions] Error in cached machine-dashboard route:`, err);
+      
+      // Check if it's a validation error
+      if (err.message.includes('Start and end dates are required') ||
+        err.message.includes('Invalid date format') ||
+        err.message.includes('Start date must be before end date')) {
+        return res.status(400).json({ error: err.message });
+      }
+      
+      // Fallback to real-time calculation on any error
+      logger.info(`[machineSessions] Falling back to real-time calculation due to error`);
+      return await getMachineDashboardRealTime(req, res);
+    }
   });
 
   // Helper function for real-time calculation (extracted from original route)
@@ -274,6 +331,99 @@ module.exports = function (server) {
       }
 
       res.status(500).json({ error: "Failed to build machines summary" });
+    }
+  }
+
+  // Helper function for real-time machine dashboard calculation (extracted from machineRoutes.js)
+  async function getMachineDashboardRealTime(req, res) {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      const targetSerials = serial ? [serial] : [];
+
+      // Import required functions (these should be available from the server context)
+      const { fetchGroupedAnalyticsData } = require('../../utils/fetchData');
+      const { getBookendedStatesAndTimeRange } = require('../../utils/bookendingBuilder');
+      const {
+        buildMachinePerformance,
+        buildMachineItemSummary,
+        buildItemHourlyStack,
+        buildFaultData,
+        buildOperatorEfficiency,
+        buildCurrentOperators
+      } = require('../../utils/machineDashboardBuilder');
+
+      const groupedData = await fetchGroupedAnalyticsData(
+        db,
+        start,
+        end,
+        "machine",
+        { targetSerials }
+      );
+
+      const results = await Promise.all(
+        Object.entries(groupedData).map(async ([serial, group]) => {
+          const machineSerial = parseInt(serial);
+          const { states: rawStates, counts } = group;
+      
+          if (!rawStates.length && !counts.valid.length) return null;
+      
+          // Apply bookending for this serial
+          const bookended = await getBookendedStatesAndTimeRange(
+            db,
+            machineSerial,
+            start,
+            end
+          );
+      
+          if (!bookended) return null;
+      
+          const { states, sessionStart, sessionEnd } = bookended;
+      
+          const latest = states.at(-1) || {};
+          const statusCode = latest.status?.code || 0;
+          const statusName = latest.status?.name || "Unknown";
+          const machineName = latest.machine?.name || "Unknown";
+      
+          const [
+            performance,
+            itemSummary,
+            itemHourlyStack,
+            faultData,
+            operatorEfficiency,
+            currentOperators,
+          ] = await Promise.all([
+            buildMachinePerformance(states, counts.valid, counts.misfeed, sessionStart, sessionEnd),
+            buildMachineItemSummary(states, counts.valid, sessionStart, sessionEnd),
+            buildItemHourlyStack(counts.valid, sessionStart, sessionEnd),
+            buildFaultData(states, sessionStart, sessionEnd),
+            buildOperatorEfficiency(states, counts.valid, sessionStart, sessionEnd, machineSerial),
+            buildCurrentOperators(db, machineSerial),
+          ]);
+      
+          return {
+            machine: {
+              serial: machineSerial,
+              name: machineName,
+            },
+            currentStatus: {
+              code: statusCode,
+              name: statusName,
+            },
+            performance,
+            itemSummary,
+            itemHourlyStack,
+            faultData,
+            operatorEfficiency,
+            currentOperators,
+          };
+        })
+      );
+      
+      res.json(results.filter(Boolean));
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to fetch dashboard data" });
     }
   }
 
