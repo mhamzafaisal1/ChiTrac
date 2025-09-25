@@ -34,8 +34,161 @@ module.exports = function (server) {
     return { start: startDate, end: endDate };
   }
 
-  // ---- /api/alpha/analytics/operators-summary ----
+  // ---- /api/alpha/analytics/operators-summary-cached ----
+  router.get("/analytics/operators-summary-cached", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      
+      // Get today's date string in Chicago timezone (same as cache service)
+      const today = new Date();
+      const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
+      const dateStr = chicagoTime.toISOString().split('T')[0];
+      
+      logger.info(`[operatorSessions] Fetching cached operators summary for date: ${dateStr}`);
+      
+      // Query the operator-cache-today collection directly
+      const data = await db.collection('operator-cache-today')
+        .find({ 
+          date: dateStr,
+          _id: { $ne: 'metadata' }
+        })
+        .toArray();
+      
+      if (data.length === 0) {
+        logger.warn(`[operatorSessions] No cached data found for date: ${dateStr}, falling back to real-time calculation`);
+        // Fallback to real-time calculation
+        return await getOperatorsSummaryRealTime(req, res);
+      }
+      
+      // Group by operator ID and aggregate metrics across machines
+      const operatorMap = new Map();
+      
+      for (const record of data) {
+        const operatorId = record.operator.id;
+        
+        if (!operatorMap.has(operatorId)) {
+          operatorMap.set(operatorId, {
+            operator: record.operator,
+            currentStatus: { code: 1, name: "Running" }, // Default status
+            currentMachine: null,
+            metrics: {
+              runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+              downtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+              output: { totalCount: 0, misfeedCount: 0 },
+              performance: {
+                availability: { value: 0, percentage: "0.00" },
+                throughput: { value: 0, percentage: "0.00" },
+                efficiency: { value: 0, percentage: "0.00" },
+                oee: { value: 0, percentage: "0.00" }
+              }
+            },
+            timeRange: record.timeRange,
+            machines: []
+          });
+        }
+        
+        const operatorData = operatorMap.get(operatorId);
+        
+        // Add machine info
+        operatorData.machines.push({
+          serial: record.machine.serial,
+          name: record.machine.name
+        });
+        
+        // Set current machine to the most recent one (last in the list)
+        operatorData.currentMachine = {
+          serial: record.machine.serial,
+          name: record.machine.name
+        };
+        
+        // Aggregate metrics
+        operatorData.metrics.runtime.total += record.metrics.runtime.total;
+        operatorData.metrics.downtime.total += record.metrics.downtime.total;
+        operatorData.metrics.output.totalCount += record.metrics.output.totalCount;
+        operatorData.metrics.output.misfeedCount += record.metrics.output.misfeedCount;
+      }
+      
+      // Calculate aggregated performance metrics for each operator
+      const results = Array.from(operatorMap.values()).map(operatorData => {
+        const { runtime, downtime, output } = operatorData.metrics;
+        
+        // Calculate aggregated performance metrics
+        const totalMs = operatorData.timeRange.end - operatorData.timeRange.start;
+        const availability = totalMs > 0 ? runtime.total / totalMs : 0;
+        const throughput = (output.totalCount + output.misfeedCount) > 0 ? 
+          output.totalCount / (output.totalCount + output.misfeedCount) : 0;
+        
+        // For efficiency, we'll use a weighted average based on runtime
+        let totalWeightedEfficiency = 0;
+        let totalWeight = 0;
+        
+        for (const record of data) {
+          if (record.operator.id === operatorData.operator.id) {
+            const weight = record.metrics.runtime.total;
+            totalWeightedEfficiency += record.metrics.performance.efficiency.value * weight;
+            totalWeight += weight;
+          }
+        }
+        
+        const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
+        const oee = availability * throughput * efficiency;
+        
+        // Update formatted runtime
+        operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
+        operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
+        
+        // Update performance metrics
+        operatorData.metrics.performance = {
+          availability: {
+            value: availability,
+            percentage: (availability * 100).toFixed(2)
+          },
+          throughput: {
+            value: throughput,
+            percentage: (throughput * 100).toFixed(2)
+          },
+          efficiency: {
+            value: efficiency,
+            percentage: (efficiency * 100).toFixed(2)
+          },
+          oee: {
+            value: oee,
+            percentage: (oee * 100).toFixed(2)
+          }
+        };
+        
+        // Remove machines array from final output
+        delete operatorData.machines;
+        
+        return operatorData;
+      });
+      
+      logger.info(`[operatorSessions] Retrieved ${results.length} cached operator records for date: ${dateStr}`);
+      res.json(results);
+      
+    } catch (err) {
+      logger.error(`[operatorSessions] Error in cached operators-summary route:`, err);
+      
+      // Check if it's a validation error
+      if (err.message.includes('Start and end dates are required') ||
+        err.message.includes('Invalid date format') ||
+        err.message.includes('Start date must be before end date')) {
+        return res.status(400).json({ error: err.message });
+      }
+      
+      // Fallback to real-time calculation on any error
+      logger.info(`[operatorSessions] Falling back to real-time calculation due to error`);
+      return await getOperatorsSummaryRealTime(req, res);
+    }
+  });
+
+  // ---- /api/alpha/analytics/operators-summary (real-time calculation) ----
   router.get("/analytics/operators-summary", async (req, res) => {
+    return await getOperatorsSummaryRealTime(req, res);
+  });
+
+  // Helper function for real-time calculation (extracted from original route)
+  async function getOperatorsSummaryRealTime(req, res) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const queryStart = new Date(DateTime.fromISO(req.query.start).toISO()); //new Date(start); NEED LUXON FOR TIMEZONE ISSUES
@@ -210,7 +363,7 @@ module.exports = function (server) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       res.status(500).json({ error: "Failed to build operators summary" });
     }
-  });
+  }
 
   // ---- /api/alpha/analytics/operator-machine-summary ----
   router.get("/analytics/operator-machine-summary", async (req, res) => {
