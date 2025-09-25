@@ -58,6 +58,9 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   }
 
   ngOnInit(): void {
+    const isLive = this.dateTimeService.getLiveMode();
+    const wasConfirmed = this.dateTimeService.getConfirmed();
+
     if (this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
@@ -69,7 +72,9 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     }
 
     this.enterDummy();
-    this.fetchOnce().subscribe();
+    
+    // Consolidated initial fetch logic - only one fetch call
+    this.performInitialFetch(isLive, wasConfirmed);
 
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
@@ -94,7 +99,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     if ((changes['startDate'] || changes['endDate']) && this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
-      this.fetchOnce().subscribe();
+      // Only update time variables, no API call here
     }
   }
 
@@ -102,6 +107,23 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     this.destroy$.next(); this.destroy$.complete();
     this.stopPolling();
   }
+
+  // ---- flow ----
+  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
+    // Determine if we should fetch data based on the current state
+    const shouldFetch = !isLive || wasConfirmed;
+    
+    if (shouldFetch) {
+      // Use confirmed times if available, otherwise use default times
+      if (wasConfirmed) {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+      }
+      
+      this.fetchOnce().subscribe();
+    }
+  }
+
 
   private startLive(): void {
     this.enterDummy();

@@ -48,6 +48,9 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   }
 
   ngOnInit(): void {
+    const isLive = this.dateTimeService.getLiveMode();
+    const wasConfirmed = this.dateTimeService.getConfirmed();
+
     // Use input values if provided, otherwise use defaults
     if (this.startDate && this.endDate) {
       this.startTime = this.startDate;
@@ -63,8 +66,8 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     // initial dummy
     this.enterDummy();
 
-    // Always fetch data on init
-    this.fetchOnce().subscribe();
+    // Consolidated initial fetch logic - only one fetch call
+    this.performInitialFetch(isLive, wasConfirmed);
 
     // liveMode wiring
     this.dateTimeService.liveMode$
@@ -92,7 +95,7 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     if ((changes['startDate'] || changes['endDate']) && this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
-      this.fetchOnce().subscribe();
+      // Only update time variables, no API call here
     }
   }
 
@@ -102,6 +105,21 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   }
 
   // ---------- core flow ----------
+  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
+    // Determine if we should fetch data based on the current state
+    const shouldFetch = !isLive || wasConfirmed;
+    
+    if (shouldFetch) {
+      // Use confirmed times if available, otherwise use default times
+      if (wasConfirmed) {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+      }
+      
+      this.fetchOnce().subscribe();
+    }
+  }
+
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0,0,0,0);

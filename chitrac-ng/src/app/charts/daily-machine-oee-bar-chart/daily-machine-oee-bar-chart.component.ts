@@ -70,15 +70,8 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
 
     this.enterDummy();
 
-    if (!isLive && wasConfirmed) {
-      this.startTime = this.dateTimeService.getStartTime();
-      this.endTime = this.dateTimeService.getEndTime();
-      this.fetchOnce().subscribe();
-    }
-
-    if (!wasConfirmed) {
-      this.fetchOnce().subscribe();
-    }
+    // Consolidated initial fetch logic - only one fetch call
+    this.performInitialFetch(isLive, wasConfirmed);
 
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
@@ -105,6 +98,21 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   }
 
   // ---- flow ----
+  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
+    // Determine if we should fetch data based on the current state
+    const shouldFetch = !isLive || wasConfirmed;
+    
+    if (shouldFetch) {
+      // Use confirmed times if available, otherwise use default times
+      if (wasConfirmed) {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+      }
+      
+      this.fetchOnce().subscribe();
+    }
+  }
+
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0, 0, 0, 0);

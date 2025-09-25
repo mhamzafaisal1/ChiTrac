@@ -79,14 +79,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
 
     this.enterDummy();
 
-    if (!isLive && wasConfirmed) {
-      this.startTime = this.dateTimeService.getStartTime();
-      this.endTime   = this.dateTimeService.getEndTime();
-      this.fetchOnce().subscribe();
-    }
-    if (!wasConfirmed) {
-      this.fetchOnce().subscribe();
-    }
+    // Consolidated initial fetch logic - only one fetch call
+    this.performInitialFetch(isLive, wasConfirmed);
 
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
@@ -105,13 +99,6 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         this.endTime   = this.dateTimeService.getEndTime();
         this.fetchOnce().subscribe();
       });
-
-    // Optional sanity check: fetch once if nothing has loaded within the first tick
-    setTimeout(() => {
-      if (!this.hasInitialData && this.isLoading) {
-        this.fetchOnce().subscribe();
-      }
-    }, 0);
   }
 
   ngOnDestroy(): void {
@@ -120,6 +107,21 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   }
 
   // ---- flow ----
+  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
+    // Determine if we should fetch data based on the current state
+    const shouldFetch = !isLive || wasConfirmed;
+    
+    if (shouldFetch) {
+      // Use confirmed times if available, otherwise use default times
+      if (wasConfirmed) {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+      }
+      
+      this.fetchOnce().subscribe();
+    }
+  }
+
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0, 0, 0, 0);
