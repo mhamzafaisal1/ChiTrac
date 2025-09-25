@@ -60,6 +60,22 @@ module.exports = function (server) {
         return await getOperatorsSummaryRealTime(req, res);
       }
       
+      // Get current machine statuses from stateTicker collection
+      const stateTickerData = await db.collection('stateTicker')
+        .find({})
+        .toArray();
+      
+      // Create a map of machine serial to current status
+      const machineStatusMap = new Map();
+      for (const stateRecord of stateTickerData) {
+        machineStatusMap.set(stateRecord.machine.serial, {
+          code: stateRecord.status.code,
+          name: stateRecord.status.name,
+          softrolColor: stateRecord.status.softrolColor,
+          timestamp: stateRecord.status.timestamp
+        });
+      }
+      
       // Group by operator ID and aggregate metrics across machines
       const operatorMap = new Map();
       
@@ -100,6 +116,15 @@ module.exports = function (server) {
           serial: record.machine.serial,
           name: record.machine.name
         };
+        
+        // Get current status from stateTicker for this machine
+        const currentMachineStatus = machineStatusMap.get(record.machine.serial);
+        if (currentMachineStatus) {
+          operatorData.currentStatus = {
+            code: currentMachineStatus.code,
+            name: currentMachineStatus.name
+          };
+        }
         
         // Aggregate metrics
         operatorData.metrics.runtime.total += record.metrics.runtime.total;
