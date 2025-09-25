@@ -19,6 +19,13 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   @Input() endDate = '';
   @Input() chartWidth = 600;
   @Input() chartHeight = 400;
+  @Input() marginTop = 50;
+  @Input() marginRight = 30;
+  @Input() marginBottom = 50;
+  @Input() marginLeft = 50;
+  @Input() showLegend = true;
+  @Input() legendPosition: "top" | "right" = "right";
+  @Input() legendWidthPx = 120;
 
   // derived state
   chartData: StackedBarChartData | null = null;
@@ -155,11 +162,15 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     (res: any) => {
       // Handle the nested response structure and transform to StackedBarChartData format
       if (res && res.itemHourlyStack && res.itemHourlyStack.data) {
+        // Transform ISO timestamps to hour indices for the chart
+        const hours = res.itemHourlyStack.data.hours || [];
+        const hourIndices = hours.map((timestamp: string, index: number) => index);
+        
         // Transform the API response to match StackedBarChartData interface
         const transformedData: StackedBarChartData = {
           title: res.itemHourlyStack.title || 'Daily Machine Item Hourly Production',
           data: {
-            hours: res.itemHourlyStack.data.hours || [],
+            hours: hourIndices,
             operators: res.itemHourlyStack.data.operators || {},
             machineNames: res.itemHourlyStack.data.machineNames || []
           }
@@ -193,6 +204,11 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   setAvailableSize(w: number, h: number): void {
     this.chartWidth = w;
     this.chartHeight = h;
+    // Update margins proportionally if needed
+    this.marginTop = Math.max(50, Math.floor(h * 0.1));
+    this.marginBottom = Math.max(50, Math.floor(h * 0.1));
+    this.marginLeft = Math.max(50, Math.floor(w * 0.08));
+    this.marginRight = Math.max(30, Math.floor(w * 0.05));
   }
 
   // ---------- utils ----------
