@@ -62,9 +62,27 @@ function constructor(server) {
     catch (e) { next(e); }
   }
 
+  // Get next available operator ID
+  async function getNewOperatorId(req, res, next) {
+    try {
+      // Find the highest code value under 600000
+      const result = await collection
+        .find({ code: { $lt: 600000 } })
+        .sort({ code: -1 })
+        .limit(1)
+        .toArray();
+      
+      // If no operators exist, start from 100000, otherwise add 1 to the highest
+      const nextId = result.length > 0 ? result[0].code + 1 : 100000;
+      
+      res.json({ code: nextId });
+    } catch (e) { next(e); }
+  }
+
   // Routes
   router.get('/operator/config/xml', getOperatorXML);
   router.get('/operator/config', getOperator);
+  router.get('/operator/new-id', getNewOperatorId);
 
   router.post('/operator/config', createOperator);
   router.put('/operator/config/:id', upsertOperator);   // << add this

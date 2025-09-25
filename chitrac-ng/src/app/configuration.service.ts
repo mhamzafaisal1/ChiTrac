@@ -34,6 +34,10 @@ export class ConfigurationService {
     return this.http.get<OperatorConfig[]>('/api/operator/config');
   }
 
+  public getNewOperatorId(): Observable<{code: number}> {
+    return this.http.get<{code: number}>('/api/operator/new-id');
+  }
+
   public postOperatorConfig(operator: OperatorConfig) {
     return this.http.post<OperatorConfig>('/api/operator/config', operator);
   }
