@@ -21,6 +21,17 @@ module.exports = {
       },
       weight: {
         type: ['number', 'null']
+      },
+      standard: {
+        type: 'integer',
+        minimum: 0
+      },
+      area: {
+        type: 'integer',
+        minimum: 0
+      },
+      department: {
+        type: 'string'
       }
     },
     additionalProperties: false
