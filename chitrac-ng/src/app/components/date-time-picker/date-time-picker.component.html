@@ -7,4 +7,25 @@
     (ngModelChange)="valueChange.emit($event)"
     [disabled]="disabled"
   />
+  
+  <div class="timeframe-section" *ngIf="showTimeframes">
+    <div class="timeframe-buttons">
+      <button 
+        type="button"
+        class="timeframe-btn"
+        [class.selected]="selectedTimeframe === 'thisWeek'"
+        (click)="onTimeframeSelect('thisWeek')"
+        [disabled]="disabled">
+        This Week
+      </button>
+      <button 
+        type="button"
+        class="timeframe-btn"
+        [class.selected]="selectedTimeframe === 'thisMonth'"
+        (click)="onTimeframeSelect('thisMonth')"
+        [disabled]="disabled">
+        This Month
+      </button>
+    </div>
+  </div>
 </div>
