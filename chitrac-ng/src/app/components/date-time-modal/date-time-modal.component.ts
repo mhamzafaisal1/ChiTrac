@@ -72,31 +72,55 @@ export class DateTimeModalComponent {
     this.mode = 'manual'; // Switch to manual mode when timeframe is selected
     this.dateTimeService.setLiveMode(false);
     
+    // Store the timeframe in the service instead of calculating dates
+    this.dateTimeService.setTimeframe(timeframe);
+    
+    // For display purposes, we can still show approximate dates
+    // but the actual API calls will use the timeframe parameter
     const now = new Date();
     let start: Date;
     let end: Date;
 
-    if (timeframe === 'thisWeek') {
-      // Calculate start of current week (Sunday)
-      start = new Date(now);
-      const day = start.getDay();
-      start.setDate(start.getDate() - day);
-      start.setHours(0, 0, 0, 0);
-      
-      // Calculate end of current week (Saturday)
-      end = new Date(start);
-      end.setDate(end.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
-    } else if (timeframe === 'thisMonth') {
-      // Calculate start of current month
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      start.setHours(0, 0, 0, 0);
-      
-      // Calculate end of current month
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      end.setHours(23, 59, 59, 999);
-    } else {
-      return; // Invalid timeframe
+    switch (timeframe) {
+      case 'current':
+        start = new Date(now.getTime() - 6 * 60 * 1000); // 6 minutes ago
+        end = now;
+        break;
+      case 'lastFifteen':
+        start = new Date(now.getTime() - 15 * 60 * 1000); // 15 minutes ago
+        end = now;
+        break;
+      case 'lastHour':
+        start = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
+        end = now;
+        break;
+      case 'today':
+        start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        end = now;
+        break;
+      case 'thisWeek':
+        // Calculate start of current week (Sunday)
+        start = new Date(now);
+        const day = start.getDay();
+        start.setDate(start.getDate() - day);
+        start.setHours(0, 0, 0, 0);
+        end = now;
+        break;
+      case 'thisMonth':
+        // Calculate start of current month
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        start.setHours(0, 0, 0, 0);
+        end = now;
+        break;
+      case 'thisYear':
+        // Calculate start of current year
+        start = new Date(now.getFullYear(), 0, 1);
+        start.setHours(0, 0, 0, 0);
+        end = now;
+        break;
+      default:
+        return; // Invalid timeframe
     }
 
     this.startDateTime = start;

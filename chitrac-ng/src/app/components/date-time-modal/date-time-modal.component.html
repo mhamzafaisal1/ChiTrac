@@ -46,6 +46,34 @@
       <div class="timeframe-buttons">
         <button 
           mat-stroked-button 
+          [class.selected]="selectedTimeframe === 'current'"
+          (click)="onTimeframeSelect('current')"
+          [disabled]="mode === 'live'">
+          Current (6 min)
+        </button>
+        <button 
+          mat-stroked-button 
+          [class.selected]="selectedTimeframe === 'lastFifteen'"
+          (click)="onTimeframeSelect('lastFifteen')"
+          [disabled]="mode === 'live'">
+          Last 15 Min
+        </button>
+        <button 
+          mat-stroked-button 
+          [class.selected]="selectedTimeframe === 'lastHour'"
+          (click)="onTimeframeSelect('lastHour')"
+          [disabled]="mode === 'live'">
+          Last Hour
+        </button>
+        <button 
+          mat-stroked-button 
+          [class.selected]="selectedTimeframe === 'today'"
+          (click)="onTimeframeSelect('today')"
+          [disabled]="mode === 'live'">
+          Today
+        </button>
+        <button 
+          mat-stroked-button 
           [class.selected]="selectedTimeframe === 'thisWeek'"
           (click)="onTimeframeSelect('thisWeek')"
           [disabled]="mode === 'live'">
@@ -57,6 +85,13 @@
           (click)="onTimeframeSelect('thisMonth')"
           [disabled]="mode === 'live'">
           This Month
+        </button>
+        <button 
+          mat-stroked-button 
+          [class.selected]="selectedTimeframe === 'thisYear'"
+          (click)="onTimeframeSelect('thisYear')"
+          [disabled]="mode === 'live'">
+          This Year
         </button>
       </div>
     </div>

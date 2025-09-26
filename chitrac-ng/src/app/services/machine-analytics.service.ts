@@ -122,10 +122,25 @@ export class MachineAnalyticsService {
     return this.http.get(`${this.apiUrl}/analytics/machines-summary-cached`, { params });
   }
 
+  getMachineSummaryWithTimeframe(timeframe: string): Observable<any> {
+    const params = new HttpParams()
+      .set('timeframe', timeframe);
+  
+    return this.http.get(`${this.apiUrl}/analytics/machines-summary-cached`, { params });
+  }
+
   getMachineDetails(start: string, end: string, serial: number): Observable<any> {
     const params = new HttpParams()
       .set('start', start)
       .set('end', end)
+      .set('serial', serial.toString());
+  
+    return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-cached`, { params });
+  }
+
+  getMachineDetailsWithTimeframe(timeframe: string, serial: number): Observable<any> {
+    const params = new HttpParams()
+      .set('timeframe', timeframe)
       .set('serial', serial.toString());
   
     return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-cached`, { params });

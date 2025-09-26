@@ -256,11 +256,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   fetchAnalyticsData(): void {
-    if (!this.startTime || !this.endTime) return;
     this.isLoading = true;
-    this.analyticsService
-      .getMachineSummary(this.startTime, this.endTime)
-      .subscribe({
+    
+    // Check if we have a timeframe selected
+    const timeframe = this.dateTimeService.getTimeframe();
+    
+    if (timeframe) {
+      // Use timeframe-based API call
+      this.analyticsService
+        .getMachineSummaryWithTimeframe(timeframe)
+        .subscribe({
         next: (data: any) => {
           const responses = Array.isArray(data) ? data : [data];
 
@@ -324,6 +329,80 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           this.isLoading = false;
         },
       });
+    } else {
+      // Fallback to date-based API call
+      if (!this.startTime || !this.endTime) {
+        this.isLoading = false;
+        return;
+      }
+      
+      this.analyticsService
+        .getMachineSummary(this.startTime, this.endTime)
+        .subscribe({
+          next: (data: any) => {
+            const responses = Array.isArray(data) ? data : [data];
+
+            // Guard: if responses is not an array or is empty, set rows to [] and return
+            if (!Array.isArray(responses) || responses.length === 0) {
+              this.rows = [];
+              this.isLoading = false;
+              return;
+            }
+
+            // Filter out undefined/null/invalid responses
+            const validResponses = responses.filter(
+              (response) =>
+                response &&
+                response.metrics &&
+                response.machine &&
+                response.currentStatus
+            );
+            if (validResponses.length === 0) {
+              this.rows = [];
+              this.isLoading = false;
+              return;
+            }
+
+            const formattedData = validResponses.map((response) => ({
+              Status: getStatusDotByCode(response.currentStatus?.code),
+              "Machine Name": response.machine?.name ?? "Unknown",
+              "Serial Number": response.machine?.serial,
+              Runtime: `${response.metrics?.runtime?.formatted?.hours ?? 0}h ${
+                response.metrics?.runtime?.formatted?.minutes ?? 0
+              }m`,
+              Downtime: `${response.metrics?.downtime?.formatted?.hours ?? 0}h ${
+                response.metrics?.downtime?.formatted?.minutes ?? 0
+              }m`,
+              "Total Count": response.metrics?.output?.totalCount ?? 0,
+              "Misfeed Count": response.metrics?.output?.misfeedCount ?? 0,
+              Availability:
+                (response.metrics?.performance?.availability?.percentage ?? "0") +
+                "%",
+              Throughput:
+                (response.metrics?.performance?.throughput?.percentage ?? "0") +
+                "%",
+              Efficiency:
+                (response.metrics?.performance?.efficiency?.percentage ?? "0") +
+                "%",
+              OEE: (response.metrics?.performance?.oee?.percentage ?? "0") + "%",
+            }));
+
+            const allColumns = Object.keys(formattedData[0]);
+            const columnsToHide: string[] = [""];
+            this.columns = allColumns.filter(
+              (col) => !columnsToHide.includes(col)
+            );
+
+            this.rows = formattedData;
+            this.isLoading = false;
+          },
+          error: (err) => {
+            console.error("Error fetching dashboard data:", err);
+            this.rows = [];
+            this.isLoading = false;
+          },
+        });
+    }
   }
 
   onRowClick(row: any): void {
@@ -339,9 +418,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }, 0);
 
     const machineSerial = row["Serial Number"];
-    this.analyticsService
-      .getMachineDetails(this.startTime, this.endTime, machineSerial)
-      .subscribe({
+    const timeframe = this.dateTimeService.getTimeframe();
+    
+    if (timeframe) {
+      // Use timeframe-based API call
+      this.analyticsService
+        .getMachineDetailsWithTimeframe(timeframe, machineSerial)
+        .subscribe({
         next: (res: any[]) => {
           const machineData = res[0]; // <-- FIX HERE
 
@@ -352,13 +435,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           const faultSummaryData = machineData.faultData?.faultSummaries || [];
           const faultCycleData = machineData.faultData?.faultCycles || [];
 
-          // Debug: Log the machine data structure
-          console.log('MachineDashboard: Full machine data:', machineData);
-          console.log('MachineDashboard: Item hourly stack data:', machineData.itemHourlyStack);
-          console.log('MachineDashboard: Operator efficiency data:', machineData.operatorEfficiency);
-
-          console.log('MachineDashboard: Creating carousel tabs with machine data:', machineData);
-          
+        
           const carouselTabs = [
             {
               label: "Item Summary",
@@ -486,6 +563,150 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           );
         },
       });
+    } else {
+      // Fallback to date-based API call
+      this.analyticsService
+        .getMachineDetails(this.startTime, this.endTime, machineSerial)
+        .subscribe({
+          next: (res: any[]) => {
+            const machineData = res[0]; // <-- FIX HERE
+
+            const itemSummaryData = Object.values(
+              machineData.itemSummary?.machineSummary?.itemSummaries || {}
+            );
+
+            const faultSummaryData = machineData.faultData?.faultSummaries || [];
+            const faultCycleData = machineData.faultData?.faultCycles || [];
+
+          
+            const carouselTabs = [
+              {
+                label: "Item Summary",
+                component: MachineItemSummaryTableComponent,
+                componentInputs: {
+                  startTime: this.startTime,
+                  endTime: this.endTime,
+                  selectedMachineSerial: machineSerial,
+                  itemSummaryData,
+                  isModal: this.isModal,
+                },
+              },
+              {
+                label: "Current Operators",
+                component: MachineCurrentOperatorsComponent,
+                componentInputs: {
+                  startTime: this.startTime,
+                  endTime: this.endTime,
+                  selectedMachineSerial: machineSerial,
+                  currentOperatorsData: machineData.currentOperators || [],
+                  isModal: this.isModal,
+                },
+              },
+              {
+                label: "Item Stacked Chart",
+                component: MachineItemStackedBarChartComponent,
+                componentInputs: {
+                  startTime: this.startTime,
+                  endTime: this.endTime,
+                  machineSerial,
+                  chartWidth: this.chartWidth,
+                  chartHeight: this.chartHeight,
+                  isModal: this.isModal,
+                  mode: "dashboard",
+                  preloadedData: machineData.itemHourlyStack,
+                  marginTop: 30,
+                  marginRight: 15,
+                  marginBottom: 60,
+                  marginLeft: 25,
+                  showLegend: true,
+                  legendPosition: "right",
+                  legendWidthPx: 120,
+                },
+              },
+              {
+                label: "Fault Summaries",
+                component: MachineFaultHistoryComponent,
+                componentInputs: {
+                  viewType: "summary",
+                  startTime: this.startTime,
+                  endTime: this.endTime,
+                  machineSerial,
+                  isModal: this.isModal,
+                },
+              },
+              {
+                label: "Fault History",
+                component: MachineFaultHistoryComponent,
+                componentInputs: {
+                  viewType: "cycles",
+                  startTime: this.startTime,
+                  endTime: this.endTime,
+                  machineSerial,
+                  isModal: this.isModal,
+                },
+              },
+              {
+                label: "Performance Chart",
+                component: OperatorPerformanceChartComponent,
+                componentInputs: {
+                  startTime: this.startTime,
+                  endTime: this.endTime,
+                  machineSerial,
+                  chartWidth: this.chartWidth,
+                  chartHeight: this.chartHeight,
+                  isModal: this.isModal,
+                  mode: "dashboard",
+                  preloadedData: {
+                    machine: {
+                      serial: machineSerial,
+                      name: machineData.machine?.name ?? "Unknown",
+                    },
+                    timeRange: {
+                      start: this.startTime,
+                      end: this.endTime,
+                    },
+                    hourlyData: machineData.operatorEfficiency ?? [],
+                  },
+                  marginTop: 30,
+                  marginRight: 15,
+                  marginBottom: 60,
+                  marginLeft: 25,
+                  showLegend: true,
+                  legendPosition: "right",
+                  legendWidthPx: 120,
+                },
+              },
+            ];
+
+            const dialogRef = this.dialog.open(ModalWrapperComponent, {
+              width: "90vw",
+              height: "85vh",
+              maxWidth: "95vw",
+              maxHeight: "90vh",
+              panelClass: "performance-chart-dialog",
+              data: {
+                component: UseCarouselComponent,
+                componentInputs: {
+                  tabData: carouselTabs,
+                },
+                machineSerial,
+                startTime: this.startTime,
+                endTime: this.endTime,
+              },
+            });
+
+            dialogRef.afterClosed().subscribe(() => {
+              if (this.selectedRow === row) this.selectedRow = null;
+            });
+          },
+          error: (err) => {
+            console.error(
+              `Error loading detailed modal data for machine ${machineSerial}:`,
+              err
+            );
+          },
+        });
+    }
   }
 
   getEfficiencyClass(value: any): string {
