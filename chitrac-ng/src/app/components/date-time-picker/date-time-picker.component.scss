@@ -51,7 +51,43 @@ input[type='datetime-local'] {
     opacity: 1;
     cursor: pointer;
   }
+}
+
+.timeframe-section {
+  margin-top: 8px;
   
+  .timeframe-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    
+    .timeframe-btn {
+      padding: 4px 8px;
+      font-size: 0.75rem;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      background-color: inherit;
+      color: inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      min-width: 70px;
+      
+      &:hover:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+      
+      &.selected {
+        background-color: #3f51b5;
+        color: white;
+        border-color: #3f51b5;
+      }
+      
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
 }
 
 /* Dark Mode */

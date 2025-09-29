@@ -1,7 +1,7 @@
 // charts/daily-count-bar-chart/daily-count-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BarChartComponent, BarChartDataPoint } from '../../components/bar-chart/bar-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
@@ -11,7 +11,7 @@ import { takeUntil, tap, delay } from 'rxjs/operators';
 @Component({
   selector: 'app-daily-count-bar-chart',
   standalone: true,
-  imports: [CommonModule, BarChartComponent],
+  imports: [CommonModule, CartesianChartComponent],
   templateUrl: './daily-count-bar-chart.component.html',
   styleUrls: ['./daily-count-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -22,14 +22,21 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   @Input() chartWidth = 600;
   @Input() chartHeight = 400;
 
-  // derived state
-  chartData: BarChartDataPoint[] = [];
+  // pass-through props (added to mirror other charts)
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: 'top' | 'right';
+  @Input() legendWidthPx!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
+
+  chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
   dummyMode = true;
 
-  // date/time + live
   startTime = '';
   endTime = '';
   liveMode = false;
@@ -51,25 +58,24 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   }
 
   ngOnInit(): void {
-    // Use input values if provided, otherwise use defaults
+    const isLive = this.dateTimeService.getLiveMode();
+    const wasConfirmed = this.dateTimeService.getConfirmed();
+
     if (this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
     } else {
-      // default [start,end] = [midnight, now]
       const now = new Date();
       const start = new Date(); start.setHours(0,0,0,0);
       this.startTime = this.formatDateForInput(start);
       this.endTime = this.formatDateForInput(now);
     }
 
-    // initial dummy
     this.enterDummy();
+    
+    // Consolidated initial fetch logic - only one fetch call
+    this.performInitialFetch(isLive, wasConfirmed);
 
-    // Always fetch data on init
-    this.fetchOnce().subscribe();
-
-    // liveMode wiring
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
       .subscribe((live: boolean) => {
@@ -77,7 +83,6 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         if (live) this.startLive(); else this.stopLive();
       });
 
-    // confirm wiring
     this.dateTimeService.confirmTrigger$
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
@@ -91,11 +96,10 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    // Handle input changes
     if ((changes['startDate'] || changes['endDate']) && this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
-      this.fetchOnce().subscribe();
+      // Only update time variables, no API call here
     }
   }
 
@@ -104,14 +108,29 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     this.stopPolling();
   }
 
-  // ---------- core flow ----------
+  // ---- flow ----
+  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
+    // Determine if we should fetch data based on the current state
+    const shouldFetch = !isLive || wasConfirmed;
+    
+    if (shouldFetch) {
+      // Use confirmed times if available, otherwise use default times
+      if (wasConfirmed) {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+      }
+      
+      this.fetchOnce().subscribe();
+    }
+  }
+
+
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0,0,0,0);
     this.startTime = this.formatDateForInput(start);
     this.endTime = this.pollingService.updateEndTimestampToNow();
 
-    // initial fetch + poll
     this.fetchOnce().subscribe();
     this.setupPolling();
   }
@@ -119,7 +138,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   private stopLive(): void {
     this.stopPolling();
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.enterDummy();
   }
 
@@ -140,7 +159,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
 
   private stopPolling(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-    this.cdr.markForCheck();          // <— optional but safe
+    this.cdr.markForCheck();
   }
 
   private fetchOnce(): Observable<any> {
@@ -157,45 +176,66 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
-      console.log('Raw API response:', res);
-      
-      // Handle the nested response structure
       let rows: any[] = [];
       if (res && res.dailyCounts && Array.isArray(res.dailyCounts)) {
         rows = res.dailyCounts;
       } else if (Array.isArray(res)) {
         rows = res;
       }
-      
-      console.log('Processed rows:', rows);
-      
-      const normalized = rows.map((r: any, i: number) => ({
-        hour: i,
-        counts: r.count ?? r.counts ?? 0,
-        label: r.date ?? r.label ?? ''
-      }));
-      
-      this.chartData = normalized;
-      this.isLoading = false;          // set to false unconditionally
+
+      this.chartConfig = rows.length ? this.formatChartData(rows) : null;
+      this.isLoading = false;
       this.dummyMode = false;
-      this.hasInitialData = normalized.length > 0;
-      
-      this.cdr.markForCheck();        // <— critical
-      
-      // Force change detection to ensure chart renders
-      console.log('Chart data updated:', this.chartData);
-      console.log('Normalized data:', normalized);
+      this.hasInitialData = !!this.chartConfig;
+
+      this.cdr.markForCheck();
     };
+
+  private formatChartData(data: any[]): CartesianChartConfig {
+    // Convert daily count data to cartesian chart format
+    const series: XYSeries[] = [
+      {
+        id: 'counts',
+        title: 'Counts',
+        type: 'bar',
+        data: data.map((d: any, i: number) => ({ 
+          x: d.date ?? d.label ?? `Hour ${i}`, 
+          y: d.count ?? d.counts ?? 0 
+        })),
+        color: '#42a5f5'
+      }
+    ];
+
+    return {
+      title: 'Daily Count Totals',
+      width: this.chartWidth,
+      height: this.chartHeight,
+      orientation: 'vertical',
+      xType: 'category',
+      xLabel: 'Time',
+      yLabel: 'Count',
+      margin: {
+        top: Math.max(this.marginTop || 50, 60),
+        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: Math.max(this.marginBottom || 50, 80), // Increased bottom margin for more space
+        left: this.marginLeft || 50
+      },
+      legend: {
+        show: this.showLegend !== false,
+        position: this.legendPosition || 'top'
+      },
+      series: series
+    };
+  }
 
   private enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
-    this.chartData = [];
-    this.cdr.markForCheck();          // <— ensure overlay shows/hides
+    this.chartConfig = null;
+    this.cdr.markForCheck();
   }
 
-  // ---------- utils ----------
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');

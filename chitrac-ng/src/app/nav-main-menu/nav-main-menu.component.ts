@@ -1,4 +1,4 @@
-import { Component, inject, Output, Input, EventEmitter, ViewChild } from '@angular/core';
+import { Component, inject, Output, Input, EventEmitter, ViewChild, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 
@@ -158,6 +158,15 @@ export class NavMainMenuComponent {
         console.log('login modal closed');
       }
     });
+  }
+
+  @HostListener('keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent): void {
+    // Prevent menu from closing when Tab key is pressed in login popup
+    if (event.key === 'Tab' && this.loginMenu && this.loginMenu.menuOpen) {
+      event.stopPropagation();
+      // Let the default Tab behavior continue for focus management
+    }
   }
   
   

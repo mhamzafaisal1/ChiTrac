@@ -11,7 +11,6 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
 import { OperatorAnalyticsService } from '../services/operator-analytics.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
 import { PollingService } from '../services/polling-service.service';
@@ -23,7 +22,6 @@ import { OperatorItemSummaryTableComponent } from '../operator-item-summary-tabl
 import { OperatorCountbyitemChartComponent } from '../operator-countbyitem-chart/operator-countbyitem-chart.component';
 import { OperatorCyclePieChartComponent } from '../operator-cycle-pie-chart/operator-cycle-pie-chart.component';
 import { OperatorFaultHistoryComponent } from '../operator-fault-history/operator-fault-history.component';
-import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
 import { OperatorLineChartComponent } from '../operator-line-chart/operator-line-chart.component';
 import { OperatorMachineSummaryComponent } from '../operator-machine-summary/operator-machine-summary.component';
 
@@ -34,13 +32,9 @@ import { OperatorMachineSummaryComponent } from '../operator-machine-summary/ope
         HttpClientModule,
         FormsModule,
         BaseTableComponent,
-        DateTimePickerComponent,
         MatTableModule,
         MatSortModule,
         MatButtonModule,
-        OperatorPerformanceChartComponent,
-        OperatorLineChartComponent,
-        OperatorMachineSummaryComponent,
         MatIconModule,
         MatSlideToggleModule
     ],
@@ -67,6 +61,18 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   chartHeight = 700;
   chartWidth = 1000;
 
+  responsiveChartSizes: {
+    [breakpoint: number]: { width: number; height: number };
+  } = {
+    1600: { width: 800, height: 700 },
+    1210: { width: 700, height: 700 },
+    1024: { width: 600, height: 600 },
+    900: { width: 500, height: 500 },
+    768: { width: 400, height: 400 },
+    480: { width: 300, height: 300 },
+    0: { width: 300, height: 350 }, // fallback for very small screens
+  };
+
   constructor(
     private analyticsService: OperatorAnalyticsService,
     private dialog: MatDialog,
@@ -78,6 +84,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.updateChartDimensions();
+    window.addEventListener("resize", this.updateChartDimensions.bind(this));
 
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
@@ -161,11 +169,28 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
+    window.removeEventListener("resize", this.updateChartDimensions.bind(this));
   }
 
   detectTheme(): void {
     const isDark = document.body.classList.contains('dark-theme');
     this.isDarkTheme = isDark;
+  }
+
+  private updateChartDimensions(): void {
+    const width = window.innerWidth;
+
+    const breakpoints = Object.keys(this.responsiveChartSizes)
+      .map(Number)
+      .sort((a, b) => b - a); // sort descending
+
+    for (const bp of breakpoints) {
+      if (width >= bp) {
+        this.chartWidth = this.responsiveChartSizes[bp].width;
+        this.chartHeight = this.responsiveChartSizes[bp].height;
+        return;
+      }
+    }
   }
 
   private setupPolling(): void {
@@ -301,7 +326,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     operatorId,
                     isModal: true,
                     chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth
+                    chartWidth: this.chartWidth,
+                    marginTop: 30,
+                    marginRight: 15,
+                    marginBottom: 60,
+                    marginLeft: 25,
+                    showLegend: true,
+                    legendPosition: 'right',
+                    legendWidthPx: 120
                   }
                 },
                 {
@@ -312,8 +344,15 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId,
                     isModal: true,
-                    chartHeight: (this.chartHeight - 200),
-                    chartWidth: this.chartWidth
+                    chartHeight: this.chartHeight,
+                    chartWidth: this.chartWidth,
+                    marginTop: 30,
+                    marginRight: 15,
+                    marginBottom: 60,
+                    marginLeft: 25,
+                    showLegend: true,
+                    legendPosition: 'right',
+                    legendWidthPx: 120
                   }
                 },
                 {
@@ -334,8 +373,15 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId: operatorId.toString(),
                     isModal: true,
-                    chartHeight: (this.chartHeight - 100),
-                    chartWidth: this.chartWidth
+                    chartHeight: this.chartHeight,
+                    chartWidth: this.chartWidth,
+                    marginTop: 30,
+                    marginRight: 15,
+                    marginBottom: 60,
+                    marginLeft: 25,
+                    showLegend: true,
+                    legendPosition: 'right',
+                    legendWidthPx: 120
                   }
                 },
                 {

@@ -197,6 +197,205 @@ module.exports = function (server) {
     return rows.sort((a,b) => b.efficiency - a.efficiency).slice(0, 10);
   }
 
+  // ---- HELPER FUNCTIONS ----
+
+  // Fast machine status using daily totals cache
+  async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd) {
+    try {
+      // Query the daily totals cache for machine entity type
+      // Use date string instead of dateObj range since dateObj is set to start of day
+      const dateStr = dayStart.toISOString().split('T')[0]; // Get YYYY-MM-DD format
+      logger.info(`Debug: Querying machine status for date: ${dateStr}`);
+      
+      const dailyTotals = await db.collection('totals-daily').find({
+        entityType: 'machine',
+        date: dateStr
+      }).sort({ machineSerial: 1 }).toArray();
+
+      logger.info(`Debug: Found ${dailyTotals.length} machine records for date ${dateStr}`);
+      
+      if (dailyTotals.length === 0) {
+        logger.warn('No daily totals found for machine status calculation');
+        return [];
+      }
+
+      // Transform daily totals to machine status format
+      const machineStatus = dailyTotals.map(total => {
+        return {
+          serial: total.machineSerial,
+          name: total.machineName || `Serial ${total.machineSerial}`,
+          runningMs: total.runtimeMs || 0,
+          pausedMs: total.pausedTimeMs || 0,
+          faultedMs: total.faultTimeMs || 0
+        };
+      });
+
+      logger.info(`Built machine status from daily totals for ${machineStatus.length} machines`);
+      return machineStatus;
+      
+    } catch (error) {
+      logger.error('Error building machine status from daily totals:', error);
+      throw error;
+    }
+  }
+
+  // Fast daily count totals using daily totals cache
+  async function buildDailyCountTotalsFromCache(db, dayEnd) {
+    try {
+      const endDate = new Date(dayEnd);
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - 27); // include 28 total days including endDate
+      startDate.setHours(0, 0, 0, 0); // set to 12:00 AM
+
+      // Query the daily totals cache for item totals
+      const pipeline = [
+        {
+          $match: {
+            entityType: 'item',
+            dateObj: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: '$date',
+            count: { $sum: '$totalCounts' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            date: '$_id',
+            count: 1
+          }
+        },
+        {
+          $sort: { date: 1 }
+        }
+      ];
+
+      const results = await db.collection('totals-daily').aggregate(pipeline).toArray();
+
+      logger.info(`Built daily count totals from cache for ${results.length} days`);
+      return results;
+
+    } catch (error) {
+      logger.error('Error building daily count totals from cache:', error);
+      throw error;
+    }
+  }
+
+  // Fast top operator efficiency using daily totals cache
+  async function buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd) {
+    try {
+      // Debug: Check if there's any operator-machine data in totals-daily
+      const debugQuery = await db.collection('totals-daily').find({
+        entityType: 'operator-machine'
+      }).limit(5).toArray();
+      
+      logger.info(`Debug: Found ${debugQuery.length} operator-machine records in totals-daily collection`);
+      if (debugQuery.length > 0) {
+        logger.info(`Debug: Sample record:`, JSON.stringify(debugQuery[0], null, 2));
+      }
+
+      // Debug: Check date range
+      logger.info(`Debug: Querying for date range: ${dayStart.toISOString()} to ${dayEnd.toISOString()}`);
+
+      // Query the daily totals cache for operator-machine totals
+      // Note: dateObj is set to start of day (00:00:00), so we need to query by date string instead
+      const dateStr = dayStart.toISOString().split('T')[0]; // Get YYYY-MM-DD format
+      logger.info(`Debug: Using date string for query: ${dateStr}`);
+      
+      const pipeline = [
+        {
+          $match: {
+            entityType: 'operator-machine',
+            date: dateStr  // Use date string instead of dateObj range
+          }
+        },
+        {
+          $group: {
+            _id: '$operatorId',
+            name: { $first: '$operatorName' },
+            totalWorkedTimeMs: { $sum: '$workedTimeMs' },
+            totalTimeCreditMs: { $sum: '$totalTimeCreditMs' },
+            totalCounts: { $sum: '$totalCounts' },
+            totalMisfeeds: { $sum: '$totalMisfeeds' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            id: '$_id',
+            name: 1,
+            totalWorkedTimeMs: 1,
+            totalTimeCreditMs: 1,
+            totalCounts: 1,
+            totalMisfeeds: 1
+          }
+        }
+      ];
+
+      const results = await db.collection('totals-daily').aggregate(pipeline).toArray();
+      
+      logger.info(`Debug: Found ${results.length} operator results from aggregation`);
+
+      // If no operator-machine data found, try to get operator data from machine totals
+      if (results.length === 0) {
+        logger.warn('No operator-machine data found, checking for alternative data sources...');
+        
+        // Check if there are any machine totals that might have operator info
+        const machineTotals = await db.collection('totals-daily').find({
+          entityType: 'machine',
+          dateObj: { $gte: dayStart, $lte: dayEnd }
+        }).limit(5).toArray();
+        
+        logger.info(`Debug: Found ${machineTotals.length} machine records for date range`);
+        if (machineTotals.length > 0) {
+          logger.info(`Debug: Sample machine record:`, JSON.stringify(machineTotals[0], null, 2));
+        }
+        
+        // Return empty array if no data found
+        return [];
+      }
+
+      // Calculate efficiency and format results
+      const operatorData = results.map(op => {
+        const efficiency = op.totalWorkedTimeMs > 0 ? (op.totalTimeCreditMs / op.totalWorkedTimeMs) : 0;
+        const roundedValid = Math.round(op.totalCounts);
+        const roundedMisfeed = Math.round(op.totalMisfeeds);
+
+        return {
+          id: op.id,
+          name: op.name || `#${op.id}`,
+          efficiency: +(efficiency * 100).toFixed(2),
+          metrics: {
+            runtime: { 
+              total: op.totalWorkedTimeMs, 
+              formatted: formatDuration(op.totalWorkedTimeMs) 
+            },
+            output: {
+              totalCount: roundedValid + roundedMisfeed,
+              validCount: roundedValid,
+              misfeedCount: roundedMisfeed
+            }
+          }
+        };
+      });
+
+      // Sort by efficiency and return top 10
+      const topOperators = operatorData
+        .sort((a, b) => b.efficiency - a.efficiency)
+        .slice(0, 10);
+
+      logger.info(`Built top operator efficiency from cache for ${topOperators.length} operators`);
+      return topOperators;
+
+    } catch (error) {
+      logger.error('Error building top operator efficiency from cache:', error);
+      throw error;
+    }
+  }
+
   // ---- INDIVIDUAL ROUTES ----
 
   // Route 1: Machine Status Breakdowns
@@ -215,6 +414,25 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch machine status data" });
+    }
+  });
+
+  // Route 1B: Machine Status Breakdowns (Fast - using daily totals cache)
+  router.get('/analytics/daily/machine-status-fast', async (req, res) => {
+    try {
+      const now = DateTime.now();
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const machineStatus = await buildMachineStatusFromDailyTotals(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        machineStatus
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch fast machine status data" });
     }
   });
 
@@ -275,6 +493,25 @@ module.exports = function (server) {
     }
   });
 
+  // Route 4B: Top Operator Rankings (Fast - using daily totals cache)
+  router.get('/analytics/daily/top-operators-fast', async (req, res) => {
+    try {
+      const now = DateTime.now();
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const topOperators = await buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        topOperators
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch fast top operator data" });
+    }
+  });
+
   // Route 5: Plant-wide Metrics
   router.get('/analytics/daily/plantwide-metrics', async (req, res) => {
     try {
@@ -294,6 +531,25 @@ module.exports = function (server) {
     }
   });
 
+  // Route 5B: Plant-wide Metrics (Fast - using daily totals cache)
+  router.get('/analytics/daily/plantwide-metrics-fast', async (req, res) => {
+    try {
+      const now = DateTime.now();
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const plantwideMetrics = await buildPlantwideMetricsFromDailyTotals(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        plantwideMetrics
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch fast plant-wide metrics data" });
+    }
+  });
+
   // Route 6: Daily Count Totals
   router.get('/analytics/daily/count-totals', async (req, res) => {
     try {
@@ -309,6 +565,24 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch daily count totals data" });
+    }
+  });
+
+  // Route 6B: Daily Count Totals (Fast - using daily totals cache)
+  router.get('/analytics/daily/count-totals-fast', async (req, res) => {
+    try {
+      const now = DateTime.now();
+      const dayEnd = now.toJSDate();
+
+      const dailyCounts = await buildDailyCountTotalsFromCache(db, dayEnd);
+
+      return res.json({
+        timeRange: { end: dayEnd },
+        dailyCounts
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch fast daily count totals data" });
     }
   });
 

@@ -6,20 +6,17 @@ import { LayoutGridThreeByThreeComponent } from "../layouts/grid/layout-grid-thr
 import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component";
 import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component";
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
+import { RankedOperatorBarChartWithTooltipComponent } from "../charts/ranked-operator-bar-chart-with-tooltip/ranked-operator-bar-chart-with-tooltip.component";
 import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/daily-count-bar-chart.component";
+import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-chart/plantwide-metrics-chart.component";
+import { ColumnLayoutComponent } from "../layouts/column/column-layout/column-layout.component";
 
 @Component({
     selector: "app-test",
     standalone: true,
     imports: [
-        CommonModule,
-        BlanketBlasterModule,
-        DailyMachineItemStackedBarChartComponent,
-        LayoutGridThreeByThreeComponent,
-        DailyMachineStackedBarChartComponent,
-        DailyMachineOeeBarChartComponent,
-        RankedOperatorBarChartComponent,
-        DailyCountBarChartComponent
+      LayoutGridThreeByThreeComponent,
+      // ColumnLayoutComponent
     ],
     templateUrl: "./test.component.html",
     styleUrls: ["./test.component.scss"]
@@ -33,8 +30,8 @@ export class TestComponent implements OnInit {
     DailyCountBarChartComponent,
     DailyMachineStackedBarChartComponent, // Reuse
     DailyMachineOeeBarChartComponent,     // Reuse
-    RankedOperatorBarChartComponent,      // Reuse
-    DailyCountBarChartComponent,          // Reuse
+    RankedOperatorBarChartWithTooltipComponent,     
+    PlantwideMetricsChartComponent,
     DailyMachineStackedBarChartComponent  // Reuse
   ];
 

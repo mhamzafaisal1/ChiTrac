@@ -23,6 +23,11 @@ import {
     stopPolling?: () => void;
     setAvailableSize?: (w: number, h: number) => void;
   }
+
+  // Interface for components that can receive data
+  export interface DataAwareComponent {
+    setData?: (data: any) => void;
+  }
   
   @Component({
     selector: 'layout-grid-twobytwo',
@@ -33,8 +38,14 @@ import {
     changeDetection: ChangeDetectionStrategy.OnPush,
   })
   export class LayoutGridTwoByTwoComponent implements AfterViewInit, OnDestroy {
-    // Provide 1–4 component types. Required input.
-    @Input() components: Type<unknown>[] = [];
+  // Provide 1–4 component types. Required input.
+  @Input() components: Type<unknown>[] = [];
+  
+  // Optional data array to pass to components (must match component order)
+  @Input() chartData: any[] = [];
+  
+  // Optional height input - defaults to 93% if not provided
+  @Input() height: string = '93%';
 
     @ViewChildren('slot', { read: ViewContainerRef })
     private slots!: QueryList<ViewContainerRef>;
@@ -59,6 +70,9 @@ import {
     if (this.components.length > 4) {
       console.warn('LayoutGridTwoByTwoComponent: More than 4 components provided, using first 4');
     }
+    
+    // Set the height CSS variable
+    this.hostEl.nativeElement.style.setProperty('--grid-height', this.height);
     
     console.log('LayoutGridTwoByTwoComponent: Components received:', this.components.length);
     
@@ -183,9 +197,31 @@ import {
               const height = this.cellHeight();
               console.log(`LayoutGridTwoByTwoComponent: Mounting component ${i}, size: ${width}x${height}`);
 
-              // Set chart dimensions using setInput for proper change detection
+              // Set chart dimensions and all required inputs using setInput for proper change detection
               ref.setInput('chartWidth', width);
               ref.setInput('chartHeight', height);
+              
+              // Set default values for all required chart inputs
+              ref.setInput('marginTop', 30);
+              ref.setInput('marginRight', 15);
+              ref.setInput('marginBottom', 60);
+              ref.setInput('marginLeft', 25);
+              ref.setInput('showLegend', true);
+              ref.setInput('legendPosition', 'right');
+              ref.setInput('legendWidthPx', 120);
+              
+              // Pass data to component if available and component supports it
+              if (this.chartData && this.chartData[i]) {
+                const cfg = { ...this.chartData[i], width, height }; // force sync sizes
+                // Try to set chartConfig input first (for CartesianChartComponent)
+                ref.setInput('chartConfig', cfg);
+                
+                // Try externalChartConfig input for fault chart component
+                ref.setInput('externalChartConfig', cfg);
+                
+                // Also try setData method for DataAwareComponent interface
+                (ref.instance as any)?.setData?.(cfg);
+              }
               
               // Call optional methods if they exist
               (ref.instance as any)?.setAvailableSize?.(width, height);
@@ -204,39 +240,55 @@ import {
       this.cdr.detectChanges();
     }
   
-    private updateChildSizes(): void {
-      const width = this.cellWidth();
-      const height = this.cellHeight();
+  private updateChildSizes(): void {
+    const width = this.cellWidth();
+    const height = this.cellHeight();
+    
+    for (let i = 0; i < this.refs.length; i++) {
+      const ref = this.refs[i];
+      ref.setInput('chartWidth', width);
+      ref.setInput('chartHeight', height);
+      // Update all required chart inputs on resize
+      ref.setInput('marginTop', 30);
+      ref.setInput('marginRight', 15);
+      ref.setInput('marginBottom', 60);
+      ref.setInput('marginLeft', 25);
+      ref.setInput('showLegend', true);
+      ref.setInput('legendPosition', 'right');
+      ref.setInput('legendWidthPx', 120);
       
-      for (const ref of this.refs) {
-        ref.setInput('chartWidth', width);
-        ref.setInput('chartHeight', height);
-        (ref.instance as any)?.setAvailableSize?.(width, height);
-        ref.changeDetectorRef.markForCheck();
+      // Update data if available
+      if (this.chartData && this.chartData[i]) {
+        const cfg = { ...this.chartData[i], width, height }; // force sync sizes
+        ref.setInput('chartConfig', cfg);
+        ref.setInput('externalChartConfig', cfg);
+        (ref.instance as any)?.setData?.(cfg);
       }
-      this.cdr.markForCheck();
+      
+      (ref.instance as any)?.setAvailableSize?.(width, height);
+      ref.changeDetectorRef.markForCheck();
     }
+    this.cdr.markForCheck();
+  }
   
       private cellWidth(): number {
     const cols = this.getColumnCount();
-    const padding = 32; // Account for grid gap and padding (increased for better spacing)
-    const calculatedWidth = Math.floor((this.containerWidth - padding) / cols);
-    // Ensure reasonable minimum and maximum widths
-    return Math.max(300, Math.min(600, calculatedWidth));
+    const gridGap = 8;          // matches .grid gap
+    const gridPad = 8 * 2;      // .grid padding left+right
+    const totalGaps = gridGap * (cols - 1);
+    // exact available width per cell
+    return Math.max(1, Math.floor((this.containerWidth - gridPad - totalGaps) / cols));
   }
   
   private cellHeight(): number {
     const rows = this.getRowCount();
-    const padding = 32; // Account for grid gap and padding (increased for better spacing)
-    
-    // For single column layout (mobile), use a fixed height that allows for proper stacking
+    const gridGap = 8;
+    const gridPad = 8 * 2;
+    const totalGaps = gridGap * (rows - 1);
     if (window.innerWidth <= 768) {
-      return Math.max(300, Math.min(450, this.containerHeight / Math.max(1, this.components.length)));
+      return Math.max(240, Math.floor(this.containerHeight / Math.max(1, this.components.length)));
     }
-    
-    // For 2x2 grid layout (desktop), use the calculated height
-    const calculatedHeight = Math.floor((this.containerHeight - padding) / rows);
-    return Math.max(250, Math.min(400, calculatedHeight));
+    return Math.max(240, Math.floor((this.containerHeight - gridPad - totalGaps) / rows));
   }
     
     private getColumnCount(): number {

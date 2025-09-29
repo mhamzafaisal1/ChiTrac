@@ -156,7 +156,7 @@
           <mat-icon class="calendar-icon">calendar_today</mat-icon>
         </button>
 
-        <mat-menu #dateMenu="matMenu" class="date-menu-wrapper" [overlapTrigger]="false" xPosition="after"
+        <mat-menu #dateMenu="matMenu" panelClass="date-menu-panel" [overlapTrigger]="false" xPosition="after"
           yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''">
           <div (click)="$event.stopPropagation()">
             <app-date-time-modal (closeModal)="onDateTimeModalClose()" />
@@ -178,8 +178,8 @@
         </button>
 
         <mat-menu #loginMenu="matMenu" class="login-menu-panel" [overlapTrigger]="false" xPosition="before"
-          yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''">
-          <div (click)="$event.stopPropagation()">
+          yPosition="below" [hasBackdrop]="true" (closed)="shownMenu = ''" (keydown)="onKeyDown($event)">
+          <div (click)="$event.stopPropagation()" (keydown)="onKeyDown($event)">
             <app-user-login (closeModal)="onLoginModalClose()" />
           </div>
         </mat-menu>

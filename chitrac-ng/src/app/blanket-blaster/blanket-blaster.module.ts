@@ -44,6 +44,7 @@ const routes: Routes = [
   ],
   exports: [
     DemoFlipperComponent,
+    DataBarComponent,
     LaneRunningComponent,
     LaneRunningGreyedComponent,
     LaneFaultComponent,

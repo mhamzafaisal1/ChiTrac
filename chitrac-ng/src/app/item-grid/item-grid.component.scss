@@ -1,6 +1,3 @@
-@use '@angular/material' as mat;
-@import '../../src/styles.scss';
-
 .selectedRow {
 	background-color: var(--theme-color-secondary-container) !important;
 }

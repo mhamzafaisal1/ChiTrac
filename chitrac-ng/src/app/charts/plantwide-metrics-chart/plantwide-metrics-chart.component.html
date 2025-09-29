@@ -7,13 +7,8 @@
     </div>
   </div>
 
-  <div class="chart-content" *ngIf="hasInitialData && chartInputData">
-    <app-multiple-bar-and-line-chart
-      [data]="chartInputData"
-      [title]="'Plantwide Metrics by Hour'"
-      [chartWidth]="chartWidth"
-      [chartHeight]="chartHeight">
-    </app-multiple-bar-and-line-chart>
+  <div class="chart-content" *ngIf="hasInitialData && chartConfig">
+    <cartesian-chart [config]="chartConfig"></cartesian-chart>
   </div>
 
   <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">

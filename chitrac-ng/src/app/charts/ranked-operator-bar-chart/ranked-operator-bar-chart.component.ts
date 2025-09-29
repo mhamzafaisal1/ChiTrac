@@ -1,7 +1,7 @@
 // charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BarChartComponent, BarChartDataPoint } from '../../components/bar-chart/bar-chart.component';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
@@ -13,16 +13,23 @@ type OperatorRow = { name: string; efficiency: number };
 @Component({
   selector: 'app-ranked-operator-bar-chart',
   standalone: true,
-  imports: [CommonModule, BarChartComponent],
+  imports: [CommonModule, CartesianChartComponent],
   templateUrl: './ranked-operator-bar-chart.component.html',
   styleUrls: ['./ranked-operator-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnChanges {
-  @Input() chartWidth = 600;
-  @Input() chartHeight = 400;
+  @Input() chartWidth!: number;
+  @Input() chartHeight!: number;
+  @Input() showLegend!: boolean;
+  @Input() legendPosition!: 'top' | 'right';
+  @Input() legendWidthPx!: number;
+  @Input() marginTop!: number;
+  @Input() marginRight!: number;
+  @Input() marginBottom!: number;
+  @Input() marginLeft!: number;
 
-  chartData: BarChartDataPoint[] = [];
+  chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
@@ -49,8 +56,9 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    console.log('RankedOperatorBarChart: Input changes:', changes);
-    console.log('RankedOperatorBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+    // optional logs
+    // console.log('RankedOperatorBarChart: Input changes:', changes);
+    // console.log('RankedOperatorBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
   }
 
   ngOnInit(): void {
@@ -64,12 +72,8 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
     this.enterDummy();
 
-    if (!isLive && wasConfirmed) {
-      this.startTime = this.dateTimeService.getStartTime();
-      this.endTime   = this.dateTimeService.getEndTime();
-      this.fetchOnce().subscribe();
-    }
-    if (!wasConfirmed) this.fetchOnce().subscribe();
+    // Consolidated initial fetch logic - only one fetch call
+    this.performInitialFetch(isLive, wasConfirmed);
 
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
@@ -95,7 +99,21 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.stopPolling();
   }
 
-  // flow
+  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
+    // Determine if we should fetch data based on the current state
+    const shouldFetch = !isLive || wasConfirmed;
+    
+    if (shouldFetch) {
+      // Use confirmed times if available, otherwise use default times
+      if (wasConfirmed) {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+      }
+      
+      this.fetchOnce().subscribe();
+    }
+  }
+
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -109,7 +127,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private stopLive(): void {
     this.stopPolling();
     this.hasInitialData = false;
-    this.chartData = [];
+    this.chartConfig = null;
     this.enterDummy();
   }
 
@@ -130,7 +148,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
   private stopPolling(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-    this.cdr.markForCheck();          // <— optional but safe
+    this.cdr.markForCheck();
   }
 
   private fetchOnce(): Observable<any> {
@@ -147,9 +165,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private consumeResponse =
     (_: 'once' | 'poll') =>
     (res: any) => {
-      // Handle the API response structure with topOperators array
       let rows: OperatorRow[] = [];
-      
       if (res && res.topOperators && Array.isArray(res.topOperators)) {
         rows = res.topOperators.map((r: any) => ({
           name: String(r.name ?? r.operator ?? r.id ?? 'Unknown'),
@@ -162,31 +178,61 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         }));
       }
 
-      // rank desc and take top 10
       const top = rows.sort((a, b) => b.efficiency - a.efficiency).slice(0, 10);
 
-      this.chartData = top.map((op, i) => ({
-        hour: i,
-        counts: op.efficiency,
-        label: op.name
-      }));
-
-      this.isLoading = false;          // set to false unconditionally
+      this.chartConfig = top.length ? this.formatChartData(top) : null;
+      this.isLoading = false;
       this.dummyMode = false;
-      this.hasInitialData = this.chartData.length > 0;
-      
-      this.cdr.markForCheck();        // <— critical
+      this.hasInitialData = !!this.chartConfig;
+
+      this.cdr.markForCheck();
     };
+
+  private formatChartData(data: OperatorRow[]): CartesianChartConfig {
+    // Convert operator data to cartesian chart format with horizontal bars
+    const series: XYSeries[] = [
+      {
+        id: 'efficiency',
+        title: 'Efficiency',
+        type: 'bar',
+        data: data.map((op, i) => ({ 
+          x: op.name,  // operator names on Y-axis (horizontal bars)
+          y: op.efficiency  // efficiency values on X-axis
+        })),
+        color: '#42a5f5'
+      }
+    ];
+
+    return {
+      title: 'Top Operators by Efficiency',
+      width: this.chartWidth,
+      height: this.chartHeight,
+      orientation: 'horizontal', // horizontal bars
+      xType: 'linear', // efficiency values are numeric
+      xLabel: 'Efficiency (%)',
+      yLabel: 'Operator',
+      margin: {
+        top: Math.max(this.marginTop || 50, 60),
+        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: Math.max(this.marginBottom || 50, 80),
+        left: Math.max(this.marginLeft || 50, 120) // more space for operator names
+      },
+      legend: {
+        show: this.showLegend !== false,
+        position: this.legendPosition || 'top'
+      },
+      series: series
+    };
+  }
 
   private enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
-    this.chartData = [];
-    this.cdr.markForCheck();          // <— ensure overlay shows/hides
+    this.chartConfig = null;
+    this.cdr.markForCheck();
   }
 
-  // utils
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');

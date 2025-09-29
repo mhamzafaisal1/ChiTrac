@@ -1,0 +1,153 @@
+<div class="container" style="padding-right: 0; padding-left: 0; height: 100%;">
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-container">
+    <div class="loading-text">Loading...</div>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error && !loading" class="error-container">
+    <div class="error-text">{{ error }}</div>
+  </div>
+
+  <!-- No Data State -->
+  <div *ngIf="!loading && !error && !laneData" class="no-data-container">
+    <div class="no-data-text">No data available</div>
+  </div>
+
+  <!-- Running with Operator -->
+  <div *ngIf="!loading && !error && isRunningWithOperator" class="lane-background">
+    <div class="lane" style="padding-top:15px;padding-bottom: 15px;height: 100%;">
+      <div id="OperatorBlock" 
+           [ngClass]="{'red': efficiencyColor == 'red', 'green': efficiencyColor == 'green', 'yellow': efficiencyColor == 'yellow'}" 
+           class="operator-block" 
+           style="height: 10%;margin: 0 15px 0 15px;">
+        <div class="operator-text">
+          <div class="operator-content">{{laneData.operator}}</div>
+        </div>
+      </div>
+      <div id="DataBlock" class="data-block" style="height: 100%;margin: 0 15px 0 15px;">
+        <div class="efficiency-value" 
+             [ngClass]="{'red': efficiencyColor == 'red', 'green': efficiencyColor == 'green', 'yellow': efficiencyColor == 'yellow'}" 
+             style="height:30%">
+          <div class="value-text">{{laneData.efficiency.lastSixMinutes.value | number: '1.0-0'}}%</div>
+        </div>
+        <div class="bars-container" style="height:70%">
+          <div class="bars">
+            <ct-data-bar [efficiency]="laneData.efficiency.lastFifteenMinutes" [margin]="'15px 10px 0 0'" class="bar"></ct-data-bar>
+            <ct-data-bar [efficiency]="laneData.efficiency.lastHour" [margin]="'15px 5px 0 5px'" class="bar"></ct-data-bar>
+            <ct-data-bar [efficiency]="laneData.efficiency.today" [margin]="'15px 0 0 10px'" class="bar"></ct-data-bar>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Running without Operator (Greyed) -->
+  <div *ngIf="!loading && !error && isRunningWithoutOperator" class="lane-background greyed-background">
+    <div class="lane" style="padding-top:15px;padding-bottom: 15px;height: 100%;">
+      <div id="OperatorBlock" 
+           [style.background-color]="efficiencyColor" 
+           class="operator-block" 
+           style="height: 10%; margin: 0 15px;">
+        <div class="operator-text">
+          <div class="operator-content">NO OPERATOR</div>
+        </div>
+      </div>
+      <div id="DataBlock" class="data-block" style="height: 90%; margin: 0 15px;">
+        <div class="efficiency-value" 
+             [style.background-color]="efficiencyColor" 
+             style="height:30%">
+          <div class="value-text">
+            {{laneData.efficiency.lastSixMinutes.value | number: '1.0-0'}}%
+          </div>
+        </div>
+        <div class="bars-container" style="height:70%">
+          <div class="bars">
+            <ct-data-bar [efficiency]="laneData.efficiency.lastFifteenMinutes" [margin]="'15px 10px 0 0'" class="bar"></ct-data-bar>
+            <ct-data-bar [efficiency]="laneData.efficiency.lastHour" [margin]="'15px 5px 0 5px'" class="bar"></ct-data-bar>
+            <ct-data-bar [efficiency]="laneData.efficiency.today" [margin]="'15px 0 0 10px'" class="bar"></ct-data-bar>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fault State -->
+  <div *ngIf="!loading && !error && isFault" class="lane-background fault-background">
+    <div class="lane" style="padding-top: 15px; padding-bottom: 15px; height: 100%;">
+      <!-- Operator -->
+      <div id="OperatorBlock" 
+           class="operator-block" 
+           style="height: 10%; margin: 0 15px; background-color: var(--sg-color-yellow); color: var(--sg-color-background)">
+        <div class="operator-text">
+          <div class="operator-content">
+            {{laneData.operator}}
+          </div>
+        </div>
+      </div>
+
+      <!-- Fault Info -->
+      <div id="DataBlock" 
+           class="data-block" 
+           style="height: 90%; margin: 0 15px; background-color: var(--sg-color-yellow); color: var(--sg-color-background)">
+        <div class="fault-display" style="height: 90%;">
+          <div style="height: 40%;"></div>
+          <div class="fault-text" style="height: 15%;">
+            {{laneData.fault}}
+          </div>
+          <div class="fault-label" style="height: 5%;">FAULT</div>
+          <div class="fault-code" style="height: 5%;">CODE: {{laneData.status}}</div>
+        </div>
+
+        <div class="timer-display" style="height: 10%;">
+          <div class="timer-text">
+            ELAPSED TIME: {{laneData.displayTimers.on}}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stop/Offline State -->
+  <div *ngIf="!loading && !error && isStop" class="lane-background stop-background">
+    <div class="lane" style="padding-top: 15px; padding-bottom: 15px; height: 100%;">
+      <!-- Operator -->
+      <div id="OperatorBlock" 
+           class="operator-block" 
+           style="height: 10%; margin: 0 15px; background-color: var(--sg-color-red);">
+        <div class="operator-text">
+          <div class="operator-content">
+            {{laneData.operator}}
+          </div>
+        </div>
+      </div>
+
+      <!-- Stop Display -->
+      <div id="DataBlock" 
+           class="data-block" 
+           style="height: 90%; margin: 0 15px; background-color: var(--sg-color-red);">
+        <div class="fault-display" style="height: 90%;">
+          <div style="height: 40%;"></div>
+          <div class="fault-text" style="height: 15%;">
+            {{laneData.fault}}
+          </div>
+        </div>
+
+        <div class="timer-display" style="height: 10%;">
+          <div class="timer-text">
+            ELAPSED TIME: {{ laneData.displayTimers.on }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Item Block (Common to all states) -->
+  <div *ngIf="!loading && !error && laneData" 
+       id="ItemBlock" 
+       class="item-block item-block-background">
+    <div class="item-line">{{laneData.machine}}</div>
+    <div class="item-line">{{laneData.batch.item}}</div>
+    <div class="item-line">{{laneData.batch.code}}</div>
+  </div>
+</div>

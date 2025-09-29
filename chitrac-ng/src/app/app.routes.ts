@@ -5,7 +5,6 @@ import { OperatorGridComponent } from './operator-grid/operator-grid.component';
 import { ItemGridComponent } from './item-grid/item-grid.component';
 import { UserLoginComponent } from './user-login/user-login.component';
 import { UserRegisterComponent } from './user-register/user-register.component';
-import { LeveloneDashboardComponent } from './levelone-dashboard/levelone-dashboard.component';
 import { LeveloneTableComponent } from './levelone-table/levelone-table.component';
 import { LeveloneTableV2Component } from './levelone-table-v2/levelone-table-v2.component';
 import { LeveloneBarChartComponent } from './levelone-bar-chart/levelone-bar-chart.component';
@@ -41,8 +40,16 @@ import { DailyMachineOeeBarChartComponent } from './charts/daily-machine-oee-bar
 import { DailyMachineStackedBarChartComponent } from './charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component';
 import { PlantwideMetricsChartComponent } from './charts/plantwide-metrics-chart/plantwide-metrics-chart.component';
 import { RankedOperatorBarChartComponent } from './charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component';
+import { RankedOperatorBarChartWithTooltipComponent } from './charts/ranked-operator-bar-chart-with-tooltip/ranked-operator-bar-chart-with-tooltip.component';
 import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
 import { DataAwareItemStackedChartComponent } from './charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component';
+import { TwobytwoDashboardComponent } from './dashboards/2x2/twobytwo-dashboard.component';
+import { ThreebythreeDashboardComponent } from './dashboards/3x3/threebythree-dashboard.component';
+import { TwobythreeDashboardComponent } from './dashboards/2x3/twobythree-dashboard.component';
+import { ColumnLayoutComponent } from './layouts/column/column-layout/column-layout.component';
+import { CmOperatorEfficiencyTestComponent } from './modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component';
+import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
+import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
 
 export const routes: Routes = [
 	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
@@ -87,7 +94,15 @@ export const routes: Routes = [
 	{ path: 'ng/daily-machine-stacked-bar-chart', component: DailyMachineStackedBarChartComponent },
 	{ path: 'ng/daily-plantwide-metrics-chart', component: PlantwideMetricsChartComponent },
 	{ path: 'ng/daily-ranked-operator-bar-chart', component: RankedOperatorBarChartComponent },
+	{ path: 'ng/daily-ranked-operator-bar-chart-with-tooltip', component: RankedOperatorBarChartWithTooltipComponent },
 	{ path: 'ng/item-stacked-chart', component: DataAwareItemStackedChartComponent },
+	{ path: 'ng/dashboards/2x2', component: TwobytwoDashboardComponent },
+	{ path: 'ng/dashboards/3x3', component: ThreebythreeDashboardComponent },
+	{ path: 'ng/dashboards/2x3', component: TwobythreeDashboardComponent },
+	{ path: 'ng/column-layout', component: ColumnLayoutComponent },
+	{ path: 'ng/cm-operator-efficiency-test', component: CmOperatorEfficiencyTestComponent },
+	{ path: 'ng/spl-col-efficiency-screen', component: SplColEfficiencyScreenComponent },
+	{ path: 'ng/spf-col-efficiency-screen', component: SpfColEfficiencyScreenComponent },
 	{ path: 'ng/*', redirectTo: 'ng/machineAnalytics' },
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
 	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }

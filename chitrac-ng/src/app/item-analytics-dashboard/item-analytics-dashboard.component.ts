@@ -7,7 +7,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
 import { ItemAnalyticsService } from '../services/item-analytics.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
@@ -20,8 +19,7 @@ import { DateTimeService } from '../services/date-time.service';
         FormsModule,
         MatButtonModule,
         MatIconModule,
-        BaseTableComponent,
-        DateTimePickerComponent
+        BaseTableComponent
     ],
     templateUrl: './item-analytics-dashboard.component.html',
     styleUrl: './item-analytics-dashboard.component.scss'

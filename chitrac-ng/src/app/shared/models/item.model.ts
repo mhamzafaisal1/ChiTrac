@@ -6,6 +6,9 @@ export class ItemConfig implements Deserializable {
 	public name: string;
 	public active: boolean;
 	public weight?: number | null; // optional field
+	public standard?: number; // pieces per hour standard
+	public area?: number; // area id (currently unused)
+	public department?: string; // department name
 
 	deserialize(input: any) {
 		Object.assign(this, input);

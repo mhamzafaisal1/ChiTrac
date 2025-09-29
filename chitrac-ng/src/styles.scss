@@ -17,7 +17,7 @@ $testcolor2: mat.get-theme-color($light-theme, primary, 60);
 }
 
 @mixin create-light-theme() {
-  @include mat.all-component-themes(chitrac-styleguide-dark.$light-theme);
+  @include mat.all-component-colors(chitrac-styleguide-dark.$light-theme);
 }
 
 :root {
@@ -265,14 +265,14 @@ body.cdk-global-scrollblock {
     display: flex;
     flex-direction: column;
     padding: 0;
-    overflow: hidden;
+    // overflow: hidden;
   }
 
   .mat-mdc-dialog-surface {
     height: 100%;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    // overflow: hidden;
     border-radius: 4px;
     background-color: var(--sg-color-blue-gray-light-200);
     color: var(--theme-color-text);
@@ -336,11 +336,6 @@ body.dark-theme {
   margin-right: 0.5em;
 }
 
-::ng-deep .mat-mdc-menu-panel.date-menu-wrapper {
-  min-width: unset !important;
-  max-width: unset !important;
-  width: auto !important;
-}
 
 
 
@@ -350,22 +345,41 @@ html, body {
   overflow: hidden;
 }
 
+/* Override Angular Material's default menu panel constraints for date menu specifically */
+.mat-mdc-menu-panel.date-menu-panel {
+  min-width: 600px !important;
+  max-width: 800px !important;
+  width: auto !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+.mat-mdc-menu-panel.date-menu-panel .mat-mdc-menu-content {
+  padding: 0 !important;
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+.mat-mdc-menu-panel {
+  max-width: none !important;
+}
+
 //for the efficiency screens
 .mat-drawer-transition .mat-drawer-content {
-  overflow-y: hidden !important;
+  // overflow-y: hidden !important;
 }
 
 // Additional Material Design drawer overrides to prevent scrollbars
 ::ng-deep .mat-drawer-container {
-  overflow: hidden !important;
+  // overflow: hidden !important;
 }
 
 ::ng-deep .mat-drawer-content {
-  overflow: hidden !important;
+  // overflow: hidden !important;
 }
 
 ::ng-deep .mat-sidenav-container {
-  overflow: hidden !important;
+  // overflow: hidden !important;
 }
 
 /* Login Menu Panel Styles */

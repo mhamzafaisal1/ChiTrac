@@ -52,7 +52,15 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   sub: Subscription;
   items: ItemConfig[];
   error: string | null = null;
-  emptyItem: ItemConfig = new ItemConfig().deserialize({ number: null, name: null, active: true });
+  emptyItem: ItemConfig = new ItemConfig().deserialize({ 
+    number: null, 
+    name: null, 
+    active: true, 
+    weight: null,
+    standard: 0,
+    area: 0,
+    department: ''
+  });
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort: MatSort;

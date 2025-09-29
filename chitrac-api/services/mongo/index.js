@@ -68,29 +68,35 @@ async function getConfiguration(collection, query, projection) {
 
 async function upsertConfiguration(collection, updateObject, upsert, uniqueKey = 'code') {
 	try {
-		// ✅ Always remove _id early to prevent insert schema failures
-		if (updateObject._id) {
-			console.log('[upsertConfiguration] Stripping _id before any operation');
-			delete updateObject._id;
-		}
-
 		let results, id;
 
-		// Only assign id if passed separately, NOT from updateObject._id anymore
+		// Extract _id before modifying updateObject
 		if (updateObject._id) {
 			id = new ObjectId(updateObject._id);
+			delete updateObject._id; // Remove _id from update payload
 		}
 
 		if (id) {
+			// Update existing document - check for conflicts excluding self
+			const uniqueValue = updateObject[uniqueKey];
+			if (uniqueValue) {
+				const conflict = await collection.findOne({ 
+					[uniqueKey]: uniqueValue, 
+					_id: { $ne: id } 
+				});
+				if (conflict) {
+					throw { message: `${uniqueKey} Already exists` };
+				}
+			}
 			results = await collection.updateOne({ '_id': id }, { '$set': updateObject });
 		} else {
+			// Create new document - check for any conflicts
 			const uniqueValue = updateObject[uniqueKey];
 			const existing = await collection.find({ [uniqueKey]: uniqueValue }).toArray();
 
 			if (existing.length) {
 				throw { message: `${uniqueKey} Already exists` };
 			} else {
-				console.log('[upsertConfiguration] Final insert payload:', updateObject);
 				results = await collection.insertOne(updateObject);
 			}
 		}

@@ -21,7 +21,6 @@ import { ModalWrapperComponent } from '../components/modal-wrapper-component/mod
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
 import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-fault-history.component';
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
-import { DateTimePickerComponent } from "../components/date-time-picker/date-time-picker.component";
 import { BaseTableComponent } from "../components/base-table/base-table.component";
 
 import { OperatorCountbyitemChartComponent } from "../operator-countbyitem-chart/operator-countbyitem-chart.component";
@@ -36,7 +35,6 @@ import { DateTimeService } from '../services/date-time.service';
         CommonModule,
         HttpClientModule,
         FormsModule,
-        DateTimePickerComponent,
         MatButtonModule,
         MatIconModule,
         MatSlideToggleModule,

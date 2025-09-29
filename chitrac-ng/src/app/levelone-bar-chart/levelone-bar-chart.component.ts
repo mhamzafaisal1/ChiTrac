@@ -2,12 +2,12 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { BarChartComponent, BarChartDataPoint } from '../components/bar-chart/bar-chart.component';
-import { MultipleBarChartComponent, BarChartData } from '../components/multiple-bar-chart/multiple-bar-chart.component';
-import { StackedBarChartComponent, StackedBarChartData } from '../components/stacked-bar-chart/stacked-bar-chart.component';
+import { BarChartData } from '../components/multiple-bar-chart/multiple-bar-chart.component';
+import { StackedBarChartData } from '../components/stacked-bar-chart/stacked-bar-chart.component';
 
 @Component({
     selector: 'app-levelone-bar-chart',
-    imports: [CommonModule, BarChartComponent, MultipleBarChartComponent, StackedBarChartComponent],
+    imports: [CommonModule, BarChartComponent],
     templateUrl: './levelone-bar-chart.component.html',
     styleUrls: ['./levelone-bar-chart.component.scss']
 })

@@ -119,7 +119,7 @@ export class MachineAnalyticsService {
       .set('start', start)
       .set('end', end);
   
-    return this.http.get(`${this.apiUrl}/analytics/machines-summary`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/machines-summary-cached`, { params });
   }
 
   getMachineDetails(start: string, end: string, serial: number): Observable<any> {
@@ -128,7 +128,7 @@ export class MachineAnalyticsService {
       .set('end', end)
       .set('serial', serial.toString());
   
-    return this.http.get(`${this.apiUrl}/analytics/machine-dashboard`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-cached`, { params });
   }
   
   

@@ -6,7 +6,6 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
-import { Canvg } from 'canvg';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -19,7 +18,6 @@ import { ModalWrapperComponent } from '../components/modal-wrapper-component/mod
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
 import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-fault-history.component';
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
 import { MachineItemSummaryTableComponent } from '../machine-item-summary-table/machine-item-summary-table.component';
 import { MachineItemStackedBarChartComponent } from '../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component';
 import { getStatusDotByCode } from '../../utils/status-utils';
@@ -54,9 +52,7 @@ interface ItemSummary {
         MatFormFieldModule,
         MatInputModule,
         MatButtonModule,
-        BaseTableComponent,
-        DateTimePickerComponent,
-        MachineItemStackedBarChartComponent
+        BaseTableComponent
     ],
     templateUrl: './machine-analytics-dashboard.component.html',
     styleUrls: ['./machine-analytics-dashboard.component.scss']
