@@ -19,6 +19,13 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   @Input() endDate = '';
   @Input() chartWidth = 600;
   @Input() chartHeight = 400;
+  @Input() marginTop = 50;
+  @Input() marginRight = 30;
+  @Input() marginBottom = 50;
+  @Input() marginLeft = 50;
+  @Input() showLegend = true;
+  @Input() legendPosition: "top" | "right" = "right";
+  @Input() legendWidthPx = 120;
 
   // derived state
   chartData: StackedBarChartData | null = null;
@@ -48,6 +55,9 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   }
 
   ngOnInit(): void {
+    const isLive = this.dateTimeService.getLiveMode();
+    const wasConfirmed = this.dateTimeService.getConfirmed();
+
     // Use input values if provided, otherwise use defaults
     if (this.startDate && this.endDate) {
       this.startTime = this.startDate;
@@ -63,8 +73,8 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     // initial dummy
     this.enterDummy();
 
-    // Always fetch data on init
-    this.fetchOnce().subscribe();
+    // Consolidated initial fetch logic - only one fetch call
+    this.performInitialFetch(isLive, wasConfirmed);
 
     // liveMode wiring
     this.dateTimeService.liveMode$
@@ -92,7 +102,7 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     if ((changes['startDate'] || changes['endDate']) && this.startDate && this.endDate) {
       this.startTime = this.startDate;
       this.endTime = this.endDate;
-      this.fetchOnce().subscribe();
+      // Only update time variables, no API call here
     }
   }
 
@@ -102,6 +112,21 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   }
 
   // ---------- core flow ----------
+  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
+    // Determine if we should fetch data based on the current state
+    const shouldFetch = !isLive || wasConfirmed;
+    
+    if (shouldFetch) {
+      // Use confirmed times if available, otherwise use default times
+      if (wasConfirmed) {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+      }
+      
+      this.fetchOnce().subscribe();
+    }
+  }
+
   private startLive(): void {
     this.enterDummy();
     const start = new Date(); start.setHours(0,0,0,0);
@@ -155,11 +180,15 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     (res: any) => {
       // Handle the nested response structure and transform to StackedBarChartData format
       if (res && res.itemHourlyStack && res.itemHourlyStack.data) {
+        // Transform ISO timestamps to hour indices for the chart
+        const hours = res.itemHourlyStack.data.hours || [];
+        const hourIndices = hours.map((timestamp: string, index: number) => index);
+        
         // Transform the API response to match StackedBarChartData interface
         const transformedData: StackedBarChartData = {
           title: res.itemHourlyStack.title || 'Daily Machine Item Hourly Production',
           data: {
-            hours: res.itemHourlyStack.data.hours || [],
+            hours: hourIndices,
             operators: res.itemHourlyStack.data.operators || {},
             machineNames: res.itemHourlyStack.data.machineNames || []
           }
@@ -193,6 +222,11 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
   setAvailableSize(w: number, h: number): void {
     this.chartWidth = w;
     this.chartHeight = h;
+    // Update margins proportionally if needed
+    this.marginTop = Math.max(50, Math.floor(h * 0.1));
+    this.marginBottom = Math.max(50, Math.floor(h * 0.1));
+    this.marginLeft = Math.max(50, Math.floor(w * 0.08));
+    this.marginRight = Math.max(30, Math.floor(w * 0.05));
   }
 
   // ---------- utils ----------

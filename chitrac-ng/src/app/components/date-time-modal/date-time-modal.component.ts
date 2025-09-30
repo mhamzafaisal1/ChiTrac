@@ -42,6 +42,7 @@ export class DateTimeModalComponent {
   startDateTime: Date = new Date(new Date().setHours(0, 0, 0, 0));
   endDateTime: Date = new Date();
   mode: string = 'live';
+  selectedTimeframe: string = '';
 
   ngOnInit(): void {
     this.setLiveModeDefaults();
@@ -62,7 +63,44 @@ export class DateTimeModalComponent {
       start.setHours(0, 0, 0, 0);
       this.startDateTime = start;
       this.endDateTime = now;
+      this.selectedTimeframe = ''; // Clear timeframe selection when switching to live
     }
+  }
+
+  onTimeframeSelect(timeframe: string): void {
+    this.selectedTimeframe = timeframe;
+    this.mode = 'manual'; // Switch to manual mode when timeframe is selected
+    this.dateTimeService.setLiveMode(false);
+    
+    const now = new Date();
+    let start: Date;
+    let end: Date;
+
+    if (timeframe === 'thisWeek') {
+      // Calculate start of current week (Sunday)
+      start = new Date(now);
+      const day = start.getDay();
+      start.setDate(start.getDate() - day);
+      start.setHours(0, 0, 0, 0);
+      
+      // Calculate end of current week (Saturday)
+      end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    } else if (timeframe === 'thisMonth') {
+      // Calculate start of current month
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      start.setHours(0, 0, 0, 0);
+      
+      // Calculate end of current month
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      end.setHours(23, 59, 59, 999);
+    } else {
+      return; // Invalid timeframe
+    }
+
+    this.startDateTime = start;
+    this.endDateTime = end;
   }
   
 

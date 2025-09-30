@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from "@angular/core";
+import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { ChartTileComponent } from "../components/chart-tile/chart-tile.component";
 
@@ -24,7 +24,9 @@ import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-char
     templateUrl: './daily-analytics-dashboard-split.component.html',
     styleUrls: ['./daily-analytics-dashboard-split.component.scss']
 })
-export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy {
+export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy, AfterViewInit {
+  @ViewChild(DailyMachineItemStackedBarChartComponent) itemChart!: DailyMachineItemStackedBarChartComponent;
+  
   isDarkTheme: boolean = false;
   chartWidth: number = 600;
   chartHeight: number = 450;
@@ -39,6 +41,15 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy 
     window.addEventListener('resize', () => {
       this.calculateChartDimensions();
     });
+  }
+
+  ngAfterViewInit(): void {
+    // Call setAvailableSize on chart components after view init
+    setTimeout(() => {
+      if (this.itemChart) {
+        this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
+      }
+    }, 0);
   }
 
   ngOnDestroy(): void {
@@ -72,5 +83,10 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy 
     // Set chart dimensions with some padding
     this.chartWidth = Math.floor(tileWidth * 0.95); // 95% of tile width
     this.chartHeight = Math.floor(tileHeight * 0.95); // 95% of tile height
+
+    // Update chart components with new dimensions
+    if (this.itemChart) {
+      this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
+    }
   }
 }

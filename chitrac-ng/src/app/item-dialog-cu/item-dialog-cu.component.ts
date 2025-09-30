@@ -74,6 +74,8 @@ export class ItemDialogCuComponent implements OnInit {
       this.item.name = res.name;
       this.item.active = res.active;
       this.item.weight = res.weight;
+      // Preserve additional properties that aren't in the form
+      // These properties are read-only in the current UI but needed for validation
     });
     this.dialogRef.backdropClick().subscribe(result => {
       if (!this.itemFormGroup.pristine) {

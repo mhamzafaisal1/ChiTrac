@@ -97,10 +97,32 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
   }
 
   openDialog(operator: OperatorConfig | null): void {
-    const data = operator ? { ...operator } : { ...this.emptyOperator }; // clone
-    const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data, disableClose: true });
+    if (operator) {
+      // Editing existing operator
+      const data = { ...operator }; // clone
+      const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data, disableClose: true });
+      this.setupDialogHandlers(dialogRef);
+    } else {
+      // Creating new operator - get next available ID
+      this.configurationService.getNewOperatorId().subscribe({
+        next: (response) => {
+          const newOperator = { ...this.emptyOperator, code: response.code };
+          const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data: newOperator, disableClose: true });
+          this.setupDialogHandlers(dialogRef);
+        },
+        error: (err) => {
+          console.error('Failed to get new operator ID:', err);
+          // Fallback: open dialog with empty operator
+          const data = { ...this.emptyOperator };
+          const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data, disableClose: true });
+          this.setupDialogHandlers(dialogRef);
+        }
+      });
+    }
+  }
 
-    dialogRef.componentInstance.submitEvent.pipe(take(1)).subscribe(op => {
+  private setupDialogHandlers(dialogRef: any): void {
+    dialogRef.componentInstance.submitEvent.pipe(take(1)).subscribe((op: OperatorConfig) => {
       const payload = this.sanitize(op);
       const req$ = payload._id
         ? this.configurationService.putOperatorConfig(payload)

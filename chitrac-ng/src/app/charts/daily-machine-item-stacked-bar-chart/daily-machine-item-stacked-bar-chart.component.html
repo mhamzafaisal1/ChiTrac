@@ -6,16 +6,23 @@
     </div>
   </div>
 
-<div class="chart-container" [class.dark-mode]="isDarkTheme">
-  <div class="chart-content">
+  <div class="chart-content" *ngIf="hasInitialData && chartData">
     <app-stacked-bar-chart
-      *ngIf="chartData"
       [data]="chartData"
-      mode="time">
+      [mode]="'time'"
+      [chartWidth]="chartWidth"
+      [chartHeight]="chartHeight"
+      [marginTop]="marginTop"
+      [marginRight]="marginRight"
+      [marginBottom]="marginBottom"
+      [marginLeft]="marginLeft"
+      [showLegend]="showLegend"
+      [legendPosition]="legendPosition"
+      [legendWidthPx]="legendWidthPx">
     </app-stacked-bar-chart>
   </div>
-</div>
-<div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
-  <div class="loading-spinner dummy-chart">⏳</div>
-</div>
+
+  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+    <div class="loading-spinner dummy-chart">⏳</div>
+  </div>
 </div>

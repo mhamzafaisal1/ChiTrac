@@ -26,5 +26,8 @@ module.exports = {
 
   jwtSecret: process.env.JWT_SECRET,
   logLevel: process.env.LOG_LEVEL || 'info',
-  inDev: process.env.NODE_ENV === 'development'
+  inDev: process.env.NODE_ENV === 'development',
+  
+  // Hybrid query configuration
+  hybridThresholdHours: parseInt(process.env.HYBRID_THRESHOLD_HOURS, 10) || 36
 };
