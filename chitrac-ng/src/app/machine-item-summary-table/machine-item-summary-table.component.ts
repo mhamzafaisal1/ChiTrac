@@ -71,15 +71,22 @@ export class MachineItemSummaryTableComponent implements OnInit {
 
     return Object.values(summary).map((item: any) => {
       console.log('Processing item:', item);
+      
+      // Calculate worked time from workedTimeMs
+      const workedTimeMs = item.workedTimeMs ?? 0;
+      const hours = Math.floor(workedTimeMs / (1000 * 60 * 60));
+      const minutes = Math.floor((workedTimeMs % (1000 * 60 * 60)) / (1000 * 60));
+      
+      // Convert efficiency decimal to percentage
+      const efficiencyPercentage = item.efficiency !== undefined ? Math.round(item.efficiency * 100 * 100) / 100 : 0;
+      
       return {
         'Item Name': item.name || 'Unknown',
-        'Total Count': item.countTotal ?? 0,
-        'Worked Time': item.workedTimeFormatted 
-          ? `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`
-          : '0h 0m',
+        'Total Count': item.count ?? 0,
+        'Worked Time': `${hours}h ${minutes}m`,
         'PPH': item.pph ?? 0,
         'Standard': item.standard ?? 0,
-        'Efficiency': item.efficiency !== undefined ? `${item.efficiency}%` : '0%'
+        'Efficiency': `${efficiencyPercentage}%`
       };
     });
   }

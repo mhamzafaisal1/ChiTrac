@@ -6,7 +6,7 @@ import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
-import { takeUntil, tap, delay } from 'rxjs/operators';
+import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
 type OperatorRow = { name: string; efficiency: number };
 
@@ -120,7 +120,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.startTime = this.formatDateForInput(start);
     this.endTime   = this.pollingService.updateEndTimestampToNow();
 
-    this.fetchOnce().subscribe();
+    // setupPolling() handles the initial fetch, no need for separate fetchOnce()
     this.setupPolling();
   }
 
@@ -131,24 +131,29 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.enterDummy();
   }
 
+  private pollOnce(): Observable<any> {
+    this.endTime = this.pollingService.updateEndTimestampToNow();
+    return this.dailyDashboardService.getDailyTopOperators(this.startTime, this.endTime)
+      .pipe(tap(this.consumeResponse('poll')));
+  }
+
   private setupPolling(): void {
     this.stopPolling();
-    this.pollingSub = this.pollingService.poll(
-      () => {
-        this.endTime = this.pollingService.updateEndTimestampToNow();
-        return this.dailyDashboardService.getDailyTopOperators(this.startTime, this.endTime)
-          .pipe(tap(this.consumeResponse('poll')));
-      },
-      this.POLLING_INTERVAL,
-      this.destroy$,
-      false,
-      false
-    ).subscribe({ error: () => this.stopPolling() });
+
+    this.pollingSub = this.pollOnce()               // immediate first poll
+      .pipe(
+        // wait POLLING_INTERVAL after completion, then resubscribe to pollOnce()
+        // ensures: no overlap, next call starts only after prior finished + delay
+        // RxJS 7+
+        // @ts-ignore – type inference sometimes complains on repeat config
+        repeat({ delay: this.POLLING_INTERVAL }),
+        takeUntil(this.destroy$)
+      )
+      .subscribe({ error: () => this.stopPolling() });
   }
 
   private stopPolling(): void {
     if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-    this.cdr.markForCheck();
   }
 
   private fetchOnce(): Observable<any> {

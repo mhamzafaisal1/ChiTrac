@@ -7,12 +7,14 @@ import { BehaviorSubject, Subject } from "rxjs";
 export class DateTimeService {
   private startTimeSubject = new BehaviorSubject<string>("");
   private endTimeSubject = new BehaviorSubject<string>("");
+  private timeframeSubject = new BehaviorSubject<string>("");
   private confirmTriggerSubject = new Subject<void>();
   private confirmedSubject = new BehaviorSubject<boolean>(false);
   private lastConfirmedAt: Date | null = null;
 
   startTime$ = this.startTimeSubject.asObservable();
   endTime$ = this.endTimeSubject.asObservable();
+  timeframe$ = this.timeframeSubject.asObservable();
   confirmTrigger$ = this.confirmTriggerSubject.asObservable();
   confirmed$ = this.confirmedSubject.asObservable();
 
@@ -43,6 +45,14 @@ export class DateTimeService {
 
   getEndTime(): string {
     return this.endTimeSubject.getValue();
+  }
+
+  setTimeframe(timeframe: string) {
+    this.timeframeSubject.next(timeframe);
+  }
+
+  getTimeframe(): string {
+    return this.timeframeSubject.getValue();
   }
 
   triggerConfirm() {

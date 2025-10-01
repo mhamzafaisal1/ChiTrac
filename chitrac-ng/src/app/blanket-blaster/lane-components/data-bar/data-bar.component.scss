@@ -39,8 +39,9 @@
   width: 100%; /* w-100 equivalent */
   font-size: 1.5rem; /* fs-4 equivalent */
   line-height: 1;
-  color: white; /* White text for dark mode */
   font-weight: 600;
+  margin-bottom: 0.25em;
+  color: var(--sg-color-background);
 }
 
 /* Bar Label - matches Bootstrap d-flex, text-center, justify-content-center, flex-column, border-light, fs-6 */

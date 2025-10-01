@@ -4226,6 +4226,1533 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     return Array.from(combinedMap.values());
   }
 
+  // Helper functions for hybrid queries
+  function splitTimeRangeForHybrid(start, end) {
+    const completeDays = [];
+    const partialDays = [];
+    
+    // Get timezone-aware start and end of day
+    const startOfFirstDay = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
+    const endOfLastDay = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
+    
+    // Check if we have a partial day at the beginning
+    if (start > startOfFirstDay) {
+      partialDays.push({
+        start: start,
+        end: DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate(),
+        type: 'start'
+      });
+    }
+    
+    // Check if we have a partial day at the end
+    if (end < endOfLastDay) {
+      partialDays.push({
+        start: DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate(),
+        end: end,
+        type: 'end'
+      });
+    }
+    
+    // Find all complete days between start and end
+    let currentDay = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
+    const endDay = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
+    
+    while (currentDay < endDay) {
+      const dayStart = new Date(currentDay);
+      const dayEnd = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
+      
+      // Only include if it's a complete day (not overlapping with partial days)
+      const isComplete = dayStart >= startOfFirstDay && dayEnd <= endOfLastDay &&
+                        !partialDays.some(p => 
+                          (dayStart >= p.start && dayStart <= p.end) ||
+                          (dayEnd >= p.start && dayEnd <= p.end)
+                        );
+      
+      if (isComplete) {
+        completeDays.push({
+          start: dayStart,
+          end: dayEnd,
+          dateStr: DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd')
+        });
+      }
+      
+      // Move to next day
+      currentDay = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).plus({ days: 1 }).toJSDate();
+    }
+    
+    return { completeDays, partialDays };
+  }
+
+  async function getCachedDataForDays(completeDays, serial) {
+    const cacheCollection = db.collection('totals-daily');
+    const dateStrings = completeDays.map(day => day.dateStr);
+    
+    // Get machine daily totals for complete days
+    const machineQuery = { 
+      entityType: 'machine',
+      date: { $in: dateStrings }
+    };
+    
+    if (serial) {
+      machineQuery.machineSerial = serial;
+    }
+
+    const machineTotals = await cacheCollection.find(machineQuery).toArray();
+
+    // Get machine-item daily totals for complete days
+    const machineItemQuery = { 
+      entityType: 'machine-item',
+      date: { $in: dateStrings }
+    };
+    
+    if (serial) {
+      machineItemQuery.machineSerial = serial;
+    }
+
+    const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
+    
+    return { machines: machineTotals, machineItems: machineItemTotals };
+  }
+
+  async function getSessionDataForPartialDays(partialDays, serial) {
+    const machines = [];
+    const machineItems = [];
+    
+    for (const partialDay of partialDays) {
+      // Query machine sessions for this partial day
+      const match = {
+        ...(serial ? { "machine.serial": serial } : {}),
+        "timestamps.start": { $lte: partialDay.end },
+        $or: [
+          { "timestamps.end": { $exists: false } },
+          { "timestamps.end": { $gte: partialDay.start } },
+        ],
+      };
+
+      const sessions = await db
+        .collection(config.machineSessionCollectionName)
+        .aggregate([
+          { $match: match },
+          {
+            $addFields: {
+              ovStart: { $max: ["$timestamps.start", partialDay.start] },
+              ovEnd: {
+                $min: [{ $ifNull: ["$timestamps.end", partialDay.end] }, partialDay.end],
+              },
+            },
+          },
+          {
+            $addFields: {
+              sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              timestamps: 1,
+              machine: 1,
+              operators: 1,
+              countsFiltered: {
+                $map: {
+                  input: {
+                    $filter: {
+                      input: "$counts",
+                      as: "c",
+                      cond: {
+                        $and: [
+                          { $gte: ["$$c.timestamp", partialDay.start] },
+                          { $lte: ["$$c.timestamp", partialDay.end] },
+                        ],
+                      },
+                    },
+                  },
+                  as: "c",
+                  in: {
+                    timestamp: "$$c.timestamp",
+                    item: {
+                      id: "$$c.item.id",
+                      name: "$$c.item.name",
+                      standard: "$$c.item.standard",
+                    },
+                  },
+                },
+              },
+              ovStart: 1,
+              ovEnd: 1,
+              sliceMs: 1,
+            },
+          },
+        ])
+        .toArray();
+
+      // Process sessions to create machine totals (similar to original route logic)
+      const grouped = new Map();
+      for (const s of sessions) {
+        const key = s.machine?.serial;
+        if (!key) continue;
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            machine: { name: s.machine?.name || "Unknown", serial: key },
+            totalCount: 0,
+            totalWorkedMs: 0,
+            totalRuntimeMs: 0,
+            itemAgg: new Map(),
+          });
+        }
+        const bucket = grouped.get(key);
+
+        if (!s.sliceMs || s.sliceMs <= 0) continue;
+
+        const activeStations = Array.isArray(s.operators)
+          ? s.operators.filter((op) => op && op.id !== -1).length
+          : 0;
+
+        const workedTimeMs = Math.max(0, s.sliceMs * activeStations);
+        const runtimeMs = Math.max(0, s.sliceMs);
+
+        bucket.totalRuntimeMs += runtimeMs;
+
+        const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+        if (!counts.length) continue;
+
+        const byItem = new Map();
+        for (const c of counts) {
+          const it = c.item || {};
+          const id = it.id;
+          if (id == null) continue;
+          if (!byItem.has(id)) {
+            byItem.set(id, {
+              id,
+              name: it.name || "Unknown",
+              standard: Number(it.standard) || 0,
+              count: 0,
+            });
+          }
+          byItem.get(id).count += 1;
+        }
+
+        const totalSessionItemCount = [...byItem.values()].reduce((s, it) => s + it.count, 0) || 1;
+
+        for (const [, itm] of byItem) {
+          const share = itm.count / totalSessionItemCount;
+          const workedShare = workedTimeMs * share;
+
+          const rec =
+            bucket.itemAgg.get(itm.id) || {
+              name: itm.name,
+              standard: itm.standard,
+              count: 0,
+              workedTimeMs: 0,
+            };
+          rec.count += itm.count;
+          rec.workedTimeMs += workedShare;
+          bucket.itemAgg.set(itm.id, rec);
+
+          bucket.totalCount += itm.count;
+          bucket.totalWorkedMs += workedShare;
+        }
+      }
+
+      // Convert grouped data to totals format
+      for (const [serial, bucket] of grouped) {
+        machines.push({
+          machineSerial: serial,
+          machineName: bucket.machine.name,
+          totalCounts: bucket.totalCount,
+          workedTimeMs: bucket.totalWorkedMs,
+          runtimeMs: bucket.totalRuntimeMs,
+          faultTimeMs: 0, // Simplified for partial days
+          pausedTimeMs: 0,
+          totalFaults: 0,
+          totalMisfeeds: 0,
+          totalTimeCreditMs: 0
+        });
+
+        // Convert item aggregations to machine-item totals
+        for (const [itemId, itemData] of bucket.itemAgg) {
+          machineItems.push({
+            itemId: itemId,
+            itemName: itemData.name,
+            machineSerial: serial,
+            machineName: bucket.machine.name,
+            totalCounts: itemData.count,
+            workedTimeMs: itemData.workedTimeMs,
+            itemStandard: itemData.standard
+          });
+        }
+      }
+    }
+    
+    return { machines, machineItems };
+  }
+
+  function combineHybridData(cachedMachines, cachedMachineItems, sessionData) {
+    const machineMap = new Map();
+    const machineItemMap = new Map();
+    
+    // Add cached data
+    for (const machine of cachedMachines) {
+      machineMap.set(machine.machineSerial, machine);
+    }
+    
+    for (const item of cachedMachineItems) {
+      const key = `${item.machineSerial}-${item.itemId}`;
+      machineItemMap.set(key, item);
+    }
+    
+    // Add/combine session data
+    for (const machine of sessionData.machines) {
+      if (machineMap.has(machine.machineSerial)) {
+        // Combine with existing cached data
+        const existing = machineMap.get(machine.machineSerial);
+        existing.totalCounts += machine.totalCounts;
+        existing.workedTimeMs += machine.workedTimeMs;
+        existing.runtimeMs += machine.runtimeMs;
+        existing.faultTimeMs += machine.faultTimeMs;
+        existing.pausedTimeMs += machine.pausedTimeMs;
+        existing.totalFaults += machine.totalFaults;
+        existing.totalMisfeeds += machine.totalMisfeeds;
+        existing.totalTimeCreditMs += machine.totalTimeCreditMs;
+      } else {
+        machineMap.set(machine.machineSerial, machine);
+      }
+    }
+    
+    for (const item of sessionData.machineItems) {
+      const key = `${item.machineSerial}-${item.itemId}`;
+      if (machineItemMap.has(key)) {
+        // Combine with existing cached data
+        const existing = machineItemMap.get(key);
+        existing.totalCounts += item.totalCounts;
+        existing.workedTimeMs += item.workedTimeMs;
+      } else {
+        machineItemMap.set(key, item);
+      }
+    }
+    
+    return {
+      machines: Array.from(machineMap.values()),
+      machineItems: Array.from(machineItemMap.values())
+    };
+  }
+
+  // Cached version of machine-item-sessions-summary using totals-daily collection
+  router.get("/analytics/machine-item-sessions-summary-cache", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+
+      // ---------- Hybrid query configuration ----------
+      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+      
+      // Determine if we should use hybrid approach
+      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
+      
+      if (useHybrid) {
+        logger.info(`Using hybrid approach for time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      }
+
+      // ---------- helpers (local to route) ----------
+      const topNSlicesPerBar = 10;
+      const OTHER_LABEL = "Other";
+
+      // Merge-slices so each bar has at most N slices (Top N-1 + "Other")
+      function compressSlicesPerBar(
+        perLabelTotals,
+        N = topNSlicesPerBar,
+        otherLabel = OTHER_LABEL
+      ) {
+        const entries = Object.entries(perLabelTotals);
+        if (entries.length <= N) return perLabelTotals;
+
+        entries.sort((a, b) => b[1] - a[1]);
+        const keep = entries.slice(0, N - 1);
+        const rest = entries.slice(N - 1);
+        const otherSum = rest.reduce((s, [, v]) => s + v, 0);
+
+        const out = {};
+        for (const [k, v] of keep) out[k] = v;
+        out[otherLabel] = otherSum;
+        return out;
+      }
+
+      // Convert {serial -> {label -> value}} into XY-style stacked series
+      function toStackedSeries(
+        byMachine,
+        serialToName,
+        orderSerials,
+        stackId
+      ) {
+        // union of labels (after compression)
+        const labels = new Set();
+        for (const s of orderSerials) {
+          const m = byMachine.get(s);
+          if (!m) continue;
+          Object.keys(m).forEach((k) => labels.add(k));
+        }
+        
+        // Sort labels by total descending for stable legend order
+        const sortedLabels = [...labels].sort((a, b) => {
+          const totalA = orderSerials.reduce((sum, serial) => sum + (byMachine.get(serial)?.[a] || 0), 0);
+          const totalB = orderSerials.reduce((sum, serial) => sum + (byMachine.get(serial)?.[b] || 0), 0);
+          return totalB - totalA;
+        });
+        
+        // make one series per label
+        const series = sortedLabels.map((label) => ({
+          id: label,
+          title: label,
+          type: "bar",
+          stack: stackId,
+          data: orderSerials.map((serial) => ({
+            x: serialToName.get(serial) || serial,
+            y: (byMachine.get(serial) && byMachine.get(serial)[label]) || 0,
+          })),
+        }));
+        return series;
+      }
+
+      // ---------- 1) Time range splitting and data collection ----------
+      let machineTotals = [];
+      let machineItemTotals = [];
+      let sessionData = { machines: [], machineItems: [] };
+
+      if (useHybrid) {
+        // Split time range into complete days and partial days
+        const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+        
+        logger.info(`Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        
+        // Get data from daily cache for complete days
+        if (completeDays.length > 0) {
+          const cachedData = await getCachedDataForDays(completeDays, serial);
+          machineTotals = cachedData.machines;
+          machineItemTotals = cachedData.machineItems;
+        }
+        
+        // Get data from sessions for partial days
+        if (partialDays.length > 0) {
+          sessionData = await getSessionDataForPartialDays(partialDays, serial);
+        }
+        
+        // Combine cached and session data
+        const combinedData = combineHybridData(machineTotals, machineItemTotals, sessionData);
+        machineTotals = combinedData.machines;
+        machineItemTotals = combinedData.machineItems;
+        
+      } else {
+        // Use only cached data for shorter time ranges
+        const cacheCollection = db.collection('totals-daily');
+        
+        // Calculate date range for query
+        const startDate = exactStart.toISOString().split('T')[0];
+        const endDate = exactEnd.toISOString().split('T')[0];
+
+        // Get machine daily totals
+        const machineQuery = { 
+          entityType: 'machine',
+          dateObj: { 
+            $gte: new Date(startDate + 'T00:00:00.000Z'), 
+            $lte: new Date(endDate + 'T23:59:59.999Z') 
+          }
+        };
+        
+        if (serial) {
+          machineQuery.machineSerial = serial;
+        }
+
+        machineTotals = await cacheCollection.find(machineQuery).toArray();
+
+        // Get machine-item daily totals
+        const machineItemQuery = { 
+          entityType: 'machine-item',
+          dateObj: { 
+            $gte: new Date(startDate + 'T00:00:00.000Z'), 
+            $lte: new Date(endDate + 'T23:59:59.999Z') 
+          }
+        };
+        
+        if (serial) {
+          machineItemQuery.machineSerial = serial;
+        }
+
+        machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
+      }
+
+      if (!machineTotals.length) {
+        return res.json({
+          timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+          results: [],
+          charts: {
+            statusStacked: { title:"Machine Status Stacked Bar", orientation:"vertical", xType:"category", xLabel:"Machine", yLabel:"Duration (hours)", series: [] },
+            efficiencyRanked: { title:"Ranked Efficiency% by Machine", orientation:"horizontal", xType:"category", xLabel:"Machine", yLabel:"Efficiency (%)", series:[{ id:"Efficiency", title:"Efficiency", type:"bar", data:[] }] },
+            itemsStacked: { title:"Item Stacked Bar by Machine", orientation:"vertical", xType:"category", xLabel:"Machine", yLabel:"Item Count", series: [] },
+            faultsStacked: { title:"Fault Stacked Bar by Machine", orientation:"vertical", xType:"category", xLabel:"Machine", yLabel:"Fault Duration (hours)", series: [] },
+            order: []
+          }
+        });
+      }
+
+      // ---------- 2) Process machine data ----------
+      const results = [];
+      const serialToName = new Map();
+      const machineDataMap = new Map();
+
+      // Group machine totals by serial
+      for (const machineTotal of machineTotals) {
+        const serial = machineTotal.machineSerial;
+        serialToName.set(serial, machineTotal.machineName);
+        machineDataMap.set(serial, machineTotal);
+      }
+
+      // Group machine-item totals by machine serial
+      const machineItemMap = new Map();
+      for (const itemTotal of machineItemTotals) {
+        const serial = itemTotal.machineSerial;
+        if (!machineItemMap.has(serial)) {
+          machineItemMap.set(serial, []);
+        }
+        machineItemMap.get(serial).push(itemTotal);
+      }
+
+      // Process each machine
+      for (const [serial, machineData] of machineDataMap) {
+        const itemTotals = machineItemMap.get(serial) || [];
+        
+        // Calculate item summaries
+        let proratedStandard = 0;
+        const itemSummaries = {};
+        let totalCount = 0;
+        let totalWorkedMs = 0;
+
+        for (const itemTotal of itemTotals) {
+          const hours = itemTotal.workedTimeMs / 3600000;
+          const pph = hours > 0 ? itemTotal.totalCounts / hours : 0;
+          const eff = itemTotal.itemStandard > 0 ? pph / itemTotal.itemStandard : 0;
+          const weight = itemTotal.totalCounts / (machineData.totalCounts || 1);
+          proratedStandard += weight * itemTotal.itemStandard;
+
+          itemSummaries[itemTotal.itemId] = {
+            name: itemTotal.itemName,
+            standard: itemTotal.itemStandard,
+            countTotal: itemTotal.totalCounts,
+            workedTimeFormatted: formatDuration(itemTotal.workedTimeMs),
+            pph: Math.round(pph * 100) / 100,
+            efficiency: Math.round(eff * 10000) / 100,
+          };
+
+          totalCount += itemTotal.totalCounts;
+          totalWorkedMs += itemTotal.workedTimeMs;
+        }
+
+        // Calculate machine-level metrics
+        const hours = totalWorkedMs / 3600000;
+        const machinePph = hours > 0 ? totalCount / hours : 0;
+        const machineEff = proratedStandard > 0 ? machinePph / proratedStandard : 0;
+
+        results.push({
+          machine: {
+            name: machineData.machineName,
+            serial: machineData.machineSerial
+          },
+          sessions: [], // Empty array - no individual session details in cached version
+          machineSummary: {
+            totalCount: machineData.totalCounts,
+            workedTimeMs: machineData.workedTimeMs,
+            workedTimeFormatted: formatDuration(machineData.workedTimeMs),
+            runtimeMs: machineData.runtimeMs,
+            runtimeFormatted: formatDuration(machineData.runtimeMs),
+            pph: Math.round(machinePph * 100) / 100,
+            proratedStandard: Math.round(proratedStandard * 100) / 100,
+            efficiency: Math.round(machineEff * 10000) / 100,
+            itemSummaries,
+          },
+        });
+      }
+
+      // ---------- 3) Status stacked (durations) ----------
+      const statusByMachine = new Map();
+      for (const machineData of machineTotals) {
+        const serial = machineData.machineSerial;
+        const name = machineData.machineName;
+        
+        statusByMachine.set(serial, {
+          "Running": machineData.runtimeMs / 3600000, // Convert to hours
+          "Faulted": machineData.faultTimeMs / 3600000,
+          "Paused": machineData.pausedTimeMs / 3600000
+        });
+      }
+
+      // Compress per machine
+      for (const [s, rec] of statusByMachine) {
+        statusByMachine.set(s, compressSlicesPerBar(rec));
+      }
+
+      // ---------- 4) Faults stacked (durations by fault type) ----------
+      // For cached version, we'll use a simplified fault representation
+      // since fault details aren't stored in machine daily totals
+      const faultsByMachine = new Map();
+      for (const machineData of machineTotals) {
+        const serial = machineData.machineSerial;
+        const faultHours = machineData.faultTimeMs / 3600000;
+        
+        if (faultHours > 0) {
+          faultsByMachine.set(serial, {
+            "Faults": faultHours
+          });
+        } else {
+          faultsByMachine.set(serial, {
+            "No Faults": 0
+          });
+        }
+      }
+
+      // ---------- 5) Efficiency ranking order ----------
+      const efficiencyRanked = results
+        .map(r => ({
+          serial: r.machine.serial,
+          name: r.machine.name,
+          efficiency: Number(r.machineSummary?.efficiency || 0),
+        }))
+        .sort((a, b) => b.efficiency - a.efficiency);
+
+      // Build comprehensive machine ordering from all data sources
+      const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
+      for (const m of statusByMachine.keys()) unionSerials.add(m);
+      for (const m of faultsByMachine.keys()) unionSerials.add(m);
+      const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
+
+      // ---------- 6) Items stacked ----------
+      const itemsByMachine = new Map();
+      for (const r of results) {
+        const m = {};
+        for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
+          const label = s.name || String(id);
+          const count = Number(s.countTotal || 0);
+          m[label] = (m[label] || 0) + count;
+        }
+        itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
+      }
+
+      const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
+      const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
+      const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
+
+      // ---------- 7) Final payload ----------
+      res.json({
+        timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+        results,                  // Same structure as original route
+        charts: {
+          statusStacked: {
+            title: "Machine Status Stacked Bar",
+            orientation: "vertical",
+            xType: "category",
+            xLabel: "Machine",
+            yLabel: "Duration (hours)",
+            series: statusStacked
+          },
+          efficiencyRanked: {
+            title: "Ranked OEE% by Machine", 
+            orientation: "horizontal",
+            xType: "category",
+            xLabel: "Machine",
+            yLabel: "OEE (%)",
+            series: [
+              {
+                id: "OEE",
+                title: "OEE",
+                type: "bar",
+                data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
+              },
+            ]
+          },
+          itemsStacked: {
+            title: "Item Stacked Bar by Machine",
+            orientation: "vertical", 
+            xType: "category",
+            xLabel: "Machine",
+            yLabel: "Item Count",
+            series: itemsStacked
+          },
+          faultsStacked: {
+            title: "Fault Stacked Bar by Machine",
+            orientation: "vertical",
+            xType: "category", 
+            xLabel: "Machine",
+            yLabel: "Fault Duration (hours)",
+            series: faultsStacked
+          },
+          order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
+        },
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate cached machine item summary" });
+    }
+  });
+
+  // Cached version of operator-item-sessions-summary using totals-daily collection
+  router.get("/analytics/operator-item-sessions-summary-cache", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+
+      // ---------- Hybrid query configuration ----------
+      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+      
+      // Determine if we should use hybrid approach
+      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
+      
+      if (useHybrid) {
+        logger.info(`Using hybrid approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      }
+
+      // ---------- helpers (local to route) ----------
+      const topNSlicesPerBar = 10;
+      const OTHER_LABEL = "Other";
+      const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+
+      function compressSlicesPerBar(perLabelTotals, N = topNSlicesPerBar, otherLabel = OTHER_LABEL) {
+        const entries = Object.entries(perLabelTotals);
+        if (entries.length <= N) return perLabelTotals;
+        entries.sort((a, b) => b[1] - a[1]);
+        const keep = entries.slice(0, N - 1);
+        const rest = entries.slice(N - 1);
+        const otherSum = rest.reduce((s, [, v]) => s + v, 0);
+        const out = {};
+        for (const [k, v] of keep) out[k] = v;
+        out[otherLabel] = otherSum;
+        return out;
+      }
+
+      function toStackedSeries(byKey, keyToName, orderKeys, stackId) {
+        const labels = new Set();
+        for (const k of orderKeys) {
+          const m = byKey.get(k);
+          if (!m) continue;
+          Object.keys(m).forEach((lab) => labels.add(lab));
+        }
+        const sortedLabels = [...labels].sort((a, b) => {
+          const totalA = orderKeys.reduce((sum, k) => sum + (byKey.get(k)?.[a] || 0), 0);
+          const totalB = orderKeys.reduce((sum, k) => sum + (byKey.get(k)?.[b] || 0), 0);
+          return totalB - totalA;
+        });
+        return sortedLabels.map((label) => ({
+          id: label,
+          title: label,
+          type: "bar",
+          stack: stackId,
+          data: orderKeys.map((k) => ({
+            x: keyToName.get(k) || String(k),
+            y: (byKey.get(k) && byKey.get(k)[label]) || 0,
+          })),
+        }));
+      }
+
+      function formatMs(ms) {
+        const m = Math.max(0, Math.floor(ms / 60000));
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        return { hours: h, minutes: mm };
+      }
+
+      // ---------- 1) Time range splitting and data collection ----------
+      let operatorTotals = [];
+      let sessionData = { operators: [] };
+
+      if (useHybrid) {
+        // Split time range into complete days and partial days
+        const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+        
+        logger.info(`Operator hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        
+        // Get data from daily cache for complete days
+        if (completeDays.length > 0) {
+          operatorTotals = await getOperatorCachedDataForDays(completeDays, operatorId);
+        }
+        
+        // Get data from sessions for partial days
+        if (partialDays.length > 0) {
+          sessionData = await getOperatorSessionDataForPartialDays(partialDays, operatorId);
+        }
+        
+        // Combine cached and session data
+        operatorTotals = combineOperatorHybridData(operatorTotals, sessionData.operators);
+        
+      } else {
+        // Use only cached data for shorter time ranges
+        const cacheCollection = db.collection('totals-daily');
+        
+        // Calculate date range for query
+        const startDate = exactStart.toISOString().split('T')[0];
+        const endDate = exactEnd.toISOString().split('T')[0];
+
+        // Get operator-machine daily totals
+        const operatorQuery = { 
+          entityType: 'operator-machine',
+          dateObj: { 
+            $gte: new Date(startDate + 'T00:00:00.000Z'), 
+            $lte: new Date(endDate + 'T23:59:59.999Z') 
+          }
+        };
+        
+        if (operatorId) {
+          operatorQuery.operatorId = operatorId;
+        }
+
+        operatorTotals = await cacheCollection.find(operatorQuery).toArray();
+      }
+
+      if (!operatorTotals.length) {
+        return res.json({
+          timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+          results: [],
+          charts: {
+            statusStacked: { title:"Operator Status Stacked Bar", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Duration (hours)", series: [] },
+            efficiencyRanked: { title:"Ranked OEE% by Operator", orientation:"horizontal", xType:"category", xLabel:"Operator", yLabel:"OEE (%)", series:[{ id:"OEE", title:"OEE", type:"bar", data:[] }] },
+            itemsStacked: { title:"Item Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Item Count", series: [] },
+            faultsStacked: { title:"Fault Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Fault Duration (hours)", series: [] },
+            order: []
+          }
+        });
+      }
+
+      // ---------- 2) Process operator data ----------
+      const results = [];
+      const opIdToName = new Map();
+      const operatorDataMap = new Map();
+
+      // Group operator totals by operator ID
+      for (const operatorTotal of operatorTotals) {
+        const opId = operatorTotal.operatorId;
+        const opName = operatorTotal.operatorName;
+        opIdToName.set(opId, opName);
+        
+        if (!operatorDataMap.has(opId)) {
+          operatorDataMap.set(opId, {
+            operator: { id: opId, name: opName },
+            totalCount: 0,
+            totalWorkedMs: 0,
+            totalRuntimeMs: 0,
+            itemAgg: new Map()
+          });
+        }
+        
+        const bucket = operatorDataMap.get(opId);
+        bucket.totalCount += operatorTotal.totalCounts;
+        bucket.totalWorkedMs += operatorTotal.workedTimeMs;
+        bucket.totalRuntimeMs += operatorTotal.runtimeMs;
+      }
+
+      // Process each operator
+      for (const [opId, operatorData] of operatorDataMap) {
+        // Calculate item summaries from operator-machine totals
+        let proratedStandard = 0;
+        const itemSummaries = {};
+
+        // Get all operator-machine combinations for this operator
+        const operatorMachineTotals = operatorTotals.filter(ot => ot.operatorId === opId);
+        
+        for (const ot of operatorMachineTotals) {
+          // For operators, we need to get item data from machine-item totals
+          // This is a simplified approach - in practice, you might want to store
+          // operator-item totals in the cache as well
+          const itemTotals = await getOperatorItemTotalsFromCache(ot.machineSerial, exactStart, exactEnd);
+          
+          for (const itemTotal of itemTotals) {
+            const hours = itemTotal.workedTimeMs / 3600000;
+            const pph = hours > 0 ? itemTotal.totalCounts / hours : 0;
+            const eff = itemTotal.itemStandard > 0 ? pph / itemTotal.itemStandard : 0;
+            const weight = operatorData.totalCount > 0 ? itemTotal.totalCounts / operatorData.totalCount : 0;
+            proratedStandard += weight * itemTotal.itemStandard;
+
+            if (!itemSummaries[itemTotal.itemId]) {
+              itemSummaries[itemTotal.itemId] = {
+                name: itemTotal.itemName,
+                standard: itemTotal.itemStandard,
+                countTotal: 0,
+                workedTimeFormatted: formatMs(0),
+                pph: 0,
+                efficiency: 0,
+              };
+            }
+
+            itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
+            itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(
+              (itemSummaries[itemTotal.itemId].workedTimeMs || 0) + itemTotal.workedTimeMs
+            );
+          }
+        }
+
+        // Calculate final item summaries
+        for (const [itemId, itemSummary] of Object.entries(itemSummaries)) {
+          const hours = itemSummary.workedTimeMs / 3600000;
+          const pph = hours > 0 ? itemSummary.countTotal / hours : 0;
+          const eff = itemSummary.standard > 0 ? pph / itemSummary.standard : 0;
+          
+          itemSummary.pph = Math.round(pph * 100) / 100;
+          itemSummary.efficiency = Math.round(eff * 10000) / 100;
+        }
+
+        // Calculate operator-level metrics
+        const hours = operatorData.totalWorkedMs / 3600000;
+        const operatorPph = hours > 0 ? operatorData.totalCount / hours : 0;
+        const operatorEff = proratedStandard > 0 ? operatorPph / proratedStandard : 0;
+
+        results.push({
+          operator: operatorData.operator,
+          sessions: [], // Empty array - no individual session details in cached version
+          operatorSummary: {
+            totalCount: operatorData.totalCount,
+            workedTimeMs: operatorData.totalWorkedMs,
+            workedTimeFormatted: formatMs(operatorData.totalWorkedMs),
+            runtimeMs: operatorData.totalRuntimeMs,
+            runtimeFormatted: formatMs(operatorData.totalRuntimeMs),
+            pph: Math.round(operatorPph * 100) / 100,
+            proratedStandard: Math.round(proratedStandard * 100) / 100,
+            efficiency: Math.round(operatorEff * 10000) / 100,
+            itemSummaries,
+          },
+        });
+      }
+
+      // ---------- 3) Status stacked (durations) ----------
+      const statusByOperator = new Map();
+      for (const operatorTotal of operatorTotals) {
+        const opId = operatorTotal.operatorId;
+        
+        if (!statusByOperator.has(opId)) {
+          statusByOperator.set(opId, {
+            "Running": 0,
+            "Faulted": 0,
+            "Paused": 0
+          });
+        }
+        
+        const status = statusByOperator.get(opId);
+        status["Running"] += operatorTotal.runtimeMs / 3600000; // Convert to hours
+        status["Faulted"] += operatorTotal.faultTimeMs / 3600000;
+        status["Paused"] += operatorTotal.pausedTimeMs / 3600000;
+      }
+
+      // Compress per operator
+      for (const [opId, rec] of statusByOperator) {
+        statusByOperator.set(opId, compressSlicesPerBar(rec));
+      }
+
+      // ---------- 4) Faults stacked (durations by fault type) ----------
+      // For operators, we'll use a simplified fault representation
+      const faultsByOperator = new Map();
+      for (const operatorTotal of operatorTotals) {
+        const opId = operatorTotal.operatorId;
+        const faultHours = operatorTotal.faultTimeMs / 3600000;
+        
+        if (!faultsByOperator.has(opId)) {
+          faultsByOperator.set(opId, {});
+        }
+        
+        if (faultHours > 0) {
+          faultsByOperator.get(opId)["Faults"] = (faultsByOperator.get(opId)["Faults"] || 0) + faultHours;
+        } else {
+          faultsByOperator.get(opId)["No Faults"] = 0;
+        }
+      }
+
+      // ---------- 5) Efficiency ranking order ----------
+      const efficiencyRanked = results
+        .map(r => ({
+          operatorId: r.operator.id,
+          name: r.operator.name,
+          efficiency: Number(r.operatorSummary?.efficiency || 0),
+        }))
+        .sort((a, b) => b.efficiency - a.efficiency);
+
+      // Build comprehensive operator ordering from all data sources
+      const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
+      for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
+      for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
+      const finalOrderOperatorIds = [...unionOperatorIds].filter(id => opIdToName.has(id));
+
+      // ---------- 6) Items stacked ----------
+      const itemsByOperator = new Map();
+      for (const r of results) {
+        const m = {};
+        for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
+          const label = s.name || String(id);
+          const count = Number(s.countTotal || 0);
+          m[label] = (m[label] || 0) + count;
+        }
+        itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
+      }
+
+      const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
+      const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
+      const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
+
+      // ---------- 7) Final payload ----------
+      res.json({
+        timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+        results,                  // Same structure as original route
+        charts: {
+          statusStacked: {
+            title: "Operator Status Stacked Bar",
+            orientation: "vertical",
+            xType: "category",
+            xLabel: "Operator",
+            yLabel: "Duration (hours)",
+            series: statusStacked
+          },
+          efficiencyRanked: {
+            title: "Ranked OEE% by Operator", 
+            orientation: "horizontal",
+            xType: "category",
+            xLabel: "Operator",
+            yLabel: "OEE (%)",
+            series: [
+              {
+                id: "OEE",
+                title: "OEE",
+                type: "bar",
+                data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
+              },
+            ]
+          },
+          itemsStacked: {
+            title: "Item Stacked Bar by Operator",
+            orientation: "vertical", 
+            xType: "category",
+            xLabel: "Operator",
+            yLabel: "Item Count",
+            series: itemsStacked
+          },
+          faultsStacked: {
+            title: "Fault Stacked Bar by Operator",
+            orientation: "vertical",
+            xType: "category", 
+            xLabel: "Operator",
+            yLabel: "Fault Duration (hours)",
+            series: faultsStacked
+          },
+          order: finalOrderOperatorIds.map(id => opIdToName.get(id) || id), // operator display order (ranked)
+        },
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate cached operator item summary" });
+    }
+  });
+
+  // Helper functions for operator hybrid queries
+  async function getOperatorCachedDataForDays(completeDays, operatorId) {
+    const cacheCollection = db.collection('totals-daily');
+    const dateStrings = completeDays.map(day => day.dateStr);
+    
+    // Get operator-machine daily totals for complete days
+    const operatorQuery = { 
+      entityType: 'operator-machine',
+      date: { $in: dateStrings }
+    };
+    
+    if (operatorId) {
+      operatorQuery.operatorId = operatorId;
+    }
+
+    const operatorTotals = await cacheCollection.find(operatorQuery).toArray();
+    return operatorTotals;
+  }
+
+  async function getOperatorSessionDataForPartialDays(partialDays, operatorId) {
+    const operators = [];
+    
+    for (const partialDay of partialDays) {
+      // Query operator sessions for this partial day
+      const match = {
+        ...(operatorId ? { "operator.id": operatorId } : {}),
+        "timestamps.start": { $lte: partialDay.end },
+        $or: [
+          { "timestamps.end": { $exists: false } },
+          { "timestamps.end": { $gte: partialDay.start } },
+        ],
+      };
+
+      const sessions = await db
+        .collection(config.operatorSessionCollectionName)
+        .aggregate([
+          { $match: match },
+          {
+            $addFields: {
+              ovStart: { $max: ["$timestamps.start", partialDay.start] },
+              ovEnd: {
+                $min: [{ $ifNull: ["$timestamps.end", partialDay.end] }, partialDay.end],
+              },
+            },
+          },
+          {
+            $addFields: {
+              sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              timestamps: 1,
+              operator: 1,
+              machine: 1,
+              countsFiltered: {
+                $map: {
+                  input: {
+                    $filter: {
+                      input: "$counts",
+                      as: "c",
+                      cond: {
+                        $and: [
+                          { $gte: ["$$c.timestamp", partialDay.start] },
+                          { $lte: ["$$c.timestamp", partialDay.end] },
+                        ],
+                      },
+                    },
+                  },
+                  as: "c",
+                  in: {
+                    timestamp: "$$c.timestamp",
+                    item: {
+                      id: "$$c.item.id",
+                      name: "$$c.item.name",
+                      standard: "$$c.item.standard",
+                    },
+                  },
+                },
+              },
+              ovStart: 1,
+              ovEnd: 1,
+              sliceMs: 1,
+            },
+          },
+        ])
+        .toArray();
+
+      // Process sessions to create operator totals
+      const grouped = new Map();
+      for (const s of sessions) {
+        const opId = s.operator?.id;
+        if (!opId || opId === -1) continue;
+        
+        if (!grouped.has(opId)) {
+          grouped.set(opId, {
+            operator: { id: opId, name: s.operator?.name || `Operator ${opId}` },
+            totalCount: 0,
+            totalWorkedMs: 0,
+            totalRuntimeMs: 0,
+          });
+        }
+        const bucket = grouped.get(opId);
+
+        if (!s.sliceMs || s.sliceMs <= 0) continue;
+
+        bucket.totalRuntimeMs += s.sliceMs;
+        bucket.totalWorkedMs += s.sliceMs; // For operators, worked time = runtime
+
+        const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+        for (const c of counts) {
+          bucket.totalCount += 1;
+        }
+      }
+
+      // Convert grouped data to totals format
+      for (const [opId, bucket] of grouped) {
+        operators.push({
+          operatorId: opId,
+          operatorName: bucket.operator.name,
+          totalCounts: bucket.totalCount,
+          workedTimeMs: bucket.totalWorkedMs,
+          runtimeMs: bucket.totalRuntimeMs,
+          faultTimeMs: 0, // Simplified for partial days
+          pausedTimeMs: 0,
+          totalFaults: 0,
+          totalMisfeeds: 0,
+          totalTimeCreditMs: 0
+        });
+      }
+    }
+    
+    return { operators };
+  }
+
+  function combineOperatorHybridData(cachedOperators, sessionOperators) {
+    const operatorMap = new Map();
+    
+    // Add cached data
+    for (const operator of cachedOperators) {
+      operatorMap.set(operator.operatorId, operator);
+    }
+    
+    // Add/combine session data
+    for (const operator of sessionOperators) {
+      if (operatorMap.has(operator.operatorId)) {
+        // Combine with existing cached data
+        const existing = operatorMap.get(operator.operatorId);
+        existing.totalCounts += operator.totalCounts;
+        existing.workedTimeMs += operator.workedTimeMs;
+        existing.runtimeMs += operator.runtimeMs;
+        existing.faultTimeMs += operator.faultTimeMs;
+        existing.pausedTimeMs += operator.pausedTimeMs;
+        existing.totalFaults += operator.totalFaults;
+        existing.totalMisfeeds += operator.totalMisfeeds;
+        existing.totalTimeCreditMs += operator.totalTimeCreditMs;
+      } else {
+        operatorMap.set(operator.operatorId, operator);
+      }
+    }
+    
+    return Array.from(operatorMap.values());
+  }
+
+  async function getOperatorItemTotalsFromCache(machineSerial, start, end) {
+    const cacheCollection = db.collection('totals-daily');
+    const startDate = start.toISOString().split('T')[0];
+    const endDate = end.toISOString().split('T')[0];
+    
+    const machineItemQuery = { 
+      entityType: 'machine-item',
+      machineSerial: machineSerial,
+      dateObj: { 
+        $gte: new Date(startDate + 'T00:00:00.000Z'), 
+        $lte: new Date(endDate + 'T23:59:59.999Z') 
+      }
+    };
+
+    const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
+    return machineItemTotals;
+  }
+
+  // Cached version of item-sessions-summary using totals-daily collection
+  router.get("/analytics/item-sessions-summary-cache", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+
+      // ---------- Hybrid query configuration ----------
+      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+      
+      // Determine if we should use hybrid approach
+      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
+      
+      if (useHybrid) {
+        logger.info(`Using hybrid approach for item route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      }
+
+      // ---------- helpers (local to route) ----------
+      const normalizePPH = (std) => {
+        const n = Number(std) || 0;
+        return n > 0 && n < 60 ? n * 60 : n; // PPM→PPH
+      };
+
+      // ---------- 1) Time range splitting and data collection ----------
+      let itemTotals = [];
+      let sessionData = { items: [] };
+
+      if (useHybrid) {
+        // Split time range into complete days and partial days
+        const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+        
+        logger.info(`Item hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        
+        // Get data from daily cache for complete days
+        if (completeDays.length > 0) {
+          itemTotals = await getItemCachedDataForDays(completeDays);
+        }
+        
+        // Get data from sessions for partial days
+        if (partialDays.length > 0) {
+          sessionData = await getItemSessionDataForPartialDays(partialDays);
+        }
+        
+        // Combine cached and session data
+        itemTotals = combineItemHybridData(itemTotals, sessionData.items);
+        
+      } else {
+        // Use only cached data for shorter time ranges
+        const cacheCollection = db.collection('totals-daily');
+        
+        // Calculate date range for query
+        const startDate = exactStart.toISOString().split('T')[0];
+        const endDate = exactEnd.toISOString().split('T')[0];
+
+        // Get item daily totals
+        const itemQuery = { 
+          entityType: 'item',
+          dateObj: { 
+            $gte: new Date(startDate + 'T00:00:00.000Z'), 
+            $lte: new Date(endDate + 'T23:59:59.999Z') 
+          }
+        };
+
+        itemTotals = await cacheCollection.find(itemQuery).toArray();
+        
+        // Also get machine-item records to extract standard values
+        const machineItemQuery = { 
+          entityType: 'machine-item',
+          dateObj: { 
+            $gte: new Date(startDate + 'T00:00:00.000Z'), 
+            $lte: new Date(endDate + 'T23:59:59.999Z') 
+          }
+        };
+
+        const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
+        
+        // Create a map of itemId -> itemStandard from machine-item records
+        const itemStandards = new Map();
+        for (const machineItem of machineItemTotals) {
+          const itemId = String(machineItem.itemId);
+          if (machineItem.itemStandard && machineItem.itemStandard > 0) {
+            // Use the highest standard value found for this item
+            const currentStandard = itemStandards.get(itemId) || 0;
+            if (machineItem.itemStandard > currentStandard) {
+              itemStandards.set(itemId, machineItem.itemStandard);
+            }
+          }
+        }
+        
+        // Add standard values to item totals
+        for (const item of itemTotals) {
+          const itemId = String(item.itemId);
+          item.itemStandard = itemStandards.get(itemId) || 0;
+        }
+      }
+
+      if (!itemTotals.length) {
+        return res.json([]);
+      }
+
+      // ---------- 2) Process item data ----------
+      const resultsMap = new Map();
+
+      // Group item totals by item ID
+      for (const itemTotal of itemTotals) {
+        const itemId = String(itemTotal.itemId);
+        
+        if (!resultsMap.has(itemId)) {
+          resultsMap.set(itemId, {
+            itemId: itemTotal.itemId,
+            name: itemTotal.itemName || "Unknown",
+            standard: itemTotal.itemStandard ?? 0,
+            count: 0,
+            workedSec: 0,
+          });
+        }
+        
+        const acc = resultsMap.get(itemId);
+        acc.count += itemTotal.totalCounts;
+        acc.workedSec += itemTotal.workedTimeMs / 1000; // Convert to seconds
+      }
+
+      // ---------- 3) Finalize results ----------
+      const results = Array.from(resultsMap.values()).map((entry) => {
+        const workedMs = Math.round(entry.workedSec * 1000);
+        const hours = workedMs / 3_600_000;
+        const pph = hours > 0 ? entry.count / hours : 0;
+        const stdPPH = normalizePPH(entry.standard);
+        const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
+
+        return {
+          itemName: entry.name,
+          workedTimeFormatted: formatDuration(workedMs),
+          count: entry.count,
+          pph: Math.round(pph * 100) / 100,
+          standard: entry.standard,
+          efficiency: Math.round(efficiencyPct * 100) / 100, // percent
+        };
+      });
+
+      res.json(results);
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate cached item summary" });
+    }
+  });
+
+  // Helper functions for item hybrid queries
+  async function getItemCachedDataForDays(completeDays) {
+    const cacheCollection = db.collection('totals-daily');
+    const dateStrings = completeDays.map(day => day.dateStr);
+    
+    // Get item daily totals for complete days
+    const itemQuery = { 
+      entityType: 'item',
+      date: { $in: dateStrings }
+    };
+
+    const itemTotals = await cacheCollection.find(itemQuery).toArray();
+    
+    // Also get machine-item records to extract standard values
+    const machineItemQuery = { 
+      entityType: 'machine-item',
+      date: { $in: dateStrings }
+    };
+
+    const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
+    
+    // Create a map of itemId -> itemStandard from machine-item records
+    const itemStandards = new Map();
+    for (const machineItem of machineItemTotals) {
+      const itemId = String(machineItem.itemId);
+      if (machineItem.itemStandard && machineItem.itemStandard > 0) {
+        // Use the highest standard value found for this item
+        const currentStandard = itemStandards.get(itemId) || 0;
+        if (machineItem.itemStandard > currentStandard) {
+          itemStandards.set(itemId, machineItem.itemStandard);
+        }
+      }
+    }
+    
+    // Add standard values to item totals
+    for (const item of itemTotals) {
+      const itemId = String(item.itemId);
+      item.itemStandard = itemStandards.get(itemId) || 0;
+    }
+    
+    return itemTotals;
+  }
+
+  async function getItemSessionDataForPartialDays(partialDays) {
+    const items = [];
+    
+    // Get active machine serials
+    const activeSerials = await db
+      .collection(config.machineCollectionName || "machine")
+      .distinct("serial", { active: true });
+    
+    for (const partialDay of partialDays) {
+      for (const serial of activeSerials) {
+        // Clamp to actual running window per machine
+        const bookended = await getBookendedStatesAndTimeRange(db, serial, partialDay.start, partialDay.end);
+        if (!bookended) continue;
+        const { sessionStart, sessionEnd } = bookended;
+
+        // Pull overlapping item-sessions
+        const sessions = await db
+          .collection(config.itemSessionCollectionName || "item-session")
+          .find({
+            "machine.serial": Number(serial),
+            "timestamps.start": { $lt: sessionEnd },
+            $or: [
+              { "timestamps.end": { $gt: sessionStart } },
+              { "timestamps.end": { $exists: false } },
+              { "timestamps.end": null },
+            ],
+          })
+          .project({
+            _id: 0,
+            item: 1,          // { id, name, standard }
+            items: 1,         // legacy single-item fallback
+            counts: 1,        // optional
+            totalCount: 1,    // optional rollup
+            workTime: 1,      // seconds
+            runtime: 1,       // seconds
+            activeStations: 1,
+            operators: 1,
+            timestamps: 1,
+          })
+          .toArray();
+
+        if (!sessions.length) continue;
+
+        for (const s of sessions) {
+          const itm = s.item || (Array.isArray(s.items) && s.items.length === 1 ? s.items[0] : null);
+          if (!itm || itm.id == null) continue;
+
+          const sessStart = s.timestamps?.start ? new Date(s.timestamps.start) : null;
+          const sessEnd = new Date(s.timestamps?.end || sessionEnd);
+          if (!sessStart || Number.isNaN(sessStart)) continue;
+
+          // Overlap with bookended window
+          const ovStart = sessStart > sessionStart ? sessStart : sessionStart;
+          const ovEnd = sessEnd < sessionEnd ? sessEnd : sessionEnd;
+          if (!(ovEnd > ovStart)) continue;
+
+          const sessSec = Math.max(0, (sessEnd - sessStart) / 1000);
+          const ovSec = Math.max(0, (ovEnd - ovStart) / 1000);
+          if (sessSec === 0 || ovSec === 0) continue;
+
+          // Worked time: prefer workTime, else runtime * stations; prorate by overlap
+          const stations = typeof s.activeStations === "number"
+            ? s.activeStations
+            : (Array.isArray(s.operators) ? s.operators.filter(o => o && o.id !== -1).length : 0);
+
+          const baseWorkSec = typeof s.workTime === "number"
+            ? s.workTime
+            : typeof s.runtime === "number"
+              ? s.runtime * Math.max(1, stations || 0)
+              : 0;
+
+          const workedSec = baseWorkSec > 0 ? baseWorkSec * (ovSec / sessSec) : 0;
+
+          // Counts in overlap: use explicit counts if present; else prorate totalCount
+          let countInWin = 0;
+          if (Array.isArray(s.counts) && s.counts.length) {
+            if (s.counts.length > 50000) {
+              countInWin = typeof s.totalCount === "number" ? Math.round(s.totalCount * (ovSec / sessSec)) : 0;
+            } else {
+              countInWin = s.counts.reduce((acc, c) => {
+                const t = new Date(c.timestamp);
+                const sameItem = !c.item?.id || c.item.id === itm.id;
+                return acc + (sameItem && t >= ovStart && t <= ovEnd ? 1 : 0);
+              }, 0);
+            }
+          } else if (typeof s.totalCount === "number") {
+            countInWin = Math.round(s.totalCount * (ovSec / sessSec));
+          }
+
+          items.push({
+            itemId: itm.id,
+            itemName: itm.name || "Unknown",
+            itemStandard: itm.standard ?? 0,
+            totalCounts: countInWin,
+            workedTimeMs: workedSec * 1000, // Convert to milliseconds
+          });
+        }
+      }
+    }
+    
+    return { items };
+  }
+
+  function combineItemHybridData(cachedItems, sessionItems) {
+    const itemMap = new Map();
+    
+    // Add cached data
+    for (const item of cachedItems) {
+      const key = String(item.itemId);
+      itemMap.set(key, item);
+    }
+    
+    // Add/combine session data
+    for (const item of sessionItems) {
+      const key = String(item.itemId);
+      if (itemMap.has(key)) {
+        // Combine with existing cached data
+        const existing = itemMap.get(key);
+        existing.totalCounts += item.totalCounts;
+        existing.workedTimeMs += item.workedTimeMs;
+        // Use the higher standard value if available
+        if (item.itemStandard && item.itemStandard > (existing.itemStandard || 0)) {
+          existing.itemStandard = item.itemStandard;
+        }
+      } else {
+        itemMap.set(key, item);
+      }
+    }
+    
+    return Array.from(itemMap.values());
+  }
+
   return router;
 };
 

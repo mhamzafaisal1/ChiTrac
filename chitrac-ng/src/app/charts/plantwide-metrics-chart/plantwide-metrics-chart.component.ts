@@ -6,7 +6,7 @@ import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
-import { takeUntil, tap, delay } from 'rxjs/operators';
+import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
 
 @Component({
@@ -115,7 +115,7 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
     this.startTime = this.formatDateForInput(start);
     this.endTime   = this.pollingService.updateEndTimestampToNow();
 
-    this.fetchOnce().subscribe();
+    // setupPolling() handles the initial fetch, no need for separate fetchOnce()
     this.setupPolling();
   }
 
@@ -126,19 +126,25 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
     this.enterDummy();
   }
 
+  private pollOnce(): Observable<any> {
+    this.endTime = this.pollingService.updateEndTimestampToNow();
+    return this.dailyDashboardService.getDailyPlantwideMetrics(this.startTime, this.endTime)
+      .pipe(tap(this.consumeResponse('poll')));
+  }
+
   private setupPolling(): void {
     this.stopPolling();
-    this.pollingSub = this.pollingService.poll(
-      () => {
-        this.endTime = this.pollingService.updateEndTimestampToNow();
-        return this.dailyDashboardService.getDailyPlantwideMetrics(this.startTime, this.endTime)
-          .pipe(tap(this.consumeResponse('poll')));
-      },
-      this.POLLING_INTERVAL,
-      this.destroy$,
-      false,
-      false
-    ).subscribe({ error: () => this.stopPolling() });
+
+    this.pollingSub = this.pollOnce()               // immediate first poll
+      .pipe(
+        // wait POLLING_INTERVAL after completion, then resubscribe to pollOnce()
+        // ensures: no overlap, next call starts only after prior finished + delay
+        // RxJS 7+
+        // @ts-ignore – type inference sometimes complains on repeat config
+        repeat({ delay: this.POLLING_INTERVAL }),
+        takeUntil(this.destroy$)
+      )
+      .subscribe({ error: () => this.stopPolling() });
   }
 
   private stopPolling(): void {
@@ -159,39 +165,55 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
-      type Row = { hour:number; availability:number; efficiency:number; throughput:number; oee:number };
-      let rows: Row[] = Array.isArray(res?.plantwideMetrics) ? res.plantwideMetrics : (Array.isArray(res) ? res : []);
-      rows.sort((a,b)=>(a.hour??0)-(b.hour??0));
+      try {
+        type Row = { hour:number; availability:number; efficiency:number; throughput:number; oee:number };
+        let rows: Row[] = [];
+        
+        if (res?.plantwideMetrics && Array.isArray(res.plantwideMetrics)) {
+          rows = res.plantwideMetrics;
+        } else if (Array.isArray(res)) {
+          rows = res;
+        }
+        
+        if (rows.length === 0) {
+          this.chartConfig = null;
+          this.hasInitialData = false;
+          this.isLoading = false;
+          this.dummyMode = false;
+          return;
+        }
 
-      const hours = rows.map(r => Number(r.hour ?? 0));
-      const fmt = (h:number) => h===0?'12am':h===12?'12pm':h<12?`${h}am`:`${h-12}pm`;
-      const labels = hours.map(fmt);
+        rows.sort((a,b)=>(a.hour??0)-(b.hour??0));
 
-      const series: XYSeries[] = [
+        const hours = rows.map(r => Number(r.hour ?? 0));
+        const fmt = (h:number) => h===0?'12am':h===12?'12pm':h<12?`${h}am`:`${h-12}pm`;
+        const labels = hours.map(fmt);
+
+        const series: XYSeries[] = [
         {
           id:'availability', title:'Availability', type:'bar', color:'#66bb6a',
-          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.availability ?? 0) })),
+          data: rows.map((r,i)=>({ x: labels[i] || `Hour ${i}`, y: Number(r.availability ?? 0) })),
           options:{ barPadding:0.2 }
         },
         {
           id:'efficiency', title:'Efficiency', type:'bar', color:'#ffca28',
-          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.efficiency ?? 0) }))
+          data: rows.map((r,i)=>({ x: labels[i] || `Hour ${i}`, y: Number(r.efficiency ?? 0) }))
         },
         {
           id:'throughput', title:'Throughput', type:'bar', color:'#ef5350',
-          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.throughput ?? 0) }))
+          data: rows.map((r,i)=>({ x: labels[i] || `Hour ${i}`, y: Number(r.throughput ?? 0) }))
         },
         {
           id:'oee', title:'OEE', type:'line', color:'#ab47bc',
-          data: rows.map((r,i)=>({ x: labels[i], y: Number(r.oee ?? 0) })),
+          data: rows.map((r,i)=>({ x: labels[i] || `Hour ${i}`, y: Number(r.oee ?? 0) })),
           options:{ showDots:true, radius:3 }
         }
       ];
 
       this.chartConfig = {
         title: 'Plantwide Metrics by Hour',
-        width:  this.chartWidth,
-        height: this.chartHeight,
+        width:  this.chartWidth || 600,
+        height: this.chartHeight || 400,
         orientation: 'vertical',
         xType: 'category',
         xLabel: 'Hour',
@@ -209,9 +231,16 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
         series
       };
 
-      this.hasInitialData = rows.length > 0;
-      this.isLoading = false;
-      this.dummyMode = false;
+        this.hasInitialData = rows.length > 0;
+        this.isLoading = false;
+        this.dummyMode = false;
+      } catch (error) {
+        console.error('Error processing plantwide metrics data:', error);
+        this.chartConfig = null;
+        this.hasInitialData = false;
+        this.isLoading = false;
+        this.dummyMode = false;
+      }
     };
 
   private enterDummy(): void {
