@@ -34,6 +34,52 @@ module.exports = function (server) {
     return { start: startDate, end: endDate };
   }
 
+  // Debug route for operator hybrid query issues
+  router.get("/analytics/debug-operators-hybrid", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+      
+      // Check operator sessions
+      const operatorCount = await db.collection(config.operatorSessionCollectionName)
+        .countDocuments({
+          "operator.id": { $ne: -1 },
+          "timestamps.start": { $gte: exactStart, $lte: exactEnd }
+        });
+      
+      // Check daily cache
+      const today = new Date();
+      const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
+      const dateStr = chicagoTime.toISOString().split('T')[0];
+      
+      const dailyCacheSample = await db.collection('totals-daily')
+        .findOne({ entityType: 'operator-machine' });
+      
+      // Check unique operators
+      const uniqueOperators = await db.collection(config.operatorSessionCollectionName)
+        .distinct("operator.id", { "operator.id": { $ne: -1 } });
+      
+      res.json({
+        query: { start: exactStart, end: exactEnd },
+        operators: {
+          countInRange: operatorCount,
+          totalUniqueOperators: uniqueOperators.length,
+          operatorIds: uniqueOperators.slice(0, 10) // First 10 for debugging
+        },
+        dailyCache: {
+          sampleRecord: dailyCacheSample,
+          todayDateStr: dateStr
+        },
+        sessions: {
+          totalCount: await db.collection(config.operatorSessionCollectionName).countDocuments()
+        }
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ---- /api/alpha/analytics/operators-summary-cached ----
   router.get("/analytics/operators-summary-cached", async (req, res) => {
     try {
@@ -210,6 +256,194 @@ module.exports = function (server) {
   // ---- /api/alpha/analytics/operators-summary (real-time calculation) ----
   router.get("/analytics/operators-summary", async (req, res) => {
     return await getOperatorsSummaryRealTime(req, res);
+  });
+
+  // ---- /api/alpha/analytics/operators-summary-hybrid ----
+  router.get("/analytics/operators-summary-hybrid", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+      
+      // Configurable threshold for hybrid approach (36 hours)
+      const HYBRID_THRESHOLD_HOURS = 36;
+      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+      
+      // If time range is less than threshold, use original route
+      if (timeRangeHours <= HYBRID_THRESHOLD_HOURS) {
+        return res.status(400).json({
+          error: "Time range too short for hybrid approach",
+          message: `Use /analytics/operators-summary-cached for time ranges ≤ ${HYBRID_THRESHOLD_HOURS} hours`,
+          currentHours: Math.round(timeRangeHours * 100) / 100,
+          thresholdHours: HYBRID_THRESHOLD_HOURS
+        });
+      }
+
+      // Import required modules
+      const { SYSTEM_TIMEZONE } = require('../../utils/time');
+
+      // Split time range into complete days and partial days
+      const startOfFirstDay = DateTime.fromJSDate(exactStart, { zone: SYSTEM_TIMEZONE }).startOf('day');
+      const endOfLastDay = DateTime.fromJSDate(exactEnd, { zone: SYSTEM_TIMEZONE }).endOf('day');
+      
+      const completeDays = [];
+      const partialDays = [];
+      
+      // Add complete days (full 24-hour periods)
+      let currentDay = startOfFirstDay;
+      while (currentDay < endOfLastDay) {
+        const dayStart = currentDay.toJSDate();
+        const dayEnd = currentDay.plus({ days: 1 }).startOf('day').toJSDate();
+        
+        // Only include if the day is completely within the query range
+        if (dayStart >= exactStart && dayEnd <= exactEnd) {
+          completeDays.push({
+            start: dayStart,
+            end: dayEnd,
+            dateStr: currentDay.toFormat('yyyy-LL-dd')
+          });
+        }
+        
+        currentDay = currentDay.plus({ days: 1 });
+      }
+      
+      // Add partial days (beginning and end of range)
+      if (exactStart < startOfFirstDay.plus({ days: 1 }).toJSDate()) {
+        partialDays.push({
+          start: exactStart,
+          end: Math.min(exactEnd, startOfFirstDay.plus({ days: 1 }).toJSDate()),
+          type: 'start'
+        });
+      }
+      
+      if (exactEnd > endOfLastDay.minus({ days: 1 }).toJSDate()) {
+        partialDays.push({
+          start: Math.max(exactStart, endOfLastDay.minus({ days: 1 }).toJSDate()),
+          end: exactEnd,
+          type: 'end'
+        });
+      }
+
+      // Query daily cache for complete days
+      const dailyRecords = await queryOperatorsSummaryDailyCache(completeDays);
+      logger.info(`[operatorSessions] Daily cache query returned ${dailyRecords.length} records`);
+      
+      // Query sessions for partial days
+      const sessionData = await queryOperatorsSummarySessions(partialDays);
+      logger.info(`[operatorSessions] Session query returned ${sessionData.length} records`);
+      
+      // Combine the data
+      const combinedData = combineOperatorsSummaryData(dailyRecords, sessionData);
+      logger.info(`[operatorSessions] Combined data has ${combinedData.size} operators`);
+      
+      // Get current machine statuses from stateTicker collection
+      const stateTickerData = await db.collection('stateTicker')
+        .find({})
+        .toArray();
+      
+      // Create a map of machine serial to current status
+      const machineStatusMap = new Map();
+      for (const stateRecord of stateTickerData) {
+        machineStatusMap.set(stateRecord.machine.serial, {
+          code: stateRecord.status.code,
+          name: stateRecord.status.name,
+          softrolColor: stateRecord.status.softrolColor,
+          timestamp: stateRecord.status.timestamp
+        });
+      }
+      
+      // Build final results
+      const results = [];
+      for (const [operatorId, data] of combinedData) {
+        const result = {
+          operator: {
+            id: operatorId,
+            name: data.operatorName
+          },
+          currentMachine: data.currentMachine,
+          currentStatus: data.currentStatus,
+          metrics: {
+            runtime: {
+              total: data.runtimeMs,
+              formatted: formatDuration(data.runtimeMs)
+            },
+            downtime: {
+              total: data.downtimeMs,
+              formatted: formatDuration(data.downtimeMs)
+            },
+            output: {
+              totalCount: data.totalCount,
+              misfeedCount: data.misfeedCount
+            },
+            performance: {
+              availability: {
+                value: data.availability,
+                percentage: (data.availability * 100).toFixed(2)
+              },
+              throughput: {
+                value: data.throughput,
+                percentage: (data.throughput * 100).toFixed(2)
+              },
+              efficiency: {
+                value: data.efficiency,
+                percentage: (data.efficiency * 100).toFixed(2)
+              },
+              oee: {
+                value: data.oee,
+                percentage: (data.oee * 100).toFixed(2)
+              }
+            }
+          },
+          timeRange: {
+            start: exactStart,
+            end: exactEnd
+          },
+          metadata: {
+            optimization: {
+              used: true,
+              approach: 'hybrid',
+              thresholdHours: HYBRID_THRESHOLD_HOURS,
+              timeRangeHours: Math.round(timeRangeHours * 100) / 100,
+              completeDays: completeDays.length,
+              partialDays: partialDays.length,
+              dailyRecords: dailyRecords.filter(r => r.operatorId === operatorId).length,
+              sessionRecords: sessionData.filter(s => s.operatorId === operatorId).length
+            }
+          }
+        };
+        
+        results.push(result);
+      }
+
+      res.json({
+        success: true,
+        data: results,
+        metadata: {
+          timeRange: {
+            start: exactStart,
+            end: exactEnd,
+            hours: Math.round(timeRangeHours * 100) / 100
+          },
+          optimization: {
+            used: true,
+            approach: 'hybrid',
+            thresholdHours: HYBRID_THRESHOLD_HOURS,
+            timeRangeHours: Math.round(timeRangeHours * 100) / 100,
+            completeDays: completeDays.length,
+            partialDays: partialDays.length,
+            dailyRecords: dailyRecords.length,
+            sessionRecords: sessionData.length,
+            performance: {
+              estimatedSpeedup: `${Math.round((timeRangeHours / 24) * 10)}x faster for ${Math.round(timeRangeHours / 24)} days`
+            }
+          }
+        }
+      });
+
+    } catch (error) {
+      logger.error("Error in operators-summary-hybrid:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
   });
 
   // Helper function for real-time calculation (extracted from original route)
@@ -700,6 +934,267 @@ module.exports = function (server) {
     }
     // Remove null-id rows if any slipped in
     return Array.from(map.values()).filter(x => x.id != null);
+  }
+
+  // Helper function to query operators summary daily cache
+  async function queryOperatorsSummaryDailyCache(completeDays) {
+    if (completeDays.length === 0) return [];
+    
+    const cacheCollection = db.collection('totals-daily');
+    
+    // Try multiple date formats to handle timezone variations
+    const dateFormats = completeDays.flatMap(day => {
+      const dateStr = day.dateStr;
+      return [
+        new Date(dateStr + 'T00:00:00.000Z'), // UTC midnight
+        new Date(dateStr + 'T05:00:00.000Z'), // CST midnight (UTC+5)
+        new Date(dateStr + 'T06:00:00.000Z'), // CDT midnight (UTC+6)
+        dateStr, // String format
+        new Date(dateStr) // Local timezone
+      ];
+    });
+    
+    logger.info(`[operatorSessions] Querying daily cache with date formats:`, dateFormats);
+    
+    const records = await cacheCollection.find({
+      entityType: 'operator-machine',
+      $or: [
+        { dateObj: { $in: dateFormats } },
+        { date: { $in: completeDays.map(d => d.dateStr) } }
+      ]
+    }).toArray();
+    
+    logger.info(`[operatorSessions] Found ${records.length} daily cache records`);
+    return records;
+  }
+
+  // Helper function to query operators summary sessions for partial days
+  async function queryOperatorsSummarySessions(partialDays) {
+    if (partialDays.length === 0) return [];
+    
+    const results = [];
+    
+    for (const partialDay of partialDays) {
+      const collName = config.operatorSessionCollectionName;
+      const coll = db.collection(collName);
+
+      // Find operators that have at least one overlapping operator-session
+      // Use proper overlap logic: session starts before window ends AND session ends after window starts
+      const operatorIds = await coll.distinct("operator.id", {
+        "operator.id": { $ne: -1 },
+        "timestamps.start": { $lt: partialDay.end },
+        $or: [
+          { "timestamps.end": { $gt: partialDay.start } },
+          { "timestamps.end": { $exists: false } } // Handle open sessions
+        ]
+      });
+
+      if (!operatorIds.length) continue;
+
+      logger.info(`[operatorSessions] Found ${operatorIds.length} operators for partial day:`, operatorIds);
+
+      for (const opId of operatorIds) {
+        try {
+          // Pull all overlapping sessions for this operator
+          // Use proper overlap logic: session starts before window ends AND session ends after window starts
+          const sessions = await coll.find({
+            "operator.id": opId,
+            "timestamps.start": { $lt: partialDay.end },
+            $or: [
+              { "timestamps.end": { $gt: partialDay.start } },
+              { "timestamps.end": { $exists: false } } // Handle open sessions
+            ]
+          })
+            .sort({ "timestamps.start": 1 })
+            .toArray();
+
+          if (!sessions.length) continue;
+
+          const mostRecent = sessions[sessions.length - 1];
+          let currentMachine = {};
+          let currentStatus = {};
+
+          if (mostRecent.endState) {
+            // Operator not currently running
+            currentMachine = {
+              serial: null,
+              name: null
+            };
+            currentStatus = {
+              code: mostRecent.endState?.status?.code ?? 0,
+              name: mostRecent.endState?.status?.name ?? "Unknown"
+            };
+          } else {
+            currentMachine = {
+              serial: mostRecent?.machine?.serial ?? null,
+              name: mostRecent?.machine?.name ?? null
+            };
+            currentStatus = {
+              code: 1,
+              name: "Running"
+            };
+          }
+
+          const operatorName = mostRecent?.operator?.name ?? sessions[0]?.operator?.name ?? "Unknown";
+
+          // Truncate first if it starts before window
+          if (sessions[0]) {
+            const first = sessions[0];
+            const firstStart = new Date(first.timestamps?.start);
+            if (firstStart < partialDay.start) {
+              sessions[0] = truncateAndRecalcOperator(first, partialDay.start, first.timestamps?.end ? new Date(first.timestamps.end) : partialDay.end);
+            }
+          }
+
+          // Truncate last if it ends after window (or is open)
+          if (sessions.length > 0) {
+            const lastIdx = sessions.length - 1;
+            const last = sessions[lastIdx];
+            const lastEnd = last.timestamps?.end ? new Date(last.timestamps.end) : null;
+
+            if (!lastEnd || lastEnd > partialDay.end) {
+              const effectiveEnd = lastEnd ? partialDay.end : partialDay.end;
+              sessions[lastIdx] = truncateAndRecalcOperator(
+                last,
+                new Date(sessions[lastIdx].timestamps.start),
+                effectiveEnd
+              );
+            }
+          }
+
+          // Aggregate metrics
+          let runtimeMs = 0;
+          let workTimeSec = 0;
+          let totalCount = 0;
+          let misfeedCount = 0;
+          let totalTimeCredit = 0;
+
+          for (const s of sessions) {
+            runtimeMs += Math.floor(s.runtime) * 1000;
+            workTimeSec += Math.floor(s.workTime);
+            totalCount += s.totalCount;
+            misfeedCount += s.misfeedCount;
+            totalTimeCredit += s.totalTimeCredit;
+          }
+
+          const downtimeMs = Math.max(0, (partialDay.end - partialDay.start) - runtimeMs);
+
+          results.push({
+            operatorId: opId,
+            operatorName,
+            currentMachine,
+            currentStatus,
+            runtimeMs,
+            downtimeMs,
+            totalCount,
+            misfeedCount,
+            workTimeSec,
+            totalTimeCredit,
+            timeRange: {
+              start: partialDay.start,
+              end: partialDay.end,
+              type: partialDay.type
+            }
+          });
+        } catch (err) {
+          logger.error(`Error processing operator ${opId} for partial day:`, err);
+          continue;
+        }
+      }
+    }
+    
+    return results;
+  }
+
+  // Helper function to combine operators summary data
+  function combineOperatorsSummaryData(dailyRecords, sessionData) {
+    const combinedMap = new Map();
+    
+    // Add daily records (group by operator)
+    for (const record of dailyRecords) {
+      const operatorId = record.operatorId;
+      
+      if (!combinedMap.has(operatorId)) {
+        combinedMap.set(operatorId, {
+          operatorId,
+          operatorName: record.operatorName,
+          currentMachine: {
+            serial: record.machineSerial,
+            name: record.machineName
+          },
+          currentStatus: {
+            code: 1,
+            name: "Running"
+          },
+          runtimeMs: 0,
+          downtimeMs: 0,
+          totalCount: 0,
+          misfeedCount: 0,
+          workTimeSec: 0,
+          totalTimeCredit: 0
+        });
+      }
+      
+      const operator = combinedMap.get(operatorId);
+      operator.runtimeMs += record.runtimeMs || 0;
+      operator.downtimeMs += record.pausedTimeMs || 0; // pausedTimeMs from daily cache
+      operator.totalCount += record.totalCounts || 0;
+      operator.misfeedCount += record.totalMisfeeds || 0;
+      operator.workTimeSec += (record.workedTimeMs || 0) / 1000; // Convert to seconds
+      operator.totalTimeCredit += (record.totalTimeCreditMs || 0) / 1000; // Convert to seconds
+    }
+    
+    // Add session data
+    for (const session of sessionData) {
+      const operatorId = session.operatorId;
+      
+      if (!combinedMap.has(operatorId)) {
+        combinedMap.set(operatorId, {
+          operatorId,
+          operatorName: session.operatorName,
+          currentMachine: session.currentMachine,
+          currentStatus: session.currentStatus,
+          runtimeMs: 0,
+          downtimeMs: 0,
+          totalCount: 0,
+          misfeedCount: 0,
+          workTimeSec: 0,
+          totalTimeCredit: 0
+        });
+      }
+      
+      const operator = combinedMap.get(operatorId);
+      operator.runtimeMs += session.runtimeMs || 0;
+      operator.downtimeMs += session.downtimeMs || 0;
+      operator.totalCount += session.totalCount || 0;
+      operator.misfeedCount += session.misfeedCount || 0;
+      operator.workTimeSec += session.workTimeSec || 0;
+      operator.totalTimeCredit += session.totalTimeCredit || 0;
+      
+      // Update current machine and status from most recent session
+      if (session.currentMachine?.serial) {
+        operator.currentMachine = session.currentMachine;
+      }
+      if (session.currentStatus?.code !== undefined) {
+        operator.currentStatus = session.currentStatus;
+      }
+    }
+    
+    // Calculate performance metrics for each operator
+    for (const [operatorId, data] of combinedMap) {
+      const totalMs = data.runtimeMs + data.downtimeMs;
+      const availability = totalMs ? Math.min(Math.max(data.runtimeMs / totalMs, 0), 1) : 0;
+      const throughput = (data.totalCount + data.misfeedCount) ? data.totalCount / (data.totalCount + data.misfeedCount) : 0;
+      const efficiency = data.workTimeSec > 0 ? data.totalTimeCredit / data.workTimeSec : 0;
+      const oee = availability * throughput * efficiency;
+      
+      data.availability = availability;
+      data.throughput = throughput;
+      data.efficiency = efficiency;
+      data.oee = oee;
+    }
+    
+    return combinedMap;
   }
 
   return router;
