@@ -129,7 +129,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
       params = params.set('serial', serial.toString());
     }
 
-    return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary-cache`, { params });
   }
 
   getOperatorItemSessionsSummary(start: string, end: string, operatorId?: number): Observable<any> {
@@ -141,7 +141,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
       params = params.set('operatorId', operatorId.toString());
     }
 
-    return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary-cache`, { params });
   }
 
 }
