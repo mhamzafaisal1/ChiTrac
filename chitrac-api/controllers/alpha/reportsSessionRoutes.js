@@ -4261,9 +4261,33 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const dayStart = new Date(currentDay);
       const dayEnd = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
       
-      // Check if this day is completely contained within our time range
-      // A day is complete if it starts at or after our start time and ends at or before our end time
+      // Smart day classification logic:
+      // A day is "complete" if it's fully contained within our time range
+      // This means: the day's start is at or after our start time AND the day's end is at or before our end time
+      // But we need to be more flexible for multi-day ranges
       const isComplete = dayStart >= start && dayEnd <= end;
+      
+      // Special case: If the day is fully contained between start and end dates (ignoring time)
+      // and the time range spans multiple days, treat it as complete
+      const startDate = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).toISODate();
+      const endDate = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).toISODate();
+      const currentDate = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toISODate();
+      
+      if (!isComplete && startDate !== endDate && currentDate > startDate && currentDate < endDate) {
+        // This is a day that's fully contained between the start and end dates
+        // Treat it as complete for caching purposes
+        const isFullyContained = true;
+        if (isFullyContained) {
+          completeDays.push({
+            start: dayStart,
+            end: dayEnd,
+            dateStr: DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd')
+          });
+        }
+        // Move to next day
+        currentDay = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).plus({ days: 1 }).toJSDate();
+        continue;
+      }
       
       if (isComplete) {
         completeDays.push({
@@ -4277,6 +4301,37 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       currentDay = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).plus({ days: 1 }).toJSDate();
     }
     
+    // Special case: Handle "today from midnight to now" scenario
+    // If the query starts at midnight of today and goes to now, treat it as a complete day
+    const now = DateTime.now({ zone: SYSTEM_TIMEZONE });
+    const todayStart = now.startOf('day').toJSDate();
+    const todayEnd = now.endOf('day').toJSDate();
+    
+    // Check if query is "today from midnight to now"
+    const isTodayQuery = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').equals(now.startOf('day')) &&
+                        start.getTime() === todayStart.getTime() &&
+                        end <= now.toJSDate();
+    
+    if (isTodayQuery) {
+      // Remove any partial day entries for today and add it as a complete day
+      const todayDateStr = now.toFormat('yyyy-MM-dd');
+      partialDays.forEach((day, index) => {
+        const dayDateStr = DateTime.fromJSDate(day.start, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd');
+        if (dayDateStr === todayDateStr) {
+          partialDays.splice(index, 1);
+        }
+      });
+      
+      // Add today as a complete day
+      completeDays.push({
+        start: todayStart,
+        end: todayEnd,
+        dateStr: todayDateStr
+      });
+      
+      logger.info(`Special case: Today query detected, treating as complete day: ${todayDateStr}`);
+    }
+    
     return { completeDays, partialDays };
   }
 
@@ -4287,10 +4342,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     logger.info(`Querying cache for date strings:`, dateStrings);
     
     // Get machine daily totals for complete days
+    // Handle both old format (no entityType) and new format (with entityType)
     const machineQuery = { 
-      entityType: 'machine',
-      date: { $in: dateStrings }
+      date: { $in: dateStrings },
+      machineSerial: { $exists: true },
+      itemId: { $exists: false } // Machine records don't have itemId
     };
+    
+    // Add entityType filter if it exists, otherwise rely on field presence
+    machineQuery.$or = [
+      { entityType: 'machine' },
+      { entityType: { $exists: false } } // Old format without entityType
+    ];
     
     if (serial) {
       machineQuery.machineSerial = serial;
@@ -4301,10 +4364,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     logger.info(`Found ${machineTotals.length} machine records from cache`);
 
     // Get machine-item daily totals for complete days
+    // Handle both old format (no entityType) and new format (with entityType)
     const machineItemQuery = { 
-      entityType: 'machine-item',
-      date: { $in: dateStrings }
+      date: { $in: dateStrings },
+      machineSerial: { $exists: true },
+      itemId: { $exists: true } // Machine-item records have both machineSerial and itemId
     };
+    
+    // Add entityType filter if it exists, otherwise rely on field presence
+    machineItemQuery.$or = [
+      { entityType: 'machine-item' },
+      { entityType: { $exists: false } } // Old format without entityType
+    ];
     
     if (serial) {
       machineItemQuery.machineSerial = serial;
@@ -4313,6 +4384,12 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     logger.info(`Machine-item query:`, JSON.stringify(machineItemQuery, null, 2));
     const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
     logger.info(`Found ${machineItemTotals.length} machine-item records from cache`);
+    
+    // Check if we have machine-item cache data for these dates
+    if (machineItemTotals.length === 0) {
+      logger.info(`No machine-item cache data found for dates: ${dateStrings.join(', ')}`);
+      logger.info(`Will use session data for complete days to get item-level breakdowns`);
+    }
     
     return { machines: machineTotals, machineItems: machineItemTotals };
   }
@@ -4546,20 +4623,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
-      // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
-      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-      
-      // Determine if we should use hybrid approach
-      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
-      
-      logger.info(`Time range analysis: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours), useHybrid: ${useHybrid}`);
-      
-      if (useHybrid) {
-        logger.info(`Using hybrid approach for time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
-      } else {
-        logger.info(`Using cache-only approach for time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
-      }
+      // ---------- Smart hybrid approach (always used) ----------
+      logger.info(`Using smart hybrid approach for time range: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -4626,72 +4691,46 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       let machineItemTotals = [];
       let sessionData = { machines: [], machineItems: [] };
 
-      if (useHybrid) {
-        // Split time range into complete days and partial days
-        const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+      // Always use smart hybrid approach - split time range into complete days and partial days
+      const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+      
+      logger.info(`Smart hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+      logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
+      logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
+      
+      // Get data from daily cache for complete days
+      let effectiveCompleteDays = [...completeDays];
+      let effectivePartialDays = [...partialDays];
+      
+      if (completeDays.length > 0) {
+        const cachedData = await getCachedDataForDays(completeDays, serial);
+        machineTotals = cachedData.machines;
+        machineItemTotals = cachedData.machineItems;
+        logger.info(`Retrieved ${machineTotals.length} cached machine records, ${machineItemTotals.length} cached machine-item records`);
         
-        logger.info(`Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
-        logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
-        logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
-        
-        // Get data from daily cache for complete days
-        if (completeDays.length > 0) {
-          const cachedData = await getCachedDataForDays(completeDays, serial);
-          machineTotals = cachedData.machines;
-          machineItemTotals = cachedData.machineItems;
-          logger.info(`Retrieved ${machineTotals.length} cached machine records, ${machineItemTotals.length} cached machine-item records`);
+        // If we have no machine-item cache data, we need to use session data for complete days too
+        if (machineItemTotals.length === 0 && completeDays.length > 0) {
+          logger.info(`No machine-item cache data found for complete days. Converting complete days to partial days for session data retrieval.`);
+          // Move complete days to partial days since we need session data for item-level breakdowns
+          effectiveCompleteDays = [];
+          effectivePartialDays = [...completeDays, ...partialDays];
+          
+          // Clear the cached machine data since we'll get it from sessions
+          machineTotals = [];
         }
-        
-        // Get data from sessions for partial days
-        if (partialDays.length > 0) {
-          sessionData = await getSessionDataForPartialDays(partialDays, serial);
-          logger.info(`Retrieved ${sessionData.machines.length} session machine records, ${sessionData.machineItems.length} session machine-item records`);
-        }
-        
-        // Combine cached and session data
-        const combinedData = combineHybridData(machineTotals, machineItemTotals, sessionData);
-        machineTotals = combinedData.machines;
-        machineItemTotals = combinedData.machineItems;
-        logger.info(`After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
-        
-      } else {
-        // Use only cached data for shorter time ranges
-        const cacheCollection = db.collection('totals-daily');
-        
-        // Calculate date range for query
-        const startDate = exactStart.toISOString().split('T')[0];
-        const endDate = exactEnd.toISOString().split('T')[0];
-
-        // Get machine daily totals
-        const machineQuery = { 
-          entityType: 'machine',
-          dateObj: { 
-            $gte: new Date(startDate + 'T00:00:00.000Z'), 
-            $lte: new Date(endDate + 'T23:59:59.999Z') 
-          }
-        };
-        
-        if (serial) {
-          machineQuery.machineSerial = serial;
-        }
-
-        machineTotals = await cacheCollection.find(machineQuery).toArray();
-
-        // Get machine-item daily totals
-        const machineItemQuery = { 
-          entityType: 'machine-item',
-          dateObj: { 
-            $gte: new Date(startDate + 'T00:00:00.000Z'), 
-            $lte: new Date(endDate + 'T23:59:59.999Z') 
-          }
-        };
-        
-        if (serial) {
-          machineItemQuery.machineSerial = serial;
-        }
-
-        machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
       }
+      
+      // Get data from sessions for partial days (including converted complete days if needed)
+      if (effectivePartialDays.length > 0) {
+        sessionData = await getSessionDataForPartialDays(effectivePartialDays, serial);
+        logger.info(`Retrieved ${sessionData.machines.length} session machine records, ${sessionData.machineItems.length} session machine-item records`);
+      }
+      
+      // Combine cached and session data
+      const combinedData = combineHybridData(machineTotals, machineItemTotals, sessionData);
+      machineTotals = combinedData.machines;
+      machineItemTotals = combinedData.machineItems;
+      logger.info(`After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
 
       if (!machineTotals.length) {
         return res.json({
