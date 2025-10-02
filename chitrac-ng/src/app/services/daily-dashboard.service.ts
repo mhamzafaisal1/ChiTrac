@@ -92,7 +92,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
       params = params.set('serial', serial.toString());
     }
 
-    return this.http.get(`${this.apiUrl}/analytics/daily/machine-status-fast`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/daily/machine-status-cache`, { params });
   }
 
   getDailyMachineOee(start: string, end: string): Observable<any> {
@@ -107,7 +107,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
 
   getDailyTopOperators(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get(`${this.apiUrl}/analytics/daily/top-operators`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/daily/top-operators-cache`, { params });
   }
 
   getDailyPlantwideMetrics(start: string, end: string): Observable<any> {
@@ -117,7 +117,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
 
   getDailyCountTotals(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get(`${this.apiUrl}/analytics/daily/count-totals`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/daily/count-totals-cache`, { params });
   }
 
   getMachineItemSessionsSummary(start: string, end: string, serial?: number): Observable<any> {
