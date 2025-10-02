@@ -2820,7 +2820,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
       
       // Configurable threshold for hybrid approach (36 hours)
-      const HYBRID_THRESHOLD_HOURS = 36;
+      const HYBRID_THRESHOLD_HOURS = 24;
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // If time range is less than threshold, use original route
@@ -3371,7 +3371,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
       
       // Configurable threshold for hybrid approach (36 hours)
-      const HYBRID_THRESHOLD_HOURS = 36;
+      const HYBRID_THRESHOLD_HOURS = 24;
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // If time range is less than threshold, use original route
@@ -3917,7 +3917,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
       
       // Configurable threshold for hybrid approach (36 hours)
-      const HYBRID_THRESHOLD_HOURS = 36;
+      const HYBRID_THRESHOLD_HOURS = 24;
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // If time range is less than threshold, use original route
@@ -4261,12 +4261,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const dayStart = new Date(currentDay);
       const dayEnd = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
       
-      // Only include if it's a complete day (not overlapping with partial days)
-      const isComplete = dayStart >= startOfFirstDay && dayEnd <= endOfLastDay &&
-                        !partialDays.some(p => 
-                          (dayStart >= p.start && dayStart <= p.end) ||
-                          (dayEnd >= p.start && dayEnd <= p.end)
-                        );
+      // Check if this day is completely contained within our time range
+      // A day is complete if it starts at or after our start time and ends at or before our end time
+      const isComplete = dayStart >= start && dayEnd <= end;
       
       if (isComplete) {
         completeDays.push({
@@ -4287,6 +4284,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
+    logger.info(`Querying cache for date strings:`, dateStrings);
+    
     // Get machine daily totals for complete days
     const machineQuery = { 
       entityType: 'machine',
@@ -4297,7 +4296,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       machineQuery.machineSerial = serial;
     }
 
+    logger.info(`Machine query:`, JSON.stringify(machineQuery, null, 2));
     const machineTotals = await cacheCollection.find(machineQuery).toArray();
+    logger.info(`Found ${machineTotals.length} machine records from cache`);
 
     // Get machine-item daily totals for complete days
     const machineItemQuery = { 
@@ -4309,7 +4310,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       machineItemQuery.machineSerial = serial;
     }
 
+    logger.info(`Machine-item query:`, JSON.stringify(machineItemQuery, null, 2));
     const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
+    logger.info(`Found ${machineItemTotals.length} machine-item records from cache`);
     
     return { machines: machineTotals, machineItems: machineItemTotals };
   }
@@ -4544,14 +4547,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
 
       // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // Determine if we should use hybrid approach
       const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
       
+      logger.info(`Time range analysis: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours), useHybrid: ${useHybrid}`);
+      
       if (useHybrid) {
         logger.info(`Using hybrid approach for time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      } else {
+        logger.info(`Using cache-only approach for time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
       }
 
       // ---------- helpers (local to route) ----------
@@ -4624,23 +4631,28 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
         
         logger.info(`Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
+        logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
         
         // Get data from daily cache for complete days
         if (completeDays.length > 0) {
           const cachedData = await getCachedDataForDays(completeDays, serial);
           machineTotals = cachedData.machines;
           machineItemTotals = cachedData.machineItems;
+          logger.info(`Retrieved ${machineTotals.length} cached machine records, ${machineItemTotals.length} cached machine-item records`);
         }
         
         // Get data from sessions for partial days
         if (partialDays.length > 0) {
           sessionData = await getSessionDataForPartialDays(partialDays, serial);
+          logger.info(`Retrieved ${sessionData.machines.length} session machine records, ${sessionData.machineItems.length} session machine-item records`);
         }
         
         // Combine cached and session data
         const combinedData = combineHybridData(machineTotals, machineItemTotals, sessionData);
         machineTotals = combinedData.machines;
         machineItemTotals = combinedData.machineItems;
+        logger.info(`After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
         
       } else {
         // Use only cached data for shorter time ranges
@@ -4902,14 +4914,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
 
       // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // Determine if we should use hybrid approach
       const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
       
+      logger.info(`Operator route time range analysis: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours), useHybrid: ${useHybrid}`);
+      
       if (useHybrid) {
         logger.info(`Using hybrid approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      } else {
+        logger.info(`Using cache-only approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
       }
 
       // ---------- helpers (local to route) ----------
@@ -4970,19 +4986,24 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
         
         logger.info(`Operator hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
+        logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
         
         // Get data from daily cache for complete days
         if (completeDays.length > 0) {
           operatorTotals = await getOperatorCachedDataForDays(completeDays, operatorId);
+          logger.info(`Retrieved ${operatorTotals.length} cached operator records`);
         }
         
         // Get data from sessions for partial days
         if (partialDays.length > 0) {
           sessionData = await getOperatorSessionDataForPartialDays(partialDays, operatorId);
+          logger.info(`Retrieved ${sessionData.operators.length} session operator records`);
         }
         
         // Combine cached and session data
         operatorTotals = combineOperatorHybridData(operatorTotals, sessionData.operators);
+        logger.info(`After combining: ${operatorTotals.length} total operator records`);
         
       } else {
         // Use only cached data for shorter time ranges
@@ -5252,6 +5273,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
+    logger.info(`Operator cache query for date strings:`, dateStrings);
+    
     // Get operator-machine daily totals for complete days
     const operatorQuery = { 
       entityType: 'operator-machine',
@@ -5262,7 +5285,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       operatorQuery.operatorId = operatorId;
     }
 
+    logger.info(`Operator query:`, JSON.stringify(operatorQuery, null, 2));
     const operatorTotals = await cacheCollection.find(operatorQuery).toArray();
+    logger.info(`Found ${operatorTotals.length} operator records from cache`);
+    
     return operatorTotals;
   }
 
@@ -5438,7 +5464,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
 
       // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // Determine if we should use hybrid approach

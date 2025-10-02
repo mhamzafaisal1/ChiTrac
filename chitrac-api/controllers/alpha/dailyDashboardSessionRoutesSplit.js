@@ -586,5 +586,8 @@ module.exports = function (server) {
     }
   });
 
+  // Export the function for use in other modules
+  router.buildTopOperatorEfficiencyFromSessions = buildTopOperatorEfficiencyFromSessions;
+
   return router;
 };

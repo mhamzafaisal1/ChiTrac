@@ -127,34 +127,33 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
   }
 
   private transformDataToCartesianConfig(data: any): CartesianChartConfig | null {
-    if (!data || !data.hourlyData || !Array.isArray(data.hourlyData)) {
+    const hourly = data.hourlyData || data.operatorEfficiency;
+    if (!hourly || !Array.isArray(hourly)) {
       return null;
     }
 
-    // Create series for each operator
-    const series: XYSeries[] = [];
+    // Group points per operator
     const operatorMap = new Map<string, { name: string; data: { x: string; y: number }[] }>();
 
-    // Process hourly data to group by operator
-    data.hourlyData.forEach((hourData: any) => {
+    hourly.forEach((hourData: any) => {
       if (hourData.operators && Array.isArray(hourData.operators)) {
+        const hourLabel = new Date(hourData.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
         hourData.operators.forEach((operator: any) => {
           if (!operatorMap.has(operator.name)) {
-            operatorMap.set(operator.name, {
-              name: operator.name,
-              data: []
-            });
+            operatorMap.set(operator.name, { name: operator.name, data: [] });
           }
-          
+
           operatorMap.get(operator.name)!.data.push({
-            x: hourData.hour,
-            y: operator.efficiency || 0
+            x: hourLabel,
+            y: operator.efficiency ?? 0
           });
         });
       }
     });
 
-    // Convert map to series array
+    // Convert map to series array with guaranteed unique colors
+    const series: XYSeries[] = [];
     let index = 0;
     operatorMap.forEach((operatorData, operatorName) => {
       series.push({
@@ -162,7 +161,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
         title: operatorName,
         type: 'line',
         data: operatorData.data,
-        color: this.getColorForSeries(index),
+        color: this.getColorForSeries(index),   // distinct color for each
         options: {
           showDots: true,
           radius: 3
@@ -170,6 +169,8 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
       });
       index++;
     });
+
+    console.log("Generated series:", series); // Debug: confirm unique colors
 
     return {
       title: `Operator Performance - ${data.machine?.name || 'Machine'}`,

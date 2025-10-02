@@ -2088,6 +2088,137 @@ function constructor(server) {
     }
   });
 
+  // New route using buildTopOperatorEfficiencyFromSessions function
+  router.get("/analytics/machine/operator-efficiency-fromSessions", async (req, res) => {
+    try {
+      // Step 1: Parse and validate query parameters
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      if (!serial) {
+        return res.status(400).json({ error: "Machine serial is required" });
+      }
+
+      // Step 2: Create time range
+      const dayStart = new Date(start);
+      const dayEnd = new Date(end);
+
+      // Step 3: Get machine information from states collection
+      const statesColl = db.collection(config.stateCollectionName);
+      const machineInfo = await statesColl.findOne({
+        "machine.serial": parseInt(serial)
+      });
+
+      if (!machineInfo) {
+        return res.status(404).json({ error: "Machine not found" });
+      }
+
+      // Step 4: Get hourly intervals
+      const hourlyIntervals = getHourlyIntervals(dayStart, dayEnd);
+
+      // Step 5: Process each hour using operator sessions
+      const hourlyData = await Promise.all(
+        hourlyIntervals.map(async (interval) => {
+          // Get operator efficiency data for this hour using the session-based function
+          const operatorData = await dailyDashboardSessionRoutesSplit.buildTopOperatorEfficiencyFromSessions(db, interval.start, interval.end);
+          
+          // Get operator sessions for this specific machine and hour
+          const osColl = db.collection(config.operatorSessionCollectionName);
+          const machineOperatorSessions = await osColl.find({
+            "machine.serial": parseInt(serial),
+            "timestamps.start": { $lt: interval.end },
+            $or: [
+              { "timestamps.end": { $gt: interval.start } }, 
+              { "timestamps.end": { $exists: false } }, 
+              { "timestamps.end": null }
+            ],
+            "operator.id": { $exists: true, $ne: -1 }
+          }).toArray();
+
+          // Group by operator and calculate efficiency for this machine
+          const operatorMap = new Map();
+          
+          for (const session of machineOperatorSessions) {
+            const opId = session.operator.id;
+            const opName = session.operator.name || `#${opId}`;
+            
+            if (!operatorMap.has(opId)) {
+              operatorMap.set(opId, {
+                id: opId,
+                name: opName,
+                workTime: 0,
+                timeCredit: 0,
+                totalCount: 0,
+                misfeedCount: 0
+              });
+            }
+            
+            const op = operatorMap.get(opId);
+            const { factor } = calculateOverlapFactor(session.timestamps?.start, session.timestamps?.end, interval.start, interval.end);
+            
+            op.workTime += (session.workTime || 0) * factor;
+            op.timeCredit += (session.totalTimeCredit || 0) * factor;
+            op.totalCount += (session.totalCount || 0) * factor;
+            op.misfeedCount += (session.misfeedCount || 0) * factor;
+          }
+
+          // Calculate efficiency for each operator
+          const operators = Array.from(operatorMap.values()).map(op => {
+            const efficiency = op.workTime > 0 ? (op.timeCredit / op.workTime) : 0;
+            return {
+              id: op.id,
+              name: op.name,
+              efficiency: Math.round(efficiency * 10000) / 100 // Round to 2 decimal places
+            };
+          });
+
+          // Calculate average OEE for this hour
+          const avgEfficiency = operators.length > 0 
+            ? operators.reduce((sum, op) => sum + op.efficiency, 0) / operators.length 
+            : 0;
+
+          return {
+            hour: interval.start.toISOString(),
+            oee: Math.round(avgEfficiency * 100) / 100,
+            operators: operators
+          };
+        })
+      );
+
+      // Step 6: Format response to match original route structure
+      const response = {
+        machine: {
+          serial: parseInt(serial),
+          name: machineInfo.machine?.name || "Unknown",
+        },
+        timeRange: {
+          start: start,
+          end: end,
+          total: formatDuration(new Date(end) - new Date(start)),
+        },
+        hourlyData,
+      };
+
+      res.json(response);
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res
+        .status(500)
+        .json({ error: "Failed to calculate operator efficiency from sessions" });
+    }
+  });
+
+  // Helper function to calculate overlap factor (similar to the one in dailyDashboardSessionRoutesSplit.js)
+  function calculateOverlapFactor(sStart, sEnd, wStart, wEnd) {
+    const ss = new Date(sStart); 
+    const se = new Date(sEnd || wEnd);
+    const os = ss > wStart ? ss : wStart;
+    const oe = se < wEnd ? se : wEnd;
+    const ovSec = Math.max(0, (oe - os) / 1000);
+    const fullSec = Math.max(0, (se - ss) / 1000);
+    const f = fullSec > 0 ? ovSec / fullSec : 0;
+    return { ovSec, fullSec, factor: f };
+  }
+
   // API Route for line chart data for OEE% and individual operator efficiency% by hour end
 
   //API Route for operator count by item start
