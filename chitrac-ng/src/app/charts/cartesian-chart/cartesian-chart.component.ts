@@ -81,6 +81,8 @@ import {
     }
   
     ngOnChanges(changes: SimpleChanges): void {
+      // render may run before AfterViewInit; ensure SVG exists
+      if (!this.svg && this.host) this.initSvg();
       if (this.host) this.render();
     }
   
@@ -101,12 +103,15 @@ import {
     }
   
     private render() {
+      // ensure svg/rootG exist before any .attr()
+      if (!this.svg) this.initSvg();
+    
       if (!this.config || !this.config.series?.length) {
-        if (this.svg) this.svg.selectAll('*').remove();
-        this.initSvg();
+        // clear but don't re-init every time to avoid racing with initSvg
+        this.rootG?.selectAll('*').remove();
         return;
       }
-
+    
       const cfg = this.withDefaults(this.config);
       const hasPie = cfg.series.some(s => s.type === 'pie' || s.type === 'donut');
       if (hasPie) { 
