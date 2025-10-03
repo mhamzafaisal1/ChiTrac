@@ -23,7 +23,15 @@ function constructor(server) {
   }
 
   async function getOperator(req, res, next) {
-    try { res.json(await configService.getConfiguration(collection)); }
+    try { 
+      // Check for filterTestOperators query parameter
+      const filterTestOperators = req.query.filterTestOperators === 'true';
+      
+      // Build query object - filter out operators with code > 500000 if requested
+      const query = filterTestOperators ? { code: { $lte: 500000 } } : {};
+      
+      res.json(await configService.getConfiguration(collection, query)); 
+    }
     catch (e) { next(e); }
   }
 
