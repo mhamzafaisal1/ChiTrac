@@ -1,4 +1,4 @@
-import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, OnChanges, OnInit, AfterViewInit, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,7 +16,7 @@ import { MachineAnalyticsService } from '../services/machine-analytics.service';
     templateUrl: './machine-item-stacked-bar-chart.component.html',
     styleUrls: ['./machine-item-stacked-bar-chart.component.scss']
 })
-export class MachineItemStackedBarChartComponent implements OnChanges {
+export class MachineItemStackedBarChartComponent implements OnInit, AfterViewInit, OnChanges {
   @Input() startTime: string = '';
   @Input() endTime: string = '';
   @Input() machineSerial: number | null = null;
@@ -40,6 +40,12 @@ export class MachineItemStackedBarChartComponent implements OnChanges {
 
   constructor(private analyticsService: MachineAnalyticsService) {
     console.log('MachineItemStackedBarChart: Component constructor called');
+    console.log('MachineItemStackedBarChart: Constructor margin values:', {
+      marginTop: this.marginTop,
+      marginRight: this.marginRight,
+      marginBottom: this.marginBottom,
+      marginLeft: this.marginLeft
+    });
     
     // Initialize dark theme based on body class
     this.isDarkTheme = document.body.classList.contains('dark-theme');
@@ -60,6 +66,16 @@ export class MachineItemStackedBarChartComponent implements OnChanges {
     console.log('MachineItemStackedBarChart: ngOnChanges called with changes:', changes);
     console.log('MachineItemStackedBarChart: Current mode:', this.mode);
     console.log('MachineItemStackedBarChart: Preloaded data:', this.preloadedData);
+    console.log('MachineItemStackedBarChart: Current margin values in ngOnChanges:', {
+      marginTop: this.marginTop,
+      marginRight: this.marginRight,
+      marginBottom: this.marginBottom,
+      marginLeft: this.marginLeft
+    });
+    
+    // Check if margin properties have changed and update chart config if it exists
+    const marginChanged = changes['marginTop'] || changes['marginRight'] || 
+                         changes['marginBottom'] || changes['marginLeft'];
     
     if (this.mode === 'dashboard' && this.preloadedData) {
       console.log('MachineItemStackedBarChart: Using preloaded data for dashboard mode');
@@ -70,6 +86,73 @@ export class MachineItemStackedBarChartComponent implements OnChanges {
     if ((changes['startTime'] || changes['endTime'] || changes['machineSerial']) && this.isValid()) {
       console.log('MachineItemStackedBarChart: Fetching data due to input changes');
       this.fetchData();
+    } else if (marginChanged && this.chartConfig) {
+      console.log('MachineItemStackedBarChart: Updating chart config due to margin changes');
+      // Update the existing chart config with new margin values
+      this.chartConfig = {
+        ...this.chartConfig,
+        margin: {
+          top: this.marginTop,
+          right: this.marginRight,
+          bottom: this.marginBottom,
+          left: this.marginLeft
+        }
+      };
+    }
+  }
+
+  ngOnInit(): void {
+    console.log('MachineItemStackedBarChart: ngOnInit called');
+    console.log('MachineItemStackedBarChart: Current margin values in ngOnInit:', {
+      marginTop: this.marginTop,
+      marginRight: this.marginRight,
+      marginBottom: this.marginBottom,
+      marginLeft: this.marginLeft
+    });
+    
+    // If we have preloaded data and are in dashboard mode, ensure chart is configured
+    if (this.mode === 'dashboard' && this.preloadedData && !this.chartConfig) {
+      console.log('MachineItemStackedBarChart: Initializing chart with preloaded data in ngOnInit');
+      this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
+    }
+    
+    // Use setTimeout to ensure input properties are fully set before updating margins
+    // This handles the case where input properties are set after component creation
+    setTimeout(() => {
+      console.log('MachineItemStackedBarChart: Delayed margin check in ngOnInit');
+      console.log('MachineItemStackedBarChart: Current margin values after timeout:', {
+        marginTop: this.marginTop,
+        marginRight: this.marginRight,
+        marginBottom: this.marginBottom,
+        marginLeft: this.marginLeft
+      });
+      
+      if (this.chartConfig && this.marginLeft !== 25) {
+        console.log('MachineItemStackedBarChart: Updating chart margins after timeout');
+        this.updateChartMargins();
+      }
+    }, 0);
+  }
+
+  ngAfterViewInit(): void {
+    console.log('MachineItemStackedBarChart: ngAfterViewInit called');
+    console.log('MachineItemStackedBarChart: Current margin values in ngAfterViewInit:', {
+      marginTop: this.marginTop,
+      marginRight: this.marginRight,
+      marginBottom: this.marginBottom,
+      marginLeft: this.marginLeft
+    });
+    
+    // If we're in dashboard mode and margins are still default, manually set them
+    if (this.mode === 'dashboard' && this.marginLeft === 25) {
+      console.log('MachineItemStackedBarChart: Detected default margins in dashboard mode, manually setting correct values');
+      this.setMargins(30, 15, 60, 100);
+    }
+    
+    // Force update margins after view is initialized
+    if (this.chartConfig) {
+      console.log('MachineItemStackedBarChart: Force updating margins in ngAfterViewInit');
+      this.updateChartMargins();
     }
   }
 
@@ -100,6 +183,12 @@ export class MachineItemStackedBarChartComponent implements OnChanges {
 
   private transformDataToCartesianConfig(data: any): CartesianChartConfig | null {
     console.log('MachineItemStackedBarChart: Transforming data:', data);
+    console.log('MachineItemStackedBarChart: Current margin values:', {
+      marginTop: this.marginTop,
+      marginRight: this.marginRight,
+      marginBottom: this.marginBottom,
+      marginLeft: this.marginLeft
+    });
     
     // The data structure is: { title: string, data: { hours: [], operators: {} } }
     if (!data || !data.data) {
@@ -175,7 +264,10 @@ export class MachineItemStackedBarChartComponent implements OnChanges {
       series: series
     };
 
-    console.log('MachineItemStackedBarChart: Final config:', config);
+    console.log('MachineItemStackedBarChart: Final config with margins:', {
+      ...config,
+      margin: config.margin
+    });
     return config;
   }
 
@@ -199,6 +291,47 @@ export class MachineItemStackedBarChartComponent implements OnChanges {
         width: width,
         height: height
       };
+    }
+  }
+
+  // Method to force update chart configuration with current margin values
+  updateChartMargins(): void {
+    console.log('MachineItemStackedBarChart: Force updating chart margins');
+    console.log('MachineItemStackedBarChart: Current margin values:', {
+      marginTop: this.marginTop,
+      marginRight: this.marginRight,
+      marginBottom: this.marginBottom,
+      marginLeft: this.marginLeft
+    });
+    
+    if (this.chartConfig) {
+      this.chartConfig = {
+        ...this.chartConfig,
+        margin: {
+          top: this.marginTop,
+          right: this.marginRight,
+          bottom: this.marginBottom,
+          left: this.marginLeft
+        }
+      };
+      console.log('MachineItemStackedBarChart: Updated chart config with new margins:', this.chartConfig.margin);
+    }
+  }
+
+  // Method to manually set margin values (for debugging/fixing input issues)
+  setMargins(marginTop: number, marginRight: number, marginBottom: number, marginLeft: number): void {
+    console.log('MachineItemStackedBarChart: Manually setting margins:', {
+      marginTop, marginRight, marginBottom, marginLeft
+    });
+    
+    this.marginTop = marginTop;
+    this.marginRight = marginRight;
+    this.marginBottom = marginBottom;
+    this.marginLeft = marginLeft;
+    
+    // Update chart config if it exists
+    if (this.chartConfig) {
+      this.updateChartMargins();
     }
   }
 }

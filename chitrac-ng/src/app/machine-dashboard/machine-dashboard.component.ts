@@ -474,7 +474,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 marginTop: 30,
                 marginRight: 15,
                 marginBottom: 60,
-                marginLeft: 25,
+                marginLeft: 100,
                 showLegend: true,
                 legendPosition: "right",
                 legendWidthPx: 120,
