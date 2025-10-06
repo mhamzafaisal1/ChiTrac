@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
+const config = require('../../modules/config');
 
 module.exports = function (server) { return constructor(server); };
 
@@ -8,9 +10,42 @@ function constructor(server) {
   const collection = db.collection('operator');
   const xmlParser = server.xmlParser;
   const configService = require('../../services/mongo/');
+  const logger = server.logger;
 
   // Ensure unique index once at startup
   collection.createIndex({ code: 1 }, { unique: true }).catch(() => {});
+
+  // JWT verification middleware
+  function verifyJwtMiddleware(req, res, next) {
+    try {
+      const authHeader = req.headers["authorization"] || req.headers["Authorization"];
+      let token = null;
+      
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.slice(7).trim();
+      } else if (req.query?.token) {
+        token = req.query.token;
+      } else if (req.body?.token) {
+        token = req.body.token;
+      }
+      
+      if (!token) {
+        return res.status(401).json({ valid: false, error: "Missing token" });
+      }
+      
+      const secret = config.jwtSecret;
+      if (!secret) {
+        logger?.warn?.("JWT secret not configured (config.jwtSecret)");
+        return res.status(500).json({ valid: false, error: "Server config error" });
+      }
+      
+      const decoded = jwt.verify(token, secret);
+      req.tokenPayload = decoded;
+      next();
+    } catch (err) {
+      return res.status(401).json({ valid: false, error: "Invalid token" });
+    }
+  }
 
   async function getOperatorXML(req, res, next) {
     try {
@@ -92,10 +127,10 @@ function constructor(server) {
   router.get('/operator/config', getOperator);
   router.get('/operator/new-id', getNewOperatorId);
 
-  router.post('/operator/config', createOperator);
-  router.put('/operator/config/:id', upsertOperator);   // << add this
-
-  router.delete('/operator/config/:id', deleteOperator);
+  // Protected routes - require JWT token
+  router.post('/operator/config', verifyJwtMiddleware, createOperator);
+  router.put('/operator/config/:id', verifyJwtMiddleware, upsertOperator);
+  router.delete('/operator/config/:id', verifyJwtMiddleware, deleteOperator);
 
   return router;
 }
