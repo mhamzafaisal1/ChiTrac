@@ -49,16 +49,22 @@ export class UserRegisterComponent {
   }
 
   onSubmit(user: any): void {
-    console.log('submit');
+    if (!this.userRegistrationFormGroup?.valid) {
+      this.userRegistrationFormGroup?.markAllAsTouched();
+      return;
+    }
     this.userService.postUserRegister(user).pipe(first())
       .subscribe({
-        next: () => {
-          // get return url from query parameters or default to home page
+        next: (resp: any) => {
+          const message = resp?.message || 'User created successfully.';
+          alert(message);
           const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/ng/settings/root/users/register';
           this.router.navigateByUrl(returnUrl);
         },
-        error: error => {
-          console.log(error);
+        error: (err: any) => {
+          const message = err?.error?.message || err?.message || 'Failed to create user.';
+          alert(message);
+          this.error = message;
         }
       });
   }
@@ -78,7 +84,6 @@ export class UserRegisterComponent {
     ).subscribe(res => {
       this.user.username = res.username;
       this.user.password = res.password;
-      this.user.active = res.active;
     });
   };
 
