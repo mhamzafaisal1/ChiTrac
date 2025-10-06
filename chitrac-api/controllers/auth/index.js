@@ -34,5 +34,28 @@ module.exports = function (server) {
     res.json({ valid: true, payload: req.tokenPayload });
   });
 
+  // Test endpoint to generate JWT tokens for testing
+  router.post("/generateTestToken", (req, res) => {
+    try {
+      const { username = "testuser", role = "user" } = req.body;
+      const token = jwt.sign(
+        { 
+          userId: "test-user-id",
+          username: username,
+          role: role
+        },
+        config.jwtSecret,
+        { expiresIn: '24h' }
+      );
+      
+      res.json({ 
+        token: token,
+        payload: { username, role, userId: "test-user-id" }
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to generate token" });
+    }
+  });
+
   return router;
 };
