@@ -418,7 +418,7 @@ module.exports = function (server) {
   });
 
   // Route 1B: Machine Status Breakdowns (Fast - using daily totals cache)
-  router.get('/analytics/daily/machine-status-fast', async (req, res) => {
+  router.get('/analytics/daily/machine-status-cache', async (req, res) => {
     try {
       const now = DateTime.now();
       const dayStart = now.startOf('day').toJSDate();
@@ -494,7 +494,7 @@ module.exports = function (server) {
   });
 
   // Route 4B: Top Operator Rankings (Fast - using daily totals cache)
-  router.get('/analytics/daily/top-operators-fast', async (req, res) => {
+  router.get('/analytics/daily/top-operators-cache', async (req, res) => {
     try {
       const now = DateTime.now();
       const dayStart = now.startOf('day').toJSDate();
@@ -532,7 +532,7 @@ module.exports = function (server) {
   });
 
   // Route 5B: Plant-wide Metrics (Fast - using daily totals cache)
-  router.get('/analytics/daily/plantwide-metrics-fast', async (req, res) => {
+  router.get('/analytics/daily/plantwide-metrics-cache', async (req, res) => {
     try {
       const now = DateTime.now();
       const dayStart = now.startOf('day').toJSDate();
@@ -569,7 +569,7 @@ module.exports = function (server) {
   });
 
   // Route 6B: Daily Count Totals (Fast - using daily totals cache)
-  router.get('/analytics/daily/count-totals-fast', async (req, res) => {
+  router.get('/analytics/daily/count-totals-cache', async (req, res) => {
     try {
       const now = DateTime.now();
       const dayEnd = now.toJSDate();
@@ -585,6 +585,9 @@ module.exports = function (server) {
       res.status(500).json({ error: "Failed to fetch fast daily count totals data" });
     }
   });
+
+  // Export the function for use in other modules
+  router.buildTopOperatorEfficiencyFromSessions = buildTopOperatorEfficiencyFromSessions;
 
   return router;
 };

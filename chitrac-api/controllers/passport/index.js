@@ -69,11 +69,44 @@ function constructor(server) {
     });
 
     // process the login form
-    router.post('/user/login', passport.authenticate('local-login', {
-        successRedirect: '/api/passport/user', // redirect to the secure profile section
-        failureRedirect: '/api/passport/user/login', // redirect back to the signup page if there is an error
-        failureFlash: true // allow flash messages
-    }))
+    router.post('/user/login', (req, res, next) => {
+        passport.authenticate('local-login', (err, user, info) => {
+            if (err) {
+                return res.status(500).json({ error: 'Authentication error' });
+            }
+            if (!user) {
+                return res.status(401).json({ error: 'Invalid credentials' });
+            }
+            
+            req.logIn(user, (err) => {
+                if (err) {
+                    return res.status(500).json({ error: 'Login error' });
+                }
+                
+                // Generate JWT token
+                const jwt = require('jsonwebtoken');
+                const config = require('../../modules/config');
+                const token = jwt.sign(
+                    { 
+                        userId: user._id,
+                        username: user.local.username,
+                        role: user.role || 'user'
+                    },
+                    config.jwtSecret,
+                    { expiresIn: '24h' }
+                );
+                
+                // Return user data and token
+                const userObject = { ...user.local };
+                delete userObject.password;
+                
+                res.json({
+                    user: userObject,
+                    token: token
+                });
+            });
+        })(req, res, next);
+    })
 
     router.get('/user', function(req, res) {
         if (req.isAuthenticated()) {

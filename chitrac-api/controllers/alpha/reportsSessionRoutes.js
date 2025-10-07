@@ -2820,7 +2820,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
       
       // Configurable threshold for hybrid approach (36 hours)
-      const HYBRID_THRESHOLD_HOURS = 36;
+      const HYBRID_THRESHOLD_HOURS = 24;
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // If time range is less than threshold, use original route
@@ -3371,7 +3371,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
       
       // Configurable threshold for hybrid approach (36 hours)
-      const HYBRID_THRESHOLD_HOURS = 36;
+      const HYBRID_THRESHOLD_HOURS = 24;
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // If time range is less than threshold, use original route
@@ -3917,7 +3917,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
       
       // Configurable threshold for hybrid approach (36 hours)
-      const HYBRID_THRESHOLD_HOURS = 36;
+      const HYBRID_THRESHOLD_HOURS = 24;
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // If time range is less than threshold, use original route
@@ -4261,12 +4261,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const dayStart = new Date(currentDay);
       const dayEnd = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
       
-      // Only include if it's a complete day (not overlapping with partial days)
-      const isComplete = dayStart >= startOfFirstDay && dayEnd <= endOfLastDay &&
-                        !partialDays.some(p => 
-                          (dayStart >= p.start && dayStart <= p.end) ||
-                          (dayEnd >= p.start && dayEnd <= p.end)
-                        );
+      // Check if this day is completely contained within our time range
+      // A day is complete if it starts at or after our start time and ends at or before our end time
+      const isComplete = dayStart >= start && dayEnd <= end;
       
       if (isComplete) {
         completeDays.push({
@@ -4287,6 +4284,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
+    logger.info(`Querying cache for date strings:`, dateStrings);
+    
     // Get machine daily totals for complete days
     const machineQuery = { 
       entityType: 'machine',
@@ -4297,7 +4296,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       machineQuery.machineSerial = serial;
     }
 
+    logger.info(`Machine query:`, JSON.stringify(machineQuery, null, 2));
     const machineTotals = await cacheCollection.find(machineQuery).toArray();
+    logger.info(`Found ${machineTotals.length} machine records from cache`);
 
     // Get machine-item daily totals for complete days
     const machineItemQuery = { 
@@ -4309,7 +4310,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       machineItemQuery.machineSerial = serial;
     }
 
+    logger.info(`Machine-item query:`, JSON.stringify(machineItemQuery, null, 2));
     const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
+    logger.info(`Found ${machineItemTotals.length} machine-item records from cache`);
     
     return { machines: machineTotals, machineItems: machineItemTotals };
   }
@@ -4544,14 +4547,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
 
       // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // Determine if we should use hybrid approach
       const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
       
+      logger.info(`Time range analysis: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours), useHybrid: ${useHybrid}`);
+      
       if (useHybrid) {
         logger.info(`Using hybrid approach for time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      } else {
+        logger.info(`Using cache-only approach for time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
       }
 
       // ---------- helpers (local to route) ----------
@@ -4624,23 +4631,28 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
         
         logger.info(`Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
+        logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
         
         // Get data from daily cache for complete days
         if (completeDays.length > 0) {
           const cachedData = await getCachedDataForDays(completeDays, serial);
           machineTotals = cachedData.machines;
           machineItemTotals = cachedData.machineItems;
+          logger.info(`Retrieved ${machineTotals.length} cached machine records, ${machineItemTotals.length} cached machine-item records`);
         }
         
         // Get data from sessions for partial days
         if (partialDays.length > 0) {
           sessionData = await getSessionDataForPartialDays(partialDays, serial);
+          logger.info(`Retrieved ${sessionData.machines.length} session machine records, ${sessionData.machineItems.length} session machine-item records`);
         }
         
         // Combine cached and session data
         const combinedData = combineHybridData(machineTotals, machineItemTotals, sessionData);
         machineTotals = combinedData.machines;
         machineItemTotals = combinedData.machineItems;
+        logger.info(`After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
         
       } else {
         // Use only cached data for shorter time ranges
@@ -4773,119 +4785,121 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
       // ---------- 3) Status stacked (durations) ----------
-      const statusByMachine = new Map();
-      for (const machineData of machineTotals) {
-        const serial = machineData.machineSerial;
-        const name = machineData.machineName;
-        
-        statusByMachine.set(serial, {
-          "Running": machineData.runtimeMs / 3600000, // Convert to hours
-          "Faulted": machineData.faultTimeMs / 3600000,
-          "Paused": machineData.pausedTimeMs / 3600000
-        });
-      }
+      // COMMENTED OUT FOR PERFORMANCE
+      // const statusByMachine = new Map();
+      // for (const machineData of machineTotals) {
+      //   const serial = machineData.machineSerial;
+      //   const name = machineData.machineName;
+      //   
+      //   statusByMachine.set(serial, {
+      //     "Running": machineData.runtimeMs / 3600000, // Convert to hours
+      //     "Faulted": machineData.faultTimeMs / 3600000,
+      //     "Paused": machineData.pausedTimeMs / 3600000
+      //   });
+      // }
 
-      // Compress per machine
-      for (const [s, rec] of statusByMachine) {
-        statusByMachine.set(s, compressSlicesPerBar(rec));
-      }
+      // // Compress per machine
+      // for (const [s, rec] of statusByMachine) {
+      //   statusByMachine.set(s, compressSlicesPerBar(rec));
+      // }
 
-      // ---------- 4) Faults stacked (durations by fault type) ----------
-      // For cached version, we'll use a simplified fault representation
-      // since fault details aren't stored in machine daily totals
-      const faultsByMachine = new Map();
-      for (const machineData of machineTotals) {
-        const serial = machineData.machineSerial;
-        const faultHours = machineData.faultTimeMs / 3600000;
-        
-        if (faultHours > 0) {
-          faultsByMachine.set(serial, {
-            "Faults": faultHours
-          });
-        } else {
-          faultsByMachine.set(serial, {
-            "No Faults": 0
-          });
-        }
-      }
+      // // ---------- 4) Faults stacked (durations by fault type) ----------
+      // // For cached version, we'll use a simplified fault representation
+      // // since fault details aren't stored in machine daily totals
+      // const faultsByMachine = new Map();
+      // for (const machineData of machineTotals) {
+      //   const serial = machineData.machineSerial;
+      //   const faultHours = machineData.faultTimeMs / 3600000;
+      //   
+      //   if (faultHours > 0) {
+      //     faultsByMachine.set(serial, {
+      //       "Faults": faultHours
+      //     });
+      //   } else {
+      //     faultsByMachine.set(serial, {
+      //       "No Faults": 0
+      //     });
+      //   }
+      // }
 
-      // ---------- 5) Efficiency ranking order ----------
-      const efficiencyRanked = results
-        .map(r => ({
-          serial: r.machine.serial,
-          name: r.machine.name,
-          efficiency: Number(r.machineSummary?.efficiency || 0),
-        }))
-        .sort((a, b) => b.efficiency - a.efficiency);
+      // // ---------- 5) Efficiency ranking order ----------
+      // const efficiencyRanked = results
+      //   .map(r => ({
+      //     serial: r.machine.serial,
+      //     name: r.machine.name,
+      //     efficiency: Number(r.machineSummary?.efficiency || 0),
+      //   }))
+      //   .sort((a, b) => b.efficiency - a.efficiency);
 
-      // Build comprehensive machine ordering from all data sources
-      const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
-      for (const m of statusByMachine.keys()) unionSerials.add(m);
-      for (const m of faultsByMachine.keys()) unionSerials.add(m);
-      const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
+      // // Build comprehensive machine ordering from all data sources
+      // const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
+      // for (const m of statusByMachine.keys()) unionSerials.add(m);
+      // for (const m of faultsByMachine.keys()) unionSerials.add(m);
+      // const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
 
-      // ---------- 6) Items stacked ----------
-      const itemsByMachine = new Map();
-      for (const r of results) {
-        const m = {};
-        for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
-          const label = s.name || String(id);
-          const count = Number(s.countTotal || 0);
-          m[label] = (m[label] || 0) + count;
-        }
-        itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
-      }
+      // // ---------- 6) Items stacked ----------
+      // const itemsByMachine = new Map();
+      // for (const r of results) {
+      //   const m = {};
+      //   for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
+      //     const label = s.name || String(id);
+      //     const count = Number(s.countTotal || 0);
+      //     m[label] = (m[label] || 0) + count;
+      //   }
+      //   itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
+      // }
 
-      const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
-      const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
-      const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
+      // const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
+      // const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
+      // const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
 
       // ---------- 7) Final payload ----------
       res.json({
         timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
         results,                  // Same structure as original route
-        charts: {
-          statusStacked: {
-            title: "Machine Status Stacked Bar",
-            orientation: "vertical",
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "Duration (hours)",
-            series: statusStacked
-          },
-          efficiencyRanked: {
-            title: "Ranked OEE% by Machine", 
-            orientation: "horizontal",
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "OEE (%)",
-            series: [
-              {
-                id: "OEE",
-                title: "OEE",
-                type: "bar",
-                data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
-              },
-            ]
-          },
-          itemsStacked: {
-            title: "Item Stacked Bar by Machine",
-            orientation: "vertical", 
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "Item Count",
-            series: itemsStacked
-          },
-          faultsStacked: {
-            title: "Fault Stacked Bar by Machine",
-            orientation: "vertical",
-            xType: "category", 
-            xLabel: "Machine",
-            yLabel: "Fault Duration (hours)",
-            series: faultsStacked
-          },
-          order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
-        },
+        // CHARTS COMMENTED OUT FOR PERFORMANCE
+        // charts: {
+        //   statusStacked: {
+        //     title: "Machine Status Stacked Bar",
+        //     orientation: "vertical",
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "Duration (hours)",
+        //     series: statusStacked
+        //   },
+        //   efficiencyRanked: {
+        //     title: "Ranked OEE% by Machine", 
+        //     orientation: "horizontal",
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "OEE (%)",
+        //     series: [
+        //       {
+        //         id: "OEE",
+        //         title: "OEE",
+        //         type: "bar",
+        //         data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
+        //       },
+        //     ]
+        //   },
+        //   itemsStacked: {
+        //     title: "Item Stacked Bar by Machine",
+        //     orientation: "vertical", 
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "Item Count",
+        //     series: itemsStacked
+        //   },
+        //   faultsStacked: {
+        //     title: "Fault Stacked Bar by Machine",
+        //     orientation: "vertical",
+        //     xType: "category", 
+        //     xLabel: "Machine",
+        //     yLabel: "Fault Duration (hours)",
+        //     series: faultsStacked
+        //   },
+        //   order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
+        // },
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
@@ -4902,14 +4916,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
 
       // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // Determine if we should use hybrid approach
       const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
       
+      logger.info(`Operator route time range analysis: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours), useHybrid: ${useHybrid}`);
+      
       if (useHybrid) {
         logger.info(`Using hybrid approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      } else {
+        logger.info(`Using cache-only approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
       }
 
       // ---------- helpers (local to route) ----------
@@ -4970,19 +4988,24 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
         
         logger.info(`Operator hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
+        logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
         
         // Get data from daily cache for complete days
         if (completeDays.length > 0) {
           operatorTotals = await getOperatorCachedDataForDays(completeDays, operatorId);
+          logger.info(`Retrieved ${operatorTotals.length} cached operator records`);
         }
         
         // Get data from sessions for partial days
         if (partialDays.length > 0) {
           sessionData = await getOperatorSessionDataForPartialDays(partialDays, operatorId);
+          logger.info(`Retrieved ${sessionData.operators.length} session operator records`);
         }
         
         // Combine cached and session data
         operatorTotals = combineOperatorHybridData(operatorTotals, sessionData.operators);
+        logger.info(`After combining: ${operatorTotals.length} total operator records`);
         
       } else {
         // Use only cached data for shorter time ranges
@@ -5076,6 +5099,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
                 name: itemTotal.itemName,
                 standard: itemTotal.itemStandard,
                 countTotal: 0,
+                workedTimeMs: 0,
                 workedTimeFormatted: formatMs(0),
                 pph: 0,
                 efficiency: 0,
@@ -5083,8 +5107,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             }
 
             itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
+            itemSummaries[itemTotal.itemId].workedTimeMs += itemTotal.workedTimeMs;
             itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(
-              (itemSummaries[itemTotal.itemId].workedTimeMs || 0) + itemTotal.workedTimeMs
+              itemSummaries[itemTotal.itemId].workedTimeMs
             );
           }
         }
@@ -5122,124 +5147,126 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
       // ---------- 3) Status stacked (durations) ----------
-      const statusByOperator = new Map();
-      for (const operatorTotal of operatorTotals) {
-        const opId = operatorTotal.operatorId;
-        
-        if (!statusByOperator.has(opId)) {
-          statusByOperator.set(opId, {
-            "Running": 0,
-            "Faulted": 0,
-            "Paused": 0
-          });
-        }
-        
-        const status = statusByOperator.get(opId);
-        status["Running"] += operatorTotal.runtimeMs / 3600000; // Convert to hours
-        status["Faulted"] += operatorTotal.faultTimeMs / 3600000;
-        status["Paused"] += operatorTotal.pausedTimeMs / 3600000;
-      }
+      // COMMENTED OUT FOR PERFORMANCE
+      // const statusByOperator = new Map();
+      // for (const operatorTotal of operatorTotals) {
+      //   const opId = operatorTotal.operatorId;
+      //   
+      //   if (!statusByOperator.has(opId)) {
+      //     statusByOperator.set(opId, {
+      //       "Running": 0,
+      //       "Faulted": 0,
+      //       "Paused": 0
+      //     });
+      //   }
+      //   
+      //   const status = statusByOperator.get(opId);
+      //   status["Running"] += operatorTotal.runtimeMs / 3600000; // Convert to hours
+      //   status["Faulted"] += operatorTotal.faultTimeMs / 3600000;
+      //   status["Paused"] += operatorTotal.pausedTimeMs / 3600000;
+      // }
 
-      // Compress per operator
-      for (const [opId, rec] of statusByOperator) {
-        statusByOperator.set(opId, compressSlicesPerBar(rec));
-      }
+      // // Compress per operator
+      // for (const [opId, rec] of statusByOperator) {
+      //   statusByOperator.set(opId, compressSlicesPerBar(rec));
+      // }
 
-      // ---------- 4) Faults stacked (durations by fault type) ----------
-      // For operators, we'll use a simplified fault representation
-      const faultsByOperator = new Map();
-      for (const operatorTotal of operatorTotals) {
-        const opId = operatorTotal.operatorId;
-        const faultHours = operatorTotal.faultTimeMs / 3600000;
-        
-        if (!faultsByOperator.has(opId)) {
-          faultsByOperator.set(opId, {});
-        }
-        
-        if (faultHours > 0) {
-          faultsByOperator.get(opId)["Faults"] = (faultsByOperator.get(opId)["Faults"] || 0) + faultHours;
-        } else {
-          faultsByOperator.get(opId)["No Faults"] = 0;
-        }
-      }
+      // // ---------- 4) Faults stacked (durations by fault type) ----------
+      // // For operators, we'll use a simplified fault representation
+      // const faultsByOperator = new Map();
+      // for (const operatorTotal of operatorTotals) {
+      //   const opId = operatorTotal.operatorId;
+      //   const faultHours = operatorTotal.faultTimeMs / 3600000;
+      //   
+      //   if (!faultsByOperator.has(opId)) {
+      //     faultsByOperator.set(opId, {});
+      //   }
+      //   
+      //   if (faultHours > 0) {
+      //     faultsByOperator.get(opId)["Faults"] = (faultsByOperator.get(opId)["Faults"] || 0) + faultHours;
+      //   } else {
+      //     faultsByOperator.get(opId)["No Faults"] = 0;
+      //   }
+      // }
 
-      // ---------- 5) Efficiency ranking order ----------
-      const efficiencyRanked = results
-        .map(r => ({
-          operatorId: r.operator.id,
-          name: r.operator.name,
-          efficiency: Number(r.operatorSummary?.efficiency || 0),
-        }))
-        .sort((a, b) => b.efficiency - a.efficiency);
+      // // ---------- 5) Efficiency ranking order ----------
+      // const efficiencyRanked = results
+      //   .map(r => ({
+      //     operatorId: r.operator.id,
+      //     name: r.operator.name,
+      //     efficiency: Number(r.operatorSummary?.efficiency || 0),
+      //   }))
+      //   .sort((a, b) => b.efficiency - a.efficiency);
 
-      // Build comprehensive operator ordering from all data sources
-      const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
-      for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
-      for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
-      const finalOrderOperatorIds = [...unionOperatorIds].filter(id => opIdToName.has(id));
+      // // Build comprehensive operator ordering from all data sources
+      // const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
+      // for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
+      // for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
+      // const finalOrderOperatorIds = [...unionOperatorIds].filter(id => opIdToName.has(id));
 
-      // ---------- 6) Items stacked ----------
-      const itemsByOperator = new Map();
-      for (const r of results) {
-        const m = {};
-        for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
-          const label = s.name || String(id);
-          const count = Number(s.countTotal || 0);
-          m[label] = (m[label] || 0) + count;
-        }
-        itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
-      }
+      // // ---------- 6) Items stacked ----------
+      // const itemsByOperator = new Map();
+      // for (const r of results) {
+      //   const m = {};
+      //   for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
+      //     const label = s.name || String(id);
+      //     const count = Number(s.countTotal || 0);
+      //     m[label] = (m[label] || 0) + count;
+      //   }
+      //   itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
+      // }
 
-      const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
-      const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
-      const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
+      // const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
+      // const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
+      // const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
 
       // ---------- 7) Final payload ----------
       res.json({
         timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
         results,                  // Same structure as original route
-        charts: {
-          statusStacked: {
-            title: "Operator Status Stacked Bar",
-            orientation: "vertical",
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "Duration (hours)",
-            series: statusStacked
-          },
-          efficiencyRanked: {
-            title: "Ranked OEE% by Operator", 
-            orientation: "horizontal",
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "OEE (%)",
-            series: [
-              {
-                id: "OEE",
-                title: "OEE",
-                type: "bar",
-                data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
-              },
-            ]
-          },
-          itemsStacked: {
-            title: "Item Stacked Bar by Operator",
-            orientation: "vertical", 
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "Item Count",
-            series: itemsStacked
-          },
-          faultsStacked: {
-            title: "Fault Stacked Bar by Operator",
-            orientation: "vertical",
-            xType: "category", 
-            xLabel: "Operator",
-            yLabel: "Fault Duration (hours)",
-            series: faultsStacked
-          },
-          order: finalOrderOperatorIds.map(id => opIdToName.get(id) || id), // operator display order (ranked)
-        },
+        // CHARTS COMMENTED OUT FOR PERFORMANCE
+        // charts: {
+        //   statusStacked: {
+        //     title: "Operator Status Stacked Bar",
+        //     orientation: "vertical",
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "Duration (hours)",
+        //     series: statusStacked
+        //   },
+        //   efficiencyRanked: {
+        //     title: "Ranked OEE% by Operator", 
+        //     orientation: "horizontal",
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "OEE (%)",
+        //     series: [
+        //       {
+        //         id: "OEE",
+        //         title: "OEE",
+        //         type: "bar",
+        //         data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
+        //       },
+        //     ]
+        //   },
+        //   itemsStacked: {
+        //     title: "Item Stacked Bar by Operator",
+        //     orientation: "vertical", 
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "Item Count",
+        //     series: itemsStacked
+        //   },
+        //   faultsStacked: {
+        //     title: "Fault Stacked Bar by Operator",
+        //     orientation: "vertical",
+        //     xType: "category", 
+        //     xLabel: "Operator",
+        //     yLabel: "Fault Duration (hours)",
+        //     series: faultsStacked
+        //   },
+        //   order: finalOrderOperatorIds.map(id => opIdToName.get(id) || id), // operator display order (ranked)
+        // },
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
@@ -5252,6 +5279,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
+    logger.info(`Operator cache query for date strings:`, dateStrings);
+    
     // Get operator-machine daily totals for complete days
     const operatorQuery = { 
       entityType: 'operator-machine',
@@ -5262,7 +5291,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       operatorQuery.operatorId = operatorId;
     }
 
+    logger.info(`Operator query:`, JSON.stringify(operatorQuery, null, 2));
     const operatorTotals = await cacheCollection.find(operatorQuery).toArray();
+    logger.info(`Found ${operatorTotals.length} operator records from cache`);
+    
     return operatorTotals;
   }
 
@@ -5438,7 +5470,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = new Date(end);
 
       // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold for hybrid approach
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
       
       // Determine if we should use hybrid approach
