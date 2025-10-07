@@ -166,7 +166,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       y += 24;
 
       const head = [['Machine/Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
-      const body = this.rows.map(row => [
+      const body = this.displayedRows.map(row => [
         `${row['Machine']} / ${row['Item']}`,
         row['Total Time (Runtime)'],
         row['Total Count'],
@@ -211,7 +211,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
         csvRows.push(this.columns.join(','));
       
         // Rows
-        for (const row of this.rows) {
+        for (const row of this.displayedRows) {
           const rowData = this.columns.map(col => {
             const cell = row[col];
             return typeof cell === 'string' && cell.includes(',')
