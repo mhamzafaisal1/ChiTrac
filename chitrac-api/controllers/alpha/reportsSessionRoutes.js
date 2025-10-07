@@ -4824,119 +4824,121 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
       // ---------- 3) Status stacked (durations) ----------
-      const statusByMachine = new Map();
-      for (const machineData of machineTotals) {
-        const serial = machineData.machineSerial;
-        const name = machineData.machineName;
-        
-        statusByMachine.set(serial, {
-          "Running": machineData.runtimeMs / 3600000, // Convert to hours
-          "Faulted": machineData.faultTimeMs / 3600000,
-          "Paused": machineData.pausedTimeMs / 3600000
-        });
-      }
+      // COMMENTED OUT FOR PERFORMANCE
+      // const statusByMachine = new Map();
+      // for (const machineData of machineTotals) {
+      //   const serial = machineData.machineSerial;
+      //   const name = machineData.machineName;
+      //   
+      //   statusByMachine.set(serial, {
+      //     "Running": machineData.runtimeMs / 3600000, // Convert to hours
+      //     "Faulted": machineData.faultTimeMs / 3600000,
+      //     "Paused": machineData.pausedTimeMs / 3600000
+      //   });
+      // }
 
-      // Compress per machine
-      for (const [s, rec] of statusByMachine) {
-        statusByMachine.set(s, compressSlicesPerBar(rec));
-      }
+      // // Compress per machine
+      // for (const [s, rec] of statusByMachine) {
+      //   statusByMachine.set(s, compressSlicesPerBar(rec));
+      // }
 
-      // ---------- 4) Faults stacked (durations by fault type) ----------
-      // For cached version, we'll use a simplified fault representation
-      // since fault details aren't stored in machine daily totals
-      const faultsByMachine = new Map();
-      for (const machineData of machineTotals) {
-        const serial = machineData.machineSerial;
-        const faultHours = machineData.faultTimeMs / 3600000;
-        
-        if (faultHours > 0) {
-          faultsByMachine.set(serial, {
-            "Faults": faultHours
-          });
-        } else {
-          faultsByMachine.set(serial, {
-            "No Faults": 0
-          });
-        }
-      }
+      // // ---------- 4) Faults stacked (durations by fault type) ----------
+      // // For cached version, we'll use a simplified fault representation
+      // // since fault details aren't stored in machine daily totals
+      // const faultsByMachine = new Map();
+      // for (const machineData of machineTotals) {
+      //   const serial = machineData.machineSerial;
+      //   const faultHours = machineData.faultTimeMs / 3600000;
+      //   
+      //   if (faultHours > 0) {
+      //     faultsByMachine.set(serial, {
+      //       "Faults": faultHours
+      //     });
+      //   } else {
+      //     faultsByMachine.set(serial, {
+      //       "No Faults": 0
+      //     });
+      //   }
+      // }
 
-      // ---------- 5) Efficiency ranking order ----------
-      const efficiencyRanked = results
-        .map(r => ({
-          serial: r.machine.serial,
-          name: r.machine.name,
-          efficiency: Number(r.machineSummary?.efficiency || 0),
-        }))
-        .sort((a, b) => b.efficiency - a.efficiency);
+      // // ---------- 5) Efficiency ranking order ----------
+      // const efficiencyRanked = results
+      //   .map(r => ({
+      //     serial: r.machine.serial,
+      //     name: r.machine.name,
+      //     efficiency: Number(r.machineSummary?.efficiency || 0),
+      //   }))
+      //   .sort((a, b) => b.efficiency - a.efficiency);
 
-      // Build comprehensive machine ordering from all data sources
-      const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
-      for (const m of statusByMachine.keys()) unionSerials.add(m);
-      for (const m of faultsByMachine.keys()) unionSerials.add(m);
-      const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
+      // // Build comprehensive machine ordering from all data sources
+      // const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
+      // for (const m of statusByMachine.keys()) unionSerials.add(m);
+      // for (const m of faultsByMachine.keys()) unionSerials.add(m);
+      // const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
 
-      // ---------- 6) Items stacked ----------
-      const itemsByMachine = new Map();
-      for (const r of results) {
-        const m = {};
-        for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
-          const label = s.name || String(id);
-          const count = Number(s.countTotal || 0);
-          m[label] = (m[label] || 0) + count;
-        }
-        itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
-      }
+      // // ---------- 6) Items stacked ----------
+      // const itemsByMachine = new Map();
+      // for (const r of results) {
+      //   const m = {};
+      //   for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
+      //     const label = s.name || String(id);
+      //     const count = Number(s.countTotal || 0);
+      //     m[label] = (m[label] || 0) + count;
+      //   }
+      //   itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
+      // }
 
-      const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
-      const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
-      const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
+      // const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
+      // const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
+      // const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
 
       // ---------- 7) Final payload ----------
       res.json({
         timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
         results,                  // Same structure as original route
-        charts: {
-          statusStacked: {
-            title: "Machine Status Stacked Bar",
-            orientation: "vertical",
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "Duration (hours)",
-            series: statusStacked
-          },
-          efficiencyRanked: {
-            title: "Ranked OEE% by Machine", 
-            orientation: "horizontal",
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "OEE (%)",
-            series: [
-              {
-                id: "OEE",
-                title: "OEE",
-                type: "bar",
-                data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
-              },
-            ]
-          },
-          itemsStacked: {
-            title: "Item Stacked Bar by Machine",
-            orientation: "vertical", 
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "Item Count",
-            series: itemsStacked
-          },
-          faultsStacked: {
-            title: "Fault Stacked Bar by Machine",
-            orientation: "vertical",
-            xType: "category", 
-            xLabel: "Machine",
-            yLabel: "Fault Duration (hours)",
-            series: faultsStacked
-          },
-          order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
-        },
+        // CHARTS COMMENTED OUT FOR PERFORMANCE
+        // charts: {
+        //   statusStacked: {
+        //     title: "Machine Status Stacked Bar",
+        //     orientation: "vertical",
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "Duration (hours)",
+        //     series: statusStacked
+        //   },
+        //   efficiencyRanked: {
+        //     title: "Ranked OEE% by Machine", 
+        //     orientation: "horizontal",
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "OEE (%)",
+        //     series: [
+        //       {
+        //         id: "OEE",
+        //         title: "OEE",
+        //         type: "bar",
+        //         data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
+        //       },
+        //     ]
+        //   },
+        //   itemsStacked: {
+        //     title: "Item Stacked Bar by Machine",
+        //     orientation: "vertical", 
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "Item Count",
+        //     series: itemsStacked
+        //   },
+        //   faultsStacked: {
+        //     title: "Fault Stacked Bar by Machine",
+        //     orientation: "vertical",
+        //     xType: "category", 
+        //     xLabel: "Machine",
+        //     yLabel: "Fault Duration (hours)",
+        //     series: faultsStacked
+        //   },
+        //   order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
+        // },
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
@@ -5165,21 +5167,23 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               const weight = operatorData.totalCount > 0 ? itemTotal.totalCounts / operatorData.totalCount : 0;
               proratedStandard += weight * itemTotal.itemStandard;
 
-              if (!itemSummaries[itemTotal.itemId]) {
-                itemSummaries[itemTotal.itemId] = {
-                  name: itemTotal.itemName,
-                  standard: itemTotal.itemStandard,
-                  countTotal: 0,
-                  workedTimeFormatted: formatMs(0),
-                  pph: 0,
-                  efficiency: 0,
-                };
-              }
-
-              itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
-              itemSummaries[itemTotal.itemId].workedTimeMs = (itemSummaries[itemTotal.itemId].workedTimeMs || 0) + itemTotal.workedTimeMs;
-              itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(itemSummaries[itemTotal.itemId].workedTimeMs);
+            if (!itemSummaries[itemTotal.itemId]) {
+              itemSummaries[itemTotal.itemId] = {
+                name: itemTotal.itemName,
+                standard: itemTotal.itemStandard,
+                countTotal: 0,
+                workedTimeMs: 0,
+                workedTimeFormatted: formatMs(0),
+                pph: 0,
+                efficiency: 0,
+              };
             }
+
+            itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
+            itemSummaries[itemTotal.itemId].workedTimeMs += itemTotal.workedTimeMs;
+            itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(
+              itemSummaries[itemTotal.itemId].workedTimeMs
+            );
           }
         }
 
@@ -5216,124 +5220,126 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
       // ---------- 3) Status stacked (durations) ----------
-      const statusByOperator = new Map();
-      for (const operatorTotal of operatorTotals) {
-        const opId = operatorTotal.operatorId;
-        
-        if (!statusByOperator.has(opId)) {
-          statusByOperator.set(opId, {
-            "Running": 0,
-            "Faulted": 0,
-            "Paused": 0
-          });
-        }
-        
-        const status = statusByOperator.get(opId);
-        status["Running"] += operatorTotal.runtimeMs / 3600000; // Convert to hours
-        status["Faulted"] += operatorTotal.faultTimeMs / 3600000;
-        status["Paused"] += operatorTotal.pausedTimeMs / 3600000;
-      }
+      // COMMENTED OUT FOR PERFORMANCE
+      // const statusByOperator = new Map();
+      // for (const operatorTotal of operatorTotals) {
+      //   const opId = operatorTotal.operatorId;
+      //   
+      //   if (!statusByOperator.has(opId)) {
+      //     statusByOperator.set(opId, {
+      //       "Running": 0,
+      //       "Faulted": 0,
+      //       "Paused": 0
+      //     });
+      //   }
+      //   
+      //   const status = statusByOperator.get(opId);
+      //   status["Running"] += operatorTotal.runtimeMs / 3600000; // Convert to hours
+      //   status["Faulted"] += operatorTotal.faultTimeMs / 3600000;
+      //   status["Paused"] += operatorTotal.pausedTimeMs / 3600000;
+      // }
 
-      // Compress per operator
-      for (const [opId, rec] of statusByOperator) {
-        statusByOperator.set(opId, compressSlicesPerBar(rec));
-      }
+      // // Compress per operator
+      // for (const [opId, rec] of statusByOperator) {
+      //   statusByOperator.set(opId, compressSlicesPerBar(rec));
+      // }
 
-      // ---------- 4) Faults stacked (durations by fault type) ----------
-      // For operators, we'll use a simplified fault representation
-      const faultsByOperator = new Map();
-      for (const operatorTotal of operatorTotals) {
-        const opId = operatorTotal.operatorId;
-        const faultHours = operatorTotal.faultTimeMs / 3600000;
-        
-        if (!faultsByOperator.has(opId)) {
-          faultsByOperator.set(opId, {});
-        }
-        
-        if (faultHours > 0) {
-          faultsByOperator.get(opId)["Faults"] = (faultsByOperator.get(opId)["Faults"] || 0) + faultHours;
-        } else {
-          faultsByOperator.get(opId)["No Faults"] = 0;
-        }
-      }
+      // // ---------- 4) Faults stacked (durations by fault type) ----------
+      // // For operators, we'll use a simplified fault representation
+      // const faultsByOperator = new Map();
+      // for (const operatorTotal of operatorTotals) {
+      //   const opId = operatorTotal.operatorId;
+      //   const faultHours = operatorTotal.faultTimeMs / 3600000;
+      //   
+      //   if (!faultsByOperator.has(opId)) {
+      //     faultsByOperator.set(opId, {});
+      //   }
+      //   
+      //   if (faultHours > 0) {
+      //     faultsByOperator.get(opId)["Faults"] = (faultsByOperator.get(opId)["Faults"] || 0) + faultHours;
+      //   } else {
+      //     faultsByOperator.get(opId)["No Faults"] = 0;
+      //   }
+      // }
 
-      // ---------- 5) Efficiency ranking order ----------
-      const efficiencyRanked = results
-        .map(r => ({
-          operatorId: r.operator.id,
-          name: r.operator.name,
-          efficiency: Number(r.operatorSummary?.efficiency || 0),
-        }))
-        .sort((a, b) => b.efficiency - a.efficiency);
+      // // ---------- 5) Efficiency ranking order ----------
+      // const efficiencyRanked = results
+      //   .map(r => ({
+      //     operatorId: r.operator.id,
+      //     name: r.operator.name,
+      //     efficiency: Number(r.operatorSummary?.efficiency || 0),
+      //   }))
+      //   .sort((a, b) => b.efficiency - a.efficiency);
 
-      // Build comprehensive operator ordering from all data sources
-      const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
-      for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
-      for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
-      const finalOrderOperatorIds = [...unionOperatorIds].filter(id => opIdToName.has(id));
+      // // Build comprehensive operator ordering from all data sources
+      // const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
+      // for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
+      // for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
+      // const finalOrderOperatorIds = [...unionOperatorIds].filter(id => opIdToName.has(id));
 
-      // ---------- 6) Items stacked ----------
-      const itemsByOperator = new Map();
-      for (const r of results) {
-        const m = {};
-        for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
-          const label = s.name || String(id);
-          const count = Number(s.countTotal || 0);
-          m[label] = (m[label] || 0) + count;
-        }
-        itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
-      }
+      // // ---------- 6) Items stacked ----------
+      // const itemsByOperator = new Map();
+      // for (const r of results) {
+      //   const m = {};
+      //   for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
+      //     const label = s.name || String(id);
+      //     const count = Number(s.countTotal || 0);
+      //     m[label] = (m[label] || 0) + count;
+      //   }
+      //   itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
+      // }
 
-      const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
-      const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
-      const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
+      // const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
+      // const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
+      // const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
 
       // ---------- 7) Final payload ----------
       res.json({
         timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
         results,                  // Same structure as original route
-        charts: {
-          statusStacked: {
-            title: "Operator Status Stacked Bar",
-            orientation: "vertical",
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "Duration (hours)",
-            series: statusStacked
-          },
-          efficiencyRanked: {
-            title: "Ranked OEE% by Operator", 
-            orientation: "horizontal",
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "OEE (%)",
-            series: [
-              {
-                id: "OEE",
-                title: "OEE",
-                type: "bar",
-                data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
-              },
-            ]
-          },
-          itemsStacked: {
-            title: "Item Stacked Bar by Operator",
-            orientation: "vertical", 
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "Item Count",
-            series: itemsStacked
-          },
-          faultsStacked: {
-            title: "Fault Stacked Bar by Operator",
-            orientation: "vertical",
-            xType: "category", 
-            xLabel: "Operator",
-            yLabel: "Fault Duration (hours)",
-            series: faultsStacked
-          },
-          order: finalOrderOperatorIds.map(id => opIdToName.get(id) || id), // operator display order (ranked)
-        },
+        // CHARTS COMMENTED OUT FOR PERFORMANCE
+        // charts: {
+        //   statusStacked: {
+        //     title: "Operator Status Stacked Bar",
+        //     orientation: "vertical",
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "Duration (hours)",
+        //     series: statusStacked
+        //   },
+        //   efficiencyRanked: {
+        //     title: "Ranked OEE% by Operator", 
+        //     orientation: "horizontal",
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "OEE (%)",
+        //     series: [
+        //       {
+        //         id: "OEE",
+        //         title: "OEE",
+        //         type: "bar",
+        //         data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
+        //       },
+        //     ]
+        //   },
+        //   itemsStacked: {
+        //     title: "Item Stacked Bar by Operator",
+        //     orientation: "vertical", 
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "Item Count",
+        //     series: itemsStacked
+        //   },
+        //   faultsStacked: {
+        //     title: "Fault Stacked Bar by Operator",
+        //     orientation: "vertical",
+        //     xType: "category", 
+        //     xLabel: "Operator",
+        //     yLabel: "Fault Duration (hours)",
+        //     series: faultsStacked
+        //   },
+        //   order: finalOrderOperatorIds.map(id => opIdToName.get(id) || id), // operator display order (ranked)
+        // },
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);

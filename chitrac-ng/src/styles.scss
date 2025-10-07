@@ -3,8 +3,7 @@
 @use './app/blanket-blaster/lane-common.scss';
 
 @include mat.core();
-// mat.$theme-ignore-duplication-warnings: true;
-$theme-ignore-duplication-warnings: true;
+mat.$theme-ignore-duplication-warnings: true;
 $darkest-dark-theme: 20;
 $dark-theme:  chitrac-styleguide-dark.$dark-theme;
 $light-theme: chitrac-styleguide-dark.$light-theme;

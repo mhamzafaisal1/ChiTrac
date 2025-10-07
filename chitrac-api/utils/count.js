@@ -190,6 +190,8 @@ async function getCountRecords(db, serial, start, end) {
       .sort({ timestamp: 1 })
       .toArray();
   }
+
+  
   async function getCountsForMachineStationPairs(db, pairs, start, end) {
     if (!pairs.length) return [];
   
@@ -202,7 +204,31 @@ async function getCountRecords(db, serial, start, end) {
     };
   
     const countCollection = getCountCollectionName(start);
-    return db.collection(countCollection)
+    const collectionExists = await db.listCollections({ name: countCollection }).hasNext();
+    const collection = collectionExists ? countCollection : 'count';
+    
+    console.log('Count collection:', collection, 'Exists:', collectionExists);
+    
+    return db.collection(collection)
+      .find(query)
+      .sort({ timestamp: 1 })
+      .toArray();
+  }
+
+  async function getCountsForMachineStationPairsForSoftrol(db, pairs, start, end) {
+    if (!pairs.length) return [];
+  
+    const query = {
+      $or: pairs.map(pair => ({
+        'machine.serial': pair.machineSerial,
+        'station': pair.station
+      })),
+      timestamp: { $gte: new Date(start), $lte: new Date(end) }
+    };
+  
+    console.log('Querying count collection between', start, 'and', end);
+    
+    return db.collection('count')
       .find(query)
       .sort({ timestamp: 1 })
       .toArray();
@@ -447,6 +473,7 @@ async function getCountRecords(db, serial, start, end) {
     groupCountsByOperatorAndMachine,
     groupCountsByOperator,
     getCountsForMachineStationPairs,
+    getCountsForMachineStationPairsForSoftrol,
     groupCountsByMachineAndStation
   };
   

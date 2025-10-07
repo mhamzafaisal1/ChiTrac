@@ -1,0 +1,24 @@
+.user-register-form {
+  max-width: 420px;
+  margin: 16px auto;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.title {
+  margin: 0 0 8px 0;
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+}
+
+.error-inline {
+  color: #b00020; /* Material error color tone */
+  text-align: center;
+}
+

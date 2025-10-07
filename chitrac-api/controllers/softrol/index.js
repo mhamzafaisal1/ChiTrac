@@ -13,6 +13,7 @@ const {
 
 const {
   fetchStatesForOperator,
+  fetchStatesForOperatorForSoftrol,
   getCompletedCyclesForOperator,
   groupStatesByOperatorAndSerial,
   groupStatesByMachineAndStation,
@@ -23,6 +24,7 @@ const {
   groupCountsByOperatorAndMachine,
   getCountsForOperatorMachinePairs,
   getCountsForMachineStationPairs,
+  getCountsForMachineStationPairsForSoftrol,
   groupCountsByMachineAndStation
 } = require("../../utils/count");
 
@@ -487,15 +489,27 @@ router.get("/historic-data", async (req, res) => {
     const effectiveEnd =
       new Date(end) > new Date() ? latestState?.timestamp || new Date() : end;
 
-    const { paddedStart, paddedEnd } = createPaddedTimeRange(start, effectiveEnd);
+    // Log the time range being queried
+    console.log('Querying states between', start, 'and', effectiveEnd);
+
+    // Diagnostic: Check what timestamps exist in the database
+    const sampleStates = await db.collection('state')
+      .find()
+      .sort({ timestamp: -1 })
+      .limit(5)
+      .project({ timestamp: 1, 'machine.serial': 1 })
+      .toArray();
+    console.log('Sample latest states in DB:', sampleStates.map(s => ({ ts: s.timestamp, serial: s.machine?.serial })));
 
     // 1. Fetch and group states by machine and station
-    const allStates = await fetchStatesForOperator(
+    const allStates = await fetchStatesForOperatorForSoftrol(
       db,
       null,
-      paddedStart,
-      paddedEnd
+      start,
+      effectiveEnd
     );
+
+    console.log('Fetched states:', allStates.length);
 
     const groupedStates = groupStatesByMachineAndStation(allStates);
 
@@ -518,12 +532,24 @@ router.get("/historic-data", async (req, res) => {
     });
 
     // 4. Fetch and group counts
-    const allCounts = await getCountsForMachineStationPairs(
+    // Diagnostic: Check what timestamps exist in counts
+    const sampleCounts = await db.collection('count')
+      .find()
+      .sort({ timestamp: -1 })
+      .limit(5)
+      .project({ timestamp: 1, 'machine.serial': 1, station: 1 })
+      .toArray();
+    console.log('Sample latest counts in DB:', sampleCounts.map(c => ({ ts: c.timestamp, serial: c.machine?.serial, station: c.station })));
+
+    const allCounts = await getCountsForMachineStationPairsForSoftrol(
       db,
       machineStationPairs,
       start,
       end
     );
+    
+    console.log('Fetched counts:', allCounts.length);
+    
     const groupedCounts = groupCountsByMachineAndStation(allCounts);
 
     // 5. Process each group's cycles and counts
