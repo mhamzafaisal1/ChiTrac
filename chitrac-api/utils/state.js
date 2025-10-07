@@ -303,20 +303,53 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   async function fetchStatesForOperator(db, operatorId, paddedStart, paddedEnd, collectionName = 'state') {
   const query = {
     timestamp: { $gte: paddedStart, $lte: paddedEnd },
-    operators: { $exists: true, $ne: [] }
+    'machine.serial': { $exists: true }
   };
 
   if (operatorId) {
     query['operators.id'] = operatorId;
   }
 
-  // Use dynamic collection selection based on start date
+  // Use dynamic collection selection based on start date with fallback
   const stateCollection = getStateCollectionName(paddedStart);
-  return db.collection(stateCollection)
+  const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
+  const collection = collectionExists ? stateCollection : 'state';
+  
+  console.log('State collection:', collection, 'Exists:', collectionExists);
+  
+  return db.collection(collection)
     .find(query)
     .sort({ timestamp: 1 })
     .project({
       _id:0, //RTI II: ADDED 06/10/25 to omit _ids from the API returns as those are extraneous outside of UPDATE or DELETE actions
+      timestamp: 1,
+      'machine.serial': 1,
+      'machine.name': 1,
+      'program.mode': 1,
+      'status.code': 1,
+      'status.name': 1,
+      operators: 1
+    })
+    .toArray();
+}
+
+async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, paddedEnd) {
+  const query = {
+    timestamp: { $gte: paddedStart, $lte: paddedEnd },
+    'machine.serial': { $exists: true }
+  };
+
+  if (operatorId) {
+    query['operators.id'] = operatorId;
+  }
+
+  console.log('Querying state collection between', paddedStart, 'and', paddedEnd);
+  
+  return db.collection('state')
+    .find(query)
+    .sort({ timestamp: 1 })
+    .project({
+      _id:0,
       timestamp: 1,
       'machine.serial': 1,
       'machine.name': 1,
@@ -1041,6 +1074,7 @@ async function fetchAllStates(db, start, end) {
     processAllMachinesCycles,
     calculateHourlyStateDurations,
     fetchStatesForOperator,
+    fetchStatesForOperatorForSoftrol,
     groupStatesByOperator,
     groupStatesByOperatorAndSerial,
     getCompletedCyclesForOperator,
