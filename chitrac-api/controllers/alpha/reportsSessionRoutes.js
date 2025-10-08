@@ -5167,23 +5167,24 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               const weight = operatorData.totalCount > 0 ? itemTotal.totalCounts / operatorData.totalCount : 0;
               proratedStandard += weight * itemTotal.itemStandard;
 
-            if (!itemSummaries[itemTotal.itemId]) {
-              itemSummaries[itemTotal.itemId] = {
-                name: itemTotal.itemName,
-                standard: itemTotal.itemStandard,
-                countTotal: 0,
-                workedTimeMs: 0,
-                workedTimeFormatted: formatMs(0),
-                pph: 0,
-                efficiency: 0,
-              };
-            }
+              if (!itemSummaries[itemTotal.itemId]) {
+                itemSummaries[itemTotal.itemId] = {
+                  name: itemTotal.itemName,
+                  standard: itemTotal.itemStandard,
+                  countTotal: 0,
+                  workedTimeMs: 0,
+                  workedTimeFormatted: formatMs(0),
+                  pph: 0,
+                  efficiency: 0,
+                };
+              }
 
-            itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
-            itemSummaries[itemTotal.itemId].workedTimeMs += itemTotal.workedTimeMs;
-            itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(
-              itemSummaries[itemTotal.itemId].workedTimeMs
-            );
+              itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
+              itemSummaries[itemTotal.itemId].workedTimeMs += itemTotal.workedTimeMs;
+              itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(
+                itemSummaries[itemTotal.itemId].workedTimeMs
+              );
+            }
           }
         }
 
