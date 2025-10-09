@@ -4231,106 +4231,109 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const completeDays = [];
     const partialDays = [];
     
-    // Get timezone-aware start and end of day
-    const startOfFirstDay = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
-    const endOfLastDay = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
+    // Convert to Luxon DateTime for timezone-aware operations
+    const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+    const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
     
-    // Check if we have a partial day at the beginning
-    if (start > startOfFirstDay) {
-      partialDays.push({
-        start: start,
-        end: DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate(),
-        type: 'start'
-      });
-    }
+    logger.info(`[HYBRID-SPLIT] Input: start=${startDt.toISO()}, end=${endDt.toISO()}`);
     
-    // Check if we have a partial day at the end
-    if (end < endOfLastDay) {
-      partialDays.push({
-        start: DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate(),
-        end: end,
-        type: 'end'
-      });
-    }
+    // Get the date range (midnight to midnight boundaries)
+    const startOfFirstDay = startDt.startOf('day');
+    const startOfLastDay = endDt.startOf('day');
     
-    // Find all complete days between start and end
-    let currentDay = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
-    const endDay = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
+    // Check if start is at midnight (within 1 second tolerance)
+    const startIsAtMidnight = Math.abs(startDt.diff(startOfFirstDay, 'seconds').seconds) < 1;
+    // Check if end is at midnight (within 1 second tolerance)
+    const endIsAtMidnight = Math.abs(endDt.diff(endDt.startOf('day'), 'seconds').seconds) < 1;
     
-    while (currentDay < endDay) {
-      const dayStart = new Date(currentDay);
-      const dayEnd = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
+    logger.info(`[HYBRID-SPLIT] Start is at midnight: ${startIsAtMidnight}, End is at midnight: ${endIsAtMidnight}`);
+    
+    // Iterate through each day in the range
+    let currentDay = startOfFirstDay;
+    
+    while (currentDay <= startOfLastDay) {
+      const dayStart = currentDay.startOf('day');
+      const dayEnd = currentDay.endOf('day');
+      const dateStr = currentDay.toFormat('yyyy-MM-dd');
       
-      // Smart day classification logic:
-      // A day is "complete" if it's fully contained within our time range
-      // This means: the day's start is at or after our start time AND the day's end is at or before our end time
-      // But we need to be more flexible for multi-day ranges
-      const isComplete = dayStart >= start && dayEnd <= end;
+      // Determine if this day is complete or partial
+      const isFirstDay = currentDay.hasSame(startOfFirstDay, 'day');
+      const isLastDay = currentDay.hasSame(startOfLastDay, 'day');
       
-      // Special case: If the day is fully contained between start and end dates (ignoring time)
-      // and the time range spans multiple days, treat it as complete
-      const startDate = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).toISODate();
-      const endDate = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).toISODate();
-      const currentDate = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toISODate();
-      
-      if (!isComplete && startDate !== endDate && currentDate > startDate && currentDate < endDate) {
-        // This is a day that's fully contained between the start and end dates
-        // Treat it as complete for caching purposes
-        const isFullyContained = true;
-        if (isFullyContained) {
+      if (isFirstDay && isLastDay) {
+        // Query spans only one day
+        if (startIsAtMidnight && (endIsAtMidnight || endDt >= dayEnd)) {
+          // Complete day: from midnight to midnight (or beyond)
           completeDays.push({
-            start: dayStart,
-            end: dayEnd,
-            dateStr: DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd')
+            start: dayStart.toJSDate(),
+            end: dayEnd.toJSDate(),
+            dateStr: dateStr
           });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (single day, midnight to midnight+)`);
+        } else {
+          // Partial day within this day
+          partialDays.push({
+            start: start,
+            end: end,
+            type: 'single'
+          });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (single day, not midnight to midnight)`);
         }
-        // Move to next day
-        currentDay = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).plus({ days: 1 }).toJSDate();
-        continue;
-      }
-      
-      if (isComplete) {
+      } else if (isFirstDay) {
+        // First day of multi-day range
+        if (startIsAtMidnight) {
+          // Starts at midnight - it's a complete day
+          completeDays.push({
+            start: dayStart.toJSDate(),
+            end: dayEnd.toJSDate(),
+            dateStr: dateStr
+          });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (first day, starts at midnight)`);
+        } else {
+          // Starts mid-day - it's partial
+          partialDays.push({
+            start: start,
+            end: dayEnd.toJSDate(),
+            type: 'start'
+          });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (first day, starts mid-day)`);
+        }
+      } else if (isLastDay) {
+        // Last day of multi-day range
+        if (endIsAtMidnight || endDt >= dayEnd) {
+          // Ends at or after midnight - the previous day is complete
+          // This day itself is not included if it ends exactly at midnight
+          if (!endIsAtMidnight) {
+            // Ends mid-day
+            partialDays.push({
+              start: dayStart.toJSDate(),
+              end: end,
+              type: 'end'
+            });
+            logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (last day, ends mid-day)`);
+          } else {
+            // Ends exactly at midnight - this day boundary is not included
+            logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Skipped (ends exactly at midnight of this day)`);
+          }
+        } else {
+          // Shouldn't reach here if logic is correct
+          logger.warn(`[HYBRID-SPLIT] Day ${dateStr}: Unexpected condition in last day logic`);
+        }
+      } else {
+        // Middle day - always complete
         completeDays.push({
-          start: dayStart,
-          end: dayEnd,
-          dateStr: DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd')
+          start: dayStart.toJSDate(),
+          end: dayEnd.toJSDate(),
+          dateStr: dateStr
         });
+        logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (middle day)`);
       }
       
       // Move to next day
-      currentDay = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).plus({ days: 1 }).toJSDate();
+      currentDay = currentDay.plus({ days: 1 });
     }
     
-    // Special case: Handle "today from midnight to now" scenario
-    // If the query starts at midnight of today and goes to now, treat it as a complete day
-    const now = DateTime.now({ zone: SYSTEM_TIMEZONE });
-    const todayStart = now.startOf('day').toJSDate();
-    const todayEnd = now.endOf('day').toJSDate();
-    
-    // Check if query is "today from midnight to now"
-    const isTodayQuery = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').equals(now.startOf('day')) &&
-                        start.getTime() === todayStart.getTime() &&
-                        end <= now.toJSDate();
-    
-    if (isTodayQuery) {
-      // Remove any partial day entries for today and add it as a complete day
-      const todayDateStr = now.toFormat('yyyy-MM-dd');
-      partialDays.forEach((day, index) => {
-        const dayDateStr = DateTime.fromJSDate(day.start, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd');
-        if (dayDateStr === todayDateStr) {
-          partialDays.splice(index, 1);
-        }
-      });
-      
-      // Add today as a complete day
-      completeDays.push({
-        start: todayStart,
-        end: todayEnd,
-        dateStr: todayDateStr
-      });
-      
-      logger.info(`Special case: Today query detected, treating as complete day: ${todayDateStr}`);
-    }
+    logger.info(`[HYBRID-SPLIT] Result: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
     
     return { completeDays, partialDays };
   }
@@ -4620,11 +4623,31 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
   router.get("/analytics/machine-item-sessions-summary-cache", async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
+      
+      // Log incoming parameters
+      logger.info(`[MACHINE-CACHE] Incoming params: start=${start}, end=${end}, serial=${serial || 'all'}`);
+      
+      // parseAndValidateQueryParams returns JS Date objects, so convert them to Luxon in system timezone
+      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
+      
+      // Validate parsed dates
+      if (!startDt.isValid) {
+        logger.error(`[MACHINE-CACHE] Invalid start date: ${start}, reason: ${startDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid start date: ${startDt.invalidReason}` });
+      }
+      if (!endDt.isValid) {
+        logger.error(`[MACHINE-CACHE] Invalid end date: ${end}, reason: ${endDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid end date: ${endDt.invalidReason}` });
+      }
+      
+      const exactStart = startDt.toJSDate();
+      const exactEnd = endDt.toJSDate();
+      
+      logger.info(`[MACHINE-CACHE] After timezone conversion: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- Smart hybrid approach (always used) ----------
-      logger.info(`Using smart hybrid approach for time range: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
+      logger.info(`[MACHINE-CACHE] Using smart hybrid approach for time range: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -4951,11 +4974,31 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
+      
+      // Log incoming parameters
+      logger.info(`[OPERATOR-CACHE] Incoming params: start=${start}, end=${end}, operatorId=${operatorId || 'all'}`);
+      
+      // parseAndValidateQueryParams returns JS Date objects, so convert them to Luxon in system timezone
+      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
+      
+      // Validate parsed dates
+      if (!startDt.isValid) {
+        logger.error(`[OPERATOR-CACHE] Invalid start date: ${start}, reason: ${startDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid start date: ${startDt.invalidReason}` });
+      }
+      if (!endDt.isValid) {
+        logger.error(`[OPERATOR-CACHE] Invalid end date: ${end}, reason: ${endDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid end date: ${endDt.invalidReason}` });
+      }
+      
+      const exactStart = startDt.toJSDate();
+      const exactEnd = endDt.toJSDate();
+      
+      logger.info(`[OPERATOR-CACHE] After timezone conversion: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- Smart hybrid approach (always used) ----------
-      logger.info(`Using smart hybrid approach for time range: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
+      logger.info(`[OPERATOR-CACHE] Using smart hybrid approach for time range: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -5020,6 +5063,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // Get data from daily cache for complete days
       let effectiveCompleteDays = [...completeDays];
       let effectivePartialDays = [...partialDays];
+      let hasMachineItemCacheData = false;
       
       if (completeDays.length > 0) {
         operatorTotals = await getOperatorCachedDataForDays(completeDays, operatorId);
@@ -5027,16 +5071,22 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         
         // For operators, we need to check if machine-item cache data exists for item-level breakdowns
         // If not, we should use session data for the entire time range to get complete item data
-        let hasMachineItemCacheData = false;
         if (operatorTotals.length > 0) {
-          // Check if any machine has machine-item cache data
-          for (const ot of operatorTotals.slice(0, 3)) { // Check first 3 to avoid too many queries
+          // Check if any machine has machine-item cache data by sampling
+          const sampleSize = Math.min(3, operatorTotals.length);
+          let totalItemRecords = 0;
+          
+          for (let i = 0; i < sampleSize; i++) {
+            const ot = operatorTotals[i];
+            if (!ot.machineSerial) continue;
+            
             const itemTotals = await getOperatorItemTotalsFromCache(ot.machineSerial, exactStart, exactEnd);
-            if (itemTotals.length > 0) {
-              hasMachineItemCacheData = true;
-              break;
-            }
+            totalItemRecords += itemTotals.length;
+            logger.info(`Sample ${i+1}/${sampleSize}: Machine ${ot.machineSerial} has ${itemTotals.length} item records`);
           }
+          
+          hasMachineItemCacheData = totalItemRecords > 0;
+          logger.info(`Machine-item cache data check: ${hasMachineItemCacheData ? 'FOUND' : 'NOT FOUND'} (${totalItemRecords} total sample records)`);
         }
         
         if (!hasMachineItemCacheData && operatorTotals.length > 0) {
@@ -5112,13 +5162,12 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         
         // Check if we have item-level data from session data
         const sessionOperator = sessionData.operators.find(op => op.operatorId === opId);
-        let hasItemDataFromSession = false;
+        const hasItemDataFromSession = sessionOperator && sessionOperator.itemTotals && sessionOperator.itemTotals.length > 0;
         
-        if (sessionOperator && sessionOperator.itemTotals && sessionOperator.itemTotals.length > 0) {
-          logger.info(`Found ${sessionOperator.itemTotals.length} item records from session data for operator ${opId}`);
-          hasItemDataFromSession = true;
+        if (hasItemDataFromSession) {
+          // EXCLUSIVELY use item data from session (don't mix with cache)
+          logger.info(`Using ${sessionOperator.itemTotals.length} item records from SESSION data for operator ${opId}`);
           
-          // Use item data from session
           for (const itemTotal of sessionOperator.itemTotals) {
             // Calculate worked time proportionally based on item count vs total count
             const itemWorkedTimeMs = operatorData.totalWorkedMs > 0 && operatorData.totalCount > 0 
@@ -5136,6 +5185,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
                 name: itemTotal.itemName,
                 standard: itemTotal.itemStandard,
                 countTotal: 0,
+                workedTimeMs: 0,
                 workedTimeFormatted: formatMs(0),
                 pph: 0,
                 efficiency: 0,
@@ -5143,22 +5193,23 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             }
 
             itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
-            itemSummaries[itemTotal.itemId].workedTimeMs = (itemSummaries[itemTotal.itemId].workedTimeMs || 0) + itemWorkedTimeMs;
+            itemSummaries[itemTotal.itemId].workedTimeMs += itemWorkedTimeMs;
             itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(itemSummaries[itemTotal.itemId].workedTimeMs);
           }
-        } else {
-          // Fallback to cache-based approach (for cases where session data doesn't have item info)
-          logger.info(`No item-level session data found for operator ${opId}. Attempting cache-based approach.`);
+        } else if (hasMachineItemCacheData) {
+          // EXCLUSIVELY use cache-based approach (only if we confirmed cache data exists)
+          logger.info(`Using CACHE-based approach for operator ${opId} (${operatorMachineTotals.length} machine combinations)`);
           
           for (const ot of operatorMachineTotals) {
             const machineSerial = ot.machineSerial || ot.machineName;
             const itemTotals = await getOperatorItemTotalsFromCache(machineSerial, exactStart, exactEnd);
             
             if (itemTotals.length === 0) {
-              logger.info(`No machine-item cache data found for machine ${machineSerial} (operator ${opId}).`);
-            } else {
-              logger.info(`Found ${itemTotals.length} machine-item records from cache for machine ${machineSerial} (operator ${opId})`);
+              logger.warn(`No machine-item cache data found for machine ${machineSerial} (operator ${opId}) despite hasMachineItemCacheData=true`);
+              continue;
             }
+            
+            logger.info(`Found ${itemTotals.length} machine-item records from cache for machine ${machineSerial} (operator ${opId})`);
             
             for (const itemTotal of itemTotals) {
               const hours = itemTotal.workedTimeMs / 3600000;
@@ -5186,6 +5237,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               );
             }
           }
+        } else {
+          // No item data available from either source
+          logger.warn(`No item data available for operator ${opId} from session or cache`);
         }
 
         // Calculate final item summaries
@@ -5588,8 +5642,23 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
   router.get("/analytics/item-sessions-summary-cache", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
+      
+      // parseAndValidateQueryParams returns JS Date objects, so convert them to Luxon in system timezone
+      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
+      
+      // Validate parsed dates
+      if (!startDt.isValid) {
+        logger.error(`[ITEM-CACHE] Invalid start date: ${start}, reason: ${startDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid start date: ${startDt.invalidReason}` });
+      }
+      if (!endDt.isValid) {
+        logger.error(`[ITEM-CACHE] Invalid end date: ${end}, reason: ${endDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid end date: ${endDt.invalidReason}` });
+      }
+      
+      const exactStart = startDt.toJSDate();
+      const exactEnd = endDt.toJSDate();
 
       // ---------- Hybrid query configuration ----------
       const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
