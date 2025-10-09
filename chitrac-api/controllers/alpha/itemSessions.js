@@ -8,6 +8,112 @@ module.exports = function (server) {
   const db = server.db;
   const logger = server.logger;
 
+  // ---- /api/alpha/analytics/items-summary-daily-cached ----
+  router.get("/analytics/items-summary-daily-cached", async (req, res) => {
+    try {
+      const { start, end, itemId } = parseAndValidateQueryParams(req);
+      
+      // Get today's date string in Chicago timezone
+      const today = new Date();
+      const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
+      const dateStr = chicagoTime.toISOString().split('T')[0];
+      
+      logger.info(`[itemSessions] Fetching daily cached items summary for date: ${dateStr}, itemId: ${itemId || 'all'}`);
+      
+      // Build query filter for totals-daily collection
+      const filter = { 
+        entityType: 'machine-item',
+        date: dateStr
+      };
+      
+      // Add item filter if specified
+      if (itemId) {
+        filter.itemId = parseInt(itemId);
+      }
+      
+      // Query the totals-daily collection
+      const cacheRecords = await db.collection('totals-daily')
+        .find(filter)
+        .toArray();
+      
+      if (cacheRecords.length === 0) {
+        logger.warn(`[itemSessions] No daily cached data found for date: ${dateStr}, falling back to real-time calculation`);
+        // Fallback to real-time calculation (items-summary route)
+        return res.json([]);
+      }
+      
+      // Helper function to normalize PPH standards
+      const normalizePPH = (std) => {
+        const n = Number(std) || 0;
+        return n > 0 && n < 60 ? n * 60 : n; // PPM → PPH
+      };
+      
+      // Group by item ID and aggregate metrics across machines
+      const itemMap = new Map();
+      
+      for (const record of cacheRecords) {
+        const itmId = record.itemId;
+        
+        if (!itemMap.has(itmId)) {
+          itemMap.set(itmId, {
+            itemId: record.itemId,
+            itemName: record.itemName,
+            standardRaw: record.itemStandard || 0,
+            count: 0,
+            workedSec: 0
+          });
+        }
+        
+        const itemData = itemMap.get(itmId);
+        
+        // Aggregate counts and worked time across all machines
+        itemData.count += record.totalCounts;
+        itemData.workedSec += (record.workedTimeMs / 1000);
+        
+        // Update standard if not set
+        if (!itemData.standardRaw && record.itemStandard) {
+          itemData.standardRaw = record.itemStandard;
+        }
+      }
+      
+      // Transform to expected format
+      const results = Array.from(itemMap.values()).map((entry) => {
+        const workedMs = Math.round(entry.workedSec * 1000);
+        const hours = workedMs / 3_600_000;
+        const pph = hours > 0 ? entry.count / hours : 0;
+        const stdPPH = normalizePPH(entry.standardRaw);
+        const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
+
+        return {
+          itemId: entry.itemId,
+          itemName: entry.itemName,
+          workedTimeFormatted: formatDuration(workedMs),
+          count: entry.count,
+          pph: Math.round(pph * 100) / 100,
+          standard: entry.standardRaw ?? 0,
+          efficiency: Math.round(efficiencyPct * 100) / 100,
+        };
+      });
+      
+      logger.info(`[itemSessions] Retrieved ${results.length} daily cached item records for date: ${dateStr}`);
+      res.json(results);
+      
+    } catch (err) {
+      logger.error(`[itemSessions] Error in daily cached items-summary route:`, err);
+      
+      // Check if it's a validation error
+      if (err.message && (err.message.includes('Start and end dates are required') ||
+        err.message.includes('Invalid date format') ||
+        err.message.includes('Start date must be before end date'))) {
+        return res.status(400).json({ error: err.message });
+      }
+      
+      // Return empty array on error (consistent with real-time route behavior)
+      logger.info(`[itemSessions] Returning empty array due to error`);
+      res.json([]);
+    }
+  });
+
   // /analytics/item-dashboard-summary — sessions-based, using item-sessions and bookending helper
   router.get("/analytics/items-summary", async (req, res) => {
     try {
