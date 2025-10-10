@@ -5907,6 +5907,168 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     return Array.from(itemMap.values());
   }
 
+  // NEW: Simplified cached version using simulator's item entity records (with itemStandard built-in)
+  router.get("/analytics/item-sessions-summary-daily-cache", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+
+      // ---------- Hybrid query configuration ----------
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
+      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+      
+      // Determine if we should use hybrid approach
+      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
+      
+      if (useHybrid) {
+        logger.info(`Using hybrid approach for item daily route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      }
+
+      // ---------- helpers (local to route) ----------
+      const normalizePPH = (std) => {
+        const n = Number(std) || 0;
+        return n > 0 && n < 60 ? n * 60 : n; // PPM→PPH
+      };
+
+      // ---------- 1) Time range splitting and data collection ----------
+      let itemTotals = [];
+
+      if (useHybrid) {
+        // Split time range into complete days and partial days
+        const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+        
+        logger.info(`Item daily hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        
+        // Get data from daily cache for complete days (using simulator's item records)
+        if (completeDays.length > 0) {
+          itemTotals = await getItemDailyCachedDataForDays(completeDays);
+        }
+        
+        // Get data from sessions for partial days
+        if (partialDays.length > 0) {
+          const sessionData = await getItemSessionDataForPartialDays(partialDays);
+          itemTotals = combineItemDailyHybridData(itemTotals, sessionData.items);
+        }
+        
+      } else {
+        // Use only cached data for shorter time ranges
+        const cacheCollection = db.collection('totals-daily');
+        
+        // Calculate date range for query
+        const startDate = exactStart.toISOString().split('T')[0];
+        const endDate = exactEnd.toISOString().split('T')[0];
+
+        // Get item daily totals from simulator (with itemStandard already included)
+        const itemQuery = { 
+          entityType: 'item',
+          source: 'simulator', // Only get simulator records
+          dateObj: { 
+            $gte: new Date(startDate + 'T00:00:00.000Z'), 
+            $lte: new Date(endDate + 'T23:59:59.999Z') 
+          }
+        };
+
+        itemTotals = await cacheCollection.find(itemQuery).toArray();
+      }
+
+      if (!itemTotals.length) {
+        return res.json([]);
+      }
+
+      // ---------- 2) Process item data ----------
+      const resultsMap = new Map();
+
+      // Group item totals by item ID
+      for (const itemTotal of itemTotals) {
+        const itemId = String(itemTotal.itemId);
+        
+        if (!resultsMap.has(itemId)) {
+          resultsMap.set(itemId, {
+            itemId: itemTotal.itemId,
+            name: itemTotal.itemName || "Unknown",
+            standard: itemTotal.itemStandard ?? 0, // itemStandard is built into simulator's item record
+            count: 0,
+            workedSec: 0,
+          });
+        }
+        
+        const acc = resultsMap.get(itemId);
+        acc.count += itemTotal.totalCounts || 0;
+        acc.workedSec += (itemTotal.workedTimeMs || 0) / 1000; // Convert to seconds
+      }
+
+      // ---------- 3) Finalize results (same format as original route) ----------
+      const results = Array.from(resultsMap.values()).map((entry) => {
+        const workedMs = Math.round(entry.workedSec * 1000);
+        const hours = workedMs / 3_600_000;
+        const pph = hours > 0 ? entry.count / hours : 0;
+        const stdPPH = normalizePPH(entry.standard);
+        const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
+
+        return {
+          itemName: entry.name,
+          workedTimeFormatted: formatDuration(workedMs),
+          count: entry.count,
+          pph: Math.round(pph * 100) / 100,
+          standard: entry.standard,
+          efficiency: Math.round(efficiencyPct * 100) / 100, // percent
+        };
+      });
+
+      res.json(results);
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate daily cached item summary" });
+    }
+  });
+
+  // Helper functions for item daily hybrid queries
+  async function getItemDailyCachedDataForDays(completeDays) {
+    const cacheCollection = db.collection('totals-daily');
+    const dateStrings = completeDays.map(day => day.dateStr);
+    
+    // Get item daily totals from simulator (itemStandard already included)
+    const itemQuery = { 
+      entityType: 'item',
+      source: 'simulator', // Only get simulator records
+      date: { $in: dateStrings }
+    };
+
+    const itemTotals = await cacheCollection.find(itemQuery).toArray();
+    
+    return itemTotals;
+  }
+
+  function combineItemDailyHybridData(cachedItems, sessionItems) {
+    const itemMap = new Map();
+    
+    // Add cached data
+    for (const item of cachedItems) {
+      const key = String(item.itemId);
+      itemMap.set(key, item);
+    }
+    
+    // Add/combine session data
+    for (const item of sessionItems) {
+      const key = String(item.itemId);
+      if (itemMap.has(key)) {
+        // Combine with existing cached data
+        const existing = itemMap.get(key);
+        existing.totalCounts = (existing.totalCounts || 0) + item.totalCounts;
+        existing.workedTimeMs = (existing.workedTimeMs || 0) + item.workedTimeMs;
+        // Use the higher standard value if available
+        if (item.itemStandard && item.itemStandard > (existing.itemStandard || 0)) {
+          existing.itemStandard = item.itemStandard;
+        }
+      } else {
+        itemMap.set(key, item);
+      }
+    }
+    
+    return Array.from(itemMap.values());
+  }
+
   return router;
 };
 
