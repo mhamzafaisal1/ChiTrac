@@ -4620,11 +4620,29 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
   router.get("/analytics/machine-item-sessions-summary-cache", async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
-
-      // ---------- Smart hybrid approach (always used) ----------
-      logger.info(`Using smart hybrid approach for time range: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
+      
+      // ========== FIX #1: Timezone-aware date handling ==========
+      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
+      
+      const normalizedStart = startDt.startOf('day');
+      const nowLocal = DateTime.now().setZone(SYSTEM_TIMEZONE);
+      
+      // Detect "today since midnight" → treat as complete day using cache
+      const isTodaySinceMidnight =
+        normalizedStart.hasSame(nowLocal, 'day') &&
+        startDt.equals(normalizedStart) &&
+        endDt <= nowLocal;
+      
+      logger.info(`[MACHINE-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
+      
+      // Always use UTC timestamps corresponding to local day boundaries
+      const exactStart = normalizedStart.toUTC().toJSDate();
+      const exactEnd = isTodaySinceMidnight 
+        ? nowLocal.toUTC().toJSDate() 
+        : endDt.toUTC().toJSDate();
+      
+      logger.info(`[MACHINE-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -4686,51 +4704,62 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         return series;
       }
 
-      // ---------- 1) Time range splitting and data collection ----------
-      let machineTotals = [];
-      let machineItemTotals = [];
-      let sessionData = { machines: [], machineItems: [] };
-
-      // Always use smart hybrid approach - split time range into complete days and partial days
-      const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+      // ========== FIX #3: Simplified hybrid logic with "today since midnight" detection ==========
+      let split;
+      if (isTodaySinceMidnight) {
+        // Special case: today since midnight → treat as complete day
+        split = {
+          completeDays: [{
+            dateStr: normalizedStart.toISODate(),
+            start: normalizedStart.toJSDate(),
+            end: nowLocal.toJSDate(),
+          }],
+          partialDays: [],
+        };
+        logger.info(`[MACHINE-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
+      } else {
+        split = splitTimeRangeForHybrid(exactStart, exactEnd);
+        logger.info(`[MACHINE-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
+      }
       
-      logger.info(`Smart hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
-      logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
-      logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
+      const { completeDays, partialDays } = split;
       
-      // Get data from daily cache for complete days
-      let effectiveCompleteDays = [...completeDays];
-      let effectivePartialDays = [...partialDays];
+      // ========== FIX #9: Performance - Single cache query for both entity types ==========
+      let machineCache = [];     // machine entities from cache
+      let machineItemCache = [];  // machine-item entities from cache
       
       if (completeDays.length > 0) {
-        const cachedData = await getCachedDataForDays(completeDays, serial);
-        machineTotals = cachedData.machines;
-        machineItemTotals = cachedData.machineItems;
-        logger.info(`Retrieved ${machineTotals.length} cached machine records, ${machineItemTotals.length} cached machine-item records`);
+        const dateStrings = completeDays.map(d => d.dateStr);
+        const cacheCollection = db.collection('totals-daily');
         
-        // If we have no machine-item cache data, we need to use session data for complete days too
-        if (machineItemTotals.length === 0 && completeDays.length > 0) {
-          logger.info(`No machine-item cache data found for complete days. Converting complete days to partial days for session data retrieval.`);
-          // Move complete days to partial days since we need session data for item-level breakdowns
-          effectiveCompleteDays = [];
-          effectivePartialDays = [...completeDays, ...partialDays];
-          
-          // Clear the cached machine data since we'll get it from sessions
-          machineTotals = [];
-        }
+        // Single query for both entity types (50% less I/O)
+        const cacheQuery = {
+          date: { $in: dateStrings },
+          entityType: { $in: ['machine', 'machine-item'] }
+        };
+        if (serial) cacheQuery.machineSerial = parseInt(serial);
+        
+        const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
+        
+        // Split by entity type
+        machineCache = cacheDocs.filter(d => d.entityType === 'machine');
+        machineItemCache = cacheDocs.filter(d => d.entityType === 'machine-item');
+        
+        logger.info(`[MACHINE-CACHE] Retrieved ${machineCache.length} machine + ${machineItemCache.length} machine-item cache records`);
       }
       
-      // Get data from sessions for partial days (including converted complete days if needed)
-      if (effectivePartialDays.length > 0) {
-        sessionData = await getSessionDataForPartialDays(effectivePartialDays, serial);
-        logger.info(`Retrieved ${sessionData.machines.length} session machine records, ${sessionData.machineItems.length} session machine-item records`);
+      // Get data from sessions for partial days only
+      let sessionData = { machines: [], machineItems: [] };
+      if (partialDays.length > 0) {
+        sessionData = await getSessionDataForPartialDays(partialDays, serial);
+        logger.info(`[MACHINE-CACHE] Retrieved ${sessionData.machines.length} session machine + ${sessionData.machineItems.length} session machine-item records`);
       }
       
-      // Combine cached and session data
-      const combinedData = combineHybridData(machineTotals, machineItemTotals, sessionData);
-      machineTotals = combinedData.machines;
-      machineItemTotals = combinedData.machineItems;
-      logger.info(`After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
+      // Combine cached and session data (disjoint date ranges)
+      const combinedData = combineHybridData(machineCache, machineItemCache, sessionData);
+      const machineTotals = combinedData.machines;
+      const machineItemTotals = combinedData.machineItems;
+      logger.info(`[MACHINE-CACHE] After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
 
       if (!machineTotals.length) {
         return res.json({
@@ -4749,13 +4778,77 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // ---------- 2) Process machine data ----------
       const results = [];
       const serialToName = new Map();
+      
+      // ========== Aggregate machine data by (serial, date) to prevent duplication ==========
+      const groupedByMachineDay = new Map();
+      
+      for (const record of machineTotals) {
+        const key = `${record.machineSerial}-${record.date}`;
+        
+        if (!groupedByMachineDay.has(key)) {
+          groupedByMachineDay.set(key, {
+            machineSerial: record.machineSerial,
+            machineName: record.machineName,
+            date: record.date,
+            runtimeMs: 0,
+            workedTimeMs: 0,
+            totalCounts: 0,
+            totalMisfeeds: 0,
+            faultTimeMs: 0,
+            pausedTimeMs: 0
+          });
+        }
+        
+        const dayBucket = groupedByMachineDay.get(key);
+        dayBucket.runtimeMs += record.runtimeMs || 0;
+        dayBucket.workedTimeMs += record.workedTimeMs || 0;
+        dayBucket.totalCounts += record.totalCounts || 0;
+        dayBucket.totalMisfeeds += record.totalMisfeeds || 0;
+        dayBucket.faultTimeMs += record.faultTimeMs || 0;
+        dayBucket.pausedTimeMs += record.pausedTimeMs || 0;
+      }
+      
+      // Cap each machine to 24h per day
+      for (const [key, dayBucket] of groupedByMachineDay) {
+        if (dayBucket.runtimeMs > 86400000) {
+          logger.warn(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.runtimeMs/3600000).toFixed(1)}h runtime (>24h), capping`);
+          dayBucket.runtimeMs = 86400000;
+        }
+        if (dayBucket.workedTimeMs > 86400000) {
+          logger.warn(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.workedTimeMs/3600000).toFixed(1)}h worked (>24h), capping`);
+          dayBucket.workedTimeMs = 86400000;
+        }
+      }
+      
+      // Aggregate across all days for each machine
       const machineDataMap = new Map();
-
-      // Group machine totals by serial
-      for (const machineTotal of machineTotals) {
-        const serial = machineTotal.machineSerial;
-        serialToName.set(serial, machineTotal.machineName);
-        machineDataMap.set(serial, machineTotal);
+      for (const [key, dayBucket] of groupedByMachineDay) {
+        const serial = dayBucket.machineSerial;
+        const name = dayBucket.machineName;
+        serialToName.set(serial, name);
+        
+        if (!machineDataMap.has(serial)) {
+          machineDataMap.set(serial, {
+            machineSerial: serial,
+            machineName: name,
+            runtimeMs: 0,
+            workedTimeMs: 0,
+            totalCounts: 0,
+            totalMisfeeds: 0,
+            faultTimeMs: 0,
+            pausedTimeMs: 0,
+            daysActive: 0
+          });
+        }
+        
+        const bucket = machineDataMap.get(serial);
+        bucket.runtimeMs += dayBucket.runtimeMs;
+        bucket.workedTimeMs += dayBucket.workedTimeMs;
+        bucket.totalCounts += dayBucket.totalCounts;
+        bucket.totalMisfeeds += dayBucket.totalMisfeeds;
+        bucket.faultTimeMs += dayBucket.faultTimeMs;
+        bucket.pausedTimeMs += dayBucket.pausedTimeMs;
+        bucket.daysActive += 1;
       }
 
       // Group machine-item totals by machine serial
@@ -4775,14 +4868,12 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Calculate item summaries
         let proratedStandard = 0;
         const itemSummaries = {};
-        let totalCount = 0;
-        let totalWorkedMs = 0;
 
         for (const itemTotal of itemTotals) {
           const hours = itemTotal.workedTimeMs / 3600000;
           const pph = hours > 0 ? itemTotal.totalCounts / hours : 0;
           const eff = itemTotal.itemStandard > 0 ? pph / itemTotal.itemStandard : 0;
-          const weight = itemTotal.totalCounts / (machineData.totalCounts || 1);
+          const weight = machineData.totalCounts > 0 ? itemTotal.totalCounts / machineData.totalCounts : 0;
           proratedStandard += weight * itemTotal.itemStandard;
 
           itemSummaries[itemTotal.itemId] = {
@@ -4793,15 +4884,26 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             pph: Math.round(pph * 100) / 100,
             efficiency: Math.round(eff * 10000) / 100,
           };
-
-          totalCount += itemTotal.totalCounts;
-          totalWorkedMs += itemTotal.workedTimeMs;
         }
 
         // Calculate machine-level metrics
-        const hours = totalWorkedMs / 3600000;
-        const machinePph = hours > 0 ? totalCount / hours : 0;
+        const hours = machineData.workedTimeMs / 3600000;
+        const machinePph = hours > 0 ? machineData.totalCounts / hours : 0;
         const machineEff = proratedStandard > 0 ? machinePph / proratedStandard : 0;
+        
+        // Final validation: cap to query window
+        const queryWindowMs = exactEnd.getTime() - exactStart.getTime();
+        let validatedRuntimeMs = machineData.runtimeMs;
+        let validatedWorkedMs = machineData.workedTimeMs;
+        
+        if (validatedRuntimeMs > queryWindowMs) {
+          logger.warn(`[DATA VALIDATION] Machine ${serial} runtime ${(validatedRuntimeMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
+          validatedRuntimeMs = queryWindowMs;
+        }
+        if (validatedWorkedMs > queryWindowMs) {
+          logger.warn(`[DATA VALIDATION] Machine ${serial} worked ${(validatedWorkedMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
+          validatedWorkedMs = queryWindowMs;
+        }
 
         results.push({
           machine: {
@@ -4811,10 +4913,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           sessions: [], // Empty array - no individual session details in cached version
           machineSummary: {
             totalCount: machineData.totalCounts,
-            workedTimeMs: machineData.workedTimeMs,
-            workedTimeFormatted: formatDuration(machineData.workedTimeMs),
-            runtimeMs: machineData.runtimeMs,
-            runtimeFormatted: formatDuration(machineData.runtimeMs),
+            workedTimeMs: validatedWorkedMs,
+            workedTimeFormatted: formatDuration(validatedWorkedMs),
+            runtimeMs: validatedRuntimeMs,
+            runtimeFormatted: formatDuration(validatedRuntimeMs),
             pph: Math.round(machinePph * 100) / 100,
             proratedStandard: Math.round(proratedStandard * 100) / 100,
             efficiency: Math.round(machineEff * 10000) / 100,
