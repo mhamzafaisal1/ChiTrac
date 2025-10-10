@@ -4824,119 +4824,121 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
       // ---------- 3) Status stacked (durations) ----------
-      const statusByMachine = new Map();
-      for (const machineData of machineTotals) {
-        const serial = machineData.machineSerial;
-        const name = machineData.machineName;
-        
-        statusByMachine.set(serial, {
-          "Running": machineData.runtimeMs / 3600000, // Convert to hours
-          "Faulted": machineData.faultTimeMs / 3600000,
-          "Paused": machineData.pausedTimeMs / 3600000
-        });
-      }
+      // COMMENTED OUT FOR PERFORMANCE
+      // const statusByMachine = new Map();
+      // for (const machineData of machineTotals) {
+      //   const serial = machineData.machineSerial;
+      //   const name = machineData.machineName;
+      //   
+      //   statusByMachine.set(serial, {
+      //     "Running": machineData.runtimeMs / 3600000, // Convert to hours
+      //     "Faulted": machineData.faultTimeMs / 3600000,
+      //     "Paused": machineData.pausedTimeMs / 3600000
+      //   });
+      // }
 
-      // Compress per machine
-      for (const [s, rec] of statusByMachine) {
-        statusByMachine.set(s, compressSlicesPerBar(rec));
-      }
+      // // Compress per machine
+      // for (const [s, rec] of statusByMachine) {
+      //   statusByMachine.set(s, compressSlicesPerBar(rec));
+      // }
 
-      // ---------- 4) Faults stacked (durations by fault type) ----------
-      // For cached version, we'll use a simplified fault representation
-      // since fault details aren't stored in machine daily totals
-      const faultsByMachine = new Map();
-      for (const machineData of machineTotals) {
-        const serial = machineData.machineSerial;
-        const faultHours = machineData.faultTimeMs / 3600000;
-        
-        if (faultHours > 0) {
-          faultsByMachine.set(serial, {
-            "Faults": faultHours
-          });
-        } else {
-          faultsByMachine.set(serial, {
-            "No Faults": 0
-          });
-        }
-      }
+      // // ---------- 4) Faults stacked (durations by fault type) ----------
+      // // For cached version, we'll use a simplified fault representation
+      // // since fault details aren't stored in machine daily totals
+      // const faultsByMachine = new Map();
+      // for (const machineData of machineTotals) {
+      //   const serial = machineData.machineSerial;
+      //   const faultHours = machineData.faultTimeMs / 3600000;
+      //   
+      //   if (faultHours > 0) {
+      //     faultsByMachine.set(serial, {
+      //       "Faults": faultHours
+      //     });
+      //   } else {
+      //     faultsByMachine.set(serial, {
+      //       "No Faults": 0
+      //     });
+      //   }
+      // }
 
-      // ---------- 5) Efficiency ranking order ----------
-      const efficiencyRanked = results
-        .map(r => ({
-          serial: r.machine.serial,
-          name: r.machine.name,
-          efficiency: Number(r.machineSummary?.efficiency || 0),
-        }))
-        .sort((a, b) => b.efficiency - a.efficiency);
+      // // ---------- 5) Efficiency ranking order ----------
+      // const efficiencyRanked = results
+      //   .map(r => ({
+      //     serial: r.machine.serial,
+      //     name: r.machine.name,
+      //     efficiency: Number(r.machineSummary?.efficiency || 0),
+      //   }))
+      //   .sort((a, b) => b.efficiency - a.efficiency);
 
-      // Build comprehensive machine ordering from all data sources
-      const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
-      for (const m of statusByMachine.keys()) unionSerials.add(m);
-      for (const m of faultsByMachine.keys()) unionSerials.add(m);
-      const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
+      // // Build comprehensive machine ordering from all data sources
+      // const unionSerials = new Set(efficiencyRanked.map(r => r.serial));
+      // for (const m of statusByMachine.keys()) unionSerials.add(m);
+      // for (const m of faultsByMachine.keys()) unionSerials.add(m);
+      // const finalOrderSerials = [...unionSerials].filter(s => serialToName.has(s));
 
-      // ---------- 6) Items stacked ----------
-      const itemsByMachine = new Map();
-      for (const r of results) {
-        const m = {};
-        for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
-          const label = s.name || String(id);
-          const count = Number(s.countTotal || 0);
-          m[label] = (m[label] || 0) + count;
-        }
-        itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
-      }
+      // // ---------- 6) Items stacked ----------
+      // const itemsByMachine = new Map();
+      // for (const r of results) {
+      //   const m = {};
+      //   for (const [id, s] of Object.entries(r.machineSummary.itemSummaries || {})) {
+      //     const label = s.name || String(id);
+      //     const count = Number(s.countTotal || 0);
+      //     m[label] = (m[label] || 0) + count;
+      //   }
+      //   itemsByMachine.set(r.machine.serial, compressSlicesPerBar(m));
+      // }
 
-      const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
-      const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
-      const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
+      // const itemsStacked = toStackedSeries(itemsByMachine, serialToName, finalOrderSerials, "items");
+      // const statusStacked = toStackedSeries(statusByMachine, serialToName, finalOrderSerials, "status");
+      // const faultsStacked = toStackedSeries(faultsByMachine, serialToName, finalOrderSerials, "faults");
 
       // ---------- 7) Final payload ----------
       res.json({
         timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
         results,                  // Same structure as original route
-        charts: {
-          statusStacked: {
-            title: "Machine Status Stacked Bar",
-            orientation: "vertical",
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "Duration (hours)",
-            series: statusStacked
-          },
-          efficiencyRanked: {
-            title: "Ranked OEE% by Machine", 
-            orientation: "horizontal",
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "OEE (%)",
-            series: [
-              {
-                id: "OEE",
-                title: "OEE",
-                type: "bar",
-                data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
-              },
-            ]
-          },
-          itemsStacked: {
-            title: "Item Stacked Bar by Machine",
-            orientation: "vertical", 
-            xType: "category",
-            xLabel: "Machine",
-            yLabel: "Item Count",
-            series: itemsStacked
-          },
-          faultsStacked: {
-            title: "Fault Stacked Bar by Machine",
-            orientation: "vertical",
-            xType: "category", 
-            xLabel: "Machine",
-            yLabel: "Fault Duration (hours)",
-            series: faultsStacked
-          },
-          order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
-        },
+        // CHARTS COMMENTED OUT FOR PERFORMANCE
+        // charts: {
+        //   statusStacked: {
+        //     title: "Machine Status Stacked Bar",
+        //     orientation: "vertical",
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "Duration (hours)",
+        //     series: statusStacked
+        //   },
+        //   efficiencyRanked: {
+        //     title: "Ranked OEE% by Machine", 
+        //     orientation: "horizontal",
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "OEE (%)",
+        //     series: [
+        //       {
+        //         id: "OEE",
+        //         title: "OEE",
+        //         type: "bar",
+        //         data: efficiencyRanked.map(r => ({ x: r.name, y: r.efficiency })),
+        //       },
+        //     ]
+        //   },
+        //   itemsStacked: {
+        //     title: "Item Stacked Bar by Machine",
+        //     orientation: "vertical", 
+        //     xType: "category",
+        //     xLabel: "Machine",
+        //     yLabel: "Item Count",
+        //     series: itemsStacked
+        //   },
+        //   faultsStacked: {
+        //     title: "Fault Stacked Bar by Machine",
+        //     orientation: "vertical",
+        //     xType: "category", 
+        //     xLabel: "Machine",
+        //     yLabel: "Fault Duration (hours)",
+        //     series: faultsStacked
+        //   },
+        //   order: finalOrderSerials.map(s => serialToName.get(s) || s), // machine display order (ranked)
+        // },
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
@@ -4952,20 +4954,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
-      // ---------- Hybrid query configuration ----------
-      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
-      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-      
-      // Determine if we should use hybrid approach
-      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
-      
-      logger.info(`Operator route time range analysis: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours), useHybrid: ${useHybrid}`);
-      
-      if (useHybrid) {
-        logger.info(`Using hybrid approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
-      } else {
-        logger.info(`Using cache-only approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
-      }
+      // ---------- Smart hybrid approach (always used) ----------
+      logger.info(`Using smart hybrid approach for time range: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -5020,53 +5010,55 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       let operatorTotals = [];
       let sessionData = { operators: [] };
 
-      if (useHybrid) {
-        // Split time range into complete days and partial days
-        const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+      // Always use smart hybrid approach - split time range into complete days and partial days
+      const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+      
+      logger.info(`Smart hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+      logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
+      logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
+      
+      // Get data from daily cache for complete days
+      let effectiveCompleteDays = [...completeDays];
+      let effectivePartialDays = [...partialDays];
+      
+      if (completeDays.length > 0) {
+        operatorTotals = await getOperatorCachedDataForDays(completeDays, operatorId);
+        logger.info(`Retrieved ${operatorTotals.length} cached operator records`);
         
-        logger.info(`Operator hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
-        logger.info(`Complete days:`, completeDays.map(d => ({ date: d.dateStr, start: d.start.toISOString(), end: d.end.toISOString() })));
-        logger.info(`Partial days:`, partialDays.map(d => ({ type: d.type, start: d.start.toISOString(), end: d.end.toISOString() })));
-        
-        // Get data from daily cache for complete days
-        if (completeDays.length > 0) {
-          operatorTotals = await getOperatorCachedDataForDays(completeDays, operatorId);
-          logger.info(`Retrieved ${operatorTotals.length} cached operator records`);
-        }
-        
-        // Get data from sessions for partial days
-        if (partialDays.length > 0) {
-          sessionData = await getOperatorSessionDataForPartialDays(partialDays, operatorId);
-          logger.info(`Retrieved ${sessionData.operators.length} session operator records`);
-        }
-        
-        // Combine cached and session data
-        operatorTotals = combineOperatorHybridData(operatorTotals, sessionData.operators);
-        logger.info(`After combining: ${operatorTotals.length} total operator records`);
-        
-      } else {
-        // Use only cached data for shorter time ranges
-        const cacheCollection = db.collection('totals-daily');
-        
-        // Calculate date range for query
-        const startDate = exactStart.toISOString().split('T')[0];
-        const endDate = exactEnd.toISOString().split('T')[0];
-
-        // Get operator-machine daily totals
-        const operatorQuery = { 
-          entityType: 'operator-machine',
-          dateObj: { 
-            $gte: new Date(startDate + 'T00:00:00.000Z'), 
-            $lte: new Date(endDate + 'T23:59:59.999Z') 
+        // For operators, we need to check if machine-item cache data exists for item-level breakdowns
+        // If not, we should use session data for the entire time range to get complete item data
+        let hasMachineItemCacheData = false;
+        if (operatorTotals.length > 0) {
+          // Check if any machine has machine-item cache data
+          for (const ot of operatorTotals.slice(0, 3)) { // Check first 3 to avoid too many queries
+            const itemTotals = await getOperatorItemTotalsFromCache(ot.machineSerial, exactStart, exactEnd);
+            if (itemTotals.length > 0) {
+              hasMachineItemCacheData = true;
+              break;
+            }
           }
-        };
-        
-        if (operatorId) {
-          operatorQuery.operatorId = operatorId;
         }
-
-        operatorTotals = await cacheCollection.find(operatorQuery).toArray();
+        
+        if (!hasMachineItemCacheData && operatorTotals.length > 0) {
+          logger.info(`No machine-item cache data found for complete days. Converting complete days to partial days for session data retrieval.`);
+          // Move complete days to partial days since we need session data for item-level breakdowns
+          effectiveCompleteDays = [];
+          effectivePartialDays = [...completeDays, ...partialDays];
+          
+          // Clear the cached operator data since we'll get it from sessions
+          operatorTotals = [];
+        }
       }
+      
+      // Get data from sessions for partial days (including converted complete days if needed)
+      if (effectivePartialDays.length > 0) {
+        sessionData = await getOperatorSessionDataForPartialDays(effectivePartialDays, operatorId);
+        logger.info(`Retrieved ${sessionData.operators.length} session operator records`);
+      }
+      
+      // Combine cached and session data
+      operatorTotals = combineOperatorHybridData(operatorTotals, sessionData.operators);
+      logger.info(`After combining: ${operatorTotals.length} total operator records`);
 
       if (!operatorTotals.length) {
         return res.json({
@@ -5118,14 +5110,22 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Get all operator-machine combinations for this operator
         const operatorMachineTotals = operatorTotals.filter(ot => ot.operatorId === opId);
         
-        for (const ot of operatorMachineTotals) {
-          // For operators, we need to get item data from machine-item totals
-          // This is a simplified approach - in practice, you might want to store
-          // operator-item totals in the cache as well
-          const itemTotals = await getOperatorItemTotalsFromCache(ot.machineSerial, exactStart, exactEnd);
+        // Check if we have item-level data from session data
+        const sessionOperator = sessionData.operators.find(op => op.operatorId === opId);
+        let hasItemDataFromSession = false;
+        
+        if (sessionOperator && sessionOperator.itemTotals && sessionOperator.itemTotals.length > 0) {
+          logger.info(`Found ${sessionOperator.itemTotals.length} item records from session data for operator ${opId}`);
+          hasItemDataFromSession = true;
           
-          for (const itemTotal of itemTotals) {
-            const hours = itemTotal.workedTimeMs / 3600000;
+          // Use item data from session
+          for (const itemTotal of sessionOperator.itemTotals) {
+            // Calculate worked time proportionally based on item count vs total count
+            const itemWorkedTimeMs = operatorData.totalWorkedMs > 0 && operatorData.totalCount > 0 
+              ? (itemTotal.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs 
+              : 0;
+            
+            const hours = itemWorkedTimeMs / 3600000;
             const pph = hours > 0 ? itemTotal.totalCounts / hours : 0;
             const eff = itemTotal.itemStandard > 0 ? pph / itemTotal.itemStandard : 0;
             const weight = operatorData.totalCount > 0 ? itemTotal.totalCounts / operatorData.totalCount : 0;
@@ -5136,7 +5136,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
                 name: itemTotal.itemName,
                 standard: itemTotal.itemStandard,
                 countTotal: 0,
-                workedTimeMs: 0,
                 workedTimeFormatted: formatMs(0),
                 pph: 0,
                 efficiency: 0,
@@ -5144,10 +5143,48 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             }
 
             itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
-            itemSummaries[itemTotal.itemId].workedTimeMs += itemTotal.workedTimeMs;
-            itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(
-              itemSummaries[itemTotal.itemId].workedTimeMs
-            );
+            itemSummaries[itemTotal.itemId].workedTimeMs = (itemSummaries[itemTotal.itemId].workedTimeMs || 0) + itemWorkedTimeMs;
+            itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(itemSummaries[itemTotal.itemId].workedTimeMs);
+          }
+        } else {
+          // Fallback to cache-based approach (for cases where session data doesn't have item info)
+          logger.info(`No item-level session data found for operator ${opId}. Attempting cache-based approach.`);
+          
+          for (const ot of operatorMachineTotals) {
+            const machineSerial = ot.machineSerial || ot.machineName;
+            const itemTotals = await getOperatorItemTotalsFromCache(machineSerial, exactStart, exactEnd);
+            
+            if (itemTotals.length === 0) {
+              logger.info(`No machine-item cache data found for machine ${machineSerial} (operator ${opId}).`);
+            } else {
+              logger.info(`Found ${itemTotals.length} machine-item records from cache for machine ${machineSerial} (operator ${opId})`);
+            }
+            
+            for (const itemTotal of itemTotals) {
+              const hours = itemTotal.workedTimeMs / 3600000;
+              const pph = hours > 0 ? itemTotal.totalCounts / hours : 0;
+              const eff = itemTotal.itemStandard > 0 ? pph / itemTotal.itemStandard : 0;
+              const weight = operatorData.totalCount > 0 ? itemTotal.totalCounts / operatorData.totalCount : 0;
+              proratedStandard += weight * itemTotal.itemStandard;
+
+              if (!itemSummaries[itemTotal.itemId]) {
+                itemSummaries[itemTotal.itemId] = {
+                  name: itemTotal.itemName,
+                  standard: itemTotal.itemStandard,
+                  countTotal: 0,
+                  workedTimeMs: 0,
+                  workedTimeFormatted: formatMs(0),
+                  pph: 0,
+                  efficiency: 0,
+                };
+              }
+
+              itemSummaries[itemTotal.itemId].countTotal += itemTotal.totalCounts;
+              itemSummaries[itemTotal.itemId].workedTimeMs += itemTotal.workedTimeMs;
+              itemSummaries[itemTotal.itemId].workedTimeFormatted = formatMs(
+                itemSummaries[itemTotal.itemId].workedTimeMs
+              );
+            }
           }
         }
 
@@ -5184,124 +5221,126 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
       // ---------- 3) Status stacked (durations) ----------
-      const statusByOperator = new Map();
-      for (const operatorTotal of operatorTotals) {
-        const opId = operatorTotal.operatorId;
-        
-        if (!statusByOperator.has(opId)) {
-          statusByOperator.set(opId, {
-            "Running": 0,
-            "Faulted": 0,
-            "Paused": 0
-          });
-        }
-        
-        const status = statusByOperator.get(opId);
-        status["Running"] += operatorTotal.runtimeMs / 3600000; // Convert to hours
-        status["Faulted"] += operatorTotal.faultTimeMs / 3600000;
-        status["Paused"] += operatorTotal.pausedTimeMs / 3600000;
-      }
+      // COMMENTED OUT FOR PERFORMANCE
+      // const statusByOperator = new Map();
+      // for (const operatorTotal of operatorTotals) {
+      //   const opId = operatorTotal.operatorId;
+      //   
+      //   if (!statusByOperator.has(opId)) {
+      //     statusByOperator.set(opId, {
+      //       "Running": 0,
+      //       "Faulted": 0,
+      //       "Paused": 0
+      //     });
+      //   }
+      //   
+      //   const status = statusByOperator.get(opId);
+      //   status["Running"] += operatorTotal.runtimeMs / 3600000; // Convert to hours
+      //   status["Faulted"] += operatorTotal.faultTimeMs / 3600000;
+      //   status["Paused"] += operatorTotal.pausedTimeMs / 3600000;
+      // }
 
-      // Compress per operator
-      for (const [opId, rec] of statusByOperator) {
-        statusByOperator.set(opId, compressSlicesPerBar(rec));
-      }
+      // // Compress per operator
+      // for (const [opId, rec] of statusByOperator) {
+      //   statusByOperator.set(opId, compressSlicesPerBar(rec));
+      // }
 
-      // ---------- 4) Faults stacked (durations by fault type) ----------
-      // For operators, we'll use a simplified fault representation
-      const faultsByOperator = new Map();
-      for (const operatorTotal of operatorTotals) {
-        const opId = operatorTotal.operatorId;
-        const faultHours = operatorTotal.faultTimeMs / 3600000;
-        
-        if (!faultsByOperator.has(opId)) {
-          faultsByOperator.set(opId, {});
-        }
-        
-        if (faultHours > 0) {
-          faultsByOperator.get(opId)["Faults"] = (faultsByOperator.get(opId)["Faults"] || 0) + faultHours;
-        } else {
-          faultsByOperator.get(opId)["No Faults"] = 0;
-        }
-      }
+      // // ---------- 4) Faults stacked (durations by fault type) ----------
+      // // For operators, we'll use a simplified fault representation
+      // const faultsByOperator = new Map();
+      // for (const operatorTotal of operatorTotals) {
+      //   const opId = operatorTotal.operatorId;
+      //   const faultHours = operatorTotal.faultTimeMs / 3600000;
+      //   
+      //   if (!faultsByOperator.has(opId)) {
+      //     faultsByOperator.set(opId, {});
+      //   }
+      //   
+      //   if (faultHours > 0) {
+      //     faultsByOperator.get(opId)["Faults"] = (faultsByOperator.get(opId)["Faults"] || 0) + faultHours;
+      //   } else {
+      //     faultsByOperator.get(opId)["No Faults"] = 0;
+      //   }
+      // }
 
-      // ---------- 5) Efficiency ranking order ----------
-      const efficiencyRanked = results
-        .map(r => ({
-          operatorId: r.operator.id,
-          name: r.operator.name,
-          efficiency: Number(r.operatorSummary?.efficiency || 0),
-        }))
-        .sort((a, b) => b.efficiency - a.efficiency);
+      // // ---------- 5) Efficiency ranking order ----------
+      // const efficiencyRanked = results
+      //   .map(r => ({
+      //     operatorId: r.operator.id,
+      //     name: r.operator.name,
+      //     efficiency: Number(r.operatorSummary?.efficiency || 0),
+      //   }))
+      //   .sort((a, b) => b.efficiency - a.efficiency);
 
-      // Build comprehensive operator ordering from all data sources
-      const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
-      for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
-      for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
-      const finalOrderOperatorIds = [...unionOperatorIds].filter(id => opIdToName.has(id));
+      // // Build comprehensive operator ordering from all data sources
+      // const unionOperatorIds = new Set(efficiencyRanked.map(r => r.operatorId));
+      // for (const m of statusByOperator.keys()) unionOperatorIds.add(m);
+      // for (const m of faultsByOperator.keys()) unionOperatorIds.add(m);
+      // const finalOrderOperatorIds = [...unionOperatorIds].filter(id => opIdToName.has(id));
 
-      // ---------- 6) Items stacked ----------
-      const itemsByOperator = new Map();
-      for (const r of results) {
-        const m = {};
-        for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
-          const label = s.name || String(id);
-          const count = Number(s.countTotal || 0);
-          m[label] = (m[label] || 0) + count;
-        }
-        itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
-      }
+      // // ---------- 6) Items stacked ----------
+      // const itemsByOperator = new Map();
+      // for (const r of results) {
+      //   const m = {};
+      //   for (const [id, s] of Object.entries(r.operatorSummary.itemSummaries || {})) {
+      //     const label = s.name || String(id);
+      //     const count = Number(s.countTotal || 0);
+      //     m[label] = (m[label] || 0) + count;
+      //   }
+      //   itemsByOperator.set(r.operator.id, compressSlicesPerBar(m));
+      // }
 
-      const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
-      const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
-      const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
+      // const itemsStacked = toStackedSeries(itemsByOperator, opIdToName, finalOrderOperatorIds, "items");
+      // const statusStacked = toStackedSeries(statusByOperator, opIdToName, finalOrderOperatorIds, "status");
+      // const faultsStacked = toStackedSeries(faultsByOperator, opIdToName, finalOrderOperatorIds, "faults");
 
       // ---------- 7) Final payload ----------
       res.json({
         timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
         results,                  // Same structure as original route
-        charts: {
-          statusStacked: {
-            title: "Operator Status Stacked Bar",
-            orientation: "vertical",
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "Duration (hours)",
-            series: statusStacked
-          },
-          efficiencyRanked: {
-            title: "Ranked OEE% by Operator", 
-            orientation: "horizontal",
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "OEE (%)",
-            series: [
-              {
-                id: "OEE",
-                title: "OEE",
-                type: "bar",
-                data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
-              },
-            ]
-          },
-          itemsStacked: {
-            title: "Item Stacked Bar by Operator",
-            orientation: "vertical", 
-            xType: "category",
-            xLabel: "Operator",
-            yLabel: "Item Count",
-            series: itemsStacked
-          },
-          faultsStacked: {
-            title: "Fault Stacked Bar by Operator",
-            orientation: "vertical",
-            xType: "category", 
-            xLabel: "Operator",
-            yLabel: "Fault Duration (hours)",
-            series: faultsStacked
-          },
-          order: finalOrderOperatorIds.map(id => opIdToName.get(id) || id), // operator display order (ranked)
-        },
+        // CHARTS COMMENTED OUT FOR PERFORMANCE
+        // charts: {
+        //   statusStacked: {
+        //     title: "Operator Status Stacked Bar",
+        //     orientation: "vertical",
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "Duration (hours)",
+        //     series: statusStacked
+        //   },
+        //   efficiencyRanked: {
+        //     title: "Ranked OEE% by Operator", 
+        //     orientation: "horizontal",
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "OEE (%)",
+        //     series: [
+        //       {
+        //         id: "OEE",
+        //         title: "OEE",
+        //         type: "bar",
+        //         data: efficiencyRanked.map(r => ({ x: opIdToName.get(r.operatorId), y: r.efficiency })),
+        //       },
+        //     ]
+        //   },
+        //   itemsStacked: {
+        //     title: "Item Stacked Bar by Operator",
+        //     orientation: "vertical", 
+        //     xType: "category",
+        //     xLabel: "Operator",
+        //     yLabel: "Item Count",
+        //     series: itemsStacked
+        //   },
+        //   faultsStacked: {
+        //     title: "Fault Stacked Bar by Operator",
+        //     orientation: "vertical",
+        //     xType: "category", 
+        //     xLabel: "Operator",
+        //     yLabel: "Fault Duration (hours)",
+        //     series: faultsStacked
+        //   },
+        //   order: finalOrderOperatorIds.map(id => opIdToName.get(id) || id), // operator display order (ranked)
+        // },
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
@@ -5317,10 +5356,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     logger.info(`Operator cache query for date strings:`, dateStrings);
     
     // Get operator-machine daily totals for complete days
+    // Handle both old format (no entityType) and new format (with entityType)
     const operatorQuery = { 
-      entityType: 'operator-machine',
-      date: { $in: dateStrings }
+      date: { $in: dateStrings },
+      operatorId: { $exists: true },
+      machineSerial: { $exists: true }
     };
+    
+    // Add entityType filter if it exists, otherwise rely on field presence
+    operatorQuery.$or = [
+      { entityType: 'operator-machine' },
+      { entityType: { $exists: false } } // Old format without entityType
+    ];
     
     if (operatorId) {
       operatorQuery.operatorId = operatorId;
@@ -5403,7 +5450,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         ])
         .toArray();
 
-      // Process sessions to create operator totals
+      // Process sessions to create operator totals with item-level data
       const grouped = new Map();
       for (const s of sessions) {
         const opId = s.operator?.id;
@@ -5415,6 +5462,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             totalCount: 0,
             totalWorkedMs: 0,
             totalRuntimeMs: 0,
+            itemCounts: new Map(), // Track item-level counts
           });
         }
         const bucket = grouped.get(opId);
@@ -5427,11 +5475,42 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
         for (const c of counts) {
           bucket.totalCount += 1;
+          
+          // Track item-level counts
+          const itemId = c.item?.id;
+          const itemName = c.item?.name;
+          const itemStandard = c.item?.standard;
+          
+          if (itemId) {
+            const key = `${itemId}-${itemName}`;
+            if (!bucket.itemCounts.has(key)) {
+              bucket.itemCounts.set(key, {
+                itemId: itemId,
+                itemName: itemName,
+                itemStandard: itemStandard || 0,
+                count: 0
+              });
+            }
+            bucket.itemCounts.get(key).count += 1;
+          }
         }
       }
 
-      // Convert grouped data to totals format
+      // Convert grouped data to totals format with item-level data
       for (const [opId, bucket] of grouped) {
+        const itemTotals = [];
+        
+        // Convert item counts to item totals format
+        for (const [key, itemData] of bucket.itemCounts) {
+          itemTotals.push({
+            itemId: itemData.itemId,
+            itemName: itemData.itemName,
+            itemStandard: itemData.itemStandard,
+            totalCounts: itemData.count,
+            workedTimeMs: 0, // Will be calculated later based on operator's worked time
+          });
+        }
+        
         operators.push({
           operatorId: opId,
           operatorName: bucket.operator.name,
@@ -5442,7 +5521,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           pausedTimeMs: 0,
           totalFaults: 0,
           totalMisfeeds: 0,
-          totalTimeCreditMs: 0
+          totalTimeCreditMs: 0,
+          itemTotals: itemTotals // Include item-level data
         });
       }
     }
@@ -5484,14 +5564,21 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const startDate = start.toISOString().split('T')[0];
     const endDate = end.toISOString().split('T')[0];
     
+    // Handle both old format (no entityType) and new format (with entityType)
     const machineItemQuery = { 
-      entityType: 'machine-item',
       machineSerial: machineSerial,
+      itemId: { $exists: true }, // Machine-item records have both machineSerial and itemId
       dateObj: { 
         $gte: new Date(startDate + 'T00:00:00.000Z'), 
         $lte: new Date(endDate + 'T23:59:59.999Z') 
       }
     };
+    
+    // Add entityType filter if it exists, otherwise rely on field presence
+    machineItemQuery.$or = [
+      { entityType: 'machine-item' },
+      { entityType: { $exists: false } } // Old format without entityType
+    ];
 
     const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
     return machineItemTotals;
@@ -5808,6 +5895,168 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const existing = itemMap.get(key);
         existing.totalCounts += item.totalCounts;
         existing.workedTimeMs += item.workedTimeMs;
+        // Use the higher standard value if available
+        if (item.itemStandard && item.itemStandard > (existing.itemStandard || 0)) {
+          existing.itemStandard = item.itemStandard;
+        }
+      } else {
+        itemMap.set(key, item);
+      }
+    }
+    
+    return Array.from(itemMap.values());
+  }
+
+  // NEW: Simplified cached version using simulator's item entity records (with itemStandard built-in)
+  router.get("/analytics/item-sessions-summary-daily-cache", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+
+      // ---------- Hybrid query configuration ----------
+      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
+      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+      
+      // Determine if we should use hybrid approach
+      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
+      
+      if (useHybrid) {
+        logger.info(`Using hybrid approach for item daily route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+      }
+
+      // ---------- helpers (local to route) ----------
+      const normalizePPH = (std) => {
+        const n = Number(std) || 0;
+        return n > 0 && n < 60 ? n * 60 : n; // PPM→PPH
+      };
+
+      // ---------- 1) Time range splitting and data collection ----------
+      let itemTotals = [];
+
+      if (useHybrid) {
+        // Split time range into complete days and partial days
+        const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
+        
+        logger.info(`Item daily hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        
+        // Get data from daily cache for complete days (using simulator's item records)
+        if (completeDays.length > 0) {
+          itemTotals = await getItemDailyCachedDataForDays(completeDays);
+        }
+        
+        // Get data from sessions for partial days
+        if (partialDays.length > 0) {
+          const sessionData = await getItemSessionDataForPartialDays(partialDays);
+          itemTotals = combineItemDailyHybridData(itemTotals, sessionData.items);
+        }
+        
+      } else {
+        // Use only cached data for shorter time ranges
+        const cacheCollection = db.collection('totals-daily');
+        
+        // Calculate date range for query
+        const startDate = exactStart.toISOString().split('T')[0];
+        const endDate = exactEnd.toISOString().split('T')[0];
+
+        // Get item daily totals from simulator (with itemStandard already included)
+        const itemQuery = { 
+          entityType: 'item',
+          source: 'simulator', // Only get simulator records
+          dateObj: { 
+            $gte: new Date(startDate + 'T00:00:00.000Z'), 
+            $lte: new Date(endDate + 'T23:59:59.999Z') 
+          }
+        };
+
+        itemTotals = await cacheCollection.find(itemQuery).toArray();
+      }
+
+      if (!itemTotals.length) {
+        return res.json([]);
+      }
+
+      // ---------- 2) Process item data ----------
+      const resultsMap = new Map();
+
+      // Group item totals by item ID
+      for (const itemTotal of itemTotals) {
+        const itemId = String(itemTotal.itemId);
+        
+        if (!resultsMap.has(itemId)) {
+          resultsMap.set(itemId, {
+            itemId: itemTotal.itemId,
+            name: itemTotal.itemName || "Unknown",
+            standard: itemTotal.itemStandard ?? 0, // itemStandard is built into simulator's item record
+            count: 0,
+            workedSec: 0,
+          });
+        }
+        
+        const acc = resultsMap.get(itemId);
+        acc.count += itemTotal.totalCounts || 0;
+        acc.workedSec += (itemTotal.workedTimeMs || 0) / 1000; // Convert to seconds
+      }
+
+      // ---------- 3) Finalize results (same format as original route) ----------
+      const results = Array.from(resultsMap.values()).map((entry) => {
+        const workedMs = Math.round(entry.workedSec * 1000);
+        const hours = workedMs / 3_600_000;
+        const pph = hours > 0 ? entry.count / hours : 0;
+        const stdPPH = normalizePPH(entry.standard);
+        const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
+
+        return {
+          itemName: entry.name,
+          workedTimeFormatted: formatDuration(workedMs),
+          count: entry.count,
+          pph: Math.round(pph * 100) / 100,
+          standard: entry.standard,
+          efficiency: Math.round(efficiencyPct * 100) / 100, // percent
+        };
+      });
+
+      res.json(results);
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate daily cached item summary" });
+    }
+  });
+
+  // Helper functions for item daily hybrid queries
+  async function getItemDailyCachedDataForDays(completeDays) {
+    const cacheCollection = db.collection('totals-daily');
+    const dateStrings = completeDays.map(day => day.dateStr);
+    
+    // Get item daily totals from simulator (itemStandard already included)
+    const itemQuery = { 
+      entityType: 'item',
+      source: 'simulator', // Only get simulator records
+      date: { $in: dateStrings }
+    };
+
+    const itemTotals = await cacheCollection.find(itemQuery).toArray();
+    
+    return itemTotals;
+  }
+
+  function combineItemDailyHybridData(cachedItems, sessionItems) {
+    const itemMap = new Map();
+    
+    // Add cached data
+    for (const item of cachedItems) {
+      const key = String(item.itemId);
+      itemMap.set(key, item);
+    }
+    
+    // Add/combine session data
+    for (const item of sessionItems) {
+      const key = String(item.itemId);
+      if (itemMap.has(key)) {
+        // Combine with existing cached data
+        const existing = itemMap.get(key);
+        existing.totalCounts = (existing.totalCounts || 0) + item.totalCounts;
+        existing.workedTimeMs = (existing.workedTimeMs || 0) + item.workedTimeMs;
         // Use the higher standard value if available
         if (item.itemStandard && item.itemStandard > (existing.itemStandard || 0)) {
           existing.itemStandard = item.itemStandard;
