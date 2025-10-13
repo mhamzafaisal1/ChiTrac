@@ -121,12 +121,37 @@ function constructor(server) {
 		}
 	}
 
+	// Get next available item ID
+	async function getNewItemId(req, res, next) {
+		try {
+			// Find the highest number value
+			const result = await collection
+				.find({})
+				.sort({ number: -1 })
+				.limit(1)
+				.toArray();
+			
+			// If no items exist, start from 1, otherwise add 1 to the highest
+			const nextId = result.length > 0 ? result[0].number + 1 : 1;
+			
+			res.json({ number: nextId });
+		} catch (e) { 
+			logger.error('[getNewItemId] Error:', {
+				error: e.message,
+				stack: e.stack,
+				timestamp: new Date().toISOString()
+			});
+			next(e); 
+		}
+	}
+
 	/*** Machine Config Routes */
 	/** GET routes */
 	router.get('/items/config/xml', getItemXML);
 	router.get('/items/config', getItem);
 	router.get('/item/config/xml', getItemXML);
 	router.get('/item/config', getItem);
+	router.get('/item/new-id', getNewItemId);
 
 	/** PUT routes */
 	// router.put('/items/config/:id', upsertItem);

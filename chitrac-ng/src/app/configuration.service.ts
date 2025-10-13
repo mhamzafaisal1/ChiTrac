@@ -55,6 +55,10 @@ export class ConfigurationService {
     return this.http.get<ItemConfig[]>('/api/item/config');
   }
 
+  public getNewItemId(): Observable<{number: number}> {
+    return this.http.get<{number: number}>('/api/item/new-id');
+  }
+
   public postItemConfig(item: ItemConfig): Observable<ItemConfig> {
     return this.http.post<ItemConfig>('/api/item/config', item);
   }
