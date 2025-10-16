@@ -26,6 +26,6 @@ export class ItemAnalyticsService {
       .set('start', startTime)
       .set('end', endTime);
 
-    return this.http.get<ItemAnalyticsRow[]>('/api/alpha/analytics/items-summary-daily-cached', { params });
+    return this.http.get<ItemAnalyticsRow[]>('/api/alpha/analytics/items-summary-daily-cache', { params });
   }
 }

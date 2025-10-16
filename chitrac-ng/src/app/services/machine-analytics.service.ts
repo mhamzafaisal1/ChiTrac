@@ -84,7 +84,7 @@ export class MachineAnalyticsService {
   }
 
   getItemSessionSummary(start: string, end: string): Observable<any> {
-    return this.http.get('/api/alpha/analytics/item-sessions-summary-cache', {
+    return this.http.get('/api/alpha/analytics/item-sessions-summary-daily-cache', {
       params: { start, end }
     });
   }
