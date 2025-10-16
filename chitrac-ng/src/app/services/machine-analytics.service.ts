@@ -84,7 +84,7 @@ export class MachineAnalyticsService {
   }
 
   getItemSessionSummary(start: string, end: string): Observable<any> {
-    return this.http.get('/api/alpha/analytics/item-sessions-summary-cache', {
+    return this.http.get('/api/alpha/analytics/item-sessions-summary-daily-cache', {
       params: { start, end }
     });
   }
@@ -119,7 +119,7 @@ export class MachineAnalyticsService {
       .set('start', start)
       .set('end', end);
   
-    return this.http.get(`${this.apiUrl}/analytics/machines-summary-cached`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/machines-summary-daily-cached`, { params });
   }
 
   getMachineSummaryWithTimeframe(timeframe: string): Observable<any> {
