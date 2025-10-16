@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
+import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { MachineAnalyticsService } from '../services/machine-analytics.service';
 
 @Component({

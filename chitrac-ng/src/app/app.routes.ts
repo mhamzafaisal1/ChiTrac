@@ -1,109 +1,64 @@
 import { Routes } from '@angular/router';
-import { ConfigGridTestComponent } from './config-grid-test/config-grid-test.component';
-//import { SettingsOperatorsComponent } from './settings-operators/settings-operators.component';
 import { OperatorGridComponent } from './operator-grid/operator-grid.component';
 import { ItemGridComponent } from './item-grid/item-grid.component';
 import { UserLoginComponent } from './user-login/user-login.component';
 import { UserRegisterComponent } from './user-register/user-register.component';
-import { LeveloneTableComponent } from './levelone-table/levelone-table.component';
-import { LeveloneTableV2Component } from './levelone-table-v2/levelone-table-v2.component';
-import { LeveloneBarChartComponent } from './levelone-bar-chart/levelone-bar-chart.component';
-import { LevelonePieChartComponent } from './levelone-pie-chart/levelone-pie-chart.component';
-import { LeveloneLineChartComponent } from './levelone-line-chart/levelone-line-chart.component';
-import { MachineAnalyticsDashboardComponent } from './machine-analytics-dashboard/machine-analytics-dashboard.component';
-import { MachineAnalyticsChartComponent } from './machine-analytics-chart/machine-analytics-chart.component';
 import { OperatorAnalyticsDashboardComponent } from './operator-analytics-dashboard/operator-analytics-dashboard.component';
-import { OperatorPerformanceChartComponent } from './operator-performance-chart/operator-performance-chart.component';
-import { UseModalComponent } from './use-modal/use-modal.component';
-import { OperatorCountbyitemChartComponent } from './operator-countbyitem-chart/operator-countbyitem-chart.component';
-import { MachineFaultHistoryComponent } from './machine-fault-history/machine-fault-history.component';
 import { DailySummaryDashboardComponent } from './daily-summary-dashboard/daily-summary-dashboard.component';
 import { ItemAnalyticsDashboardComponent } from './item-analytics-dashboard/item-analytics-dashboard.component';
 import { AuthGuard } from './guards/auth.guard';
-import { TestComponent } from './test/test.component';
-import { DailyAnalyticsDashboardComponent } from './daily-analytics-dashboard/daily-analytics-dashboard.component';
 import { MachineDashboardComponent } from './machine-dashboard/machine-dashboard.component';
 import { MachineReportComponent } from './reports/machine-report/machine-report.component';
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
-import { AC360SixLaneComponent } from './ac360-six-lane/ac360-six-lane.component';
 import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
 import { BlanketBlastertwoEfficiencyScreen } from './efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
-import { EfficiencyScreens } from './efficiency-screens/efficiency-screens.component';
 import { SplEfficiencyScreen } from './efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component';
 import { LplEfficiencyScreen } from './efficiency-screens/lpl-efficiency-screen/lpl-efficiecny-screen.component';
 import { MachineEfficiencyLaneComponent } from './efficiency-screens/efficiecny-screen-machine/machine-efficiecny-lane.component';
-import { DailyCountBarChartComponent } from './charts/daily-count-bar-chart/daily-count-bar-chart.component';
-import { DailyMachineItemStackedBarChartComponent } from './charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component';	
-import { DailyMachineOeeBarChartComponent } from './charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component';
-import { DailyMachineStackedBarChartComponent } from './charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component';
-import { PlantwideMetricsChartComponent } from './charts/plantwide-metrics-chart/plantwide-metrics-chart.component';
-import { RankedOperatorBarChartComponent } from './charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component';
-import { RankedOperatorBarChartWithTooltipComponent } from './charts/ranked-operator-bar-chart-with-tooltip/ranked-operator-bar-chart-with-tooltip.component';
 import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
-import { DataAwareItemStackedChartComponent } from './charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component';
-import { TwobytwoDashboardComponent } from './dashboards/2x2/twobytwo-dashboard.component';
-import { ThreebythreeDashboardComponent } from './dashboards/3x3/threebythree-dashboard.component';
-import { TwobythreeDashboardComponent } from './dashboards/2x3/twobythree-dashboard.component';
-import { ColumnLayoutComponent } from './layouts/column/column-layout/column-layout.component';
-import { CmOperatorEfficiencyTestComponent } from './modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component';
 import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
 import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
+import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
+import { TokenManagementComponent } from './token-management/token-management.component';
 
 export const routes: Routes = [
-	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
+	// Settings pages
 	{ path: 'ng/settings/operators', component: OperatorGridComponent },
-	{ path: 'ng/settings/items', component: ItemGridComponent,},
-	{ path: 'ng/settings/machines', component: MachineGridComponent,  },
+	{ path: 'ng/settings/items', component: ItemGridComponent },
+	{ path: 'ng/settings/machines', component: MachineGridComponent },
+	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
+	
+	// Login/Auth
 	{ path: 'ng/login', component: UserLoginComponent },
-	/*{ path: 'ng/home', component: LeveloneDashboardComponent },*/
-	{ path: 'ng/levelone-table', component: LeveloneTableComponent },
-	{ path: 'ng/levelone-table-v2', component: LeveloneTableV2Component },
-	{ path: 'ng/levelone-bar-chart', component: LeveloneBarChartComponent },
-	{ path: 'ng/levelone-pie-chart', component: LevelonePieChartComponent },
-	{ path: 'ng/levelone-line-chart', component: LeveloneLineChartComponent },
-	{ path: 'ng/machineAnalytics', component: MachineAnalyticsDashboardComponent },
-	{ path: 'ng/machineAnalytics/chart', component: MachineAnalyticsChartComponent },
+	
+	// Main Dashboards
+	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent },
 	{ path: 'ng/operatorAnalytics', component: OperatorAnalyticsDashboardComponent },
-	{ path: 'ng/operator-performance-chart', component: OperatorPerformanceChartComponent },
-	{ path: 'ng/use-modal', component: UseModalComponent },
-	{ path: 'ng/operator-countbyitem', component: OperatorCountbyitemChartComponent },
-	{ path: 'ng/machine-fault-history', component: MachineFaultHistoryComponent },
-	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent },
 	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent },
-	{ path: 'ng/test', component: TestComponent },
-	{ path: 'ng/daily-analytics', component: DailyAnalyticsDashboardComponent },
+	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent },
 	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent },
 	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
+	
+	// Reports
 	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
-	{ path: 'ng/reports/item-report', component: ItemReportComponent },	
-	{ path: 'ng/ac360-six-lane', component: AC360SixLaneComponent },
+	{ path: 'ng/reports/item-report', component: ItemReportComponent },
+	
+	// Production/Efficiency Screens
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },
 	{ path: 'ng/blanket-blaster-two', component: BlanketBlastertwoEfficiencyScreen },
-	{ path: 'ng/efficiency-screens', component: EfficiencyScreens },
 	{ path: 'ng/spl-efficiency-screen', component: SplEfficiencyScreen },
 	{ path: 'ng/lpl-efficiency-screen', component: LplEfficiencyScreen },
 	{ path: 'ng/lpl-efficiency-screen/:line', component: LplEfficiencyScreen },
 	{ path: 'ng/machine-efficiency-lane', component: MachineEfficiencyLaneComponent },
-	{ path: 'ng/daily-count-bar-chart', component: DailyCountBarChartComponent },
-	{ path: 'ng/daily-machine-item-stacked-bar-chart', component: DailyMachineItemStackedBarChartComponent },
-	{ path: 'ng/daily-machine-oee-bar-chart', component: DailyMachineOeeBarChartComponent },
-	{ path: 'ng/daily-machine-stacked-bar-chart', component: DailyMachineStackedBarChartComponent },
-	{ path: 'ng/daily-plantwide-metrics-chart', component: PlantwideMetricsChartComponent },
-	{ path: 'ng/daily-ranked-operator-bar-chart', component: RankedOperatorBarChartComponent },
-	{ path: 'ng/daily-ranked-operator-bar-chart-with-tooltip', component: RankedOperatorBarChartWithTooltipComponent },
-	{ path: 'ng/item-stacked-chart', component: DataAwareItemStackedChartComponent },
-	{ path: 'ng/dashboards/2x2', component: TwobytwoDashboardComponent },
-	{ path: 'ng/dashboards/3x3', component: ThreebythreeDashboardComponent },
-	{ path: 'ng/dashboards/2x3', component: TwobythreeDashboardComponent },
-	{ path: 'ng/column-layout', component: ColumnLayoutComponent },
-	{ path: 'ng/cm-operator-efficiency-test', component: CmOperatorEfficiencyTestComponent },
 	{ path: 'ng/spl-col-efficiency-screen', component: SplColEfficiencyScreenComponent },
 	{ path: 'ng/spf-col-efficiency-screen', component: SpfColEfficiencyScreenComponent },
-	{ path: 'ng/*', redirectTo: 'ng/machineAnalytics' },
+	
+	// Redirects
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
+	{ path: '', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' },
 	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }
-	];
+];

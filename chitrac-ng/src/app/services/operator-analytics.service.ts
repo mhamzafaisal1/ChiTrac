@@ -26,7 +26,7 @@ export class OperatorAnalyticsService {
       .set('start', startTime)
       .set('end', endTime);
 
-    return this.http.get('/api/alpha/analytics/operators-summary-cached', { params });
+    return this.http.get('/api/alpha/analytics/operators-summary-daily-cached', { params });
   }
 
   getOperatorDetails(start: string, end: string, operatorId: number): Observable<any> {

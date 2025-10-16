@@ -39,7 +39,7 @@
       <a mat-list-item (click)="prevMenu()">
         <mat-icon style="margin-right: 0.5em;">arrow_back</mat-icon><span>Back</span>
       </a>
-      <a mat-list-item routerLink="/ng/daily-analytics" (click)="closeMenu()">
+      <a mat-list-item routerLink="/ng/daily-analytics-split" (click)="closeMenu()">
         <mat-icon style="margin-right: 0.5em;">slow_motion_video</mat-icon><span>Daily</span>
       </a>
       <a mat-list-item routerLink="/ng/analytics/machine-dashboard" (click)="closeMenu()">
@@ -115,6 +115,9 @@
       </a>
       <a mat-list-item routerLink="/ng/settings/operators" (click)="closeMenu()">
         <mat-icon>person</mat-icon><span>Operators</span>
+      </a>
+      <a mat-list-item routerLink="/ng/settings/tokens" (click)="closeMenu()">
+        <mat-icon>vpn_key</mat-icon><span>API Tokens</span>
       </a>
       <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>
