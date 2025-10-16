@@ -6,7 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
+import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { OperatorSummaryService } from '../services/operator-summary.service';
 
 interface ItemSummaryRow {

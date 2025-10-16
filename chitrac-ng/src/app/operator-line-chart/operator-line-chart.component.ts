@@ -16,7 +16,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 
 import { OeeDataService } from '../services/oee-data.service';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
+import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
 function toDateTimeLocalString(dateStr: string): string {

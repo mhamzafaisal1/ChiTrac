@@ -14,7 +14,7 @@ import { BaseTableComponent } from '../../components/base-table/base-table.compo
 import { MachineAnalyticsService } from '../../services/machine-analytics.service';
 import { MachineItemSummaryService } from '../../services/machine-item-summary.service';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
-import { DateTimePickerComponent } from '../../components/date-time-picker/date-time-picker.component';
+import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { getStatusDotByCode } from '../../../utils/status-utils';
 
 @Component({
