@@ -1,0 +1,59 @@
+<div class="error-modal-container" [ngClass]="getSeverityClass()">
+  <!-- Header -->
+  <div class="error-modal-header">
+    <div class="error-title">
+      <mat-icon class="error-icon">error</mat-icon>
+      <h2>Error Occurred</h2>
+    </div>
+    <button mat-icon-button class="close-button" (click)="close()" aria-label="Close">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <!-- Error Details -->
+  <div class="error-modal-content">
+    <div class="error-metadata">
+      <div class="error-meta-item" *ngIf="errorData.statusCode">
+        <span class="meta-label">Status Code:</span>
+        <span class="meta-value">{{ errorData.statusCode }}</span>
+      </div>
+      <div class="error-meta-item">
+        <span class="meta-label">Time:</span>
+        <span class="meta-value">{{ getFormattedTime() }}</span>
+      </div>
+      <div class="error-meta-item" *ngIf="errorData.endpoint">
+        <span class="meta-label">Endpoint:</span>
+        <span class="meta-value endpoint">{{ errorData.endpoint }}</span>
+      </div>
+    </div>
+
+    <div class="error-message">
+      <h3>Message:</h3>
+      <p>{{ errorData.message }}</p>
+    </div>
+
+    <div class="error-details" *ngIf="errorData.fullError">
+      <details>
+        <summary>Technical Details (expand for more info)</summary>
+        <pre>{{ errorData.fullError | json }}</pre>
+      </details>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="error-modal-actions">
+    <button 
+      mat-raised-button 
+      [color]="copySuccess ? 'accent' : 'primary'"
+      (click)="copyToClipboard()"
+      class="copy-button">
+      <mat-icon>{{ copySuccess ? 'check' : 'content_copy' }}</mat-icon>
+      {{ copySuccess ? 'Copied!' : 'Copy Error Details' }}
+    </button>
+    
+    <button mat-raised-button color="warn" (click)="close()">
+      Close
+    </button>
+  </div>
+</div>
+

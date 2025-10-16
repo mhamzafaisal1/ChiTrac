@@ -50,6 +50,7 @@ import { ColumnLayoutComponent } from './layouts/column/column-layout/column-lay
 import { CmOperatorEfficiencyTestComponent } from './modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component';
 import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
 import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
+import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 
 export const routes: Routes = [
 	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
@@ -74,6 +75,7 @@ export const routes: Routes = [
 	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent },
 	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent },
 	{ path: 'ng/test', component: TestComponent },
+	{ path: 'ng/error-modal-demo', component: ErrorModalDemoComponent },
 	{ path: 'ng/daily-analytics', component: DailyAnalyticsDashboardComponent },
 	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent },
 	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
