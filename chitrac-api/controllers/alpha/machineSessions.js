@@ -195,6 +195,142 @@ module.exports = function (server) {
     }
   });
 
+  // ---- /api/alpha/analytics/machines-summary-daily-cached ----
+  router.get("/analytics/machines-summary-daily-cached", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+      
+      // Get today's date string in Chicago timezone
+      const today = new Date();
+      const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
+      const dateStr = chicagoTime.toISOString().split('T')[0];
+      
+      logger.info(`[machineSessions] Fetching daily cached machines summary for date: ${dateStr}, serial: ${serial || 'all'}`);
+      
+      // Build query filter for totals-daily collection
+      const filter = { 
+        entityType: 'machine',
+        date: dateStr
+      };
+      
+      // Add serial filter if specified
+      if (serial) {
+        filter.machineSerial = parseInt(serial);
+      }
+      
+      // Query the totals-daily collection
+      const cacheRecords = await db.collection('totals-daily')
+        .find(filter)
+        .toArray();
+      
+      if (cacheRecords.length === 0) {
+        logger.warn(`[machineSessions] No daily cached data found for date: ${dateStr}, falling back to real-time calculation`);
+        // Fallback to real-time calculation
+        return await getMachinesSummaryRealTime(req, res);
+      }
+      
+      // Get machine serials from cache records
+      const machineSerials = cacheRecords.map(r => r.machineSerial);
+      
+      // Get current status for each machine from stateTicker
+      const tickers = await db.collection(config.stateTickerCollectionName)
+        .find({ "machine.serial": { $in: machineSerials } })
+        .project({ _id: 0 })
+        .toArray();
+      
+      const statusMap = new Map();
+      tickers.forEach(ticker => {
+        statusMap.set(ticker.machine?.serial, {
+          code: ticker.status?.code || 0,
+          name: ticker.status?.name || "Unknown"
+        });
+      });
+      
+      // Transform cache records to expected format
+      const data = cacheRecords.map(record => {
+        // Get current status from stateTicker or default
+        const currentStatus = statusMap.get(record.machineSerial) || {
+          code: 0,
+          name: "Unknown"
+        };
+        
+        // Calculate window time (total time in query range)
+        const windowMs = new Date(record.timeRange.end) - new Date(record.timeRange.start);
+        const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
+        
+        // Calculate performance metrics
+        const availability = windowMs > 0 ? Math.min(Math.max(record.runtimeMs / windowMs, 0), 1) : 0;
+        const totalOutput = record.totalCounts + record.totalMisfeeds;
+        const throughput = totalOutput > 0 ? record.totalCounts / totalOutput : 0;
+        const workTimeSec = record.workedTimeMs / 1000;
+        const totalTimeCreditSec = record.totalTimeCreditMs / 1000;
+        const efficiency = workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
+        const oee = availability * throughput * efficiency;
+        
+        return {
+          machine: {
+            serial: record.machineSerial,
+            name: record.machineName
+          },
+          currentStatus: currentStatus,
+          metrics: {
+            runtime: {
+              total: record.runtimeMs,
+              formatted: formatDuration(record.runtimeMs)
+            },
+            downtime: {
+              total: downtimeMs,
+              formatted: formatDuration(downtimeMs)
+            },
+            output: {
+              totalCount: record.totalCounts,
+              misfeedCount: record.totalMisfeeds
+            },
+            performance: {
+              availability: {
+                value: availability,
+                percentage: (availability * 100).toFixed(2)
+              },
+              throughput: {
+                value: throughput,
+                percentage: (throughput * 100).toFixed(2)
+              },
+              efficiency: {
+                value: efficiency,
+                percentage: (efficiency * 100).toFixed(2)
+              },
+              oee: {
+                value: oee,
+                percentage: (oee * 100).toFixed(2)
+              }
+            }
+          },
+          timeRange: {
+            start: record.timeRange.start,
+            end: record.timeRange.end
+          }
+        };
+      });
+      
+      logger.info(`[machineSessions] Retrieved ${data.length} daily cached machine records for date: ${dateStr}`);
+      res.json(data);
+      
+    } catch (err) {
+      logger.error(`[machineSessions] Error in daily cached machines-summary route:`, err);
+      
+      // Check if it's a validation error
+      if (err.message.includes('Start and end dates are required') ||
+        err.message.includes('Invalid date format') ||
+        err.message.includes('Start date must be before end date')) {
+        return res.status(400).json({ error: err.message });
+      }
+      
+      // Fallback to real-time calculation on any error
+      logger.info(`[machineSessions] Falling back to real-time calculation due to error`);
+      return await getMachinesSummaryRealTime(req, res);
+    }
+  });
+
   // ---- /api/alpha/analytics/machines-summary (real-time calculation) ----
   router.get("/analytics/machines-summary", async (req, res) => {
     return await getMachinesSummaryRealTime(req, res);
