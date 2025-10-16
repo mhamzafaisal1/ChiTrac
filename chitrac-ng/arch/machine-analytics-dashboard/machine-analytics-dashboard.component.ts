@@ -10,17 +10,17 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 
-import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { MachineAnalyticsService } from '../services/machine-analytics.service';
-import { MachineItemSummaryService } from '../services/machine-item-summary.service';
-import { OperatorSummaryService } from '../services/operator-summary.service';
-import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
-import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
-import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-fault-history.component';
-import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
-import { MachineItemSummaryTableComponent } from '../machine-item-summary-table/machine-item-summary-table.component';
-import { MachineItemStackedBarChartComponent } from '../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component';
-import { getStatusDotByCode } from '../../utils/status-utils';
+import { BaseTableComponent } from '../../src/app/components/base-table/base-table.component';
+import { MachineAnalyticsService } from '../../src/app/services/machine-analytics.service';
+import { MachineItemSummaryService } from '../../src/app/services/machine-item-summary.service';
+import { OperatorSummaryService } from '../../src/app/services/operator-summary.service';
+import { ModalWrapperComponent } from '../../src/app/components/modal-wrapper-component/modal-wrapper-component.component';
+import { UseCarouselComponent } from '../../src/app/use-carousel/use-carousel.component';
+import { MachineFaultHistoryComponent } from '../../src/app/machine-fault-history/machine-fault-history.component';
+import { OperatorPerformanceChartComponent } from '../../src/app/operator-performance-chart/operator-performance-chart.component';
+import { MachineItemSummaryTableComponent } from '../../src/app/machine-item-summary-table/machine-item-summary-table.component';
+import { MachineItemStackedBarChartComponent } from '../../src/app/machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component';
+import { getStatusDotByCode } from '../../src/utils/status-utils';
 
 interface OperatorSummaryRow {
   operatorName: string;
