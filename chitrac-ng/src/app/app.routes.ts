@@ -50,12 +50,14 @@ import { ColumnLayoutComponent } from './layouts/column/column-layout/column-lay
 import { CmOperatorEfficiencyTestComponent } from './modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component';
 import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
 import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
+import { TokenManagementComponent } from './token-management/token-management.component';
 
 export const routes: Routes = [
 	{ path: 'ng/configGridTest', component: ConfigGridTestComponent },
 	{ path: 'ng/settings/operators', component: OperatorGridComponent },
 	{ path: 'ng/settings/items', component: ItemGridComponent,},
 	{ path: 'ng/settings/machines', component: MachineGridComponent,  },
+	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/login', component: UserLoginComponent },
 	/*{ path: 'ng/home', component: LeveloneDashboardComponent },*/

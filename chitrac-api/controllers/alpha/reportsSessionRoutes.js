@@ -4231,106 +4231,109 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const completeDays = [];
     const partialDays = [];
     
-    // Get timezone-aware start and end of day
-    const startOfFirstDay = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
-    const endOfLastDay = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
+    // Convert to Luxon DateTime for timezone-aware operations
+    const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+    const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
     
-    // Check if we have a partial day at the beginning
-    if (start > startOfFirstDay) {
-      partialDays.push({
-        start: start,
-        end: DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate(),
-        type: 'start'
-      });
-    }
+    logger.info(`[HYBRID-SPLIT] Input: start=${startDt.toISO()}, end=${endDt.toISO()}`);
     
-    // Check if we have a partial day at the end
-    if (end < endOfLastDay) {
-      partialDays.push({
-        start: DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate(),
-        end: end,
-        type: 'end'
-      });
-    }
+    // Get the date range (midnight to midnight boundaries)
+    const startOfFirstDay = startDt.startOf('day');
+    const startOfLastDay = endDt.startOf('day');
     
-    // Find all complete days between start and end
-    let currentDay = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
-    const endDay = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day').toJSDate();
+    // Check if start is at midnight (within 1 second tolerance)
+    const startIsAtMidnight = Math.abs(startDt.diff(startOfFirstDay, 'seconds').seconds) < 1;
+    // Check if end is at midnight (within 1 second tolerance)
+    const endIsAtMidnight = Math.abs(endDt.diff(endDt.startOf('day'), 'seconds').seconds) < 1;
     
-    while (currentDay < endDay) {
-      const dayStart = new Date(currentDay);
-      const dayEnd = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).endOf('day').toJSDate();
+    logger.info(`[HYBRID-SPLIT] Start is at midnight: ${startIsAtMidnight}, End is at midnight: ${endIsAtMidnight}`);
+    
+    // Iterate through each day in the range
+    let currentDay = startOfFirstDay;
+    
+    while (currentDay <= startOfLastDay) {
+      const dayStart = currentDay.startOf('day');
+      const dayEnd = currentDay.endOf('day');
+      const dateStr = currentDay.toFormat('yyyy-MM-dd');
       
-      // Smart day classification logic:
-      // A day is "complete" if it's fully contained within our time range
-      // This means: the day's start is at or after our start time AND the day's end is at or before our end time
-      // But we need to be more flexible for multi-day ranges
-      const isComplete = dayStart >= start && dayEnd <= end;
+      // Determine if this day is complete or partial
+      const isFirstDay = currentDay.hasSame(startOfFirstDay, 'day');
+      const isLastDay = currentDay.hasSame(startOfLastDay, 'day');
       
-      // Special case: If the day is fully contained between start and end dates (ignoring time)
-      // and the time range spans multiple days, treat it as complete
-      const startDate = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).toISODate();
-      const endDate = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).toISODate();
-      const currentDate = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toISODate();
-      
-      if (!isComplete && startDate !== endDate && currentDate > startDate && currentDate < endDate) {
-        // This is a day that's fully contained between the start and end dates
-        // Treat it as complete for caching purposes
-        const isFullyContained = true;
-        if (isFullyContained) {
+      if (isFirstDay && isLastDay) {
+        // Query spans only one day
+        if (startIsAtMidnight && (endIsAtMidnight || endDt >= dayEnd)) {
+          // Complete day: from midnight to midnight (or beyond)
           completeDays.push({
-            start: dayStart,
-            end: dayEnd,
-            dateStr: DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd')
+            start: dayStart.toJSDate(),
+            end: dayEnd.toJSDate(),
+            dateStr: dateStr
           });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (single day, midnight to midnight+)`);
+        } else {
+          // Partial day within this day
+          partialDays.push({
+            start: start,
+            end: end,
+            type: 'single'
+          });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (single day, not midnight to midnight)`);
         }
-        // Move to next day
-        currentDay = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).plus({ days: 1 }).toJSDate();
-        continue;
-      }
-      
-      if (isComplete) {
+      } else if (isFirstDay) {
+        // First day of multi-day range
+        if (startIsAtMidnight) {
+          // Starts at midnight - it's a complete day
+          completeDays.push({
+            start: dayStart.toJSDate(),
+            end: dayEnd.toJSDate(),
+            dateStr: dateStr
+          });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (first day, starts at midnight)`);
+        } else {
+          // Starts mid-day - it's partial
+          partialDays.push({
+            start: start,
+            end: dayEnd.toJSDate(),
+            type: 'start'
+          });
+          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (first day, starts mid-day)`);
+        }
+      } else if (isLastDay) {
+        // Last day of multi-day range
+        if (endIsAtMidnight || endDt >= dayEnd) {
+          // Ends at or after midnight - the previous day is complete
+          // This day itself is not included if it ends exactly at midnight
+          if (!endIsAtMidnight) {
+            // Ends mid-day
+            partialDays.push({
+              start: dayStart.toJSDate(),
+              end: end,
+              type: 'end'
+            });
+            logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (last day, ends mid-day)`);
+          } else {
+            // Ends exactly at midnight - this day boundary is not included
+            logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Skipped (ends exactly at midnight of this day)`);
+          }
+        } else {
+          // Shouldn't reach here if logic is correct
+          logger.warn(`[HYBRID-SPLIT] Day ${dateStr}: Unexpected condition in last day logic`);
+        }
+      } else {
+        // Middle day - always complete
         completeDays.push({
-          start: dayStart,
-          end: dayEnd,
-          dateStr: DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd')
+          start: dayStart.toJSDate(),
+          end: dayEnd.toJSDate(),
+          dateStr: dateStr
         });
+        logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (middle day)`);
       }
       
       // Move to next day
-      currentDay = DateTime.fromJSDate(dayStart, { zone: SYSTEM_TIMEZONE }).plus({ days: 1 }).toJSDate();
+      currentDay = currentDay.plus({ days: 1 });
     }
     
-    // Special case: Handle "today from midnight to now" scenario
-    // If the query starts at midnight of today and goes to now, treat it as a complete day
-    const now = DateTime.now({ zone: SYSTEM_TIMEZONE });
-    const todayStart = now.startOf('day').toJSDate();
-    const todayEnd = now.endOf('day').toJSDate();
-    
-    // Check if query is "today from midnight to now"
-    const isTodayQuery = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day').equals(now.startOf('day')) &&
-                        start.getTime() === todayStart.getTime() &&
-                        end <= now.toJSDate();
-    
-    if (isTodayQuery) {
-      // Remove any partial day entries for today and add it as a complete day
-      const todayDateStr = now.toFormat('yyyy-MM-dd');
-      partialDays.forEach((day, index) => {
-        const dayDateStr = DateTime.fromJSDate(day.start, { zone: SYSTEM_TIMEZONE }).toFormat('yyyy-MM-dd');
-        if (dayDateStr === todayDateStr) {
-          partialDays.splice(index, 1);
-        }
-      });
-      
-      // Add today as a complete day
-      completeDays.push({
-        start: todayStart,
-        end: todayEnd,
-        dateStr: todayDateStr
-      });
-      
-      logger.info(`Special case: Today query detected, treating as complete day: ${todayDateStr}`);
-    }
+    logger.info(`[HYBRID-SPLIT] Result: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
     
     return { completeDays, partialDays };
   }
@@ -5767,8 +5770,23 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
   router.get("/analytics/item-sessions-summary-cache", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
+      
+      // parseAndValidateQueryParams returns JS Date objects, so convert them to Luxon in system timezone
+      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
+      
+      // Validate parsed dates
+      if (!startDt.isValid) {
+        logger.error(`[ITEM-CACHE] Invalid start date: ${start}, reason: ${startDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid start date: ${startDt.invalidReason}` });
+      }
+      if (!endDt.isValid) {
+        logger.error(`[ITEM-CACHE] Invalid end date: ${end}, reason: ${endDt.invalidReason}`);
+        return res.status(400).json({ error: `Invalid end date: ${endDt.invalidReason}` });
+      }
+      
+      const exactStart = startDt.toJSDate();
+      const exactEnd = endDt.toJSDate();
 
       // ---------- Hybrid query configuration ----------
       const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
