@@ -8,7 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
 
 import { OperatorCountbyitemService } from '../services/operator-countbyitem.service';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
+import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
 interface CountByItemData {

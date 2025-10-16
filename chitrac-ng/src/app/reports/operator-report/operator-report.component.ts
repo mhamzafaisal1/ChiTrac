@@ -13,7 +13,7 @@ import autoTable from 'jspdf-autotable';
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { OperatorSummaryService } from '../../services/operator-summary.service';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
-import { DateTimePickerComponent } from '../../components/date-time-picker/date-time-picker.component';
+import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 
 interface OperatorSummaryRow {
   operatorName: string;
