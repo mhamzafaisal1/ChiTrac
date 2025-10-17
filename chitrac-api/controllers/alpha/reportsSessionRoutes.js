@@ -4722,6 +4722,23 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         logger.info(`[MACHINE-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
       } else {
         split = splitTimeRangeForHybrid(exactStart, exactEnd);
+
+        // FIX: handle "exact full day" or no-day edge case
+        const coversExactlyOneDay =
+          endDt.diff(startDt, "hours").hours === 24 &&
+          startDt.hour === 0 &&
+          endDt.hour === 0;
+
+        if ((split.completeDays.length === 0 && split.partialDays.length === 0) || coversExactlyOneDay) {
+          split.completeDays = [{
+            dateStr: normalizedStart.toISODate(),
+            start: normalizedStart.toUTC().toJSDate(),
+            end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
+          }];
+          split.partialDays = [];
+          logger.warn(`[MACHINE-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
+        }
+
         logger.info(`[MACHINE-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
       }
       
@@ -4760,15 +4777,43 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       // Combine cached and session data (disjoint date ranges)
       const combinedData = combineHybridData(machineCache, machineItemCache, sessionData);
-      const machineTotals = combinedData.machines;
-      const machineItemTotals = combinedData.machineItems;
+      let machineTotals = combinedData.machines;
+      let machineItemTotals = combinedData.machineItems;
       logger.info(`[MACHINE-CACHE] After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
 
       if (!machineTotals.length) {
-        return res.json({
-          timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
-          results: []
-        });
+        logger.warn(`[MACHINE-CACHE] No data found — attempting fallback cache query for ${normalizedStart.toISODate()}`);
+        
+        // Try one more cache query as a safety net
+        const fallbackCache = await db.collection('totals-daily').find({
+          date: normalizedStart.toISODate(),
+          entityType: { $in: ['machine', 'machine-item'] },
+          ...(serial ? { machineSerial: parseInt(serial) } : {})
+        }).toArray();
+        
+        if (fallbackCache.length > 0) {
+          logger.info(`[MACHINE-CACHE] Fallback found ${fallbackCache.length} records, re-processing...`);
+          
+          // Re-process fallback data
+          machineCache = fallbackCache.filter(d => d.entityType === 'machine');
+          machineItemCache = fallbackCache.filter(d => d.entityType === 'machine-item');
+          
+          // Re-combine with empty session data
+          const recombined = combineHybridData(machineCache, machineItemCache, { machines: [], machineItems: [] });
+          machineTotals = recombined.machines;
+          machineItemTotals = recombined.machineItems;
+          
+          logger.info(`[MACHINE-CACHE] Fallback resulted in ${machineTotals.length} machines, ${machineItemTotals.length} machine-items`);
+        }
+        
+        // Final check after fallback attempt
+        if (!machineTotals.length) {
+          logger.warn(`[MACHINE-CACHE] No data found even after fallback — returning empty results`);
+          return res.json({
+            timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+            results: []
+          });
+        }
       }
 
       // ---------- 2) Process machine data ----------
@@ -5123,7 +5168,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         return { hours: h, minutes: mm };
       }
 
-      // ========== FIX #3: Simplified hybrid logic ==========
+      // ========== FIX #3: Simplified hybrid logic with full-day detection ==========
       // Determine complete vs partial days
       let split;
       if (isTodaySinceMidnight) {
@@ -5139,6 +5184,23 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         logger.info(`[OPERATOR-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
       } else {
         split = splitTimeRangeForHybrid(exactStart, exactEnd);
+
+        // FIX: handle "exact full day" or no-day edge case
+        const coversExactlyOneDay =
+          endDt.diff(startDt, "hours").hours === 24 &&
+          startDt.hour === 0 &&
+          endDt.hour === 0;
+
+        if ((split.completeDays.length === 0 && split.partialDays.length === 0) || coversExactlyOneDay) {
+          split.completeDays = [{
+            dateStr: normalizedStart.toISODate(),
+            start: normalizedStart.toUTC().toJSDate(),
+            end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
+          }];
+          split.partialDays = [];
+          logger.warn(`[OPERATOR-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
+        }
+
         logger.info(`[OPERATOR-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
       }
       
@@ -5291,12 +5353,107 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       logger.info(`[OPERATOR-CACHE] Aggregated ${operatorDataMap.size} operators`);
       
-      // Check if we have any data
+      // Check if we have any data - with defensive fallback
       if (operatorDataMap.size === 0) {
-        return res.json({
-          timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
-          results: []
-        });
+        logger.warn(`[OPERATOR-CACHE] No data found — attempting fallback cache query for ${normalizedStart.toISODate()}`);
+        
+        // Try one more cache query as a safety net
+        const fallbackCache = await db.collection('totals-daily').find({
+          date: normalizedStart.toISODate(),
+          entityType: { $in: ['operator-machine', 'operator-item'] },
+          ...(operatorId ? { operatorId: operatorId } : {})
+        }).toArray();
+        
+        if (fallbackCache.length > 0) {
+          logger.info(`[OPERATOR-CACHE] Fallback found ${fallbackCache.length} records, re-processing...`);
+          
+          // Re-process fallback data
+          operatorMachineCache = fallbackCache.filter(d => d.entityType === 'operator-machine');
+          operatorItemCache = fallbackCache.filter(d => d.entityType === 'operator-item');
+          
+          // Re-run the aggregation logic with fallback data
+          const groupedByOperatorDay = new Map();
+          
+          for (const record of operatorMachineCache) {
+            const key = `${record.operatorId}-${record.date}`;
+            
+            if (!groupedByOperatorDay.has(key)) {
+              groupedByOperatorDay.set(key, {
+                operatorId: record.operatorId,
+                operatorName: record.operatorName,
+                date: record.date,
+                runtimeMs: 0,
+                workedTimeMs: 0,
+                totalCounts: 0,
+                totalMisfeeds: 0,
+                machines: new Set()
+              });
+            }
+            
+            const dayBucket = groupedByOperatorDay.get(key);
+            dayBucket.runtimeMs = Math.min(dayBucket.runtimeMs + (record.runtimeMs || 0), 86400000);
+            dayBucket.workedTimeMs = Math.min(dayBucket.workedTimeMs + (record.workedTimeMs || 0), 86400000);
+            dayBucket.totalCounts += record.totalCounts || 0;
+            dayBucket.totalMisfeeds += record.totalMisfeeds || 0;
+            if (record.machineSerial) {
+              dayBucket.machines.add(record.machineSerial);
+            }
+          }
+          
+          // Aggregate into operatorDataMap
+          for (const [key, dayBucket] of groupedByOperatorDay) {
+            const opId = dayBucket.operatorId;
+            const opName = dayBucket.operatorName;
+            opIdToName.set(opId, opName);
+            
+            if (!operatorDataMap.has(opId)) {
+              operatorDataMap.set(opId, {
+                operator: { id: opId, name: opName },
+                totalCount: 0,
+                totalWorkedMs: 0,
+                totalRuntimeMs: 0,
+                daysWorked: 0,
+                machinesWorked: new Set()
+              });
+            }
+            
+            const bucket = operatorDataMap.get(opId);
+            bucket.totalCount += dayBucket.totalCounts;
+            bucket.totalWorkedMs += dayBucket.workedTimeMs;
+            bucket.totalRuntimeMs += dayBucket.runtimeMs;
+            bucket.daysWorked += 1;
+            dayBucket.machines.forEach(m => bucket.machinesWorked.add(m));
+          }
+          
+          // Add operators from item cache
+          for (const opItem of operatorItemCache) {
+            const opId = opItem.operatorId;
+            const opName = opItem.operatorName || `Operator ${opId}`;
+            opIdToName.set(opId, opName);
+            
+            if (!operatorDataMap.has(opId)) {
+              operatorDataMap.set(opId, {
+                operator: { id: opId, name: opName },
+                totalCount: 0,
+                totalWorkedMs: 0,
+                totalRuntimeMs: 0,
+                daysWorked: 0,
+                machinesWorked: new Set(),
+              });
+            }
+          }
+          
+          logger.info(`[OPERATOR-CACHE] Fallback aggregated ${operatorDataMap.size} operators`);
+        }
+        
+        // Final check after fallback attempt
+        if (operatorDataMap.size === 0) {
+          logger.warn(`[OPERATOR-CACHE] No data found even after fallback — returning empty results`);
+          return res.json({
+            timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+            results: []
+          });
+        }
       }
 
       // ---------- 2) Process operator data ----------
