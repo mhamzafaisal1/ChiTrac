@@ -497,6 +497,11 @@ module.exports = function (server) {
       const serialToName = new Map();
   
       for (const [, b] of grouped) {
+        // Skip machines with no production data
+        if (b.totalCount === 0) {
+          continue;
+        }
+
         serialToName.set(b.machine.serial, b.machine.name);
 
         let proratedStandard = 0;
@@ -1260,6 +1265,11 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
     // Build results and efficiency
     const results = [];
     for (const [, b] of grouped) {
+      // Skip operators with no production data
+      if (b.totalCount === 0) {
+        continue;
+      }
+
       let proratedStandard = 0;
       const itemSummaries = {};
       for (const [itemId, s] of b.itemAgg.entries()) {
@@ -5273,7 +5283,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         }
       }
       
-      // ========== FIX #4: Cap each operator to 24h per day ==========
+      // Cap each operator to 24h per day
       for (const [key, dayBucket] of groupedByOperatorDay) {
         if (dayBucket.runtimeMs > 86400000) {
           logger.warn(`[OPERATOR-CACHE] Operator ${dayBucket.operatorId} on ${dayBucket.date}: ${(dayBucket.runtimeMs/3600000).toFixed(1)}h runtime (>24h), capping`);
@@ -5391,6 +5401,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             }
             
             const bucket = operatorDataMap.get(opId);
+            // Add session fallback data
             bucket.totalCount += sessionOp.totalCounts || 0;
             bucket.totalWorkedMs += sessionOp.workedTimeMs || 0;
             bucket.totalRuntimeMs += sessionOp.runtimeMs || 0;
@@ -5495,7 +5506,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const operatorPph = hours > 0 ? operatorData.totalCount / hours : 0;
         const operatorEff = proratedStandard > 0 ? operatorPph / proratedStandard : 0;
         
-        // ========== Final validation: cap to query window ==========
+        // Final validation: cap to query window
         const queryWindowMs = exactEnd.getTime() - exactStart.getTime();
         let validatedRuntimeMs = operatorData.totalRuntimeMs;
         let validatedWorkedMs = operatorData.totalWorkedMs;
@@ -5507,6 +5518,12 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         if (validatedWorkedMs > queryWindowMs) {
           logger.warn(`[DATA VALIDATION] Operator ${opId} worked ${(validatedWorkedMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
           validatedWorkedMs = queryWindowMs;
+        }
+
+        // Skip operators with no actual production data
+        if (operatorData.totalCount === 0) {
+          logger.warn(`[OPERATOR-CACHE] Skipping operator ${opId} - no production counts`);
+          continue;
         }
 
         results.push({
@@ -5690,110 +5707,71 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const operators = [];
     
     for (const partialDay of partialDays) {
-      // Query operator sessions for this partial day
+      // Simple query - just get sessions that overlap the time window
       const match = {
         ...(operatorId ? { "operator.id": operatorId } : {}),
-        "timestamps.start": { $lte: partialDay.end },
+        "timestamps.start": { $lt: partialDay.end },
         $or: [
           { "timestamps.end": { $exists: false } },
-          { "timestamps.end": { $gte: partialDay.start } },
+          { "timestamps.end": { $gt: partialDay.start } },
         ],
       };
 
+      // Just get the sessions with the fields we need
       const sessions = await db
         .collection(config.operatorSessionCollectionName)
-        .aggregate([
-          { $match: match },
-          {
-            $addFields: {
-              ovStart: { $max: ["$timestamps.start", partialDay.start] },
-              ovEnd: {
-                $min: [{ $ifNull: ["$timestamps.end", partialDay.end] }, partialDay.end],
-              },
-            },
-          },
-          {
-            $addFields: {
-              sliceMs: { $max: [0, { $subtract: ["$ovEnd", "$ovStart"] }] },
-            },
-          },
-          {
-            $project: {
-              _id: 0,
-              timestamps: 1,
-              operator: 1,
-              machine: 1,
-              countsFiltered: {
-                $map: {
-                  input: {
-                    $filter: {
-                      input: "$counts",
-                      as: "c",
-                      cond: {
-                        $and: [
-                          { $gte: ["$$c.timestamp", partialDay.start] },
-                          { $lte: ["$$c.timestamp", partialDay.end] },
-                        ],
-                      },
-                    },
-                  },
-                  as: "c",
-                  in: {
-                    timestamp: "$$c.timestamp",
-                    item: {
-                      id: "$$c.item.id",
-                      name: "$$c.item.name",
-                      standard: "$$c.item.standard",
-                    },
-                  },
-                },
-              },
-              ovStart: 1,
-              ovEnd: 1,
-              sliceMs: 1,
-            },
-          },
-        ])
+        .find(match)
+        .project({
+          _id: 0,
+          operator: 1,
+          machine: 1,
+          totalCount: 1,
+          runtime: 1,
+          workTime: 1,
+          counts: 1,
+          timestamps: 1
+        })
         .toArray();
 
-      // Process sessions to create operator totals with item-level data
+      logger.info(`[SESSION-AGG] Got ${sessions.length} sessions for ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
+
+      // Group by operator and sum up the totals
       const grouped = new Map();
-      for (const s of sessions) {
-        const opId = s.operator?.id;
+      
+      for (const session of sessions) {
+        const opId = session.operator?.id;
         if (!opId || opId === -1) continue;
         
         if (!grouped.has(opId)) {
           grouped.set(opId, {
-            operator: { id: opId, name: s.operator?.name || `Operator ${opId}` },
-            totalCount: 0,
-            totalWorkedMs: 0,
-            totalRuntimeMs: 0,
-            itemCounts: new Map(), // Track item-level counts
+            operatorId: opId,
+            operatorName: session.operator?.name || `Operator ${opId}`,
+            totalCounts: 0,
+            runtimeMs: 0,
+            workedTimeMs: 0,
+            itemCounts: new Map()
           });
         }
+        
         const bucket = grouped.get(opId);
-
-        if (!s.sliceMs || s.sliceMs <= 0) continue;
-
-        bucket.totalRuntimeMs += s.sliceMs;
-        bucket.totalWorkedMs += s.sliceMs; // For operators, worked time = runtime
-
-        const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
-        for (const c of counts) {
-          bucket.totalCount += 1;
-          
-          // Track item-level counts
-          const itemId = c.item?.id;
-          const itemName = c.item?.name;
-          const itemStandard = c.item?.standard;
-          
-          if (itemId) {
-            const key = `${itemId}-${itemName}`;
+        
+        // Use the pre-calculated values from the session document
+        bucket.totalCounts += session.totalCount || 0;
+        bucket.runtimeMs += (session.runtime || 0) * 1000; // Convert seconds to ms
+        bucket.workedTimeMs += (session.workTime || 0) * 1000; // Convert seconds to ms
+        
+        // Track item-level counts
+        if (Array.isArray(session.counts)) {
+          for (const count of session.counts) {
+            const itemId = count.item?.id;
+            if (!itemId) continue;
+            
+            const key = `${itemId}`;
             if (!bucket.itemCounts.has(key)) {
               bucket.itemCounts.set(key, {
                 itemId: itemId,
-                itemName: itemName,
-                itemStandard: itemStandard || 0,
+                itemName: count.item?.name || 'Unknown',
+                itemStandard: count.item?.standard || 0,
                 count: 0
               });
             }
@@ -5802,37 +5780,36 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         }
       }
 
-      // Convert grouped data to totals format with item-level data
+      // Convert to output format
       for (const [opId, bucket] of grouped) {
         const itemTotals = [];
-        
-        // Convert item counts to item totals format
         for (const [key, itemData] of bucket.itemCounts) {
           itemTotals.push({
             itemId: itemData.itemId,
             itemName: itemData.itemName,
             itemStandard: itemData.itemStandard,
             totalCounts: itemData.count,
-            workedTimeMs: 0, // Will be calculated later based on operator's worked time
+            workedTimeMs: 0
           });
         }
         
         operators.push({
-          operatorId: opId,
-          operatorName: bucket.operator.name,
-          totalCounts: bucket.totalCount,
-          workedTimeMs: bucket.totalWorkedMs,
-          runtimeMs: bucket.totalRuntimeMs,
-          faultTimeMs: 0, // Simplified for partial days
+          operatorId: bucket.operatorId,
+          operatorName: bucket.operatorName,
+          totalCounts: bucket.totalCounts,
+          runtimeMs: bucket.runtimeMs,
+          workedTimeMs: bucket.workedTimeMs,
+          faultTimeMs: 0,
           pausedTimeMs: 0,
           totalFaults: 0,
           totalMisfeeds: 0,
           totalTimeCreditMs: 0,
-          itemTotals: itemTotals // Include item-level data
+          itemTotals: itemTotals
         });
       }
     }
     
+    logger.info(`[SESSION-AGG] Returning ${operators.length} operators`);
     return { operators };
   }
 
