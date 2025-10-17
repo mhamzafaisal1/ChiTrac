@@ -4767,14 +4767,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       if (!machineTotals.length) {
         return res.json({
           timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
-          results: [],
-          charts: {
-            statusStacked: { title:"Machine Status Stacked Bar", orientation:"vertical", xType:"category", xLabel:"Machine", yLabel:"Duration (hours)", series: [] },
-            efficiencyRanked: { title:"Ranked Efficiency% by Machine", orientation:"horizontal", xType:"category", xLabel:"Machine", yLabel:"Efficiency (%)", series:[{ id:"Efficiency", title:"Efficiency", type:"bar", data:[] }] },
-            itemsStacked: { title:"Item Stacked Bar by Machine", orientation:"vertical", xType:"category", xLabel:"Machine", yLabel:"Item Count", series: [] },
-            faultsStacked: { title:"Fault Stacked Bar by Machine", orientation:"vertical", xType:"category", xLabel:"Machine", yLabel:"Fault Duration (hours)", series: [] },
-            order: []
-          }
+          results: []
         });
       }
 
@@ -5302,14 +5295,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       if (operatorDataMap.size === 0) {
         return res.json({
           timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
-          results: [],
-          charts: {
-            statusStacked: { title:"Operator Status Stacked Bar", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Duration (hours)", series: [] },
-            efficiencyRanked: { title:"Ranked OEE% by Operator", orientation:"horizontal", xType:"category", xLabel:"Operator", yLabel:"OEE (%)", series:[{ id:"OEE", title:"OEE", type:"bar", data:[] }] },
-            itemsStacked: { title:"Item Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Item Count", series: [] },
-            faultsStacked: { title:"Fault Stacked Bar by Operator", orientation:"vertical", xType:"category", xLabel:"Operator", yLabel:"Fault Duration (hours)", series: [] },
-            order: []
-          }
+          results: []
         });
       }
 
