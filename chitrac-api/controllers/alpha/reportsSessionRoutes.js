@@ -5217,16 +5217,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       const { completeDays, partialDays } = split;
       
-      // ========== FIX #9: Performance - Single cache query for both entity types ==========
-      let operatorMachineCache = []; // operator-machine entities from cache
-      let operatorItemCache = [];    // operator-item entities from cache (NEW!)
+      // ========== Simplified hybrid logic: use cache for complete days, else sessions ==========
+      let operatorMachineCache = [];
+      let operatorItemCache = [];
+      let sessionData = { operators: [] };
+      let useCache = completeDays.length > 0;
       
-      if (completeDays.length > 0) {
+      if (useCache) {
         const dateStrings = completeDays.map(d => d.dateStr);
         const dateObjs = dateStrings.map(str => new Date(str + 'T00:00:00.000Z'));
         const cacheCollection = db.collection('totals-daily');
         
-        // Single query for both entity types with both date formats (50% less I/O)
+        // Single query for both entity types with both date formats
         const cacheQuery = {
           $or: [
             { dateObj: { $in: dateObjs } },
@@ -5236,7 +5238,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         };
         if (operatorId) cacheQuery.operatorId = operatorId;
         
-        logger.info(`[OPERATOR-CACHE] Querying cache for dates: ${dateStrings.join(', ')} (both date and dateObj fields)`);
+        logger.info(`[OPERATOR-CACHE] Querying cache for dates: ${dateStrings.join(', ')}`);
         const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
         
         // Split by entity type
@@ -5244,13 +5246,18 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         operatorItemCache = cacheDocs.filter(d => d.entityType === 'operator-item');
         
         logger.info(`[OPERATOR-CACHE] Retrieved ${operatorMachineCache.length} operator-machine + ${operatorItemCache.length} operator-item cache records`);
-      }
-      
-      // Get data from sessions for partial days
-      let sessionData = { operators: [] };
-      if (partialDays.length > 0) {
-        sessionData = await getOperatorSessionDataForPartialDays(partialDays, operatorId);
-        logger.info(`[OPERATOR-CACHE] Retrieved ${sessionData.operators.length} session operator records`);
+        
+        // If cache is empty, fallback to sessions for entire range
+        if (operatorMachineCache.length === 0 && operatorItemCache.length === 0) {
+          logger.warn(`[OPERATOR-CACHE] Cache empty, falling back to sessions for entire range`);
+          sessionData = await getOperatorSessionDataForPartialDays([{ start: exactStart, end: exactEnd }], operatorId);
+          logger.info(`[OPERATOR-CACHE] Session fallback returned ${sessionData.operators.length} operators`);
+        }
+      } else {
+        // No complete days, use sessions for entire range
+        logger.info(`[OPERATOR-CACHE] No complete days, using sessions for entire range`);
+        sessionData = await getOperatorSessionDataForPartialDays([{ start: exactStart, end: exactEnd }], operatorId);
+        logger.info(`[OPERATOR-CACHE] Sessions returned ${sessionData.operators.length} operators`);
       }
 
       // ========== FIX #4: Aggregate operator-machine data by (operatorId, date) first ==========
@@ -5283,17 +5290,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         }
       }
       
-      // Cap each operator to 24h per day
-      for (const [key, dayBucket] of groupedByOperatorDay) {
-        if (dayBucket.runtimeMs > 86400000) {
-          logger.warn(`[OPERATOR-CACHE] Operator ${dayBucket.operatorId} on ${dayBucket.date}: ${(dayBucket.runtimeMs/3600000).toFixed(1)}h runtime (>24h), capping`);
-          dayBucket.runtimeMs = 86400000;
-        }
-        if (dayBucket.workedTimeMs > 86400000) {
-          logger.warn(`[OPERATOR-CACHE] Operator ${dayBucket.operatorId} on ${dayBucket.date}: ${(dayBucket.workedTimeMs/3600000).toFixed(1)}h worked (>24h), capping`);
-          dayBucket.workedTimeMs = 86400000;
-        }
-      }
+      // No capping - use raw values from data
       
       // ========== Aggregate across all days for each operator ==========
       const operatorDataMap = new Map();
@@ -5369,59 +5366,13 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       logger.info(`[OPERATOR-CACHE] Aggregated ${operatorDataMap.size} operators`);
       
-      // Check if we have any data - with defensive fallback
+      // Return empty results if no data found
       if (operatorDataMap.size === 0) {
-        logger.warn(`[OPERATOR-CACHE] No cache data found — attempting session data fallback`);
-        
-        // Try session data as fallback when cache is missing
-        const partialDay = {
-          start: exactStart,
-          end: exactEnd
-        };
-        const sessionFallback = await getOperatorSessionDataForPartialDays([partialDay], operatorId);
-        
-        if (sessionFallback.operators.length > 0) {
-          logger.info(`[OPERATOR-CACHE] Session fallback found ${sessionFallback.operators.length} operator records`);
-          
-          // Process session data into operatorDataMap
-          for (const sessionOp of sessionFallback.operators) {
-            const opId = sessionOp.operatorId;
-            const opName = sessionOp.operatorName || `Operator ${opId}`;
-            opIdToName.set(opId, opName);
-            
-            if (!operatorDataMap.has(opId)) {
-              operatorDataMap.set(opId, {
-                operator: { id: opId, name: opName },
-                totalCount: 0,
-                totalWorkedMs: 0,
-                totalRuntimeMs: 0,
-                daysWorked: 0,
-                machinesWorked: new Set()
-              });
-            }
-            
-            const bucket = operatorDataMap.get(opId);
-            // Add session fallback data
-            bucket.totalCount += sessionOp.totalCounts || 0;
-            bucket.totalWorkedMs += sessionOp.workedTimeMs || 0;
-            bucket.totalRuntimeMs += sessionOp.runtimeMs || 0;
-            bucket.daysWorked += 1;
-            if (sessionOp.machineSerial) {
-              bucket.machinesWorked.add(sessionOp.machineSerial);
-            }
-          }
-          
-          logger.info(`[OPERATOR-CACHE] Session fallback aggregated ${operatorDataMap.size} operators`);
-        }
-        
-        // Final check after fallback attempt
-        if (operatorDataMap.size === 0) {
-          logger.warn(`[OPERATOR-CACHE] No data found even after session fallback — returning empty results`);
-          return res.json({
-            timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
-            results: []
-          });
-        }
+        logger.warn(`[OPERATOR-CACHE] No data found — returning empty results`);
+        return res.json({
+          timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+          results: []
+        });
       }
 
       // ---------- 2) Process operator data ----------
@@ -5487,7 +5438,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         for (const [itemId, item] of allItemsMap) {
           const hours = item.workedTimeMs / 3600000;
           const pph = hours > 0 ? item.totalCounts / hours : 0;
-          const eff = item.itemStandard > 0 ? pph / item.itemStandard : 0;
+          const eff = item.itemStandard ? pph / item.itemStandard : null;
           const weight = operatorData.totalCount > 0 ? item.totalCounts / operatorData.totalCount : 0;
           proratedStandard += weight * item.itemStandard;
           
@@ -5497,29 +5448,15 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             countTotal: item.totalCounts,
             workedTimeFormatted: formatMs(item.workedTimeMs),
             pph: Math.round(pph * 100) / 100,
-            efficiency: Math.round(eff * 10000) / 100,
+            efficiency: eff ? Math.round(eff * 10000) / 100 : null,
           };
         }
         
         // Calculate operator-level metrics
         const hours = operatorData.totalWorkedMs / 3600000;
         const operatorPph = hours > 0 ? operatorData.totalCount / hours : 0;
-        const operatorEff = proratedStandard > 0 ? operatorPph / proratedStandard : 0;
+        const operatorEff = proratedStandard ? operatorPph / proratedStandard : null;
         
-        // Final validation: cap to query window
-        const queryWindowMs = exactEnd.getTime() - exactStart.getTime();
-        let validatedRuntimeMs = operatorData.totalRuntimeMs;
-        let validatedWorkedMs = operatorData.totalWorkedMs;
-        
-        if (validatedRuntimeMs > queryWindowMs) {
-          logger.warn(`[DATA VALIDATION] Operator ${opId} runtime ${(validatedRuntimeMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
-          validatedRuntimeMs = queryWindowMs;
-        }
-        if (validatedWorkedMs > queryWindowMs) {
-          logger.warn(`[DATA VALIDATION] Operator ${opId} worked ${(validatedWorkedMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
-          validatedWorkedMs = queryWindowMs;
-        }
-
         // Skip operators with no actual production data
         if (operatorData.totalCount === 0) {
           logger.warn(`[OPERATOR-CACHE] Skipping operator ${opId} - no production counts`);
@@ -5531,13 +5468,13 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           sessions: [], // Empty array - no individual session details in cached version
           operatorSummary: {
             totalCount: operatorData.totalCount,
-            workedTimeMs: validatedWorkedMs,
-            workedTimeFormatted: formatMs(validatedWorkedMs),
-            runtimeMs: validatedRuntimeMs,
-            runtimeFormatted: formatMs(validatedRuntimeMs),
+            workedTimeMs: operatorData.totalWorkedMs || 0,
+            workedTimeFormatted: formatMs(operatorData.totalWorkedMs || 0),
+            runtimeMs: operatorData.totalRuntimeMs || 0,
+            runtimeFormatted: formatMs(operatorData.totalRuntimeMs || 0),
             pph: Math.round(operatorPph * 100) / 100,
-            proratedStandard: Math.round(proratedStandard * 100) / 100,
-            efficiency: Math.round(operatorEff * 10000) / 100,
+            proratedStandard: proratedStandard || null,
+            efficiency: operatorEff ? Math.round(operatorEff * 10000) / 100 : null,
             itemSummaries,
           },
         });
@@ -5775,7 +5712,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
                 count: 0
               });
             }
-            bucket.itemCounts.get(key).count += 1;
+            bucket.itemCounts.get(key).count += count.item?.count ?? 1;
+            bucket.itemCounts.get(key).itemStandard = count.item?.standard ?? bucket.itemCounts.get(key).itemStandard;
           }
         }
       }

@@ -68,11 +68,18 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
         if (sortHeaderId === 'Start Time') {
           return new Date(data[sortHeaderId]).getTime();
         }
-        if (sortHeaderId === 'Duration' || sortHeaderId === 'Total Duration') {
-          const [hours, minutes] = data[sortHeaderId].split(' ');
-          const h = parseInt(hours);
-          const m = parseInt(minutes);
-          return h * 60 + m;
+        // Handle all time-formatted columns (e.g., "1h 30m")
+        if (sortHeaderId === 'Duration' || sortHeaderId === 'Total Duration' || 
+            sortHeaderId === 'Total Time (Runtime)' || sortHeaderId === 'Runtime' ||
+            sortHeaderId === 'Worked Time' || sortHeaderId === 'Downtime') {
+          const value = data[sortHeaderId];
+          if (typeof value === 'string' && value.includes('h')) {
+            const [hours, minutes] = value.split(' ');
+            const h = parseInt(hours) || 0;
+            const m = parseInt(minutes) || 0;
+            return h * 60 + m;
+          }
+          return 0;
         }
         return data[sortHeaderId];
       };
