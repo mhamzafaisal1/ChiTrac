@@ -1,7 +1,7 @@
 // charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BarChartWithTooltipComponent, BarChartDataPoint } from '../../components/bar-chart-with-tooltip/bar-chart-with-tooltip.component';
+import { BarChartWithTooltipComponent, BarChartDataPoint } from '../../../../arch/bar-chart-with-tooltip/bar-chart-with-tooltip.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';

@@ -119,7 +119,7 @@ export class MachineAnalyticsService {
       .set('start', start)
       .set('end', end);
   
-    return this.http.get(`${this.apiUrl}/analytics/machines-summary-cached`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/machines-summary-daily-cached`, { params });
   }
 
   getMachineSummaryWithTimeframe(timeframe: string): Observable<any> {

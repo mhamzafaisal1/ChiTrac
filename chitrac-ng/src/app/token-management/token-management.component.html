@@ -1,0 +1,127 @@
+<div class="token-management-container">
+  <!-- Header -->
+  <div class="header">
+    <h2>API Token Management</h2>
+    <p class="subtitle">Create and manage permanent API tokens for data partners</p>
+  </div>
+
+  <!-- Create Token Form -->
+  <mat-card class="create-token-card">
+    <mat-card-header>
+      <mat-card-title>Create New Permanent Token</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="createTokenFormGroup" (ngSubmit)="onCreateToken()">
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Token Name</mat-label>
+            <input matInput formControlName="name" placeholder="e.g., Softrol Integration" required>
+            <mat-error *ngIf="createTokenFormGroup.get('name')?.hasError('required')">
+              Token name is required
+            </mat-error>
+            <mat-error *ngIf="createTokenFormGroup.get('name')?.hasError('minlength')">
+              Token name must be at least 3 characters
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Description (Optional)</mat-label>
+            <input matInput formControlName="description" placeholder="e.g., API access for Softrol data integration">
+            <mat-error *ngIf="createTokenFormGroup.get('description')?.hasError('maxlength')">
+              Description must be less than 200 characters
+            </mat-error>
+          </mat-form-field>
+
+          <button mat-raised-button color="primary" type="submit" [disabled]="!createTokenFormGroup.valid">
+            <mat-icon>add</mat-icon>
+            Create Token
+          </button>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Generated Token Dialog -->
+  <mat-card class="token-dialog" *ngIf="showTokenDialog && generatedToken">
+    <mat-card-header>
+      <mat-card-title>⚠️ Token Created - Copy Now!</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <p class="warning-text">
+        <strong>Important:</strong> This is the only time you'll see this token. Copy it now and store it securely.
+      </p>
+      <div class="token-display">
+        <code>{{ generatedToken }}</code>
+        <button mat-icon-button (click)="copyToken(generatedToken)" matTooltip="Copy to clipboard">
+          <mat-icon>content_copy</mat-icon>
+        </button>
+      </div>
+    </mat-card-content>
+    <mat-card-actions>
+      <button mat-raised-button color="accent" (click)="closeTokenDialog()">I've Copied the Token</button>
+    </mat-card-actions>
+  </mat-card>
+
+  <mat-divider></mat-divider>
+
+  <!-- Tokens Table -->
+  <div class="table-container">
+    <h3>Existing Tokens</h3>
+    
+    <table mat-table [dataSource]="dataSource" matSort class="tokens-table">
+      
+      <!-- Name Column -->
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header> Name </th>
+        <td mat-cell *matCellDef="let token"> {{ token.name }} </td>
+      </ng-container>
+
+      <!-- Description Column -->
+      <ng-container matColumnDef="description">
+        <th mat-header-cell *matHeaderCellDef> Description </th>
+        <td mat-cell *matCellDef="let token"> {{ token.description || '-' }} </td>
+      </ng-container>
+
+      <!-- Created At Column -->
+      <ng-container matColumnDef="createdAt">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header> Created </th>
+        <td mat-cell *matCellDef="let token"> {{ formatDate(token.createdAt) }} </td>
+      </ng-container>
+
+      <!-- Last Used Column -->
+      <ng-container matColumnDef="lastUsed">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header> Last Used </th>
+        <td mat-cell *matCellDef="let token"> {{ formatDate(token.lastUsed) }} </td>
+      </ng-container>
+
+      <!-- Usage Count Column -->
+      <ng-container matColumnDef="usageCount">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header> Usage Count </th>
+        <td mat-cell *matCellDef="let token"> {{ token.usageCount }} </td>
+      </ng-container>
+
+      <!-- Actions Column -->
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef> Actions </th>
+        <td mat-cell *matCellDef="let token">
+          <button mat-icon-button color="warn" (click)="deleteToken(token)" matTooltip="Deactivate token">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+
+      <!-- No data row -->
+      <tr class="mat-row" *matNoDataRow>
+        <td class="mat-cell" [attr.colspan]="displayedColumns.length">
+          No tokens created yet. Create your first token above.
+        </td>
+      </tr>
+    </table>
+
+    <mat-paginator [pageSizeOptions]="[5, 10, 25, 50]" showFirstLastButtons></mat-paginator>
+  </div>
+</div>
+

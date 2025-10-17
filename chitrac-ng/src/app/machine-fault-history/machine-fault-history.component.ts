@@ -20,7 +20,7 @@ import { MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { Subject, tap, takeUntil, debounceTime } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { DateTimePickerComponent } from '../components/date-time-picker/date-time-picker.component';
+import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { FaultHistoryService } from '../services/fault-history.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
