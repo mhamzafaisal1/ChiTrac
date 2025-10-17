@@ -4750,15 +4750,20 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       if (completeDays.length > 0) {
         const dateStrings = completeDays.map(d => d.dateStr);
+        const dateObjs = dateStrings.map(str => new Date(str + 'T00:00:00.000Z'));
         const cacheCollection = db.collection('totals-daily');
         
-        // Single query for both entity types (50% less I/O)
+        // Single query for both entity types with both date formats (50% less I/O)
         const cacheQuery = {
-          date: { $in: dateStrings },
+          $or: [
+            { dateObj: { $in: dateObjs } },
+            { date: { $in: dateStrings } }
+          ],
           entityType: { $in: ['machine', 'machine-item'] }
         };
         if (serial) cacheQuery.machineSerial = parseInt(serial);
         
+        logger.info(`[MACHINE-CACHE] Querying cache for dates: ${dateStrings.join(', ')} (both date and dateObj fields)`);
         const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
         
         // Split by entity type
@@ -4782,33 +4787,29 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       logger.info(`[MACHINE-CACHE] After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
 
       if (!machineTotals.length) {
-        logger.warn(`[MACHINE-CACHE] No data found — attempting fallback cache query for ${normalizedStart.toISODate()}`);
+        logger.warn(`[MACHINE-CACHE] No cache data found — attempting session data fallback`);
         
-        // Try one more cache query as a safety net
-        const fallbackCache = await db.collection('totals-daily').find({
-          date: normalizedStart.toISODate(),
-          entityType: { $in: ['machine', 'machine-item'] },
-          ...(serial ? { machineSerial: parseInt(serial) } : {})
-        }).toArray();
+        // Try session data as fallback when cache is missing
+        const partialDay = {
+          start: exactStart,
+          end: exactEnd
+        };
+        const sessionFallback = await getSessionDataForPartialDays([partialDay], serial);
         
-        if (fallbackCache.length > 0) {
-          logger.info(`[MACHINE-CACHE] Fallback found ${fallbackCache.length} records, re-processing...`);
+        if (sessionFallback.machines.length > 0) {
+          logger.info(`[MACHINE-CACHE] Session fallback found ${sessionFallback.machines.length} machine records`);
           
-          // Re-process fallback data
-          machineCache = fallbackCache.filter(d => d.entityType === 'machine');
-          machineItemCache = fallbackCache.filter(d => d.entityType === 'machine-item');
-          
-          // Re-combine with empty session data
-          const recombined = combineHybridData(machineCache, machineItemCache, { machines: [], machineItems: [] });
+          // Re-combine with session data
+          const recombined = combineHybridData([], [], sessionFallback);
           machineTotals = recombined.machines;
           machineItemTotals = recombined.machineItems;
           
-          logger.info(`[MACHINE-CACHE] Fallback resulted in ${machineTotals.length} machines, ${machineItemTotals.length} machine-items`);
+          logger.info(`[MACHINE-CACHE] Session fallback resulted in ${machineTotals.length} machines, ${machineItemTotals.length} machine-items`);
         }
         
         // Final check after fallback attempt
         if (!machineTotals.length) {
-          logger.warn(`[MACHINE-CACHE] No data found even after fallback — returning empty results`);
+          logger.warn(`[MACHINE-CACHE] No data found even after session fallback — returning empty results`);
           return res.json({
             timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
             results: []
@@ -5212,15 +5213,20 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       if (completeDays.length > 0) {
         const dateStrings = completeDays.map(d => d.dateStr);
+        const dateObjs = dateStrings.map(str => new Date(str + 'T00:00:00.000Z'));
         const cacheCollection = db.collection('totals-daily');
         
-        // Single query for both entity types (50% less I/O)
+        // Single query for both entity types with both date formats (50% less I/O)
         const cacheQuery = {
-          date: { $in: dateStrings },
+          $or: [
+            { dateObj: { $in: dateObjs } },
+            { date: { $in: dateStrings } }
+          ],
           entityType: { $in: ['operator-machine', 'operator-item'] }
         };
         if (operatorId) cacheQuery.operatorId = operatorId;
         
+        logger.info(`[OPERATOR-CACHE] Querying cache for dates: ${dateStrings.join(', ')} (both date and dateObj fields)`);
         const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
         
         // Split by entity type
@@ -5355,55 +5361,22 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       // Check if we have any data - with defensive fallback
       if (operatorDataMap.size === 0) {
-        logger.warn(`[OPERATOR-CACHE] No data found — attempting fallback cache query for ${normalizedStart.toISODate()}`);
+        logger.warn(`[OPERATOR-CACHE] No cache data found — attempting session data fallback`);
         
-        // Try one more cache query as a safety net
-        const fallbackCache = await db.collection('totals-daily').find({
-          date: normalizedStart.toISODate(),
-          entityType: { $in: ['operator-machine', 'operator-item'] },
-          ...(operatorId ? { operatorId: operatorId } : {})
-        }).toArray();
+        // Try session data as fallback when cache is missing
+        const partialDay = {
+          start: exactStart,
+          end: exactEnd
+        };
+        const sessionFallback = await getOperatorSessionDataForPartialDays([partialDay], operatorId);
         
-        if (fallbackCache.length > 0) {
-          logger.info(`[OPERATOR-CACHE] Fallback found ${fallbackCache.length} records, re-processing...`);
+        if (sessionFallback.operators.length > 0) {
+          logger.info(`[OPERATOR-CACHE] Session fallback found ${sessionFallback.operators.length} operator records`);
           
-          // Re-process fallback data
-          operatorMachineCache = fallbackCache.filter(d => d.entityType === 'operator-machine');
-          operatorItemCache = fallbackCache.filter(d => d.entityType === 'operator-item');
-          
-          // Re-run the aggregation logic with fallback data
-          const groupedByOperatorDay = new Map();
-          
-          for (const record of operatorMachineCache) {
-            const key = `${record.operatorId}-${record.date}`;
-            
-            if (!groupedByOperatorDay.has(key)) {
-              groupedByOperatorDay.set(key, {
-                operatorId: record.operatorId,
-                operatorName: record.operatorName,
-                date: record.date,
-                runtimeMs: 0,
-                workedTimeMs: 0,
-                totalCounts: 0,
-                totalMisfeeds: 0,
-                machines: new Set()
-              });
-            }
-            
-            const dayBucket = groupedByOperatorDay.get(key);
-            dayBucket.runtimeMs = Math.min(dayBucket.runtimeMs + (record.runtimeMs || 0), 86400000);
-            dayBucket.workedTimeMs = Math.min(dayBucket.workedTimeMs + (record.workedTimeMs || 0), 86400000);
-            dayBucket.totalCounts += record.totalCounts || 0;
-            dayBucket.totalMisfeeds += record.totalMisfeeds || 0;
-            if (record.machineSerial) {
-              dayBucket.machines.add(record.machineSerial);
-            }
-          }
-          
-          // Aggregate into operatorDataMap
-          for (const [key, dayBucket] of groupedByOperatorDay) {
-            const opId = dayBucket.operatorId;
-            const opName = dayBucket.operatorName;
+          // Process session data into operatorDataMap
+          for (const sessionOp of sessionFallback.operators) {
+            const opId = sessionOp.operatorId;
+            const opName = sessionOp.operatorName || `Operator ${opId}`;
             opIdToName.set(opId, opName);
             
             if (!operatorDataMap.has(opId)) {
@@ -5418,37 +5391,21 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             }
             
             const bucket = operatorDataMap.get(opId);
-            bucket.totalCount += dayBucket.totalCounts;
-            bucket.totalWorkedMs += dayBucket.workedTimeMs;
-            bucket.totalRuntimeMs += dayBucket.runtimeMs;
+            bucket.totalCount += sessionOp.totalCounts || 0;
+            bucket.totalWorkedMs += sessionOp.workedTimeMs || 0;
+            bucket.totalRuntimeMs += sessionOp.runtimeMs || 0;
             bucket.daysWorked += 1;
-            dayBucket.machines.forEach(m => bucket.machinesWorked.add(m));
-          }
-          
-          // Add operators from item cache
-          for (const opItem of operatorItemCache) {
-            const opId = opItem.operatorId;
-            const opName = opItem.operatorName || `Operator ${opId}`;
-            opIdToName.set(opId, opName);
-            
-            if (!operatorDataMap.has(opId)) {
-              operatorDataMap.set(opId, {
-                operator: { id: opId, name: opName },
-                totalCount: 0,
-                totalWorkedMs: 0,
-                totalRuntimeMs: 0,
-                daysWorked: 0,
-                machinesWorked: new Set(),
-              });
+            if (sessionOp.machineSerial) {
+              bucket.machinesWorked.add(sessionOp.machineSerial);
             }
           }
           
-          logger.info(`[OPERATOR-CACHE] Fallback aggregated ${operatorDataMap.size} operators`);
+          logger.info(`[OPERATOR-CACHE] Session fallback aggregated ${operatorDataMap.size} operators`);
         }
         
         // Final check after fallback attempt
         if (operatorDataMap.size === 0) {
-          logger.warn(`[OPERATOR-CACHE] No data found even after fallback — returning empty results`);
+          logger.warn(`[OPERATOR-CACHE] No data found even after session fallback — returning empty results`);
           return res.json({
             timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
             results: []
