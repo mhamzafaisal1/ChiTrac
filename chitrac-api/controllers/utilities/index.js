@@ -1951,5 +1951,15 @@ function constructor(server) {
     }
   });
 
+  // Environment variables route
+  router.get("/env", (req, res) => {
+    try {
+      res.json(process.env);
+    } catch (error) {
+      logger.error(`Error retrieving environment variables:`, error);
+      res.status(500).json({ error: "Failed to retrieve environment variables" });
+    }
+  });
+
   return router;
 }

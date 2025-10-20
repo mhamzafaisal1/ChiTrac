@@ -15,6 +15,13 @@ module.exports = function (server) {
   }
 
   function verifyJwtMiddleware(req, res, next) {
+    // Check if API token check is disabled via environment variable
+    if (config.enableApiTokenCheck === false) {
+      logger?.debug?.("API token check is disabled - bypassing authentication");
+      req.tokenPayload = { bypassed: true };
+      return next();
+    }
+
     try {
       const token = extractToken(req);
       if (!token) return res.status(401).json({ valid: false, error: "Missing token" });

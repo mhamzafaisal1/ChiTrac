@@ -17,6 +17,13 @@ function constructor(server) {
 
   // JWT verification middleware
   function verifyJwtMiddleware(req, res, next) {
+    // Check if API token check is disabled via environment variable
+    if (config.enableApiTokenCheck === false) {
+      logger?.debug?.("API token check is disabled - bypassing authentication");
+      req.tokenPayload = { bypassed: true };
+      return next();
+    }
+
     try {
       const authHeader = req.headers["authorization"] || req.headers["Authorization"];
       let token = null;
