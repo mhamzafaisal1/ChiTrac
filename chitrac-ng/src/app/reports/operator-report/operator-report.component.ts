@@ -134,8 +134,8 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
         'Total Time (Runtime)': `${summary.runtimeFormatted.hours}h ${summary.runtimeFormatted.minutes}m`,
         'Total Count': summary.totalCount,
         'PPH': summary.pph,
-        'Standard': summary.proratedStandard,
-        'Efficiency': `${summary.efficiency}%`
+        'Standard': summary.proratedStandard ? Number(summary.proratedStandard).toFixed(2) : 'N/A',
+        'Efficiency': summary.efficiency !== null ? `${summary.efficiency}%` : 'N/A'
       });
 
       // Add item summaries under this operator
@@ -146,14 +146,25 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
           'Total Time (Runtime)': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
           'Total Count': item.countTotal,
           'PPH': item.pph,
-          'Standard': item.standard,
-          'Efficiency': `${item.efficiency}%`
+          'Standard': item.standard ? Number(item.standard).toFixed(2) : 'N/A',
+          'Efficiency': item.efficiency !== null ? `${item.efficiency}%` : 'N/A'
         });
       });
     });
 
     this.columns = Object.keys(formattedData[0]);
     this.rows = formattedData;
+  }
+
+  getEfficiencyClass(value: any, column: string): string {
+    if (column === 'Efficiency' && typeof value === 'string' && value.includes('%')) {
+      const num = parseInt(value.replace('%', ''));
+      if (isNaN(num)) return '';
+      if (num >= 90) return 'green';
+      if (num >= 70) return 'yellow';
+      return 'red';
+    }
+    return '';
   }
 
   async downloadOperatorSummaryPdf(): Promise<void> {
