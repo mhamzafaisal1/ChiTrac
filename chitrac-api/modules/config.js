@@ -29,5 +29,9 @@ module.exports = {
   inDev: process.env.NODE_ENV === 'development',
   
   // Hybrid query configuration
-  hybridThresholdHours: parseInt(process.env.HYBRID_THRESHOLD_HOURS, 10) || 36
+  hybridThresholdHours: parseInt(process.env.HYBRID_THRESHOLD_HOURS, 10) || 36,
+  
+  // API Security Settings
+  // Enable/disable API token authentication (default: true)
+  enableApiTokenCheck: process.env.ENABLE_API_TOKEN_CHECK !== 'false'
 };
