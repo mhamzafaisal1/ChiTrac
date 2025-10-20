@@ -66,6 +66,448 @@ function constructor(server) {
     return itemsArray;
   }
 
+  // ==================== CACHE BUILDER HELPER FUNCTIONS ====================
+  // Copied from machine-simulator/simulator-cache-builder.js for daily totals calculation
+
+  /**
+   * Helper function to calculate overlap factor between session and query window
+   */
+  function overlap(sStart, sEnd, wStart, wEnd) {
+    const ss = new Date(sStart);
+    const se = new Date(sEnd || wEnd);
+    const os = ss > wStart ? ss : wStart;
+    const oe = se < wEnd ? se : wEnd;
+    const ovSec = Math.max(0, (oe - os) / 1000);
+    const fullSec = Math.max(0, (se - ss) / 1000);
+    const f = fullSec > 0 ? ovSec / fullSec : 0;
+    return { ovSec, fullSec, factor: f };
+  }
+
+  /**
+   * Safe number extraction
+   */
+  function safe(n) {
+    return (typeof n === "number" && isFinite(n) ? n : 0);
+  }
+
+  /**
+   * Builds daily totals for a machine using session arrays
+   */
+  function buildMachineDailyTotal({ machineSerial, machineName, machineSessions, faultSessions, queryStart, queryEnd }) {
+    try {
+      const SYSTEM_TIMEZONE = 'America/Chicago';
+      
+      // Calculate totals using overlap logic
+      let runtimeSec = 0, workedTimeSec = 0, timeCreditSec = 0;
+      let totalCounts = 0, totalMisfeeds = 0;
+
+      for (const s of machineSessions) {
+        const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, queryStart, queryEnd);
+        runtimeSec += safe(s.runtime) * factor;
+        workedTimeSec += safe(s.workTime) * factor;
+        timeCreditSec += safe(s.totalTimeCredit) * factor;
+        totalCounts += safe(s.totalCount) * factor;
+        totalMisfeeds += safe(s.misfeedCount) * factor;
+      }
+
+      // Calculate fault time and count
+      let faultTimeSec = 0;
+      let totalFaults = 0;
+
+      for (const fs of faultSessions) {
+        const sStart = fs.timestamps?.start;
+        const sEnd = fs.timestamps?.end || queryEnd;
+        const { ovSec, fullSec } = overlap(sStart, sEnd, queryStart, queryEnd);
+        
+        if (ovSec === 0) continue;
+        else totalFaults += 1;
+        
+        const ft = safe(fs.faulttime);
+        if (ft > 0 && fullSec > 0) {
+          const factor = ovSec / fullSec;
+          faultTimeSec += ft * factor;
+        } else {
+          faultTimeSec += ovSec;
+        }
+      }
+
+      // Calculate paused time with proper clamping
+      const windowMs = queryEnd - queryStart;
+      const runtimeMs = Math.round(runtimeSec * 1000);
+      const faultTimeMs = Math.round(faultTimeSec * 1000);
+      const workedTimeMs = Math.round(workedTimeSec * 1000);
+      const timeCreditMs = Math.round(timeCreditSec * 1000);
+      
+      const nonRunMs = Math.max(0, windowMs - runtimeMs);
+      const faultClampedMs = Math.min(faultTimeMs, nonRunMs);
+      const pausedTimeMs = Math.max(0, nonRunMs - faultClampedMs);
+      
+      const dtLocal = DateTime.fromJSDate(queryStart, { zone: SYSTEM_TIMEZONE });
+      const dateStr = dtLocal.toFormat('yyyy-MM-dd');
+      const dateObj = dtLocal.startOf('day').toUTC().toJSDate();
+
+      return {
+        _id: `machine-${machineSerial}-${dateStr}`,
+        entityType: 'machine',
+        machineSerial: machineSerial,
+        machineName: machineName,
+        date: dateStr,
+        dateObj: dateObj,
+        
+        runtimeMs: runtimeMs,
+        faultTimeMs: faultClampedMs,
+        workedTimeMs: workedTimeMs,
+        pausedTimeMs: pausedTimeMs,
+        
+        totalFaults: totalFaults,
+        totalCounts: Math.round(totalCounts),
+        totalMisfeeds: Math.round(totalMisfeeds),
+        totalTimeCreditMs: timeCreditMs,
+        
+        lastUpdated: DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate(),
+        timeRange: { start: queryStart, end: queryEnd },
+        version: '1.0.0'
+      };
+    } catch (error) {
+      logger.error(`Error building machine daily total for machine ${machineSerial}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Builds daily totals for operator-machine combinations
+   */
+  function buildOperatorMachineDailyTotal({ operatorId, operatorName, machineSerial, machineName, operatorSessions, queryStart, queryEnd }) {
+    try {
+      const SYSTEM_TIMEZONE = 'America/Chicago';
+      
+      let workedTimeSec = 0, timeCreditSec = 0;
+      let totalCounts = 0, totalMisfeeds = 0;
+
+      for (const s of operatorSessions) {
+        const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, queryStart, queryEnd);
+        workedTimeSec += safe(s.workTime) * factor;
+        timeCreditSec += safe(s.totalTimeCredit) * factor;
+        totalCounts += safe(s.totalCount) * factor;
+        totalMisfeeds += safe(s.misfeedCount) * factor;
+      }
+
+      const windowMs = queryEnd - queryStart;
+      const runtimeMs = Math.round(workedTimeSec * 1000);
+      const workedTimeMs = Math.round(workedTimeSec * 1000);
+      const timeCreditMs = Math.round(timeCreditSec * 1000);
+      const faultTimeMs = 0;
+      const pausedTimeMs = Math.max(0, windowMs - runtimeMs);
+      
+      const dtLocal = DateTime.fromJSDate(queryStart, { zone: SYSTEM_TIMEZONE });
+      const dateStr = dtLocal.toFormat('yyyy-MM-dd');
+      const dateObj = dtLocal.startOf('day').toUTC().toJSDate();
+
+      return {
+        _id: `operator-machine-${operatorId}-${machineSerial}-${dateStr}`,
+        entityType: 'operator-machine',
+        operatorId: operatorId,
+        operatorName: operatorName,
+        machineSerial: machineSerial,
+        machineName: machineName,
+        date: dateStr,
+        dateObj: dateObj,
+        
+        runtimeMs: runtimeMs,
+        faultTimeMs: faultTimeMs,
+        workedTimeMs: workedTimeMs,
+        pausedTimeMs: pausedTimeMs,
+        
+        totalFaults: 0,
+        totalCounts: Math.round(totalCounts),
+        totalMisfeeds: Math.round(totalMisfeeds),
+        totalTimeCreditMs: timeCreditMs,
+        
+        lastUpdated: DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate(),
+        timeRange: { start: queryStart, end: queryEnd },
+        version: '1.0.0'
+      };
+    } catch (error) {
+      logger.error(`Error building operator daily total for operator ${operatorId} on machine ${machineSerial}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Builds daily totals for item-machine combinations
+   */
+  function buildItemMachineDailyTotal({ itemId, itemName, machineSerial, machineName, itemSessions, queryStart, queryEnd }) {
+    try {
+      const SYSTEM_TIMEZONE = 'America/Chicago';
+      
+      let workedTimeSec = 0, timeCreditSec = 0;
+      let totalCounts = 0, totalMisfeeds = 0;
+      let itemStandard = 0;
+
+      for (const s of itemSessions) {
+        const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, queryStart, queryEnd);
+        workedTimeSec += safe(s.workTime) * factor;
+        timeCreditSec += safe(s.totalTimeCredit) * factor;
+        totalCounts += safe(s.totalCount) * factor;
+        totalMisfeeds += safe(s.misfeedCount) * factor;
+        
+        if (!itemStandard && s.item?.standard) {
+          itemStandard = s.item.standard;
+        }
+      }
+
+      const windowMs = queryEnd - queryStart;
+      const runtimeMs = Math.round(workedTimeSec * 1000);
+      const workedTimeMs = Math.round(workedTimeSec * 1000);
+      const timeCreditMs = Math.round(timeCreditSec * 1000);
+      const faultTimeMs = 0;
+      const pausedTimeMs = Math.max(0, windowMs - runtimeMs);
+      
+      const dtLocal = DateTime.fromJSDate(queryStart, { zone: SYSTEM_TIMEZONE });
+      const dateStr = dtLocal.toFormat('yyyy-MM-dd');
+      const dateObj = dtLocal.startOf('day').toUTC().toJSDate();
+
+      return {
+        _id: `machine-item-${machineSerial}-${itemId}-${dateStr}`,
+        entityType: 'machine-item',
+        itemId: itemId,
+        itemName: itemName || `Item ${itemId}`,
+        machineSerial: machineSerial,
+        machineName: machineName || `Serial ${machineSerial}`,
+        date: dateStr,
+        dateObj: dateObj,
+        
+        runtimeMs: runtimeMs,
+        faultTimeMs: faultTimeMs,
+        workedTimeMs: workedTimeMs,
+        pausedTimeMs: pausedTimeMs,
+        
+        totalFaults: 0,
+        totalCounts: Math.round(totalCounts),
+        totalMisfeeds: Math.round(totalMisfeeds),
+        totalTimeCreditMs: timeCreditMs,
+        
+        itemStandard: itemStandard,
+        
+        lastUpdated: DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate(),
+        timeRange: { start: queryStart, end: queryEnd },
+        version: '1.0.0'
+      };
+    } catch (error) {
+      logger.error(`Error building item-machine daily total for item ${itemId} on machine ${machineSerial}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Builds daily totals for items aggregated plant-wide
+   */
+  function buildItemDailyTotal({ itemId, itemName, itemStandard, machineSerial, itemSessions, queryStart, queryEnd, source = 'backfill' }) {
+    try {
+      const SYSTEM_TIMEZONE = 'America/Chicago';
+      
+      let workedTimeSec = 0, timeCreditSec = 0;
+      let totalCounts = 0, totalMisfeeds = 0;
+      let totalRuntimeSec = 0;
+
+      for (const s of itemSessions) {
+        const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, queryStart, queryEnd);
+        workedTimeSec += safe(s.workTime) * factor;
+        timeCreditSec += safe(s.totalTimeCredit) * factor;
+        totalCounts += safe(s.totalCount) * factor;
+        totalMisfeeds += safe(s.misfeedCount) * factor;
+        totalRuntimeSec += safe(s.runtime) * factor;
+      }
+
+      const workedTimeMs = Math.round(workedTimeSec * 1000);
+      const timeCreditMs = Math.round(timeCreditSec * 1000);
+      const runtimeMs = Math.round(totalRuntimeSec * 1000);
+      
+      const dtLocal = DateTime.fromJSDate(queryStart, { zone: SYSTEM_TIMEZONE });
+      const dateStr = dtLocal.toFormat('yyyy-MM-dd');
+      const dateObj = dtLocal.startOf('day').toUTC().toJSDate();
+
+      return {
+        _id: `item-${itemId}-${dateStr}`,
+        entityType: 'item',
+        itemId: itemId,
+        itemName: itemName || `Item ${itemId}`,
+        date: dateStr,
+        dateObj: dateObj,
+        
+        runtimeMs: runtimeMs,
+        workedTimeMs: workedTimeMs,
+        totalTimeCreditMs: timeCreditMs,
+        totalCounts: Math.round(totalCounts),
+        totalMisfeeds: Math.round(totalMisfeeds),
+        
+        itemStandard: itemStandard,
+        contributingMachine: machineSerial,
+        source: source,
+        
+        lastUpdated: DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate(),
+        timeRange: { start: queryStart, end: queryEnd },
+        version: '1.0.0'
+      };
+    } catch (error) {
+      logger.error(`Error building item daily total for item ${itemId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Builds daily totals for operator-item combinations
+   */
+  function buildOperatorItemDailyTotal({ operatorId, operatorName, itemId, itemName, machineSerial, machineName, operatorSessions, queryStart, queryEnd, source = 'backfill' }) {
+    try {
+      const SYSTEM_TIMEZONE = 'America/Chicago';
+      
+      let workedTimeSec = 0, timeCreditSec = 0;
+      let totalCounts = 0, totalMisfeeds = 0;
+      let itemStandard = 0;
+
+      for (const s of operatorSessions) {
+        const itemIndex = s.items?.findIndex(it => it.id === itemId);
+        
+        if (itemIndex === -1 || itemIndex === undefined) {
+          continue;
+        }
+
+        const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, queryStart, queryEnd);
+        
+        const countForItem = safe(s.totalCountByItem?.[itemIndex] || 0);
+        const timeCreditForItem = safe(s.timeCreditByItem?.[itemIndex] || 0);
+        
+        totalCounts += countForItem * factor;
+        timeCreditSec += timeCreditForItem * factor;
+        
+        const misfeedsForItem = (s.misfeeds || []).filter(m => m.item?.id === itemId).length;
+        totalMisfeeds += misfeedsForItem * factor;
+        
+        const totalCountInSession = safe(s.totalCount || 0);
+        if (totalCountInSession > 0) {
+          const itemProportion = countForItem / totalCountInSession;
+          workedTimeSec += safe(s.workTime) * factor * itemProportion;
+        }
+        
+        if (!itemStandard && s.items?.[itemIndex]?.standard) {
+          itemStandard = s.items[itemIndex].standard;
+        }
+      }
+
+      const workedTimeMs = Math.round(workedTimeSec * 1000);
+      const timeCreditMs = Math.round(timeCreditSec * 1000);
+      
+      const dtLocal = DateTime.fromJSDate(queryStart, { zone: SYSTEM_TIMEZONE });
+      const dateStr = dtLocal.toFormat('yyyy-MM-dd');
+      const dateObj = dtLocal.startOf('day').toUTC().toJSDate();
+
+      return {
+        _id: `operator-item-${operatorId}-${itemId}-${machineSerial}-${dateStr}`,
+        entityType: 'operator-item',
+        operatorId: operatorId,
+        operatorName: operatorName,
+        itemId: itemId,
+        itemName: itemName || `Item ${itemId}`,
+        machineSerial: machineSerial,
+        machineName: machineName,
+        date: dateStr,
+        dateObj: dateObj,
+        
+        workedTimeMs: workedTimeMs,
+        totalTimeCreditMs: timeCreditMs,
+        
+        totalCounts: Math.round(totalCounts),
+        totalMisfeeds: Math.round(totalMisfeeds),
+        
+        itemStandard: itemStandard,
+        source: source,
+        
+        lastUpdated: DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate(),
+        timeRange: { start: queryStart, end: queryEnd },
+        version: '1.0.0'
+      };
+    } catch (error) {
+      logger.error(`Error building operator-item daily total for operator ${operatorId} and item ${itemId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Upserts daily totals to cache collection
+   */
+  async function upsertDailyTotalsToCache(db, dailyTotals, collectionName = 'totals-daily') {
+    try {
+      if (!dailyTotals || dailyTotals.length === 0) {
+        logger.warn('No daily totals to upsert');
+        return { upsertedCount: 0, modifiedCount: 0 };
+      }
+
+      const cacheCollection = db.collection(collectionName);
+      
+      logger.info(`Upserting ${dailyTotals.length} records to ${collectionName}...`);
+      
+      const ops = dailyTotals.map(total => {
+        if (total.entityType === 'item') {
+          return {
+            updateOne: {
+              filter: { _id: total._id },
+              update: { 
+                $inc: {
+                  runtimeMs: total.runtimeMs || 0,
+                  workedTimeMs: total.workedTimeMs || 0,
+                  totalTimeCreditMs: total.totalTimeCreditMs || 0,
+                  totalCounts: total.totalCounts || 0,
+                  totalMisfeeds: total.totalMisfeeds || 0
+                },
+                $set: {
+                  entityType: total.entityType,
+                  itemId: total.itemId,
+                  itemName: total.itemName,
+                  date: total.date,
+                  dateObj: total.dateObj,
+                  itemStandard: total.itemStandard,
+                  source: total.source,
+                  lastUpdated: total.lastUpdated,
+                  timeRange: total.timeRange,
+                  version: total.version
+                },
+                $addToSet: {
+                  contributingMachines: total.contributingMachine
+                }
+              },
+              upsert: true
+            }
+          };
+        } else {
+          return {
+            updateOne: {
+              filter: { _id: total._id },
+              update: { 
+                $set: total
+              },
+              upsert: true
+            }
+          };
+        }
+      });
+
+      const result = await cacheCollection.bulkWrite(ops, { ordered: false });
+      
+      logger.info(`Upserted ${result.upsertedCount} new, modified ${result.modifiedCount} existing records`);
+      
+      return {
+        upsertedCount: result.upsertedCount,
+        modifiedCount: result.modifiedCount
+      };
+    } catch (error) {
+      logger.error('Error upserting daily totals to cache:', error);
+      throw error;
+    }
+  }
+
+  // ==================== END CACHE BUILDER HELPER FUNCTIONS ====================
+
   router.get("/backfill", async (req, res) => {
     try {
       // Step 1: Parse and validate input date
@@ -799,6 +1241,713 @@ function constructor(server) {
       res
         .status(500)
         .json({ error: "Failed to backfill sessions", details: error.message });
+    }
+  });
+
+  router.get("/backfill-totals", async (req, res) => {
+    try {
+      // Step 1: Parse and validate input date
+      const { date, overwrite } = req.query;
+      
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required (format: YYYY-MM-DD)" });
+      }
+
+      const inputDate = DateTime.fromISO(date, { zone: 'America/Chicago' });
+      if (!inputDate.isValid) {
+        return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
+      }
+
+      const allowOverwrite = overwrite === 'true';
+
+      // Calculate day boundaries
+      const dayStart = inputDate.startOf('day').toJSDate();
+      const dayEnd = inputDate.endOf('day').toJSDate();
+
+      logger.info(`Backfilling daily totals for ${date} (${dayStart.toISOString()} to ${dayEnd.toISOString()}) - Overwrite: ${allowOverwrite}`);
+
+      // Step 2: Get collection references
+      const machineSessionColl = db.collection('machine-session');
+      const operatorSessionColl = db.collection('operator-session');
+      const itemSessionColl = db.collection('item-session');
+      const faultSessionColl = db.collection('fault-session');
+      const totalsDailyColl = db.collection('totals-daily');
+      
+      // Step 3: Check for existing sessions
+      logger.info(`Checking for existing sessions on ${date}...`);
+      
+      const [machineSessions, operatorSessions, itemSessions, faultSessions] = await Promise.all([
+        machineSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray(),
+        operatorSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray(),
+        itemSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray(),
+        faultSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray()
+      ]);
+
+      const totalSessions = machineSessions.length + operatorSessions.length + itemSessions.length + faultSessions.length;
+      let sessionBackfillTriggered = false;
+
+      logger.info(`Found ${totalSessions} existing sessions (${machineSessions.length} machine, ${operatorSessions.length} operator, ${itemSessions.length} item, ${faultSessions.length} fault)`);
+
+      // Step 4: If no sessions found, trigger session backfill automatically
+      if (totalSessions === 0) {
+        logger.warn(`⚠️ No sessions found for ${date}. Triggering automatic session backfill...`);
+        sessionBackfillTriggered = true;
+
+        // Query state and count collections
+        const stateColl = db.collection('state');
+        const countColl = db.collection('count');
+
+        const allStates = await stateColl.find({
+          timestamp: { $gte: dayStart, $lte: dayEnd }
+        }).sort({ timestamp: 1 }).toArray();
+
+        const allCounts = await countColl.find({
+          timestamp: { $gte: dayStart, $lte: dayEnd }
+        }).sort({ timestamp: 1 }).toArray();
+
+        if (allStates.length === 0) {
+          return res.status(404).json({ 
+            error: "No state records found for this date. Cannot backfill sessions or totals.",
+            date: date
+          });
+        }
+
+        logger.info(`📊 Found ${allStates.length} state records and ${allCounts.length} count records`);
+        logger.info(`🔄 Running session backfill logic...`);
+
+        // Execute session backfill logic (reuse from /backfill route)
+        const statesByMachine = {};
+        for (const state of allStates) {
+          const serial = state.machine?.serial;
+          if (!serial) continue;
+          
+          if (!statesByMachine[serial]) {
+            statesByMachine[serial] = {
+              machine: state.machine,
+              states: []
+            };
+          }
+          statesByMachine[serial].states.push(state);
+        }
+
+        const countsByMachine = {};
+        for (const count of allCounts) {
+          const serial = count.machine?.serial;
+          if (!serial) continue;
+          
+          if (!countsByMachine[serial]) {
+            countsByMachine[serial] = [];
+          }
+          countsByMachine[serial].push(count);
+        }
+
+        const backfilledSessions = {
+          machineSessions: [],
+          operatorSessions: [],
+          itemSessions: [],
+          faultSessions: []
+        };
+
+        // Process each machine (simplified version - reusing session backfill logic)
+        for (const [serial, machineData] of Object.entries(statesByMachine)) {
+          const serialNum = parseInt(serial);
+          const states = machineData.states;
+          const counts = countsByMachine[serial] || [];
+
+          let currentMachineSession = null;
+          let currentOperatorSessions = new Map();
+          let currentItemSessions = new Map();
+          let currentFaultSession = null;
+
+          for (let i = 0; i < states.length; i++) {
+            const state = states[i];
+            const statusCode = state.status?.code;
+
+            if (statusCode === 1) {
+              if (!currentMachineSession) {
+                const itemsInProgram = extractItemsArray(state.program?.items);
+                const uniqueItemIds = [...new Set(itemsInProgram.map(it => it.id).filter(id => id && id > 0))];
+                
+                const itemsWithDetails = await Promise.all(
+                  uniqueItemIds.map(id => getItemDetails(db, id))
+                );
+
+                const operatorsWithNames = await Promise.all(
+                  (state.operators || [])
+                    .filter(op => op.id !== -1)
+                    .map(async (op) => ({
+                      id: op.id,
+                      name: await getOperatorName(db, op.id),
+                      station: op.station
+                    }))
+                );
+
+                currentMachineSession = {
+                  timestamps: { start: state.timestamp },
+                  counts: [],
+                  misfeeds: [],
+                  states: [state],
+                  items: itemsWithDetails,
+                  operators: operatorsWithNames,
+                  startState: state,
+                  machine: state.machine,
+                  program: {
+                    mode: state.program?.mode || "smallPiece",
+                    programNumber: state.program?.programNumber || 1,
+                    batchNumber: state.program?.batchNumber || 0,
+                    accountNumber: state.program?.accountNumber || 0,
+                    speed: state.program?.speed || 0,
+                    stations: state.program?.stations || 0
+                  },
+                  totalByItem: itemsWithDetails.map(() => 0),
+                  timeCreditByItem: itemsWithDetails.map(() => 0)
+                };
+
+                for (const op of operatorsWithNames) {
+                  const opSession = {
+                    timestamps: { start: state.timestamp },
+                    counts: [],
+                    misfeeds: [],
+                    states: [state],
+                    items: itemsWithDetails,
+                    operator: op,
+                    startState: state,
+                    machine: state.machine,
+                    program: currentMachineSession.program,
+                    runtime: 0,
+                    workTime: 0,
+                    totalCount: 0,
+                    misfeedCount: 0,
+                    totalCountByItem: itemsWithDetails.map(() => 0),
+                    timeCreditByItem: itemsWithDetails.map(() => 0),
+                    totalTimeCredit: 0
+                  };
+                  currentOperatorSessions.set(op.id, opSession);
+                }
+
+                for (const item of itemsWithDetails) {
+                  const itemSession = {
+                    timestamps: { start: state.timestamp },
+                    counts: [],
+                    misfeeds: [],
+                    states: [state],
+                    item: item,
+                    operators: operatorsWithNames,
+                    startState: state,
+                    machine: state.machine,
+                    program: currentMachineSession.program,
+                    activeStations: operatorsWithNames.length,
+                    runtime: 0,
+                    workTime: 0,
+                    totalCount: 0,
+                    misfeedCount: 0,
+                    totalTimeCredit: 0
+                  };
+                  currentItemSessions.set(item.id, itemSession);
+                }
+              } else {
+                currentMachineSession.states.push(state);
+                currentOperatorSessions.forEach(opSession => opSession.states.push(state));
+                currentItemSessions.forEach(itemSession => itemSession.states.push(state));
+              }
+
+              if (currentFaultSession) {
+                currentFaultSession.timestamps.end = state.timestamp;
+                currentFaultSession.endState = state;
+                currentFaultSession.states.push(state);
+
+                const faultStart = DateTime.fromJSDate(currentFaultSession.timestamps.start);
+                const faultEnd = DateTime.fromJSDate(currentFaultSession.timestamps.end);
+                const faulttime = faultEnd.diff(faultStart, 'seconds').seconds;
+                const activeStations = Array.isArray(currentFaultSession.operators) ? currentFaultSession.operators.length : 0;
+
+                currentFaultSession.faulttime = Math.round(faulttime);
+                currentFaultSession.workTimeMissed = Math.round(faulttime * activeStations);
+                currentFaultSession.activeStations = activeStations;
+
+                backfilledSessions.faultSessions.push(currentFaultSession);
+                currentFaultSession = null;
+              }
+            } 
+            else if (statusCode >= 2) {
+              if (currentMachineSession) {
+                await endMachineSession(currentMachineSession, state);
+                backfilledSessions.machineSessions.push(currentMachineSession);
+                
+                for (const [opId, opSession] of currentOperatorSessions) {
+                  await endOperatorSession(opSession, state);
+                  backfilledSessions.operatorSessions.push(opSession);
+                }
+                currentOperatorSessions.clear();
+
+                for (const [itemId, itemSession] of currentItemSessions) {
+                  await endItemSession(itemSession, state);
+                  backfilledSessions.itemSessions.push(itemSession);
+                }
+                currentItemSessions.clear();
+
+                currentMachineSession = null;
+              }
+
+              if (!currentFaultSession) {
+                const itemsInProgram = extractItemsArray(state.program?.items);
+                const uniqueItemIds = [...new Set(itemsInProgram.map(it => it.id).filter(id => id && id > 0))];
+                
+                const itemsWithDetails = await Promise.all(
+                  uniqueItemIds.map(id => getItemDetails(db, id))
+                );
+
+                const operatorsWithNames = await Promise.all(
+                  (state.operators || [])
+                    .filter(op => op.id !== -1)
+                    .map(async (op) => ({
+                      id: op.id,
+                      name: await getOperatorName(db, op.id),
+                      station: op.station
+                    }))
+                );
+
+                currentFaultSession = {
+                  timestamps: { start: state.timestamp },
+                  items: itemsWithDetails,
+                  operators: operatorsWithNames,
+                  states: [state],
+                  startState: state,
+                  machine: state.machine,
+                  program: {
+                    mode: state.program?.mode || "smallPiece",
+                    programNumber: state.program?.programNumber || 1,
+                    batchNumber: state.program?.batchNumber || 0,
+                    accountNumber: state.program?.accountNumber || 0,
+                    speed: state.program?.speed || 0,
+                    stations: state.program?.stations || 0
+                  },
+                  activeStations: operatorsWithNames.length
+                };
+              } else {
+                currentFaultSession.states.push(state);
+              }
+            }
+            else if (statusCode === 0) {
+              if (currentMachineSession) {
+                await endMachineSession(currentMachineSession, state);
+                backfilledSessions.machineSessions.push(currentMachineSession);
+                
+                for (const [opId, opSession] of currentOperatorSessions) {
+                  await endOperatorSession(opSession, state);
+                  backfilledSessions.operatorSessions.push(opSession);
+                }
+                currentOperatorSessions.clear();
+
+                for (const [itemId, itemSession] of currentItemSessions) {
+                  await endItemSession(itemSession, state);
+                  backfilledSessions.itemSessions.push(itemSession);
+                }
+                currentItemSessions.clear();
+
+                currentMachineSession = null;
+              }
+
+              if (currentFaultSession) {
+                currentFaultSession.timestamps.end = state.timestamp;
+                currentFaultSession.endState = state;
+                currentFaultSession.states.push(state);
+
+                const faultStart = DateTime.fromJSDate(currentFaultSession.timestamps.start);
+                const faultEnd = DateTime.fromJSDate(currentFaultSession.timestamps.end);
+                const faulttime = faultEnd.diff(faultStart, 'seconds').seconds;
+                const activeStations = Array.isArray(currentFaultSession.operators) ? currentFaultSession.operators.length : 0;
+
+                currentFaultSession.faulttime = Math.round(faulttime);
+                currentFaultSession.workTimeMissed = Math.round(faulttime * activeStations);
+                currentFaultSession.activeStations = activeStations;
+
+                backfilledSessions.faultSessions.push(currentFaultSession);
+                currentFaultSession = null;
+              }
+            }
+          }
+
+          if (currentMachineSession) {
+            const endState = states[states.length - 1];
+            await endMachineSession(currentMachineSession, endState);
+            backfilledSessions.machineSessions.push(currentMachineSession);
+
+            for (const [opId, opSession] of currentOperatorSessions) {
+              await endOperatorSession(opSession, endState);
+              backfilledSessions.operatorSessions.push(opSession);
+            }
+
+            for (const [itemId, itemSession] of currentItemSessions) {
+              await endItemSession(itemSession, endState);
+              backfilledSessions.itemSessions.push(itemSession);
+            }
+          }
+
+          if (currentFaultSession) {
+            const endState = states[states.length - 1];
+            currentFaultSession.timestamps.end = endState.timestamp;
+            currentFaultSession.endState = endState;
+            
+            const faultStart = DateTime.fromJSDate(currentFaultSession.timestamps.start);
+            const faultEnd = DateTime.fromJSDate(currentFaultSession.timestamps.end);
+            const faulttime = faultEnd.diff(faultStart, 'seconds').seconds;
+            const activeStations = Array.isArray(currentFaultSession.operators) ? currentFaultSession.operators.length : 0;
+
+            currentFaultSession.faulttime = Math.round(faulttime);
+            currentFaultSession.workTimeMissed = Math.round(faulttime * activeStations);
+            currentFaultSession.activeStations = activeStations;
+
+            backfilledSessions.faultSessions.push(currentFaultSession);
+          }
+
+          // Assign counts to sessions
+          for (const count of counts) {
+            const countTime = count.timestamp;
+            
+            for (const session of backfilledSessions.machineSessions) {
+              if (session.machine.serial !== serialNum) continue;
+              
+              const sessionStart = session.timestamps.start;
+              const sessionEnd = session.timestamps.end || dayEnd;
+              
+              if (countTime >= sessionStart && countTime <= sessionEnd) {
+                if (count.misfeed) {
+                  session.misfeeds.push(count);
+                } else {
+                  session.counts.push(count);
+                }
+                break;
+              }
+            }
+
+            for (const session of backfilledSessions.operatorSessions) {
+              if (session.machine.serial !== serialNum) continue;
+              if (session.operator.id !== count.operator?.id) continue;
+              
+              const sessionStart = session.timestamps.start;
+              const sessionEnd = session.timestamps.end || dayEnd;
+              
+              if (countTime >= sessionStart && countTime <= sessionEnd) {
+                if (count.misfeed) {
+                  session.misfeeds.push(count);
+                } else {
+                  session.counts.push(count);
+                }
+                break;
+              }
+            }
+
+            for (const session of backfilledSessions.itemSessions) {
+              if (session.machine.serial !== serialNum) continue;
+              if (session.item.id !== count.item?.id) continue;
+              
+              const sessionStart = session.timestamps.start;
+              const sessionEnd = session.timestamps.end || dayEnd;
+              
+              if (countTime >= sessionStart && countTime <= sessionEnd) {
+                if (count.misfeed) {
+                  session.misfeeds.push(count);
+                } else {
+                  session.counts.push(count);
+                }
+                break;
+              }
+            }
+          }
+        }
+
+        // Insert sessions into database
+        if (backfilledSessions.machineSessions.length > 0) {
+          await machineSessionColl.insertMany(backfilledSessions.machineSessions);
+          logger.info(`✅ Inserted ${backfilledSessions.machineSessions.length} machine sessions`);
+        }
+
+        if (backfilledSessions.operatorSessions.length > 0) {
+          await operatorSessionColl.insertMany(backfilledSessions.operatorSessions);
+          logger.info(`✅ Inserted ${backfilledSessions.operatorSessions.length} operator sessions`);
+        }
+
+        if (backfilledSessions.itemSessions.length > 0) {
+          await itemSessionColl.insertMany(backfilledSessions.itemSessions);
+          logger.info(`✅ Inserted ${backfilledSessions.itemSessions.length} item sessions`);
+        }
+
+        if (backfilledSessions.faultSessions.length > 0) {
+          await faultSessionColl.insertMany(backfilledSessions.faultSessions);
+          logger.info(`✅ Inserted ${backfilledSessions.faultSessions.length} fault sessions`);
+        }
+
+        logger.info(`✅ Session backfill complete. Requerying sessions...`);
+
+        // Reload sessions after backfill
+        const [newMachineSessions, newOperatorSessions, newItemSessions, newFaultSessions] = await Promise.all([
+          machineSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray(),
+          operatorSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray(),
+          itemSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray(),
+          faultSessionColl.find({ 'timestamps.start': { $gte: dayStart, $lte: dayEnd } }).toArray()
+        ]);
+
+        // Update session arrays with newly created sessions
+        machineSessions.length = 0;
+        machineSessions.push(...newMachineSessions);
+        operatorSessions.length = 0;
+        operatorSessions.push(...newOperatorSessions);
+        itemSessions.length = 0;
+        itemSessions.push(...newItemSessions);
+        faultSessions.length = 0;
+        faultSessions.push(...newFaultSessions);
+
+        const newTotalSessions = machineSessions.length + operatorSessions.length + itemSessions.length + faultSessions.length;
+        logger.info(`📊 Requery complete: ${newTotalSessions} total sessions available`);
+
+        if (newTotalSessions === 0) {
+          return res.status(404).json({ 
+            error: "Session backfill completed but no sessions were created. Check state/count data.",
+            date: date,
+            sessionBackfillTriggered: true
+          });
+        }
+      }
+
+      // Step 5: Load and group sessions by machine
+      logger.info(`📦 Processing ${machineSessions.length} machine sessions for daily totals calculation...`);
+
+      // Group sessions by machine serial
+      const sessionsByMachine = new Map();
+      
+      for (const session of machineSessions) {
+        const serial = session.machine?.serial;
+        if (!serial) continue;
+        
+        if (!sessionsByMachine.has(serial)) {
+          sessionsByMachine.set(serial, {
+            machineName: session.machine?.name || `Machine ${serial}`,
+            machineSessions: [],
+            faultSessions: [],
+            operatorSessionsMap: new Map(),
+            itemSessionsMap: new Map()
+          });
+        }
+        
+        sessionsByMachine.get(serial).machineSessions.push(session);
+      }
+
+      // Add fault sessions
+      for (const session of faultSessions) {
+        const serial = session.machine?.serial;
+        if (!serial || !sessionsByMachine.has(serial)) continue;
+        sessionsByMachine.get(serial).faultSessions.push(session);
+      }
+
+      // Add operator sessions (grouped by operator ID)
+      for (const session of operatorSessions) {
+        const serial = session.machine?.serial;
+        const operatorId = session.operator?.id;
+        if (!serial || !operatorId || !sessionsByMachine.has(serial)) continue;
+        
+        const machineData = sessionsByMachine.get(serial);
+        if (!machineData.operatorSessionsMap.has(operatorId)) {
+          machineData.operatorSessionsMap.set(operatorId, []);
+        }
+        machineData.operatorSessionsMap.get(operatorId).push(session);
+      }
+
+      // Add item sessions (grouped by item ID)
+      for (const session of itemSessions) {
+        const serial = session.machine?.serial;
+        const itemId = session.item?.id;
+        if (!serial || !itemId || !sessionsByMachine.has(serial)) continue;
+        
+        const machineData = sessionsByMachine.get(serial);
+        if (!machineData.itemSessionsMap.has(itemId)) {
+          machineData.itemSessionsMap.set(itemId, []);
+        }
+        machineData.itemSessionsMap.get(itemId).push(session);
+      }
+
+      logger.info(`🏭 Processing ${sessionsByMachine.size} machines`);
+
+      // Step 6: Calculate daily totals for each machine
+      const dailyTotals = [];
+      let totalCounts = {
+        machineTotals: 0,
+        operatorMachineTotals: 0,
+        machineItemTotals: 0,
+        itemTotals: 0,
+        operatorItemTotals: 0
+      };
+
+      for (const [machineSerial, machineData] of sessionsByMachine.entries()) {
+        logger.info(`⚙️ Processing machine ${machineSerial} (${machineData.machineName})`);
+
+        // 1. Build machine daily total
+        const machineDailyTotal = buildMachineDailyTotal({
+          machineSerial,
+          machineName: machineData.machineName,
+          machineSessions: machineData.machineSessions,
+          faultSessions: machineData.faultSessions,
+          queryStart: dayStart,
+          queryEnd: dayEnd
+        });
+        
+        if (machineDailyTotal) {
+          dailyTotals.push(machineDailyTotal);
+          totalCounts.machineTotals++;
+        }
+
+        // 2. Build operator-machine daily totals
+        for (const [operatorId, sessions] of machineData.operatorSessionsMap.entries()) {
+          if (sessions.length === 0) continue;
+          
+          const operatorName = sessions[0]?.operator?.name || `Operator ${operatorId}`;
+          
+          const operatorDailyTotal = buildOperatorMachineDailyTotal({
+            operatorId,
+            operatorName,
+            machineSerial,
+            machineName: machineData.machineName,
+            operatorSessions: sessions,
+            queryStart: dayStart,
+            queryEnd: dayEnd
+          });
+          
+          if (operatorDailyTotal) {
+            dailyTotals.push(operatorDailyTotal);
+            totalCounts.operatorMachineTotals++;
+          }
+        }
+
+        // 3. Build item-machine daily totals
+        for (const [itemId, sessions] of machineData.itemSessionsMap.entries()) {
+          if (sessions.length === 0) continue;
+          
+          const itemName = sessions[0]?.item?.name || `Item ${itemId}`;
+          
+          const itemDailyTotal = buildItemMachineDailyTotal({
+            itemId,
+            itemName,
+            machineSerial,
+            machineName: machineData.machineName,
+            itemSessions: sessions,
+            queryStart: dayStart,
+            queryEnd: dayEnd
+          });
+          
+          if (itemDailyTotal) {
+            dailyTotals.push(itemDailyTotal);
+            totalCounts.machineItemTotals++;
+          }
+        }
+
+        // 4. Build plant-wide item daily totals (aggregated across machines via atomic $inc)
+        for (const [itemId, sessions] of machineData.itemSessionsMap.entries()) {
+          if (sessions.length === 0) continue;
+          
+          const itemName = sessions[0]?.item?.name || `Item ${itemId}`;
+          const itemStandard = sessions[0]?.item?.standard || 0;
+          
+          const itemTotal = buildItemDailyTotal({
+            itemId,
+            itemName,
+            itemStandard,
+            machineSerial,
+            itemSessions: sessions,
+            queryStart: dayStart,
+            queryEnd: dayEnd,
+            source: 'backfill'
+          });
+          
+          if (itemTotal) {
+            dailyTotals.push(itemTotal);
+            totalCounts.itemTotals++;
+          }
+        }
+
+        // 5. Build operator-item daily totals
+        for (const [operatorId, sessions] of machineData.operatorSessionsMap.entries()) {
+          if (sessions.length === 0) continue;
+          
+          const operatorName = sessions[0]?.operator?.name || `Operator ${operatorId}`;
+          
+          // Collect all unique items this operator worked on
+          const uniqueItems = new Map();
+          
+          for (const session of sessions) {
+            if (!session.items || session.items.length === 0) continue;
+            
+            for (const item of session.items) {
+              if (!uniqueItems.has(item.id)) {
+                uniqueItems.set(item.id, item.name || `Item ${item.id}`);
+              }
+            }
+          }
+          
+          // Build operator-item record for each unique item
+          for (const [itemId, itemName] of uniqueItems.entries()) {
+            const operatorItemTotal = buildOperatorItemDailyTotal({
+              operatorId,
+              operatorName,
+              itemId,
+              itemName,
+              machineSerial,
+              machineName: machineData.machineName,
+              operatorSessions: sessions,
+              queryStart: dayStart,
+              queryEnd: dayEnd,
+              source: 'backfill'
+            });
+            
+            if (operatorItemTotal) {
+              dailyTotals.push(operatorItemTotal);
+              totalCounts.operatorItemTotals++;
+            }
+          }
+        }
+      }
+
+      logger.info(`📊 Built ${dailyTotals.length} daily total records`);
+      logger.info(`   - ${totalCounts.machineTotals} machine totals`);
+      logger.info(`   - ${totalCounts.operatorMachineTotals} operator-machine totals`);
+      logger.info(`   - ${totalCounts.machineItemTotals} machine-item totals`);
+      logger.info(`   - ${totalCounts.itemTotals} plant-wide item totals`);
+      logger.info(`   - ${totalCounts.operatorItemTotals} operator-item totals`);
+
+      // Step 7: Upsert daily totals to database
+      const result = await upsertDailyTotalsToCache(db, dailyTotals);
+
+      res.json({
+        success: true,
+        date: date,
+        overwriteEnabled: allowOverwrite,
+        sessionBackfillTriggered: sessionBackfillTriggered,
+        sessionsFound: {
+          machineSessions: machineSessions.length,
+          operatorSessions: operatorSessions.length,
+          itemSessions: itemSessions.length,
+          faultSessions: faultSessions.length,
+          total: machineSessions.length + operatorSessions.length + itemSessions.length + faultSessions.length
+        },
+        backfilledTotals: {
+          machineTotals: totalCounts.machineTotals,
+          operatorMachineTotals: totalCounts.operatorMachineTotals,
+          machineItemTotals: totalCounts.machineItemTotals,
+          itemTotals: totalCounts.itemTotals,
+          operatorItemTotals: totalCounts.operatorItemTotals,
+          total: dailyTotals.length
+        },
+        databaseResult: {
+          upsertedCount: result.upsertedCount,
+          modifiedCount: result.modifiedCount
+        }
+      });
+
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.url}:`, error);
+
+      res
+        .status(500)
+        .json({ error: "Failed to backfill daily totals", details: error.message });
     }
   });
 
