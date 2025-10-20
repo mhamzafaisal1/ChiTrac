@@ -13,6 +13,7 @@ function init(app, server) {
     const authRoutes = require('../controllers/auth')(server);
     const passportRoutes = require('../controllers/passport')(server);
     const historyRoutes = require('../controllers/history')(server);
+    const utilitiesRoutes = require('../controllers/utilities')(server);
 
 
     app.get('/docs/api', (req, res, next) => {
@@ -241,6 +242,8 @@ function init(app, server) {
     app.use('/api/softrol', softrolRoutes);
 
     app.use('/api/history', historyRoutes);
+    
+    app.use('/api/utilities', utilitiesRoutes);
 
     app.use('/fonts/normal', express.static(path.join(server.appRoot.path, 'fonts/Montserrat-VariableFont_wght.ttf')));
     app.use('/fonts/bold', express.static(path.join(server.appRoot.path, 'fonts/Montserrat-VariableFont_wght.ttf')));
