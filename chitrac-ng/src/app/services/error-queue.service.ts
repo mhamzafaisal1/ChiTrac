@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { BehaviorSubject, Observable } from 'rxjs';
 
@@ -19,8 +19,17 @@ export class ErrorQueueService {
   private currentDialogRef: MatDialogRef<any> | null = null;
   private isDisplaying = false;
   private errorQueueSubject = new BehaviorSubject<ErrorInfo[]>([]);
+  private showErrorModalsEnabled = true;
 
   constructor(private dialog: MatDialog) {}
+
+  /**
+   * Configure whether error modals should be displayed
+   */
+  setShowErrorModals(enabled: boolean): void {
+    this.showErrorModalsEnabled = enabled;
+    console.log('[ErrorQueueService] Error modals', enabled ? 'enabled' : 'disabled');
+  }
 
   /**
    * Add an error to the queue
@@ -54,6 +63,26 @@ export class ErrorQueueService {
 
     this.isDisplaying = true;
     const currentError = this.errorQueue[0];
+
+    // Check if error modals are disabled
+    if (!this.showErrorModalsEnabled) {
+      console.error('[Error]', {
+        message: currentError.message,
+        statusCode: currentError.statusCode,
+        endpoint: currentError.endpoint,
+        timestamp: currentError.timestamp,
+        fullError: currentError.fullError
+      });
+      
+      this.removeCurrentError();
+      this.isDisplaying = false;
+      
+      // Process next error if available
+      if (this.errorQueue.length > 0) {
+        setTimeout(() => this.displayNextError(), 200);
+      }
+      return;
+    }
 
     try {
       // Dynamically import the error modal component to avoid circular dependencies
