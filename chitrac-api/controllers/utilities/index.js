@@ -1961,5 +1961,19 @@ function constructor(server) {
     }
   });
 
+  // UI settings route (no auth required - public configuration)
+  router.get("/settings", (req, res) => {
+    try {
+      res.json({
+        enableApiTokenCheck: config.enableApiTokenCheck,
+        showErrorModals: config.showErrorModals,
+        defaultTheme: config.defaultTheme
+      });
+    } catch (error) {
+      logger.error(`Error retrieving settings:`, error);
+      res.status(500).json({ error: "Failed to retrieve settings" });
+    }
+  });
+
   return router;
 }
