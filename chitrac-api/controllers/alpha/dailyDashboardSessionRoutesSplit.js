@@ -239,7 +239,7 @@ module.exports = function (server) {
     }
   }
 
-  // Fast daily count totals using daily totals cache
+  // Fast daily count totals using daily totals cache (legacy - uses item entityType)
   async function buildDailyCountTotalsFromCache(db, dayEnd) {
     try {
       const endDate = new Date(dayEnd);
@@ -280,6 +280,53 @@ module.exports = function (server) {
 
     } catch (error) {
       logger.error('Error building daily count totals from cache:', error);
+      throw error;
+    }
+  }
+
+  // Fast daily count totals using machine records from daily totals cache
+  async function buildCountTotalsFromDailyTotals(db, dayEnd) {
+    try {
+      const endDate = new Date(dayEnd);
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - 27); // include 28 total days including endDate
+      startDate.setHours(0, 0, 0, 0); // set to 12:00 AM
+
+      logger.info(`Querying machine totals for date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+      // Query the daily totals cache for machine records and aggregate counts by date
+      const pipeline = [
+        {
+          $match: {
+            entityType: 'machine',
+            dateObj: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: '$date',
+            count: { $sum: '$totalCounts' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            date: '$_id',
+            count: 1
+          }
+        },
+        {
+          $sort: { date: 1 }
+        }
+      ];
+
+      const results = await db.collection('totals-daily').aggregate(pipeline).toArray();
+
+      logger.info(`Built daily count totals from machine records for ${results.length} days`);
+      return results;
+
+    } catch (error) {
+      logger.error('Error building count totals from daily totals:', error);
       throw error;
     }
   }
@@ -574,7 +621,7 @@ module.exports = function (server) {
       const now = DateTime.now();
       const dayEnd = now.toJSDate();
 
-      const dailyCounts = await buildDailyCountTotalsFromCache(db, dayEnd);
+      const dailyCounts = await buildCountTotalsFromDailyTotals(db, dayEnd);
 
       return res.json({
         timeRange: { end: dayEnd },

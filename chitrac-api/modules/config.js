@@ -29,5 +29,17 @@ module.exports = {
   inDev: process.env.NODE_ENV === 'development',
   
   // Hybrid query configuration
-  hybridThresholdHours: parseInt(process.env.HYBRID_THRESHOLD_HOURS, 10) || 36
+  hybridThresholdHours: parseInt(process.env.HYBRID_THRESHOLD_HOURS, 10) || 36,
+  
+  // API Security Settings
+  // Enable/disable API token authentication (default: true)
+  enableApiTokenCheck: process.env.ENABLE_API_TOKEN_CHECK !== 'false',
+  
+  // UI Configuration
+  // Show error modals in frontend (default: true)
+  showErrorModals: process.env.SHOW_ERROR_MODALS !== 'false',
+  
+  // Theme Settings
+  // Default theme for new users: 'light' or 'dark' (default: 'light')
+  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark'
 };

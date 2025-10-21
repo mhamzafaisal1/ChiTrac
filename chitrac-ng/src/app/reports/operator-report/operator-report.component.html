@@ -70,6 +70,7 @@
       [class.light]="!isDarkTheme"
       [columns]="columns"
       [rows]="displayedRows"
+      [getCellClass]="getEfficiencyClass.bind(this)"
       style="height:93%; border-radius: 4px;"
     >
     </base-table>
