@@ -1,3 +1,8 @@
+const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
+const ajv = new Ajv();
+addFormats(ajv);
+
 // Timestamps Schema Definition
 const schema = {
   type: 'object',
@@ -41,6 +46,9 @@ const schema = {
   additionalProperties: false
 };
 
+// Compile the schema for validation
+const validate = ajv.compile(schema);
+
 // Timestamps Utility Functions
 const utils = {
   /**
@@ -68,6 +76,12 @@ const utils = {
 
     if (inactive !== null) {
       timestamps.inactive = inactive;
+    }
+
+    // Validate against schema before returning
+    const valid = validate(timestamps);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
     }
 
     return timestamps;
