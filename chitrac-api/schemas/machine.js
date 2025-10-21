@@ -230,6 +230,31 @@ const utils = {
     }
 
     return updatedMachine;
+  },
+
+  /**
+   * Set a property on a machine object
+   * @param {object} object - Required schema valid machine object
+   * @param {string} propertyToSet - Required string name of property to set
+   * @param {*} valueToSet - Required new property value to be set (any type)
+   * @returns {object} Schema validated machine object with updated property
+   */
+  setProperty: (object, propertyToSet, valueToSet) => {
+    const now = new Date().toISOString();
+    
+    const updatedMachine = {
+      ...object,
+      [propertyToSet]: valueToSet,
+      timestamps: timestampsSchema.utils.stampUpdate(object.timestamps, now)
+    };
+
+    // Validate against schema before returning
+    const valid = validate(updatedMachine);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedMachine;
   }
 };
 
