@@ -1,3 +1,6 @@
+const Ajv = require('ajv');
+const ajv = new Ajv();
+
 // Names Schema Definition
 const schema = {
   type: 'object',
@@ -45,6 +48,9 @@ const schema = {
   additionalProperties: false
 };
 
+// Compile the schema for validation
+const validate = ajv.compile(schema);
+
 // Names Utility Functions
 const utils = {
   /**
@@ -65,6 +71,12 @@ const utils = {
         // Otherwise, set/overwrite the property
         updatedName[key] = value;
       }
+    }
+
+    // Validate against schema before returning
+    const valid = validate(updatedName);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
     }
 
     return updatedName;
