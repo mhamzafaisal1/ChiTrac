@@ -88,58 +88,108 @@ const utils = {
   },
 
   /**
-   * Create an update timestamp object
+   * Stamp the update timestamp on an existing timestamps object
+   * @param {object} timestampsObjectToStamp - Required existing timestamps object to update
    * @param {string} updateTimestamp - Required timestamp to be applied to .update
-   * @returns {object} Object with update property
+   * @returns {object} New timestamps object with update timestamp
    */
-  stampUpdate: (updateTimestamp) => {
-    return {
+  stampUpdate: (timestampsObjectToStamp, updateTimestamp) => {
+    const updatedTimestamps = {
+      ...timestampsObjectToStamp,
       update: updateTimestamp
     };
+
+    // Validate against schema before returning
+    const valid = validate(updatedTimestamps);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedTimestamps;
   },
 
   /**
-   * Create a start timestamp object
+   * Stamp the start timestamp on an existing timestamps object
+   * @param {object} timestampsObjectToStamp - Required existing timestamps object to update
    * @param {string} startTimestamp - Required timestamp to be applied to .start
-   * @returns {object} Object with start property
+   * @returns {object} New timestamps object with start timestamp
    */
-  stampStart: (startTimestamp) => {
-    return {
+  stampStart: (timestampsObjectToStamp, startTimestamp) => {
+    const updatedTimestamps = {
+      ...timestampsObjectToStamp,
       start: startTimestamp
     };
+
+    // Validate against schema before returning
+    const valid = validate(updatedTimestamps);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedTimestamps;
   },
 
   /**
-   * Create an end timestamp object
+   * Stamp the end timestamp on an existing timestamps object
+   * @param {object} timestampsObjectToStamp - Required existing timestamps object to update
    * @param {string} endTimestamp - Required timestamp to be applied to .end
-   * @returns {object} Object with end property
+   * @returns {object} New timestamps object with end timestamp
    */
-  stampEnd: (endTimestamp) => {
-    return {
+  stampEnd: (timestampsObjectToStamp, endTimestamp) => {
+    const updatedTimestamps = {
+      ...timestampsObjectToStamp,
       end: endTimestamp
     };
+
+    // Validate against schema before returning
+    const valid = validate(updatedTimestamps);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedTimestamps;
   },
 
   /**
-   * Create an active timestamp object
+   * Stamp the active timestamp on an existing timestamps object
+   * @param {object} timestampsObjectToStamp - Required existing timestamps object to update
    * @param {string} activeTimestamp - Required timestamp to be applied to .active
-   * @returns {object} Object with active property
+   * @returns {object} New timestamps object with active timestamp
    */
-  stampActive: (activeTimestamp) => {
-    return {
+  stampActive: (timestampsObjectToStamp, activeTimestamp) => {
+    const updatedTimestamps = {
+      ...timestampsObjectToStamp,
       active: activeTimestamp
     };
+
+    // Validate against schema before returning
+    const valid = validate(updatedTimestamps);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedTimestamps;
   },
 
   /**
-   * Create an inactive timestamp object
+   * Stamp the inactive timestamp on an existing timestamps object
+   * @param {object} timestampsObjectToStamp - Required existing timestamps object to update
    * @param {string} inactiveTimestamp - Required timestamp to be applied to .inactive
-   * @returns {object} Object with inactive property
+   * @returns {object} New timestamps object with inactive timestamp
    */
-  stampInactive: (inactiveTimestamp) => {
-    return {
+  stampInactive: (timestampsObjectToStamp, inactiveTimestamp) => {
+    const updatedTimestamps = {
+      ...timestampsObjectToStamp,
       inactive: inactiveTimestamp
     };
+
+    // Validate against schema before returning
+    const valid = validate(updatedTimestamps);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedTimestamps;
   }
 };
 
