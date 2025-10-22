@@ -1808,7 +1808,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const startDate = exactStart.toISOString().split('T')[0]; // YYYY-MM-DD
       const endDate = exactEnd.toISOString().split('T')[0];     // YYYY-MM-DD
       
-      logger.info('Querying totals-daily for date range:', { startDate, endDate });
 
       // Query the totals-daily collection for machine records
       const dailyTotalsCollection = db.collection("totals-daily");
@@ -1831,7 +1830,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       let dailyTotals;
       try {
         dailyTotals = await dailyTotalsCollection.find(query).toArray();
-        logger.info(`Found ${dailyTotals.length} daily total records`);
       } catch (dbError) {
         logger.error('Database query error:', dbError);
         return res.status(500).json({ 
@@ -2208,7 +2206,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const startDate = exactStart.toISOString().split('T')[0]; // YYYY-MM-DD
       const endDate = exactEnd.toISOString().split('T')[0];     // YYYY-MM-DD
       
-      logger.info('Querying totals-daily for operator data:', { startDate, endDate });
 
       // Query the totals-daily collection for operator-machine records
       const dailyTotalsCollection = db.collection("totals-daily");
@@ -2231,7 +2228,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       let operatorTotals;
       try {
         operatorTotals = await dailyTotalsCollection.find(query).toArray();
-        logger.info(`Found ${operatorTotals.length} operator daily total records`);
       } catch (dbError) {
         logger.error('Database query error:', dbError);
         return res.status(500).json({ 
@@ -2615,7 +2611,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const startDate = exactStart.toISOString().split('T')[0]; // YYYY-MM-DD
       const endDate = exactEnd.toISOString().split('T')[0];     // YYYY-MM-DD
       
-      logger.info('Querying totals-daily for item data:', { startDate, endDate });
 
       // Query the totals-daily collection for item records
       const dailyTotalsCollection = db.collection("totals-daily");
@@ -2633,7 +2628,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       let itemTotals;
       try {
         itemTotals = await dailyTotalsCollection.find(query).toArray();
-        logger.info(`Found ${itemTotals.length} item daily total records`);
       } catch (dbError) {
         logger.error('Database query error:', dbError);
         return res.status(500).json({ 
@@ -2915,10 +2909,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           query.machineSerial = parseInt(machineSerial);
         }
         
-        logger.info(`Querying daily cache for ${dates.length} complete days:`, dates);
         
         const dailyRecords = await db.collection('totals-daily').find(query).toArray();
-        logger.info(`Found ${dailyRecords.length} daily cache records`);
         
         return dailyRecords;
       }
@@ -2927,7 +2919,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       async function querySessions(partialDays, machineSerial) {
         if (partialDays.length === 0) return [];
         
-        logger.info(`Querying sessions for ${partialDays.length} partial day ranges`);
         
         const allSessions = [];
         
@@ -3466,10 +3457,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           query.operatorId = parseInt(operatorId);
         }
         
-        logger.info(`Querying daily cache for ${dates.length} complete days:`, dates);
         
         const dailyRecords = await db.collection('totals-daily').find(query).toArray();
-        logger.info(`Found ${dailyRecords.length} operator daily cache records`);
         
         return dailyRecords;
       }
@@ -3478,7 +3467,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       async function querySessions(partialDays, operatorId) {
         if (partialDays.length === 0) return [];
         
-        logger.info(`Querying operator sessions for ${partialDays.length} partial day ranges`);
         
         const allSessions = [];
         
@@ -4061,7 +4049,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       });
 
     } catch (error) {
-      console.error("Error in item-sessions-summary-hybrid:", error);
+      logger.error("Error in item-sessions-summary-hybrid:", error);
       res.status(500).json({ error: "Internal server error", details: error.message });
     }
   });
@@ -4352,7 +4340,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
-    logger.info(`Querying cache for date strings:`, dateStrings);
     
     // Get machine daily totals for complete days
     // Handle both old format (no entityType) and new format (with entityType)
@@ -4372,9 +4359,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       machineQuery.machineSerial = serial;
     }
 
-    logger.info(`Machine query:`, JSON.stringify(machineQuery, null, 2));
     const machineTotals = await cacheCollection.find(machineQuery).toArray();
-    logger.info(`Found ${machineTotals.length} machine records from cache`);
 
     // Get machine-item daily totals for complete days
     // Handle both old format (no entityType) and new format (with entityType)
@@ -4394,15 +4379,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       machineItemQuery.machineSerial = serial;
     }
 
-    logger.info(`Machine-item query:`, JSON.stringify(machineItemQuery, null, 2));
     const machineItemTotals = await cacheCollection.find(machineItemQuery).toArray();
-    logger.info(`Found ${machineItemTotals.length} machine-item records from cache`);
     
-    // Check if we have machine-item cache data for these dates
-    if (machineItemTotals.length === 0) {
-      logger.info(`No machine-item cache data found for dates: ${dateStrings.join(', ')}`);
-      logger.info(`Will use session data for complete days to get item-level breakdowns`);
-    }
     
     return { machines: machineTotals, machineItems: machineItemTotals };
   }
@@ -4773,7 +4751,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         };
         if (serial) cacheQuery.machineSerial = parseInt(serial);
         
-        logger.info(`[MACHINE-CACHE] Querying cache for dates: ${dateStrings.join(', ')} (both date and dateObj fields)`);
         const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
         
         // Split by entity type
@@ -4807,7 +4784,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const sessionFallback = await getSessionDataForPartialDays([partialDay], serial);
         
         if (sessionFallback.machines.length > 0) {
-          logger.info(`[MACHINE-CACHE] Session fallback found ${sessionFallback.machines.length} machine records`);
           
           // Re-combine with session data
           const recombined = combineHybridData([], [], sessionFallback);
@@ -5238,7 +5214,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         };
         if (operatorId) cacheQuery.operatorId = operatorId;
         
-        logger.info(`[OPERATOR-CACHE] Querying cache for dates: ${dateStrings.join(', ')}`);
         const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
         
         // Split by entity type
@@ -5633,9 +5608,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       operatorQuery.operatorId = operatorId;
     }
 
-    logger.info(`Operator query:`, JSON.stringify(operatorQuery, null, 2));
     const operatorTotals = await cacheCollection.find(operatorQuery).toArray();
-    logger.info(`Found ${operatorTotals.length} operator records from cache`);
     
     return operatorTotals;
   }
@@ -6259,7 +6232,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const startDate = exactStart.toISOString().split('T')[0];
         const endDate = exactEnd.toISOString().split('T')[0];
 
-        logger.info(`[item-sessions-summary-daily-cache] Querying cache for complete day(s): ${startDate} to ${endDate}`);
 
         // Get item daily totals from simulator (with itemStandard already included)
         const itemQuery = { 
@@ -6326,7 +6298,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       });
 
       logger.info(`[item-sessions-summary-daily-cache] Returning ${results.length} items in final response`);
-      logger.info(`[item-sessions-summary-daily-cache] Sample: ${results[0]?.itemName} - ${results[0]?.count} counts in ${results[0]?.workedTimeFormatted?.hours}h ${results[0]?.workedTimeFormatted?.minutes}m`);
 
       res.json(results);
     } catch (error) {
@@ -6340,7 +6311,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
-    logger.info(`[getItemDailyCachedDataForDays] Querying cache for dates:`, dateStrings);
     
     // Get item daily totals from simulator (itemStandard already included)
     const itemQuery = { 
@@ -6351,17 +6321,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
     const itemTotals = await cacheCollection.find(itemQuery).toArray();
     
-    logger.info(`[getItemDailyCachedDataForDays] Found ${itemTotals.length} item records from cache`);
-    if (itemTotals.length > 0) {
-      logger.debug(`[getItemDailyCachedDataForDays] Sample record:`, {
-        itemId: itemTotals[0].itemId,
-        itemName: itemTotals[0].itemName,
-        totalCounts: itemTotals[0].totalCounts,
-        workedTimeMs: itemTotals[0].workedTimeMs,
-        date: itemTotals[0].date,
-        contributingMachines: itemTotals[0].contributingMachines
-      });
-    }
     
     return itemTotals;
   }
