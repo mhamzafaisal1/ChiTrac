@@ -41,5 +41,9 @@ module.exports = {
   
   // Theme Settings
   // Default theme for new users: 'light' or 'dark' (default: 'light')
-  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark'
+  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark',
+  
+  // Softrol API Settings
+  // Enable/disable Softrol API routes and documentation (default: false)
+  softrol: process.env.SOFTROL === 'true'
 };
