@@ -41,5 +41,9 @@ module.exports = {
   
   // Theme Settings
   // Default theme for new users: 'light' or 'dark' (default: 'light')
-  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark'
+  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark',
+  
+  // System Name
+  // System name displayed in the navbar (fallback for when DB is unavailable)
+  systemName: process.env.SYSTEM_NAME || 'ChiTrac'
 };
