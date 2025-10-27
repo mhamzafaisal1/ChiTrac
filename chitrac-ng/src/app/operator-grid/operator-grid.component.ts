@@ -46,7 +46,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
 
   displayedColumns: string[] = ['code', 'name', 'active'];
 
-  emptyOperator: OperatorConfig = new OperatorConfig().deserialize({ code: null, name: null, active: true});
+  emptyOperator: OperatorConfig = new OperatorConfig().deserialize({ code: null, name: '', active: true});
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
 
@@ -90,6 +90,16 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
     this.dataSource.data = i >= 0
       ? [...arr.slice(0, i), new OperatorConfig().deserialize({ ...arr[i], ...updated }), ...arr.slice(i + 1)]
       : [...arr, updated];
+  }
+
+  getOperatorDisplayName(operator: OperatorConfig): string {
+    if (!operator.name) return '';
+    if (typeof operator.name === 'string') {
+      return operator.name;
+    }
+    // Complex name object
+    const name = operator.name as any;
+    return [name.first, name.surname].filter(Boolean).join(' ') || 'Unknown';
   }
 
   ngOnInit() {
