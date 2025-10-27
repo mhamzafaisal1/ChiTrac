@@ -7,6 +7,7 @@ export interface AppSettings {
   enableApiTokenCheck: boolean;
   showErrorModals: boolean;
   defaultTheme: 'light' | 'dark';
+  systemName: string;
 }
 
 export interface ThemeResponse {
