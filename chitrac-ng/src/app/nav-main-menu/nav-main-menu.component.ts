@@ -19,6 +19,7 @@ import { Observable } from 'rxjs';
 import { map, shareReplay } from 'rxjs/operators';
 
 import { UserService } from '../user.service';
+import { SettingsService } from '../services/settings.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
 import { UserLoginComponent } from '../user-login/user-login.component';
 
@@ -92,6 +93,8 @@ export class NavMainMenuComponent {
   sub: any;
 
   user: any;
+  
+  systemName: string = 'ChiTrac';
 
   subscribeToUser(): void {
     this.sub = this.userService.user.subscribe(x => {
@@ -105,11 +108,18 @@ export class NavMainMenuComponent {
     });
   }
 
-  constructor(private userService: UserService, private router: Router) {}
+  constructor(private userService: UserService, private router: Router, private settingsService: SettingsService) {}
 
   ngOnInit() {
     this.userService.getCurrentUser().subscribe(x => x);
     this.subscribeToUser();
+    
+    // Load system name from settings
+    this.settingsService.settings$.subscribe(settings => {
+      if (settings && settings.systemName) {
+        this.systemName = settings.systemName;
+      }
+    });
   }
 
   logout() {

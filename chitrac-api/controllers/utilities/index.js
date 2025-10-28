@@ -1967,7 +1967,8 @@ function constructor(server) {
       res.json({
         enableApiTokenCheck: config.enableApiTokenCheck,
         showErrorModals: config.showErrorModals,
-        defaultTheme: config.defaultTheme
+        defaultTheme: config.defaultTheme,
+        systemName: config.systemName
       });
     } catch (error) {
       logger.error(`Error retrieving settings:`, error);
