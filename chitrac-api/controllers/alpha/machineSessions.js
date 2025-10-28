@@ -39,7 +39,6 @@ module.exports = function (server) {
   // Debug route to check database state
   router.get("/analytics/debug", async (req, res) => {
     try {
-      logger.info("[machineSessions] Debug route called");
 
       // Check collections
       const collections = await db.listCollections().toArray();
@@ -72,7 +71,7 @@ module.exports = function (server) {
         }
       });
     } catch (err) {
-      logger.error("[machineSessions] Debug route error:", err);
+      logger.error("Debug route error:", err);
       res.status(500).json({ error: err.message });
     }
   });

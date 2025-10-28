@@ -15,6 +15,11 @@ const schema = {
     'jam'
   ],
   properties: {
+    _id: {
+      type: 'string',
+      pattern: '^[a-fA-F0-9]{24}$',
+      description: 'Optional MongoDB ObjectId for this status record'
+    },
     id: {
       type: 'integer',
       description: 'Number which uniquely identifies a status, this will be used to identify statuses in the system. Currently this is code, this id will take the place of code and where we display status code, we will be using this value going forward. We will be standardizing all definitions around ids instead of a mix of serialNumber/code/number/id/etc depending on object type, which currently causes confusion.'

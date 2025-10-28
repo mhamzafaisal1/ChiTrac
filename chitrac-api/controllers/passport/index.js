@@ -30,11 +30,10 @@ function constructor(server) {
         };
         res.sendFile(fileName, options, function(err) {
             if (err) {
-                console.log("error");
-                console.log(err);
+                // Debug: Error occurred
                 res.status(err.status).end();
             } else {
-                console.log('Sent:', fileName);
+                // Debug: File sent successfully
             }
         });
     }
@@ -193,7 +192,7 @@ function constructor(server) {
     // =====================================
     router.get('/user/logout', function(req, res, next) {
         if (req.user) {
-            console.log("Logging " + req.user.local.username + " out")
+            // Debug: User logout
             req.flash('messages', 'Thank you for logging out, ' + req.user.local.username)
             req.logout((err) => {
                 if (err) return next(err);

@@ -490,7 +490,7 @@ router.get("/historic-data", async (req, res) => {
       new Date(end) > new Date() ? latestState?.timestamp || new Date() : end;
 
     // Log the time range being queried
-    console.log('Querying states between', start, 'and', effectiveEnd);
+    // Debug: Querying states
 
     // Diagnostic: Check what timestamps exist in the database
     const sampleStates = await db.collection('state')
@@ -499,7 +499,7 @@ router.get("/historic-data", async (req, res) => {
       .limit(5)
       .project({ timestamp: 1, 'machine.serial': 1 })
       .toArray();
-    console.log('Sample latest states in DB:', sampleStates.map(s => ({ ts: s.timestamp, serial: s.machine?.serial })));
+    // Debug: Sample states in DB
 
     // 1. Fetch and group states by machine and station
     const allStates = await fetchStatesForOperatorForSoftrol(
@@ -509,7 +509,7 @@ router.get("/historic-data", async (req, res) => {
       effectiveEnd
     );
 
-    console.log('Fetched states:', allStates.length);
+    // Debug: Fetched states count
 
     const groupedStates = groupStatesByMachineAndStation(allStates);
 
@@ -539,7 +539,7 @@ router.get("/historic-data", async (req, res) => {
       .limit(5)
       .project({ timestamp: 1, 'machine.serial': 1, station: 1 })
       .toArray();
-    console.log('Sample latest counts in DB:', sampleCounts.map(c => ({ ts: c.timestamp, serial: c.machine?.serial, station: c.station })));
+    // Debug: Sample counts in DB
 
     const allCounts = await getCountsForMachineStationPairsForSoftrol(
       db,
@@ -548,7 +548,7 @@ router.get("/historic-data", async (req, res) => {
       end
     );
     
-    console.log('Fetched counts:', allCounts.length);
+    // Debug: Fetched counts
     
     const groupedCounts = groupCountsByMachineAndStation(allCounts);
 
