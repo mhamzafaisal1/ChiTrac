@@ -205,14 +205,11 @@ module.exports = function (server) {
       // Query the daily totals cache for machine entity type
       // Use date string instead of dateObj range since dateObj is set to start of day
       const dateStr = dayStart.toISOString().split('T')[0]; // Get YYYY-MM-DD format
-      logger.info(`Debug: Querying machine status for date: ${dateStr}`);
       
       const dailyTotals = await db.collection('totals-daily').find({
         entityType: 'machine',
         date: dateStr
       }).sort({ machineSerial: 1 }).toArray();
-
-      logger.info(`Debug: Found ${dailyTotals.length} machine records for date ${dateStr}`);
       
       if (dailyTotals.length === 0) {
         logger.warn('No daily totals found for machine status calculation');
@@ -292,8 +289,6 @@ module.exports = function (server) {
       startDate.setDate(endDate.getDate() - 27); // include 28 total days including endDate
       startDate.setHours(0, 0, 0, 0); // set to 12:00 AM
 
-      logger.info(`Querying machine totals for date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
-
       // Query the daily totals cache for machine records and aggregate counts by date
       const pipeline = [
         {
@@ -334,23 +329,9 @@ module.exports = function (server) {
   // Fast top operator efficiency using daily totals cache
   async function buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd) {
     try {
-      // Debug: Check if there's any operator-machine data in totals-daily
-      const debugQuery = await db.collection('totals-daily').find({
-        entityType: 'operator-machine'
-      }).limit(5).toArray();
-      
-      logger.info(`Debug: Found ${debugQuery.length} operator-machine records in totals-daily collection`);
-      if (debugQuery.length > 0) {
-        logger.info(`Debug: Sample record:`, JSON.stringify(debugQuery[0], null, 2));
-      }
-
-      // Debug: Check date range
-      logger.info(`Debug: Querying for date range: ${dayStart.toISOString()} to ${dayEnd.toISOString()}`);
-
       // Query the daily totals cache for operator-machine totals
       // Note: dateObj is set to start of day (00:00:00), so we need to query by date string instead
       const dateStr = dayStart.toISOString().split('T')[0]; // Get YYYY-MM-DD format
-      logger.info(`Debug: Using date string for query: ${dateStr}`);
       
       const pipeline = [
         {
@@ -383,25 +364,10 @@ module.exports = function (server) {
       ];
 
       const results = await db.collection('totals-daily').aggregate(pipeline).toArray();
-      
-      logger.info(`Debug: Found ${results.length} operator results from aggregation`);
 
-      // If no operator-machine data found, try to get operator data from machine totals
+      // If no operator-machine data found, return empty array
       if (results.length === 0) {
-        logger.warn('No operator-machine data found, checking for alternative data sources...');
-        
-        // Check if there are any machine totals that might have operator info
-        const machineTotals = await db.collection('totals-daily').find({
-          entityType: 'machine',
-          dateObj: { $gte: dayStart, $lte: dayEnd }
-        }).limit(5).toArray();
-        
-        logger.info(`Debug: Found ${machineTotals.length} machine records for date range`);
-        if (machineTotals.length > 0) {
-          logger.info(`Debug: Sample machine record:`, JSON.stringify(machineTotals[0], null, 2));
-        }
-        
-        // Return empty array if no data found
+        logger.warn('No operator-machine data found in daily cache');
         return [];
       }
 

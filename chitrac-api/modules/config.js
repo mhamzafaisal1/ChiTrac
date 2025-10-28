@@ -7,13 +7,17 @@ module.exports = {
   // MongoDB (Main App)
   mongo: {
     url: process.env.MONGO_URI,
-    db: process.env.MONGO_URI.split('/').pop() || 'chitrac'
+    db: process.env.MONGO_DB,
+    username: process.env.MONGO_USERNAME,
+    password: process.env.MONGO_PASSWORD 
   },
 
   // MongoDB (Winston Logging)
   mongoLog: {
     url: process.env.MONGO_LOG_URI,
-    db: process.env.MONGO_LOG_DB
+    db: process.env.MONGO_LOG_DB,
+    username: process.env.MONGO_LOG_USERNAME || process.env.MONGO_USERNAME,
+    password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD
   },
 
   //Session Collection names
@@ -41,5 +45,13 @@ module.exports = {
   
   // Theme Settings
   // Default theme for new users: 'light' or 'dark' (default: 'light')
-  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark'
+  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark',
+  
+  // System Name
+  // System name displayed in the navbar (fallback for when DB is unavailable)
+  systemName: process.env.SYSTEM_NAME || 'ChiTrac',
+
+  // Softrol API Settings
+  // Enable/disable Softrol API routes and documentation (default: false)
+  softrol: process.env.SOFTROL === 'true',
 };

@@ -130,7 +130,7 @@ async function getCountRecords(db, serial, start, end) {
         );
         
       if (!count || !count.operator || !count.operator.name) {
-        console.log(`No operator name found for ID: ${numericOperatorId}`);
+        // Debug: No operator name found
         return 'Unknown';
       }
       
@@ -207,7 +207,7 @@ async function getCountRecords(db, serial, start, end) {
     const collectionExists = await db.listCollections({ name: countCollection }).hasNext();
     const collection = collectionExists ? countCollection : 'count';
     
-    console.log('Count collection:', collection, 'Exists:', collectionExists);
+    // Debug: Count collection check
     
     return db.collection(collection)
       .find(query)
@@ -226,7 +226,7 @@ async function getCountRecords(db, serial, start, end) {
       timestamp: { $gte: new Date(start), $lte: new Date(end) }
     };
   
-    console.log('Querying count collection between', start, 'and', end);
+    // Debug: Querying count collection
     
     return db.collection('count')
       .find(query)

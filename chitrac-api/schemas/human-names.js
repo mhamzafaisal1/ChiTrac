@@ -158,6 +158,28 @@ const utils = {
 
     // Trim and normalize spacing to avoid double spaces if some values are empty
     return parts.join(' ').trim().replace(/\s+/g, ' ');
+  },
+
+  /**
+   * Set a property on a name object
+   * @param {object} object - Required schema valid name object
+   * @param {string} propertyToSet - Required string name of property to set
+   * @param {*} valueToSet - Required new property value to be set (any type)
+   * @returns {object} Schema validated name object with updated property
+   */
+  setProperty: (object, propertyToSet, valueToSet) => {
+    const updatedName = {
+      ...object,
+      [propertyToSet]: valueToSet
+    };
+
+    // Validate against schema before returning
+    const valid = validate(updatedName);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedName;
   }
 };
 
