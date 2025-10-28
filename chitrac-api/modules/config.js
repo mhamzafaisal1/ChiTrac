@@ -7,13 +7,17 @@ module.exports = {
   // MongoDB (Main App)
   mongo: {
     url: process.env.MONGO_URI,
-    db: process.env.MONGO_URI.split('/').pop() || 'chitrac'
+    db: process.env.MONGO_URI.split('/').pop() || 'chitrac',
+    username: process.env.MONGO_USERNAME ,
+    password: process.env.MONGO_PASSWORD 
   },
 
   // MongoDB (Winston Logging)
   mongoLog: {
     url: process.env.MONGO_LOG_URI,
-    db: process.env.MONGO_LOG_DB
+    db: process.env.MONGO_LOG_DB,
+    username: process.env.MONGO_LOG_USERNAME || process.env.MONGO_USERNAME,
+    password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD
   },
 
   //Session Collection names

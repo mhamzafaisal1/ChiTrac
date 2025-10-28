@@ -11,9 +11,30 @@ const db = require('./modules/mongoConnector')(config);
 /** Load Morgan for http logging */
 const morgan = require('morgan');
 
+/** Load MongoDB for logger connection */
+const { MongoClient } = require('mongodb');
+
 /** Declare the custom winston logger and create a blank instance */
 const winston = require('./modules/logger');
-const logger = new winston(`${config.mongoLog.url}/${config.mongoLog.db}`);
+
+// Build authenticated connection string for logger
+let loggerConnectionString;
+if (config.mongoLog.url.startsWith('mongodb://')) {
+	const urlWithoutScheme = config.mongoLog.url.substring(10);
+	const slashIndex = urlWithoutScheme.indexOf('/');
+	
+	if (slashIndex === -1) {
+		loggerConnectionString = `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@${urlWithoutScheme}/${config.mongoLog.db}`;
+	} else {
+		loggerConnectionString = `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@${urlWithoutScheme}`;
+	}
+} else {
+	loggerConnectionString = config.mongoLog.url.replace('mongodb://', `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@`);
+}
+
+const dbClient = new MongoClient(loggerConnectionString);
+const logDb = dbClient.db(config.mongoLog.db);
+const logger = new winston(logDb);
 
 server.config = config;
 server.db = db;
