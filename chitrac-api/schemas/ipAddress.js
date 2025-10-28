@@ -133,6 +133,28 @@ const utils = {
     }
 
     return [firstOctet, secondOctet, thirdOctet, fourthOctet].join('.');
+  },
+
+  /**
+   * Set a property on an IP address object
+   * @param {object} object - Required schema valid IP address object
+   * @param {string} propertyToSet - Required string name of property to set
+   * @param {*} valueToSet - Required new property value to be set (any type)
+   * @returns {object} Schema validated IP address object with updated property
+   */
+  setProperty: (object, propertyToSet, valueToSet) => {
+    const updatedIPAddress = {
+      ...object,
+      [propertyToSet]: valueToSet
+    };
+
+    // Validate against schema before returning
+    const valid = validate(updatedIPAddress);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedIPAddress;
   }
 };
 
