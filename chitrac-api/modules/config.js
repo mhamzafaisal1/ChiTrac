@@ -49,9 +49,9 @@ module.exports = {
   
   // System Name
   // System name displayed in the navbar (fallback for when DB is unavailable)
-  systemName: process.env.SYSTEM_NAME || 'ChiTrac'
+  systemName: process.env.SYSTEM_NAME || 'ChiTrac',
 
   // Softrol API Settings
   // Enable/disable Softrol API routes and documentation (default: false)
-  softrol: process.env.SOFTROL === 'true'
+  softrol: process.env.SOFTROL === 'true',
 };
