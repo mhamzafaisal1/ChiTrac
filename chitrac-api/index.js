@@ -20,14 +20,15 @@ const winston = require('./modules/logger');
 // Build authenticated connection string for logger
 let loggerConnectionString;
 if (config.mongoLog.url.startsWith('mongodb://')) {
-	const urlWithoutScheme = config.mongoLog.url.substring(10);
+	/*const urlWithoutScheme = config.mongoLog.url.substring(10);
 	const slashIndex = urlWithoutScheme.indexOf('/');
 	
 	if (slashIndex === -1) {
 		loggerConnectionString = `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@${urlWithoutScheme}/${config.mongoLog.db}`;
 	} else {
 		loggerConnectionString = `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@${urlWithoutScheme}`;
-	}
+	}*/
+    loggerConnectionString = config.mongoLog.url + '';
 } else {
 	loggerConnectionString = config.mongoLog.url.replace('mongodb://', `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@`);
 }

@@ -7,8 +7,8 @@ module.exports = {
   // MongoDB (Main App)
   mongo: {
     url: process.env.MONGO_URI,
-    db: process.env.MONGO_URI.split('/').pop() || 'chitrac',
-    username: process.env.MONGO_USERNAME ,
+    db: process.env.MONGO_DB,
+    username: process.env.MONGO_USERNAME,
     password: process.env.MONGO_PASSWORD 
   },
 
@@ -49,9 +49,9 @@ module.exports = {
   
   // System Name
   // System name displayed in the navbar (fallback for when DB is unavailable)
-  systemName: process.env.SYSTEM_NAME || 'ChiTrac'
+  systemName: process.env.SYSTEM_NAME || 'ChiTrac',
 
   // Softrol API Settings
   // Enable/disable Softrol API routes and documentation (default: false)
-  softrol: process.env.SOFTROL === 'true'
+  softrol: process.env.SOFTROL === 'true',
 };
