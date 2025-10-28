@@ -1,4 +1,4 @@
-<form [formGroup]="operatorFormGroup">
+<div [formGroup]="operatorFormGroup">
   <h2 *ngIf="operatorName && operator._id" mat-dialog-title>Editing {{operatorName}}</h2>
   <h2 *ngIf="operator.name && !operator._id" mat-dialog-title>Creating {{operator.name}}</h2>
   <h2 *ngIf="!operator.name" mat-dialog-title>Create New Operator</h2>
@@ -8,19 +8,91 @@
       <input matInput type="number" formControlName="code" />
     </mat-form-field>
     <br />
-    <mat-form-field>
-      <mat-label>Name</mat-label>
-      <input matInput formControlName="name" />
-    </mat-form-field>
+    
+    <!-- Name Mode Toggle -->
+    <div style="margin-bottom: 16px;">
+      <mat-slide-toggle (change)="toggleComplexName()" [(ngModel)]="useComplexName">
+        {{ useComplexName ? 'Complex Name Entry' : 'Simple Name Entry' }}
+      </mat-slide-toggle>
+    </div>
+    
+    <!-- Simple Name Form -->
+    <div *ngIf="!useComplexName">
+      <mat-form-field>
+        <mat-label>Name</mat-label>
+        <input matInput formControlName="name" />
+      </mat-form-field>
+    </div>
+    
+    <!-- Complex Name Form -->
+    <div *ngIf="useComplexName" [formGroup]="complexNameFormGroup" style="border: 1px solid #e0e0e0; padding: 16px; border-radius: 4px;">
+      <h3 style="margin-top: 0;">Name Details</h3>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <mat-form-field>
+          <mat-label>First Name *</mat-label>
+          <input matInput formControlName="first" />
+        </mat-form-field>
+        
+        <mat-form-field>
+          <mat-label>Last Name *</mat-label>
+          <input matInput formControlName="surname" />
+        </mat-form-field>
+      </div>
+      
+      <mat-form-field>
+        <mat-label>Prefix (e.g., Dr., Mr., Ms.)</mat-label>
+        <input matInput formControlName="prefix" />
+      </mat-form-field>
+      
+      <mat-form-field>
+        <mat-label>Suffix (e.g., Jr., Sr., II, III)</mat-label>
+        <input matInput formControlName="suffix" />
+      </mat-form-field>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <mat-form-field>
+          <mat-label>Middle Name</mat-label>
+          <input matInput formControlName="middle" />
+        </mat-form-field>
+        
+        <mat-form-field>
+          <mat-label>Middle Initial</mat-label>
+          <input matInput formControlName="middleInitial" maxlength="1" />
+        </mat-form-field>
+      </div>
+      
+      <!-- Additional Surnames -->
+      <div>
+        <label style="display: block; margin-bottom: 8px;">Additional Surnames</label>
+        <div formArrayName="additionalSurnames">
+          <div *ngFor="let surname of additionalSurnamesFormArray.controls; let i = index" style="display: flex; margin-bottom: 8px;">
+            <input matInput [formControlName]="i" style="flex: 1;" />
+            <button mat-icon-button type="button" (click)="removeAdditionalSurname(i)" color="warn">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        </div>
+        <button mat-button type="button" (click)="addAdditionalSurname()" style="margin-top: 8px;">
+          <mat-icon>add</mat-icon> Add Surname
+        </button>
+      </div>
+      
+      <br />
+      <mat-slide-toggle labelPosition="before" formControlName="lastFirst">
+        Display as Last Name, First Name
+      </mat-slide-toggle>
+    </div>
+    
     <br />
     <mat-slide-toggle labelPosition="before" formControlName="active">Active</mat-slide-toggle>
   </mat-dialog-content>
   <mat-dialog-actions>
     <button mat-button cdkFocusInitial [mat-dialog-close]="'cancel'">Cancel</button>
-    <button type="button" mat-button (click)="submitEvent.emit(operator)" [disabled]="!operatorFormGroup.valid">Ok</button>
+    <button type="button" mat-button (click)="submitEvent.emit(operator)" [disabled]="!isFormValid">Ok</button>
   </mat-dialog-actions>
   <br />
   <div *ngIf="error" class="error" style="text-align: center; width: 100%; color: red; margin-top: 10px;">
     {{ error?.message || 'Update failed' }}
   </div>
-</form>
+</div>
