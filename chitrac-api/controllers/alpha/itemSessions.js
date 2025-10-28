@@ -468,7 +468,6 @@ module.exports = function (server) {
       });
 
       logger.info(`[items-summary-daily-cache] Returning ${results.length} items in final response`);
-      logger.info(`[items-summary-daily-cache] Sample: ${results[0]?.itemName} - ${results[0]?.count} counts in ${results[0]?.workedTimeFormatted?.hours}h ${results[0]?.workedTimeFormatted?.minutes}m`);
 
       res.json(results);
     } catch (err) {
@@ -539,8 +538,6 @@ module.exports = function (server) {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
-    logger.info(`[getItemsCachedDataForDays] Querying cache for dates:`, dateStrings);
-    
     // Get item daily totals from simulator (itemStandard already included)
     const itemQuery = { 
       entityType: 'item',
@@ -549,18 +546,6 @@ module.exports = function (server) {
     };
 
     const itemTotals = await cacheCollection.find(itemQuery).toArray();
-    
-    logger.info(`[getItemsCachedDataForDays] Found ${itemTotals.length} item records from cache`);
-    if (itemTotals.length > 0) {
-      logger.debug(`[getItemsCachedDataForDays] Sample record:`, {
-        itemId: itemTotals[0].itemId,
-        itemName: itemTotals[0].itemName,
-        totalCounts: itemTotals[0].totalCounts,
-        workedTimeMs: itemTotals[0].workedTimeMs,
-        date: itemTotals[0].date,
-        contributingMachines: itemTotals[0].contributingMachines
-      });
-    }
     
     return itemTotals;
   }

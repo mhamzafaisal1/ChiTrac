@@ -97,9 +97,8 @@ function calculateTimeCreditsByItem(countRecords) {
 
     // Only apply the per-minute → per-hour conversion if it’s clearly in minutes
     if (item.standard > 0 && item.standard < 60) {
-      console.warn(
-        `Standard < 60 detected (${item.standard}) for item ${item.id} (${item.name}) – assuming per-minute, converting to per-hour`
-      );
+      // Note: This conversion is applied silently in production
+      // Debug logging can be enabled if needed for troubleshooting
       standardPerHour = item.standard * 60;
     }
 

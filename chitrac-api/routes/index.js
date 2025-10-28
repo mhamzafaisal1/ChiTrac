@@ -24,6 +24,13 @@ function init(app, server) {
         res.sendFile(path.join(server.appRoot.path, '/docs/cd/readme.html'));
     });
 
+    // Conditionally load Softrol documentation based on environment setting
+    if (server.config.softrol) {
+        app.get('/docs/api/softrol', (req, res, next) => {
+            res.sendFile(path.join(server.appRoot.path, '/docs/api-softrol.html'));
+        });
+    }
+
     function xmlArrayBuilder(rootLabel, array, excludeHeader, callback) {
         let arrayBuilder = new xml.Builder({ renderOpts: { 'pretty': false }, headless: true, rootName: rootLabel });
         let returnString;
@@ -239,7 +246,10 @@ function init(app, server) {
     app.use('/api/auth', authRoutes);
     app.use('/api/passport', passportRoutes);
 
-    app.use('/api/softrol', softrolRoutes);
+    // Conditionally load Softrol routes based on environment setting
+    if (server.config.softrol) {
+        app.use('/api/softrol', softrolRoutes);
+    }
 
     app.use('/api/history', historyRoutes);
     
