@@ -7,7 +7,7 @@ module.exports = {
   // MongoDB (Main App)
   mongo: {
     url: process.env.MONGO_URI,
-    db: process.env.MONGO_URI.split('/').pop() || 'chitrac',
+    db: process.env.MONGO_DB,
     username: process.env.MONGO_USERNAME,
     password: process.env.MONGO_PASSWORD 
   },

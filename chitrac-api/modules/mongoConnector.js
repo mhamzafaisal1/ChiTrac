@@ -28,6 +28,7 @@ function constructor(config) {
 			authUrl = `mongodb://${username}:${password}@${urlWithoutScheme}`;
 		}*/
 		authUrl = url + '';
+		console.log(authUrl);
 	} else {
 		// If format is unexpected, just append credentials before @
 		authUrl = url.replace('mongodb://', `mongodb://${username}:${password}@`);
