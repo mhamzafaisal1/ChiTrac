@@ -1153,8 +1153,6 @@ module.exports = function (server) {
       ];
     });
     
-    logger.info(`[operatorSessions] Querying daily cache with date formats:`, dateFormats);
-    
     const records = await cacheCollection.find({
       entityType: 'operator-machine',
       $or: [
@@ -1163,7 +1161,6 @@ module.exports = function (server) {
       ]
     }).toArray();
     
-    logger.info(`[operatorSessions] Found ${records.length} daily cache records`);
     return records;
   }
 

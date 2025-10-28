@@ -250,7 +250,7 @@ module.exports = function (server) {
         updatedStates
       });
     } catch (err) {
-      console.error("Error in /dryer/preview-populated-operators:", err);
+      logger.error("Error in /dryer/preview-populated-operators:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -312,7 +312,7 @@ module.exports = function (server) {
         operatorCycles: cycles
       });
     } catch (err) {
-      console.error("Error in /dryer/operator-cycles:", err);
+      logger.error("Error in /dryer/operator-cycles:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -374,7 +374,7 @@ module.exports = function (server) {
         operatorCycles: cycles
       });
     } catch (err) {
-      console.error("Error in /dryer/operator-cycles-dynamic:", err);
+      logger.error("Error in /dryer/operator-cycles-dynamic:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -395,7 +395,7 @@ module.exports = function (server) {
         cycles: runningCycles
       });
     } catch (err) {
-      console.error("Error in /dryer/running-cycles:", err);
+      logger.error("Error in /dryer/running-cycles:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -565,7 +565,7 @@ module.exports = function (server) {
   //     });
   
   //   } catch (err) {
-  //     console.error("Error in /dryer/running-with-operators:", err);
+  //     logger.error("Error in /dryer/running-with-operators:", err);
   //     res.status(500).json({ error: "Internal server error" });
   //   }
   // });
@@ -690,7 +690,7 @@ module.exports = function (server) {
 //       });
   
 //     } catch (err) {
-//       console.error("Error in /dryer/running-with-operators:", err);
+//       logger.error("Error in /dryer/running-with-operators:", err);
 //       res.status(500).json({ error: "Internal server error" });
 //     }
 //   });
@@ -790,7 +790,7 @@ module.exports = function (server) {
 //     });
 
 //   } catch (err) {
-//     console.error("Error in /dryer/running-with-operators:", err);
+//     logger.error("Error in /dryer/running-with-operators:", err);
 //     res.status(500).json({ error: "Internal server error" });
 //   }
 // });
@@ -897,7 +897,7 @@ router.get("/dryer/running-with-operators", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error in /dryer/running-with-operators:", err);
+    logger.error("Error in /dryer/running-with-operators:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1011,7 +1011,7 @@ router.get("/dryer/running-with-operators-test", async (req, res) => {
     }
 
   } catch (err) {
-    console.error("Error in /dryer/running-with-operators:", err);
+    logger.error("Error in /dryer/running-with-operators:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
