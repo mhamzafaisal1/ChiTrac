@@ -20,6 +20,11 @@ const schema = {
     'shift'
   ],
   properties: {
+    _id: {
+      type: 'string',
+      pattern: '^[a-fA-F0-9]{24}$',
+      description: 'Optional MongoDB ObjectId for this sensor count record'
+    },
     timestamps: {
       ...timestampsSchema.schema,
       description: 'Timestamps schema validated timestamps object for this sensor count'

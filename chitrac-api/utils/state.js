@@ -315,7 +315,7 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
   const collection = collectionExists ? stateCollection : 'state';
   
-  console.log('State collection:', collection, 'Exists:', collectionExists);
+  // Debug: State collection check
   
   return db.collection(collection)
     .find(query)
@@ -343,7 +343,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
     query['operators.id'] = operatorId;
   }
 
-  console.log('Querying state collection between', paddedStart, 'and', paddedEnd);
+  // Debug: Querying state collection
   
   return db.collection('state')
     .find(query)

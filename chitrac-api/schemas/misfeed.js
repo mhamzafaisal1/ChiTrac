@@ -1,5 +1,7 @@
 const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const ajv = new Ajv();
+addFormats(ajv);
 
 // Import related schemas
 const timestampsSchema = require('./timestampsSchema');
@@ -21,6 +23,11 @@ const schema = {
     'shift'
   ],
   properties: {
+    _id: {
+      type: 'string',
+      pattern: '^[a-fA-F0-9]{24}$',
+      description: 'Optional MongoDB ObjectId for this misfeed record'
+    },
     timestamps: {
       ...timestampsSchema.schema,
       description: 'Timestamps schema validated timestamps object for this misfeed'

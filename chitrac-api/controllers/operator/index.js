@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const config = require('../../modules/config');
+const humanNamesSchema = require('../../schemas/human-names');
+const operatorSchema = require('../../schemas/operator');
 
 module.exports = function (server) { return constructor(server); };
 
@@ -14,6 +16,41 @@ function constructor(server) {
 
   // Ensure unique index once at startup
   collection.createIndex({ code: 1 }, { unique: true }).catch(() => {});
+
+  // Name validation helper
+  function validateOperatorName(name) {
+    // Allow simple string names for backward compatibility
+    if (typeof name === 'string') {
+      if (name.trim().length === 0) {
+        throw new Error('Operator name cannot be empty');
+      }
+      return true;
+    }
+    
+    // Validate complex name object using human-names schema
+    if (typeof name === 'object' && name !== null) {
+      const Ajv = require('ajv');
+      const ajv = new Ajv();
+      const validate = ajv.compile(humanNamesSchema.schema);
+      
+      const valid = validate(name);
+      if (!valid && validate.errors) {
+        const errorMessages = validate.errors.map(e => 
+          `${e.instancePath || 'root'} ${e.message}`
+        ).join(', ');
+        throw new Error(`Invalid name structure: ${errorMessages}`);
+      }
+      
+      // Check required fields
+      if (!name.first || !name.surname) {
+        throw new Error('First name and surname are required');
+      }
+      
+      return true;
+    }
+    
+    throw new Error('Operator name must be a string or a valid name object');
+  }
 
   // JWT verification middleware
   function verifyJwtMiddleware(req, res, next) {
@@ -82,10 +119,22 @@ function constructor(server) {
     try {
       const body = { ...req.body };
       if (body._id) delete body._id;           // new doc
+      
+      // Validate operator name
+      if (body.name) {
+        validateOperatorName(body.name);
+      }
+      
       // unique by 'code'
       const out = await configService.upsertConfiguration(collection, body, true, 'code');
       res.status(201).json(out);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      // Handle validation errors
+      if (e.message && (e.message.includes('Operator name') || e.message.includes('Invalid name'))) {
+        return res.status(400).json({ message: e.message });
+      }
+      next(e); 
+    }
   }
 
   // Update by id (id-aware, preserves uniqueness on 'code' excluding self)
@@ -94,6 +143,11 @@ function constructor(server) {
       const id = req.params.id || null;
       const updates = { ...req.body };
       if (updates._id) delete updates._id;
+
+      // Validate operator name if it's being updated
+      if (updates.name) {
+        validateOperatorName(updates.name);
+      }
 
       // Pass {_id:id,...updates} so configService can do:
       // findOne({ code: updates.code, _id: { $ne: id } }) → 409 if exists
@@ -104,7 +158,13 @@ function constructor(server) {
         'code'
       );
       res.json(out);
-    } catch (e) { next(e); }
+    } catch (e) { 
+      // Handle validation errors
+      if (e.message && (e.message.includes('Operator name') || e.message.includes('Invalid name'))) {
+        return res.status(400).json({ message: e.message });
+      }
+      next(e); 
+    }
   }
 
   async function deleteOperator(req, res, next) {

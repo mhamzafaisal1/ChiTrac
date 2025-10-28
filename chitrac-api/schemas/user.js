@@ -17,6 +17,11 @@ const schema = {
     'local'
   ],
   properties: {
+    _id: {
+      type: 'string',
+      pattern: '^[a-fA-F0-9]{24}$',
+      description: 'Optional MongoDB ObjectId for this user record'
+    },
     id: {
       type: 'integer',
       default: 999999,

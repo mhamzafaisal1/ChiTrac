@@ -233,14 +233,7 @@ async function buildLiveOperatorEfficiencySummary(states, counts, start, end, se
   
         const efficiency = calculateEfficiency(runtimeMs, windowTotalCounts.length, windowValidCounts);
   
-        console.log({
-          operatorId,
-          window: windowName,
-          runtimeMs,
-          total: windowTotalCounts.length,
-          valid: windowValidCounts.length,
-          efficiency
-        });
+        // Debug: Demo flipper data processed
   
         efficiencies[windowName] = Math.round(efficiency * 10000) / 100;
       }
