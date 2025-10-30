@@ -19,19 +19,36 @@ const winston = require('./modules/logger');
 
 // Build authenticated connection string for logger
 let loggerConnectionString;
+const logUsername = config.mongoLog.username;
+const logPassword = config.mongoLog.password;
+const logAuthSource = config.mongoLog.authSource || 'admin';
+
+// URL encode credentials
+const encodedLogUsername = encodeURIComponent(logUsername);
+const encodedLogPassword = encodeURIComponent(logPassword);
+
 if (config.mongoLog.url.startsWith('mongodb://')) {
-	/*const urlWithoutScheme = config.mongoLog.url.substring(10);
+	const urlWithoutScheme = config.mongoLog.url.substring(10);
 	const slashIndex = urlWithoutScheme.indexOf('/');
 	
 	if (slashIndex === -1) {
-		loggerConnectionString = `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@${urlWithoutScheme}/${config.mongoLog.db}`;
+		// No database in URL
+		loggerConnectionString = `mongodb://${encodedLogUsername}:${encodedLogPassword}@${urlWithoutScheme}/${config.mongoLog.db || 'chitrac-logging'}?authSource=${logAuthSource}`;
 	} else {
-		loggerConnectionString = `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@${urlWithoutScheme}`;
-	}*/
-    loggerConnectionString = config.mongoLog.url + '';
+		// Database specified in URL
+		loggerConnectionString = `mongodb://${encodedLogUsername}:${encodedLogPassword}@${urlWithoutScheme}?authSource=${logAuthSource}`;
+	}
 } else {
-	loggerConnectionString = config.mongoLog.url.replace('mongodb://', `mongodb://${config.mongoLog.username}:${config.mongoLog.password}@`);
+	loggerConnectionString = config.mongoLog.url.replace('mongodb://', `mongodb://${encodedLogUsername}:${encodedLogPassword}@`);
+	// Add authSource
+	if (!loggerConnectionString.includes('?')) {
+		loggerConnectionString += `?authSource=${logAuthSource}`;
+	} else {
+		loggerConnectionString += `&authSource=${logAuthSource}`;
+	}
 }
+
+console.log('Logger connection string:', loggerConnectionString.replace(/:[^:@]+@/, ':****@'));
 
 const dbClient = new MongoClient(loggerConnectionString);
 const logDb = dbClient.db(config.mongoLog.db);

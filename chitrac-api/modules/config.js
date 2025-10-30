@@ -9,7 +9,8 @@ module.exports = {
     url: process.env.MONGO_URI,
     db: process.env.MONGO_DB,
     username: process.env.MONGO_USERNAME,
-    password: process.env.MONGO_PASSWORD 
+    password: process.env.MONGO_PASSWORD,
+    authSource: process.env.MONGO_AUTH_SOURCE || 'admin'
   },
 
   // MongoDB (Winston Logging)
@@ -17,7 +18,8 @@ module.exports = {
     url: process.env.MONGO_LOG_URI,
     db: process.env.MONGO_LOG_DB,
     username: process.env.MONGO_LOG_USERNAME || process.env.MONGO_USERNAME,
-    password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD
+    password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD,
+    authSource: process.env.MONGO_LOG_AUTH_SOURCE || process.env.MONGO_AUTH_SOURCE || 'admin'
   },
 
   //Session Collection names
