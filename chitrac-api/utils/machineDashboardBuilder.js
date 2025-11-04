@@ -290,8 +290,20 @@ async function buildMachinePerformance(
 // }
 
 function buildMachineItemSummary(states, validCounts, start, end) {
+  // Filter counts to only those within the session time range
+  const sessionStart = new Date(start);
+  const sessionEnd = new Date(end);
+  
+  const countsInSession = validCounts.filter((c) => {
+    const countTime = c.timestamp || c.timestamps?.create;
+    if (!countTime) return false;
+    const ts = new Date(countTime);
+    return ts >= sessionStart && ts <= sessionEnd;
+  });
+  
   const cycles = extractAllCyclesFromStates(states, start, end).running;
-  if (!cycles.length || !validCounts.length) {
+  
+  if (!cycles.length || !countsInSession.length) {
     return {
       sessions: [],
       machineSummary: {
@@ -316,8 +328,13 @@ function buildMachineItemSummary(states, validCounts, start, end) {
     const cycleEnd = new Date(cycle.end);
     const cycleMs = cycleEnd - cycleStart;
 
-    const cycleCounts = validCounts.filter((c) => {
-      const ts = new Date(c.timestamp);
+    const cycleCounts = countsInSession.filter((c) => {
+      // Handle both timestamp (string or Date) and timestamps.create
+      const countTime = c.timestamp || c.timestamps?.create;
+      if (!countTime) return false;
+      
+      const ts = new Date(countTime);
+      // Allow for small timing differences - check if count is within cycle range
       return ts >= cycleStart && ts <= cycleEnd;
     });
 
@@ -496,7 +513,11 @@ function buildItemHourlyStack(validCounts, start, end) {
     const itemNames = new Set();
 
     for (const count of validCounts) {
-      const ts = new Date(count.timestamp);
+      // Handle both timestamp (string or Date) and timestamps.create
+      const countTime = count.timestamp || count.timestamps?.create;
+      if (!countTime) continue;
+      
+      const ts = new Date(countTime);
       const hourIndex = Math.floor((ts - startDate) / (60 * 60 * 1000));
       const itemName = count.item?.name || "Unknown";
 
@@ -629,12 +650,20 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
     const hourlyData = await Promise.all(
       hourlyIntervals.map(async (interval) => {
         const hourStates = states.filter((s) => {
-          const ts = new Date(s.timestamp);
+          // Handle both timestamp (string or Date) and timestamps.create
+          const stateTime = s.timestamp || s.timestamps?.create;
+          if (!stateTime) return false;
+          
+          const ts = new Date(stateTime);
           return ts >= interval.start && ts < interval.end;
         });
 
         const hourCounts = counts.filter((c) => {
-          const ts = new Date(c.timestamp);
+          // Handle both timestamp (string or Date) and timestamps.create
+          const countTime = c.timestamp || c.timestamps?.create;
+          if (!countTime) return false;
+          
+          const ts = new Date(countTime);
           return ts >= interval.start && ts < interval.end;
         });
 
@@ -652,8 +681,23 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
         const operatorMetrics = {};
 
         for (const operatorId of operatorIds) {
-          const key = `${operatorId}-${serial}`;
-          const group = groupedCounts[key];
+          // groupCountsByOperatorAndMachine creates keys using machine.serial from counts
+          // But counts might have machine.id instead, so we need to check both
+          // Also, the serial parameter might need to match the actual machine serial/id in counts
+          let group = groupedCounts[`${operatorId}-${serial}`];
+          
+          // If not found, try to find by checking all keys that match the operatorId
+          if (!group) {
+            // Find any group for this operator (in case machine serial/id mismatch)
+            const matchingKey = Object.keys(groupedCounts).find(key => {
+              const [opId, machSerial] = key.split('-');
+              return opId === String(operatorId);
+            });
+            if (matchingKey) {
+              group = groupedCounts[matchingKey];
+            }
+          }
+          
           if (!group) continue;
 
           const stats = processCountStatistics(group.counts);
@@ -662,10 +706,20 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
             stats.total,
             group.validCounts
           );
-          const name = group.counts[0]?.operator?.name || "Unknown";
+          
+          // Handle operator name - can be string or object with first/surname
+          let operatorName = "Unknown";
+          const opName = group.counts[0]?.operator?.name;
+          if (opName) {
+            if (typeof opName === 'string') {
+              operatorName = opName;
+            } else if (opName.first || opName.surname) {
+              operatorName = `${opName.first || ''} ${opName.surname || ''}`.trim() || "Unknown";
+            }
+          }
 
           operatorMetrics[operatorId] = {
-            name,
+            name: operatorName,
             runTime: totalRuntime,
             validCounts: stats.valid,
             totalCounts: stats.total,
@@ -697,6 +751,11 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
             throughput / 100
           ) * 100;
 
+        // Only return hours that have operator data (filter out empty hours)
+        if (Object.keys(operatorMetrics).length === 0) {
+          return null;
+        }
+
         return {
           hour: interval.start.toISOString(),
           oee: Math.round(oee * 100) / 100,
@@ -709,7 +768,8 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
       })
     );
 
-    return hourlyData;
+    // Filter out null entries (empty hours)
+    return hourlyData.filter(h => h !== null);
   } catch (err) {
     console.error("Error in buildOperatorEfficiency:", err);
     throw err;
@@ -727,11 +787,18 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
 async function buildCurrentOperators(db, serial) {
   const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
   const msColl = db.collection(config.machineSessionCollectionName);
+  const serialNum = Number(serial);
 
   // latest machine-session → operator IDs
-  const latest = await msColl.find({ "machine.serial": Number(serial) })
+  // Support both machine.serial and machine.id
+  const latest = await msColl.find({
+    $or: [
+      { "machine.serial": serialNum },
+      { "machine.id": serialNum }
+    ]
+  })
     .project({ _id: 0, operators: 1, machine: 1, timestamps: 1 })
-    .sort({ "timestamps.start": -1 })
+    .sort({ "timestamps.start": -1, "timestamps.create": -1 })
     .limit(1)
     .toArray();
 
@@ -748,18 +815,22 @@ async function buildCurrentOperators(db, serial) {
   const osColl = db.collection(config.operatorSessionCollectionName);
 
   // most-recent operator-session for each operator on this machine
+  // Support both machine.serial and machine.id
   const rows = await Promise.all(opIds.map(async (opId) => {
     const s = await osColl.find({
       "operator.id": opId,
-      "machine.serial": Number(serial),
+      $or: [
+        { "machine.serial": serialNum },
+        { "machine.id": serialNum }
+      ]
     })
-      .project({
-        _id: 0, operator: 1, machine: 1, timestamps: 1,
-        workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
-      })
-      .sort({ "timestamps.start": -1 })
-      .limit(1)
-      .toArray();
+    .project({
+      _id: 0, operator: 1, machine: 1, timestamps: 1,
+      workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
+    })
+    .sort({ "timestamps.start": -1, "timestamps.create": -1 })
+    .limit(1)
+    .toArray();
 
     const doc = s[0];
     if (!doc) return null;
@@ -771,10 +842,23 @@ async function buildCurrentOperators(db, serial) {
     const eff       = workSec > 0 ? (creditSec / workSec) : 0;
     const workedMs  = Math.round(workSec * 1000);
 
+    // Normalize machine serial/id
+    const machineSerial = doc.machine?.serial ?? doc.machine?.id ?? Number(serial);
+    
+    // Handle operator name - can be string or object with first/surname
+    let operatorName = "Unknown";
+    if (doc.operator?.name) {
+      if (typeof doc.operator.name === 'string') {
+        operatorName = doc.operator.name;
+      } else if (doc.operator.name.first || doc.operator.name.surname) {
+        operatorName = `${doc.operator.name.first || ''} ${doc.operator.name.surname || ''}`.trim() || "Unknown";
+      }
+    }
+    
     return {
       operatorId: doc.operator?.id ?? null,
-      operatorName: doc.operator?.name || "Unknown",
-      machineSerial: doc.machine?.serial ?? Number(serial),
+      operatorName,
+      machineSerial,
       machineName: doc.machine?.name || "Unknown",
       session: {
         start: doc.timestamps?.start || null,

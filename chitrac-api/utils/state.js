@@ -73,7 +73,7 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   
     for (const state of states) {
       const code = state.status?.code;
-      const timestamp = new Date(state.timestamp);
+      const timestamp = new Date(state.timestamps?.create || state.timestamp);
   
       // Running cycles only
       if (!mode || mode === 'running') {

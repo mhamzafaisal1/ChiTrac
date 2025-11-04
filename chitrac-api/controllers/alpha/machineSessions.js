@@ -793,8 +793,8 @@ module.exports = function (server) {
             buildOperatorEfficiency(
               states,
               counts.valid,
-              sessionStart,
-              sessionEnd,
+              start,
+              end,
               machineSerial
             ),
             buildCurrentOperators(db, machineSerial),
@@ -1415,6 +1415,8 @@ module.exports = function (server) {
 
       const targetSerials = serial ? [serial] : [];
 
+      
+
       // Import required functions (these should be available from the server context)
       const { fetchGroupedAnalyticsData } = require("../../utils/fetchData");
       const {
@@ -1487,8 +1489,8 @@ module.exports = function (server) {
             buildOperatorEfficiency(
               states,
               counts.valid,
-              sessionStart,
-              sessionEnd,
+              start,
+              end,
               machineSerial
             ),
             buildCurrentOperators(db, machineSerial),
