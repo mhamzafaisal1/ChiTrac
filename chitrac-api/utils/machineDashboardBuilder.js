@@ -301,7 +301,19 @@ function buildMachineItemSummary(states, validCounts, start, end) {
     return ts >= sessionStart && ts <= sessionEnd;
   });
   
-  const cycles = extractAllCyclesFromStates(states, start, end).running;
+  let cycles = extractAllCyclesFromStates(states, start, end).running;
+  
+  // Fallback: If no cycles found but we have counts, create a cycle from the full time range
+  // This handles cases where states don't have status.code fields
+  if (!cycles.length && countsInSession.length > 0) {
+    // Use the full session time range as a single cycle
+    // This ensures we capture all work time when states don't have proper status codes
+    cycles = [{
+      start: sessionStart,
+      end: sessionEnd,
+      duration: sessionEnd - sessionStart
+    }];
+  }
   
   if (!cycles.length || !countsInSession.length) {
     return {

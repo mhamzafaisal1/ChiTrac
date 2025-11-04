@@ -1439,24 +1439,72 @@ module.exports = function (server) {
         { targetSerials }
       );
 
+      // Debug: Check groupedData structure
+      logger.info(`[machineSessions] getMachineDashboardRealTime: groupedData keys: ${Object.keys(groupedData).length}, serials: ${Object.keys(groupedData).join(', ')}`);
+      
+      if (!groupedData || Object.keys(groupedData).length === 0) {
+        logger.warn(`[machineSessions] No grouped data returned for time range ${start} to ${end}`);
+        return res.json([]);
+      }
+      
       const results = await Promise.all(
         Object.entries(groupedData).map(async ([serial, group]) => {
           const machineSerial = parseInt(serial);
           const { states: rawStates, counts } = group;
 
-          if (!rawStates.length && !counts.valid.length) return null;
+          logger.info(`[machineSessions] Processing machine ${machineSerial}: rawStates.length=${rawStates?.length || 0}, counts.valid.length=${counts?.valid?.length || 0}`);
+
+          if (!rawStates.length && !counts.valid.length) {
+            logger.warn(`[machineSessions] Skipping machine ${machineSerial}: no states or valid counts`);
+            return null;
+          }
 
           // Apply bookending for this serial
-          const bookended = await getBookendedStatesAndTimeRange(
+          let bookended = await getBookendedStatesAndTimeRange(
             db,
             machineSerial,
             start,
             end
           );
 
-          if (!bookended) return null;
+          // Fallback: If bookending fails but we have counts, use the full time range
+          if (!bookended) {
+            logger.warn(`[machineSessions] No bookended data for machine ${machineSerial}, using full time range as fallback`);
+            
+            // Use rawStates if available, otherwise fetch fresh states
+            let statesToUse = rawStates;
+            if (!statesToUse || statesToUse.length === 0) {
+              // Fetch states for the full range as fallback
+              const { fetchGroupedAnalyticsData: fetchStates } = require("../../utils/fetchData");
+              const stateData = await fetchStates(db, start, end, "machine", { targetSerials: [machineSerial] });
+              statesToUse = stateData[machineSerial]?.states || [];
+            }
+            
+            if (!statesToUse.length && !counts.valid.length) {
+              return null;
+            }
+            
+            // Normalize states if needed
+            statesToUse = statesToUse.map(s => {
+              if (!s.timestamp && s.timestamps?.create) {
+                s.timestamp = s.timestamps.create;
+              }
+              if (!s.machine?.serial && s.machine?.id) {
+                s.machine = s.machine || {};
+                s.machine.serial = s.machine.id;
+              }
+              return s;
+            });
+            
+            bookended = {
+              states: statesToUse,
+              sessionStart: new Date(start),
+              sessionEnd: new Date(end)
+            };
+          }
 
           const { states, sessionStart, sessionEnd } = bookended;
+          logger.info(`[machineSessions] Machine ${machineSerial}: session from ${sessionStart} to ${sessionEnd}, ${states.length} states`);
 
           const latest = states.at(-1) || {};
           const statusCode = latest.status?.code || 0;
