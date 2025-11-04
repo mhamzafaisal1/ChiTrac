@@ -7,9 +7,10 @@ module.exports = {
   // MongoDB (Main App)
   mongo: {
     url: process.env.MONGO_URI,
-    db: process.env.MONGO_URI.split('/').pop() || 'chitrac',
-    username: process.env.MONGO_USERNAME ,
-    password: process.env.MONGO_PASSWORD 
+    db: process.env.MONGO_DB,
+    username: process.env.MONGO_USERNAME,
+    password: process.env.MONGO_PASSWORD,
+    authSource: process.env.MONGO_AUTH_SOURCE || 'admin'
   },
 
   // MongoDB (Winston Logging)
@@ -17,7 +18,8 @@ module.exports = {
     url: process.env.MONGO_LOG_URI,
     db: process.env.MONGO_LOG_DB,
     username: process.env.MONGO_LOG_USERNAME || process.env.MONGO_USERNAME,
-    password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD
+    password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD,
+    authSource: process.env.MONGO_LOG_AUTH_SOURCE || process.env.MONGO_AUTH_SOURCE || 'admin'
   },
 
   //Session Collection names
@@ -49,9 +51,9 @@ module.exports = {
   
   // System Name
   // System name displayed in the navbar (fallback for when DB is unavailable)
-  systemName: process.env.SYSTEM_NAME || 'ChiTrac'
+  systemName: process.env.SYSTEM_NAME || 'ChiTrac',
 
   // Softrol API Settings
   // Enable/disable Softrol API routes and documentation (default: false)
-  softrol: process.env.SOFTROL === 'true'
+  softrol: process.env.SOFTROL === 'true',
 };

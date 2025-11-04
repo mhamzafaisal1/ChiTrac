@@ -322,7 +322,8 @@ async function getCountRecords(db, serial, start, end) {
     
     for (const count of counts) {
       const opId = count.operator?.id;
-      const machineSerial = count.machine?.serial;
+      // Support both machine.serial and machine.id
+      const machineSerial = count.machine?.serial ?? count.machine?.id;
       
       if (!opId || !machineSerial) continue;
       

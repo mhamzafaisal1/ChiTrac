@@ -277,10 +277,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           }
 
           // Filter out undefined/null/invalid responses
+          // Accept responses with either metrics OR itemSummary structure
           const validResponses = responses.filter(
             (response) =>
               response &&
-              response.metrics &&
+              (response.metrics || response.itemSummary || response.performance) &&
               response.machine &&
               response.currentStatus
           );
@@ -290,29 +291,46 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             return;
           }
 
-          const formattedData = validResponses.map((response) => ({
-            Status: getStatusDotByCode(response.currentStatus?.code),
-            "Machine Name": response.machine?.name ?? "Unknown",
-            "Serial Number": response.machine?.serial,
-            Runtime: `${response.metrics?.runtime?.formatted?.hours ?? 0}h ${
-              response.metrics?.runtime?.formatted?.minutes ?? 0
-            }m`,
-            Downtime: `${response.metrics?.downtime?.formatted?.hours ?? 0}h ${
-              response.metrics?.downtime?.formatted?.minutes ?? 0
-            }m`,
-            "Total Count": response.metrics?.output?.totalCount ?? 0,
-            "Misfeed Count": response.metrics?.output?.misfeedCount ?? 0,
-            Availability:
-              (response.metrics?.performance?.availability?.percentage ?? "0") +
-              "%",
-            Throughput:
-              (response.metrics?.performance?.throughput?.percentage ?? "0") +
-              "%",
-            Efficiency:
-              (response.metrics?.performance?.efficiency?.percentage ?? "0") +
-              "%",
-            OEE: (response.metrics?.performance?.oee?.percentage ?? "0") + "%",
-          }));
+          const formattedData = validResponses.map((response) => {
+            // Support both response structures:
+            // 1. metrics.output.totalCount (from cached/real-time summary routes)
+            // 2. itemSummary.machineSummary.totalCount (from dashboard route)
+            const totalCount = response.metrics?.output?.totalCount ?? 
+                              response.itemSummary?.machineSummary?.totalCount ?? 0;
+            const misfeedCount = response.metrics?.output?.misfeedCount ?? 
+                                response.itemSummary?.machineSummary?.misfeedCount ?? 0;
+            
+            // Runtime and downtime can come from metrics or performance
+            const runtime = response.metrics?.runtime ?? response.performance?.runtime;
+            const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+            
+            // Performance metrics can come from metrics.performance or performance directly
+            const performance = response.metrics?.performance ?? response.performance;
+            
+            return {
+              Status: getStatusDotByCode(response.currentStatus?.code),
+              "Machine Name": response.machine?.name ?? "Unknown",
+              "Serial Number": response.machine?.serial,
+              Runtime: `${runtime?.formatted?.hours ?? 0}h ${
+                runtime?.formatted?.minutes ?? 0
+              }m`,
+              Downtime: `${downtime?.formatted?.hours ?? 0}h ${
+                downtime?.formatted?.minutes ?? 0
+              }m`,
+              "Total Count": totalCount,
+              "Misfeed Count": misfeedCount,
+              Availability:
+                (performance?.availability?.percentage ?? "0") +
+                "%",
+              Throughput:
+                (performance?.throughput?.percentage ?? "0") +
+                "%",
+              Efficiency:
+                (performance?.efficiency?.percentage ?? "0") +
+                "%",
+              OEE: (performance?.oee?.percentage ?? "0") + "%",
+            };
+          });
 
           const allColumns = Object.keys(formattedData[0]);
           const columnsToHide: string[] = [""];
@@ -350,10 +368,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             }
 
             // Filter out undefined/null/invalid responses
+            // Accept responses with either metrics OR itemSummary structure
             const validResponses = responses.filter(
               (response) =>
                 response &&
-                response.metrics &&
+                (response.metrics || response.itemSummary || response.performance) &&
                 response.machine &&
                 response.currentStatus
             );
@@ -363,29 +382,46 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               return;
             }
 
-            const formattedData = validResponses.map((response) => ({
-              Status: getStatusDotByCode(response.currentStatus?.code),
-              "Machine Name": response.machine?.name ?? "Unknown",
-              "Serial Number": response.machine?.serial,
-              Runtime: `${response.metrics?.runtime?.formatted?.hours ?? 0}h ${
-                response.metrics?.runtime?.formatted?.minutes ?? 0
-              }m`,
-              Downtime: `${response.metrics?.downtime?.formatted?.hours ?? 0}h ${
-                response.metrics?.downtime?.formatted?.minutes ?? 0
-              }m`,
-              "Total Count": response.metrics?.output?.totalCount ?? 0,
-              "Misfeed Count": response.metrics?.output?.misfeedCount ?? 0,
-              Availability:
-                (response.metrics?.performance?.availability?.percentage ?? "0") +
-                "%",
-              Throughput:
-                (response.metrics?.performance?.throughput?.percentage ?? "0") +
-                "%",
-              Efficiency:
-                (response.metrics?.performance?.efficiency?.percentage ?? "0") +
-                "%",
-              OEE: (response.metrics?.performance?.oee?.percentage ?? "0") + "%",
-            }));
+            const formattedData = validResponses.map((response) => {
+              // Support both response structures:
+              // 1. metrics.output.totalCount (from cached/real-time summary routes)
+              // 2. itemSummary.machineSummary.totalCount (from dashboard route)
+              const totalCount = response.metrics?.output?.totalCount ?? 
+                                response.itemSummary?.machineSummary?.totalCount ?? 0;
+              const misfeedCount = response.metrics?.output?.misfeedCount ?? 
+                                  response.itemSummary?.machineSummary?.misfeedCount ?? 0;
+              
+              // Runtime and downtime can come from metrics or performance
+              const runtime = response.metrics?.runtime ?? response.performance?.runtime;
+              const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+              
+              // Performance metrics can come from metrics.performance or performance directly
+              const performance = response.metrics?.performance ?? response.performance;
+              
+              return {
+                Status: getStatusDotByCode(response.currentStatus?.code),
+                "Machine Name": response.machine?.name ?? "Unknown",
+                "Serial Number": response.machine?.serial,
+                Runtime: `${runtime?.formatted?.hours ?? 0}h ${
+                  runtime?.formatted?.minutes ?? 0
+                }m`,
+                Downtime: `${downtime?.formatted?.hours ?? 0}h ${
+                  downtime?.formatted?.minutes ?? 0
+                }m`,
+                "Total Count": totalCount,
+                "Misfeed Count": misfeedCount,
+                Availability:
+                  (performance?.availability?.percentage ?? "0") +
+                  "%",
+                Throughput:
+                  (performance?.throughput?.percentage ?? "0") +
+                  "%",
+                Efficiency:
+                  (performance?.efficiency?.percentage ?? "0") +
+                  "%",
+                OEE: (performance?.oee?.percentage ?? "0") + "%",
+              };
+            });
 
             const allColumns = Object.keys(formattedData[0]);
             const columnsToHide: string[] = [""];
@@ -578,6 +614,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             const faultSummaryData = machineData.faultData?.faultSummaries || [];
             const faultCycleData = machineData.faultData?.faultCycles || [];
 
+            // console.log("machineData.currentOperators", machineData.currentOperators)
           
             const carouselTabs = [
               {
@@ -668,7 +705,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     hourlyData: machineData.operatorEfficiency ?? [],
                   },
                   marginTop: 30,
-                  marginRight: 15,
+                  marginRight: 35,
                   marginBottom: 60,
                   marginLeft: 25,
                   showLegend: true,

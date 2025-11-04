@@ -128,14 +128,26 @@ const { getStateCollectionName, getCountCollectionName } = require('./time');
 async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', options = {}) {
     const { targetSerials = [], operatorId = null } = options;
     
-    // Construct count query
+    // Convert Date objects to ISO strings for comparison (timestamps.create is stored as ISO strings)
+    const startISO = start instanceof Date ? start.toISOString() : start;
+    const endISO = end instanceof Date ? end.toISOString() : end;
+    
+    // Construct count query - handle both machine.serial and machine.id fields
+    // Use timestamps.create instead of timestamp (documents use timestamps.create)
     const countQuery = {
-        timestamp: { $gte: start, $lte: end },
-        "machine.serial": { $type: "int" }
+        "timestamps.create": { $gte: startISO, $lte: endISO },
+        $or: [
+            { "machine.serial": { $type: "int" } },
+            { "machine.id": { $type: "int" } }
+        ]
     };
     
     if (groupBy === 'machine' && targetSerials.length > 0) {
-        countQuery["machine.serial"] = { $in: targetSerials };
+        // Support both machine.serial and machine.id in the filter
+        countQuery.$or = [
+            { "machine.serial": { $in: targetSerials } },
+            { "machine.id": { $in: targetSerials } }
+        ];
     }
     
     if (groupBy === 'operator' && operatorId !== null) {
@@ -145,11 +157,13 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
     // Fetch counts first if grouping by operator, then fetch only relevant states
     let states = [];
     const countCollection = getCountCollectionName(start);
+    
     let counts = await db.collection(countCollection)
         .find(countQuery)
         .project({
-            timestamp: 1,
+            "timestamps.create": 1,
             "machine.serial": 1,
+            "machine.id": 1,
             "operator.id": 1,
             "operator.name": 1,
             "item.id": 1,
@@ -157,54 +171,130 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
             "item.standard": 1,
             misfeed: 1
         })
-        .sort({ timestamp: 1 })
+        .sort({ "timestamps.create": 1 })
         .toArray();
+
+    // Normalize documents: map timestamps.create to timestamp and machine.id to machine.serial
+    counts = counts.map(count => {
+        // Normalize timestamp field - use timestamps.create if timestamp doesn't exist
+        if (!count.timestamp && count.timestamps?.create) {
+            count.timestamp = count.timestamps.create;
+        }
+        // Normalize machine.serial field - use machine.id if machine.serial doesn't exist
+        if (!count.machine?.serial && count.machine?.id) {
+            count.machine = count.machine || {};
+            count.machine.serial = count.machine.id;
+        }
+        return count;
+    });
 
     if (groupBy === 'operator') {
         // 🔥 Get machine.serials used in count records
         const machineSerialsUsed = Array.from(
             new Set(counts.map(c => c.machine?.serial).filter(Boolean))
         );
+        // State query - handle both timestamp and timestamps.create, and machine.serial/id
         const stateQuery = {
-            timestamp: { $gte: start, $lte: end },
-            "machine.serial": { $in: machineSerialsUsed }
+            $or: [
+                {
+                    timestamp: { $gte: start, $lte: end },
+                    $or: [
+                        { "machine.serial": { $in: machineSerialsUsed } },
+                        { "machine.id": { $in: machineSerialsUsed } }
+                    ]
+                },
+                {
+                    "timestamps.create": { $gte: startISO, $lte: endISO },
+                    $or: [
+                        { "machine.serial": { $in: machineSerialsUsed } },
+                        { "machine.id": { $in: machineSerialsUsed } }
+                    ]
+                }
+            ]
         };
         const stateCollection = getStateCollectionName(start);
         states = await db.collection(stateCollection)
             .find(stateQuery)
             .project({
                 timestamp: 1,
+                "timestamps.create": 1,
                 "machine.serial": 1,
+                "machine.id": 1,
                 "machine.name": 1,
                 "program.mode": 1,
                 "status.code": 1,
                 "status.name": 1
             })
-            .sort({ timestamp: 1 })
+            .sort({ timestamp: 1, "timestamps.create": 1 })
             .toArray();
     } else {
-        // Construct state query
+        // Construct state query - handle both timestamp and timestamps.create
         const stateQuery = {
-            timestamp: { $gte: start, $lte: end },
-            "machine.serial": { $type: "int" }
+            $or: [
+                {
+                    timestamp: { $gte: start, $lte: end },
+                    $or: [
+                        { "machine.serial": { $type: "int" } },
+                        { "machine.id": { $type: "int" } }
+                    ]
+                },
+                {
+                    "timestamps.create": { $gte: startISO, $lte: endISO },
+                    $or: [
+                        { "machine.serial": { $type: "int" } },
+                        { "machine.id": { $type: "int" } }
+                    ]
+                }
+            ]
         };
         if (groupBy === 'machine' && targetSerials.length > 0) {
-            stateQuery["machine.serial"] = { $in: targetSerials };
+            stateQuery.$or = [
+                {
+                    timestamp: { $gte: start, $lte: end },
+                    $or: [
+                        { "machine.serial": { $in: targetSerials } },
+                        { "machine.id": { $in: targetSerials } }
+                    ]
+                },
+                {
+                    "timestamps.create": { $gte: startISO, $lte: endISO },
+                    $or: [
+                        { "machine.serial": { $in: targetSerials } },
+                        { "machine.id": { $in: targetSerials } }
+                    ]
+                }
+            ];
         }
         const stateCollection = getStateCollectionName(start);
         states = await db.collection(stateCollection)
             .find(stateQuery)
             .project({
                 timestamp: 1,
+                "timestamps.create": 1,
                 "machine.serial": 1,
+                "machine.id": 1,
                 "machine.name": 1,
                 "program.mode": 1,
                 "status.code": 1,
                 "status.name": 1
             })
-            .sort({ timestamp: 1 })
+            .sort({ timestamp: 1, "timestamps.create": 1 })
             .toArray();
     }
+
+    // Normalize state documents: map timestamps.create to timestamp and machine.id to machine.serial
+    states = states.map(state => {
+        // Normalize timestamp field
+        if (!state.timestamp && state.timestamps?.create) {
+            state.timestamp = state.timestamps.create;
+        }
+        // Normalize machine.serial field
+        if (!state.machine?.serial && state.machine?.id) {
+            state.machine = state.machine || {};
+            state.machine.serial = state.machine.id;
+        }
+        return state;
+    });
 
     const grouped = {};
     

@@ -49,12 +49,28 @@ module.exports = function faultHistoryRoute(server) {
       const endDate = new Date(end);
 
       // Base match: time overlap
+      // Support both machine.serial and machine.id
       const match = {
         "timestamps.start": { $lte: endDate },
         $or: [{ "timestamps.end": { $exists: false } }, { "timestamps.end": { $gte: startDate } }],
       };
-      if (hasSerial) match["machine.serial"] = serial;
-      if (hasOperator) match["operators.id"] = operatorId;
+      
+      // Add machine filter - support both machine.serial and machine.id
+      if (hasSerial) {
+        match.$and = [
+          {
+            $or: [
+              { "machine.serial": serial },
+              { "machine.id": serial }
+            ]
+          }
+        ];
+      }
+      
+      // Add operator filter
+      if (hasOperator) {
+        match["operators.id"] = operatorId;
+      }
 
       // Pull overlapping fault-sessions and clip to [start,end]
       const raw = await db
@@ -115,14 +131,26 @@ module.exports = function faultHistoryRoute(server) {
           raw.find(r => r?.machine?.name)?.machine?.name ??
           `Machine ${serial}`;
       }
+      
+      // Normalize machine serial/id in results
+      raw.forEach(r => {
+        if (r.machine && !r.machine.serial && r.machine.id) {
+          r.machine.serial = r.machine.id;
+        }
+      });
       let operatorName = null;
       if (hasOperator) {
         // pick the first matching operator name from any session
         for (const r of raw) {
           const op = (r.operators || []).find(o => o.id === operatorId);
           if (op?.name) {
-            operatorName = op.name;
-            break;
+            // Handle operator name as string or object with first/surname
+            if (typeof op.name === 'string') {
+              operatorName = op.name;
+            } else if (op.name.first || op.name.surname) {
+              operatorName = `${op.name.first || ''} ${op.name.surname || ''}`.trim();
+            }
+            if (operatorName) break;
           }
         }
         if (!operatorName) operatorName = `Operator ${operatorId}`;
@@ -153,7 +181,18 @@ module.exports = function faultHistoryRoute(server) {
               name: r.name ?? "Fault",
               machineSerial: r.machine?.serial ?? null,
               machineName: r.machine?.name ?? machineName ?? null,
-              operators: ops.map(o => ({ id: o.id, name: o.name, station: o.station })),
+              operators: ops.map(o => {
+                // Handle operator name as string or object with first/surname
+                let operatorName = "Unknown";
+                if (o.name) {
+                  if (typeof o.name === 'string') {
+                    operatorName = o.name;
+                  } else if (o.name.first || o.name.surname) {
+                    operatorName = `${o.name.first || ''} ${o.name.surname || ''}`.trim() || "Unknown";
+                  }
+                }
+                return { id: o.id, name: operatorName, station: o.station };
+              }),
               items: r.items || [],
               activeStations: finalActiveStations,
               workTimeMissedSeconds: finalWorkMissed,
