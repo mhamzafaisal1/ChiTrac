@@ -1,8 +1,15 @@
 /* src/app/machine-current-operator-table/machine-current-operator-table.component.scss */
+:host {
+  width: 100%;
+  max-width: 100%;
+  display: block;
+}
+
 .wrapper {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 100%;
 }
 
 .controls {

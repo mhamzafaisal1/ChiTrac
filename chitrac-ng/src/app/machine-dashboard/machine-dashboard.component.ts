@@ -77,7 +77,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
 
-  chartWidth: number = 1000;
+  chartWidth: number = 1200;
   chartHeight: number = 700;
 
   responsiveChartSizes: {
@@ -545,7 +545,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 startTime: this.startTime,
                 endTime: this.endTime,
                 machineSerial,
-                chartWidth: this.chartWidth,
+                chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
                 chartHeight: this.chartHeight,
                 isModal: this.isModal,
                 mode: "dashboard",
@@ -561,7 +561,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   hourlyData: machineData.operatorEfficiency ?? [],
                 },
                 marginTop: 30,
-                marginRight: 15,
+                marginRight: 180,  // Increase right margin to accommodate legend
                 marginBottom: 60,
                 marginLeft: 25,
                 showLegend: true,
@@ -689,7 +689,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   startTime: this.startTime,
                   endTime: this.endTime,
                   machineSerial,
-                  chartWidth: this.chartWidth,
+                  chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
                   chartHeight: this.chartHeight,
                   isModal: this.isModal,
                   mode: "dashboard",
@@ -705,7 +705,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     hourlyData: machineData.operatorEfficiency ?? [],
                   },
                   marginTop: 30,
-                  marginRight: 35,
+                  marginRight: 180,  // Increase right margin to accommodate legend
                   marginBottom: 60,
                   marginLeft: 25,
                   showLegend: true,

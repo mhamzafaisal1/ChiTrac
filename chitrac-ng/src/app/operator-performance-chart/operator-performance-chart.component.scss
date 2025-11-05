@@ -19,8 +19,17 @@
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   min-height: 0;
   position: relative;
+  width: 100%;
+
+  app-cartesian-chart {
+    display: block;
+    max-width: 100%;
+    width: auto;
+  }
 }
 
 .loading-overlay {
