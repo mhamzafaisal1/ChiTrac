@@ -69,7 +69,10 @@
       // Ensure table components take full width
       ::ng-deep app-machine-item-summary-table,
       ::ng-deep app-machine-current-operators,
-      ::ng-deep app-machine-fault-history {
+      ::ng-deep app-machine-fault-history,
+      ::ng-deep app-operator-item-summary-table,
+      ::ng-deep app-operator-fault-history,
+      ::ng-deep app-operator-machine-summary {
         width: 100%;
         max-width: 100%;
         align-self: stretch;
@@ -77,7 +80,10 @@
 
       // Center only chart components
       ::ng-deep app-machine-item-stacked-bar-chart,
-      ::ng-deep app-operator-performance-chart {
+      ::ng-deep app-operator-performance-chart,
+      ::ng-deep app-operator-countbyitem-chart,
+      ::ng-deep app-operator-cycle-pie-chart,
+      ::ng-deep app-operator-line-chart {
         align-self: center;
         display: flex;
         justify-content: center;

@@ -302,8 +302,11 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
 
   async function fetchStatesForOperator(db, operatorId, paddedStart, paddedEnd, collectionName = 'state') {
   const query = {
-    timestamp: { $gte: paddedStart, $lte: paddedEnd },
-    'machine.serial': { $exists: true }
+    "timestamps.create": {
+      $gte: new Date(paddedStart).toISOString(),
+      $lte: new Date(paddedEnd).toISOString()
+    },
+    'machine.id': { $exists: true }
   };
 
   if (operatorId) {
@@ -314,16 +317,20 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   const stateCollection = getStateCollectionName(paddedStart);
   const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
   const collection = collectionExists ? stateCollection : 'state';
-  
+
   // Debug: State collection check
-  
-  return db.collection(collection)
+  console.log(`fetchStatesForOperator query:`, JSON.stringify(query, null, 2));
+  console.log(`Using collection: ${collection}`);
+
+  const states = await db.collection(collection)
     .find(query)
-    .sort({ timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .project({
       _id:0, //RTI II: ADDED 06/10/25 to omit _ids from the API returns as those are extraneous outside of UPDATE or DELETE actions
-      timestamp: 1,
-      'machine.serial': 1,
+      "timestamps.create": 1,
+      timestamp: 1, // Keep for backward compatibility
+      'machine.id': 1,
+      'machine.serial': 1, // Keep for backward compatibility
       'machine.name': 1,
       'program.mode': 1,
       'status.code': 1,
@@ -331,12 +338,29 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
       operators: 1
     })
     .toArray();
+
+  console.log(`fetchStatesForOperator returned ${states.length} states`);
+
+  // Normalize states: map timestamps.create to timestamp
+  return states.map(state => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    return state;
+  });
 }
 
 async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, paddedEnd) {
   const query = {
-    timestamp: { $gte: paddedStart, $lte: paddedEnd },
-    'machine.serial': { $exists: true }
+    "timestamps.create": {
+      $gte: new Date(paddedStart).toISOString(),
+      $lte: new Date(paddedEnd).toISOString()
+    },
+    'machine.id': { $exists: true }
   };
 
   if (operatorId) {
@@ -344,14 +368,16 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
   }
 
   // Debug: Querying state collection
-  
-  return db.collection('state')
+
+  const states = await db.collection('state')
     .find(query)
-    .sort({ timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .project({
       _id:0,
-      timestamp: 1,
-      'machine.serial': 1,
+      "timestamps.create": 1,
+      timestamp: 1, // Keep for backward compatibility
+      'machine.id': 1,
+      'machine.serial': 1, // Keep for backward compatibility
       'machine.name': 1,
       'program.mode': 1,
       'status.code': 1,
@@ -359,6 +385,18 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
       operators: 1
     })
     .toArray();
+
+  // Normalize states: map timestamps.create to timestamp
+  return states.map(state => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    return state;
+  });
 }
   
   

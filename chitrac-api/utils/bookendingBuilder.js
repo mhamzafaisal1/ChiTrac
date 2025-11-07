@@ -361,16 +361,32 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
     afterEndQ.toArray()
   ]);
 
+  // Normalize states: map timestamps.create to timestamp
+  const normalizeState = (state) => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    return state;
+  };
+
   const fullStates = [
-    ...(beforeStart ? [beforeStart] : []),
-    ...inRangeStates,
-    ...(afterEnd ? [afterEnd] : [])
+    ...(beforeStart ? [normalizeState(beforeStart)] : []),
+    ...inRangeStates.map(normalizeState),
+    ...(afterEnd ? [normalizeState(afterEnd)] : [])
   ];
 
   if (!fullStates.length) return null;
 
   // Ensure states are sorted chronologically
-  fullStates.sort((a, b) => new Date(a.timestamps?.create) - new Date(b.timestamps?.create));
+  fullStates.sort((a, b) => {
+    const aTime = a.timestamp || a.timestamps?.create;
+    const bTime = b.timestamp || b.timestamps?.create;
+    return new Date(aTime) - new Date(bTime);
+  });
 
   const { running: runCycles } = extractAllCyclesFromStates(fullStates, startDate, endDate);
   if (!runCycles.length) return null;
@@ -378,9 +394,10 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
   const sessionStart = runCycles[0].start;
   const sessionEnd = runCycles[runCycles.length - 1].end;
 
-  const filteredStates = fullStates.filter(s =>
-    new Date(s.timestamps?.create) >= sessionStart && new Date(s.timestamps?.create) <= sessionEnd
-  );
+  const filteredStates = fullStates.filter(s => {
+    const stateTime = s.timestamp || s.timestamps?.create;
+    return new Date(stateTime) >= sessionStart && new Date(stateTime) <= sessionEnd;
+  });
 
   return { sessionStart, sessionEnd, states: filteredStates };
 }

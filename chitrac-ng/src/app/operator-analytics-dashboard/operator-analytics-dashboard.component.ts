@@ -326,9 +326,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     operatorId,
                     isModal: true,
                     chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth,
+                    chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
                     marginTop: 30,
-                    marginRight: 15,
+                    marginRight: 180,  // Increase right margin to accommodate legend
                     marginBottom: 60,
                     marginLeft: 25,
                     showLegend: true,
@@ -345,9 +345,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     operatorId,
                     isModal: true,
                     chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth,
+                    chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
                     marginTop: 30,
-                    marginRight: 15,
+                    marginRight: 180,  // Increase right margin to accommodate legend
                     marginBottom: 60,
                     marginLeft: 25,
                     showLegend: true,
@@ -374,9 +374,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     operatorId: operatorId.toString(),
                     isModal: true,
                     chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth,
+                    chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
                     marginTop: 30,
-                    marginRight: 15,
+                    marginRight: 180,  // Increase right margin to accommodate legend
                     marginBottom: 60,
                     marginLeft: 25,
                     showLegend: true,

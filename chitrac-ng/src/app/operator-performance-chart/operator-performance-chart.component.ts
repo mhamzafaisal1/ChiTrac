@@ -69,18 +69,9 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    console.log('OperatorPerformanceChart ngOnChanges:', {
-      changes,
-      chartWidth: this.chartWidth,
-      chartHeight: this.chartHeight,
-      marginRight: this.marginRight,
-      marginLeft: this.marginLeft
-    });
-
     // Handle input changes when component is used in carousel
     if (changes['chartWidth'] || changes['chartHeight'] || changes['marginTop'] ||
         changes['marginRight'] || changes['marginBottom'] || changes['marginLeft']) {
-      console.log('Margin/dimension changes detected, updating chart config');
       // If chart config already exists, update it with new dimensions
       if (this.chartConfig) {
         this.chartConfig = {
@@ -94,27 +85,16 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
             left: this.marginLeft
           }
         };
-        console.log('Updated chart config:', this.chartConfig);
       }
     }
 
     // Re-render chart if preloaded data or mode changes
     if ((changes['preloadedData'] || changes['mode']) && this.mode === 'dashboard' && this.preloadedData) {
-      console.log('Preloaded data or mode changed, re-rendering chart');
       this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
     }
   }
 
   ngOnInit(): void {
-    console.log('OperatorPerformanceChart ngOnInit:', {
-      chartWidth: this.chartWidth,
-      chartHeight: this.chartHeight,
-      marginRight: this.marginRight,
-      marginLeft: this.marginLeft,
-      mode: this.mode,
-      hasPreloadedData: !!this.preloadedData
-    });
-
     if (!this.startTime || !this.endTime) {
       const now = new Date();
       const before = new Date(now);
@@ -126,9 +106,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
     this.observeTheme();
 
     if (this.mode === 'dashboard' && this.preloadedData) {
-      console.log('Transforming preloaded data to chart config');
       this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
-      console.log('Chart config after transform:', this.chartConfig);
       return;
     }
 

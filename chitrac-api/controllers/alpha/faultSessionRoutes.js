@@ -54,7 +54,7 @@ module.exports = function faultHistoryRoute(server) {
         "timestamps.start": { $lte: endDate },
         $or: [{ "timestamps.end": { $exists: false } }, { "timestamps.end": { $gte: startDate } }],
       };
-      
+
       // Add machine filter - support both machine.serial and machine.id
       if (hasSerial) {
         match.$and = [
@@ -66,11 +66,14 @@ module.exports = function faultHistoryRoute(server) {
           }
         ];
       }
-      
+
       // Add operator filter
       if (hasOperator) {
         match["operators.id"] = operatorId;
       }
+
+      console.log("Fault session query:", JSON.stringify(match, null, 2));
+      console.log("Querying collection:", config.faultSessionCollectionName);
 
       // Pull overlapping fault-sessions and clip to [start,end]
       const raw = await db
@@ -112,6 +115,11 @@ module.exports = function faultHistoryRoute(server) {
           },
         ])
         .toArray();
+
+      console.log(`Fault sessions found: ${raw.length}`);
+      if (raw.length > 0) {
+        console.log("Sample fault session:", JSON.stringify(raw[0], null, 2));
+      }
 
       if (!raw.length) {
         const response = {

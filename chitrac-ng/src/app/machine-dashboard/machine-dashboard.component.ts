@@ -502,15 +502,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 startTime: this.startTime,
                 endTime: this.endTime,
                 machineSerial,
-                chartWidth: this.chartWidth,
+                chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
                 chartHeight: this.chartHeight,
                 isModal: this.isModal,
                 mode: "dashboard",
                 preloadedData: machineData.itemHourlyStack,
                 marginTop: 30,
-                marginRight: 15,
+                marginRight: 180,  // Increase right margin to accommodate legend
                 marginBottom: 60,
-                marginLeft: 100,
+                marginLeft: 100,  // Keep larger left margin for item labels
                 showLegend: true,
                 legendPosition: "right",
                 legendWidthPx: 120,
@@ -646,15 +646,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   startTime: this.startTime,
                   endTime: this.endTime,
                   machineSerial,
-                  chartWidth: this.chartWidth,
+                  chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
                   chartHeight: this.chartHeight,
                   isModal: this.isModal,
                   mode: "dashboard",
                   preloadedData: machineData.itemHourlyStack,
                   marginTop: 30,
-                  marginRight: 15,
+                  marginRight: 180,  // Increase right margin to accommodate legend
                   marginBottom: 60,
-                  marginLeft: 25,
+                  marginLeft: 100,  // Keep larger left margin for item labels
                   showLegend: true,
                   legendPosition: "right",
                   legendWidthPx: 120,
