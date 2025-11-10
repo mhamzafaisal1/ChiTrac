@@ -277,23 +277,82 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.rows = [];
   }
 
+  /**
+   * Calculate modal-aware chart dimensions
+   * Modal is 90vw x 85vh, but we need to account for:
+   * - Modal padding: 1.5rem (24px) each side = 48px total
+   * - Modal content padding: 2rem (32px) each side = 64px total
+   * - Carousel padding: 12px each side = 24px total
+   * - Chart legend space: 200px on the right
+   * Total horizontal overhead: ~336px (136px padding + 200px legend)
+   */
+  private getModalAwareChartDimensions(): { width: number; height: number } {
+    const modalWidth = window.innerWidth * 0.9; // 90vw
+    const modalHeight = window.innerHeight * 0.85; // 85vh
+
+    // Account for all padding and margins
+    const horizontalPadding = 136; // 48 + 64 + 24 (modal + content + carousel padding)
+    const verticalPadding = 150; // Modal actions, tab headers, and spacing
+
+    // Available space for chart (before adding legend space)
+    const availableWidth = modalWidth - horizontalPadding - 200; // Remove legend width
+    const availableHeight = modalHeight - verticalPadding;
+
+    // Use the responsive breakpoints but cap at available space
+    const width = window.innerWidth;
+    let chartWidth = 800;
+    let chartHeight = 700;
+
+    if (width >= 1600) {
+      chartWidth = 800;
+      chartHeight = 700;
+    } else if (width >= 1210) {
+      chartWidth = 700;
+      chartHeight = 700;
+    } else if (width >= 1024) {
+      chartWidth = 600;
+      chartHeight = 600;
+    } else if (width >= 900) {
+      chartWidth = 500;
+      chartHeight = 500;
+    } else if (width >= 768) {
+      chartWidth = 400;
+      chartHeight = 400;
+    } else if (width >= 480) {
+      chartWidth = 300;
+      chartHeight = 300;
+    } else {
+      chartWidth = 300;
+      chartHeight = 350;
+    }
+
+    // Cap dimensions to available space
+    chartWidth = Math.min(chartWidth, availableWidth);
+    chartHeight = Math.min(chartHeight, availableHeight);
+
+    return { width: chartWidth, height: chartHeight };
+  }
+
   onRowSelected(row: any): void {
     if (this.selectedRow === row) {
       this.selectedRow = null;
       return;
     }
-  
+
     this.selectedRow = row;
-  
+
     setTimeout(() => {
       const element = document.querySelector('.mat-row.selected');
       element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 0);
-  
+
     const operatorId = row['Operator ID'];
     // Use the actual dashboard time range
     const startTimeStr = this.startTime;
     const endTimeStr = this.endTime;
+
+    // Get modal-aware dimensions
+    const modalChartDimensions = this.getModalAwareChartDimensions();
 
     // Fetch detailed operator data for the modal
     this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
@@ -325,8 +384,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId,
                     isModal: true,
-                    chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
+                    chartHeight: modalChartDimensions.height,
+                    chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
                     marginTop: 30,
                     marginRight: 180,  // Increase right margin to accommodate legend
                     marginBottom: 60,
@@ -344,8 +403,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId,
                     isModal: true,
-                    chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
+                    chartHeight: modalChartDimensions.height,
+                    chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
                     marginTop: 30,
                     marginRight: 180,  // Increase right margin to accommodate legend
                     marginBottom: 60,
@@ -373,8 +432,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId: operatorId.toString(),
                     isModal: true,
-                    chartHeight: this.chartHeight,
-                    chartWidth: this.chartWidth + 200,  // Add extra width for right-side legend
+                    chartHeight: modalChartDimensions.height,
+                    chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
                     marginTop: 30,
                     marginRight: 180,  // Increase right margin to accommodate legend
                     marginBottom: 60,
