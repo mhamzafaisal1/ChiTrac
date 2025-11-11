@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ElementRef, Renderer2, Inject, Input } from '@angular/core';
+import { Component, OnInit, OnDestroy, OnChanges, SimpleChanges, ElementRef, Renderer2, Inject, Input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -24,9 +24,9 @@ import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../char
     templateUrl: './operator-performance-chart.component.html',
     styleUrls: ['./operator-performance-chart.component.scss']
 })
-export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
-  @Input() chartWidth: number;
-  @Input() chartHeight: number;
+export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnChanges {
+  @Input() chartWidth: number = 600;
+  @Input() chartHeight: number = 400;
   @Input() isModal: boolean = false;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
   @Input() preloadedData: any = null;
@@ -54,14 +54,44 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
     private elRef: ElementRef,
     @Inject(MAT_DIALOG_DATA) private data: any
   ) {
-    this.startTime = data?.startTime ?? '';
-    this.endTime = data?.endTime ?? '';
-    this.machineSerial = data?.machineSerial ?? '';
-    this.chartWidth = data?.chartWidth ?? this.chartWidth;
-    this.chartHeight = data?.chartHeight ?? this.chartHeight;
-    this.isModal = data?.isModal ?? this.isModal;
-    this.mode = data?.mode ?? this.mode;
-    this.preloadedData = data?.preloadedData ?? this.preloadedData;
+    // Only use dialog data if it exists (when opened as standalone dialog)
+    // When used in carousel, inputs come via @Input() decorators
+    if (data) {
+      this.startTime = data.startTime ?? '';
+      this.endTime = data.endTime ?? '';
+      this.machineSerial = data.machineSerial ?? '';
+      this.chartWidth = data.chartWidth ?? this.chartWidth;
+      this.chartHeight = data.chartHeight ?? this.chartHeight;
+      this.isModal = data.isModal ?? this.isModal;
+      this.mode = data.mode ?? this.mode;
+      this.preloadedData = data.preloadedData ?? this.preloadedData;
+    }
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // Handle input changes when component is used in carousel
+    if (changes['chartWidth'] || changes['chartHeight'] || changes['marginTop'] ||
+        changes['marginRight'] || changes['marginBottom'] || changes['marginLeft']) {
+      // If chart config already exists, update it with new dimensions
+      if (this.chartConfig) {
+        this.chartConfig = {
+          ...this.chartConfig,
+          width: this.chartWidth || 600,
+          height: this.chartHeight || 400,
+          margin: {
+            top: this.marginTop,
+            right: this.marginRight,
+            bottom: this.marginBottom,
+            left: this.marginLeft
+          }
+        };
+      }
+    }
+
+    // Re-render chart if preloaded data or mode changes
+    if ((changes['preloadedData'] || changes['mode']) && this.mode === 'dashboard' && this.preloadedData) {
+      this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
+    }
   }
 
   ngOnInit(): void {
@@ -74,7 +104,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy {
     }
 
     this.observeTheme();
-    
+
     if (this.mode === 'dashboard' && this.preloadedData) {
       this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
       return;

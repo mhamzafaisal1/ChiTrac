@@ -77,7 +77,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
 
-  chartWidth: number = 1000;
+  chartWidth: number = 1200;
   chartHeight: number = 700;
 
   responsiveChartSizes: {
@@ -277,10 +277,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           }
 
           // Filter out undefined/null/invalid responses
+          // Accept responses with either metrics OR itemSummary structure
           const validResponses = responses.filter(
             (response) =>
               response &&
-              response.metrics &&
+              (response.metrics || response.itemSummary || response.performance) &&
               response.machine &&
               response.currentStatus
           );
@@ -290,29 +291,46 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             return;
           }
 
-          const formattedData = validResponses.map((response) => ({
-            Status: getStatusDotByCode(response.currentStatus?.code),
-            "Machine Name": response.machine?.name ?? "Unknown",
-            "Serial Number": response.machine?.serial,
-            Runtime: `${response.metrics?.runtime?.formatted?.hours ?? 0}h ${
-              response.metrics?.runtime?.formatted?.minutes ?? 0
-            }m`,
-            Downtime: `${response.metrics?.downtime?.formatted?.hours ?? 0}h ${
-              response.metrics?.downtime?.formatted?.minutes ?? 0
-            }m`,
-            "Total Count": response.metrics?.output?.totalCount ?? 0,
-            "Misfeed Count": response.metrics?.output?.misfeedCount ?? 0,
-            Availability:
-              (response.metrics?.performance?.availability?.percentage ?? "0") +
-              "%",
-            Throughput:
-              (response.metrics?.performance?.throughput?.percentage ?? "0") +
-              "%",
-            Efficiency:
-              (response.metrics?.performance?.efficiency?.percentage ?? "0") +
-              "%",
-            OEE: (response.metrics?.performance?.oee?.percentage ?? "0") + "%",
-          }));
+          const formattedData = validResponses.map((response) => {
+            // Support both response structures:
+            // 1. metrics.output.totalCount (from cached/real-time summary routes)
+            // 2. itemSummary.machineSummary.totalCount (from dashboard route)
+            const totalCount = response.metrics?.output?.totalCount ?? 
+                              response.itemSummary?.machineSummary?.totalCount ?? 0;
+            const misfeedCount = response.metrics?.output?.misfeedCount ?? 
+                                response.itemSummary?.machineSummary?.misfeedCount ?? 0;
+            
+            // Runtime and downtime can come from metrics or performance
+            const runtime = response.metrics?.runtime ?? response.performance?.runtime;
+            const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+            
+            // Performance metrics can come from metrics.performance or performance directly
+            const performance = response.metrics?.performance ?? response.performance;
+            
+            return {
+              Status: getStatusDotByCode(response.currentStatus?.code),
+              "Machine Name": response.machine?.name ?? "Unknown",
+              "Serial Number": response.machine?.serial,
+              Runtime: `${runtime?.formatted?.hours ?? 0}h ${
+                runtime?.formatted?.minutes ?? 0
+              }m`,
+              Downtime: `${downtime?.formatted?.hours ?? 0}h ${
+                downtime?.formatted?.minutes ?? 0
+              }m`,
+              "Total Count": totalCount,
+              "Misfeed Count": misfeedCount,
+              Availability:
+                (performance?.availability?.percentage ?? "0") +
+                "%",
+              Throughput:
+                (performance?.throughput?.percentage ?? "0") +
+                "%",
+              Efficiency:
+                (performance?.efficiency?.percentage ?? "0") +
+                "%",
+              OEE: (performance?.oee?.percentage ?? "0") + "%",
+            };
+          });
 
           const allColumns = Object.keys(formattedData[0]);
           const columnsToHide: string[] = [""];
@@ -350,10 +368,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             }
 
             // Filter out undefined/null/invalid responses
+            // Accept responses with either metrics OR itemSummary structure
             const validResponses = responses.filter(
               (response) =>
                 response &&
-                response.metrics &&
+                (response.metrics || response.itemSummary || response.performance) &&
                 response.machine &&
                 response.currentStatus
             );
@@ -363,29 +382,46 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               return;
             }
 
-            const formattedData = validResponses.map((response) => ({
-              Status: getStatusDotByCode(response.currentStatus?.code),
-              "Machine Name": response.machine?.name ?? "Unknown",
-              "Serial Number": response.machine?.serial,
-              Runtime: `${response.metrics?.runtime?.formatted?.hours ?? 0}h ${
-                response.metrics?.runtime?.formatted?.minutes ?? 0
-              }m`,
-              Downtime: `${response.metrics?.downtime?.formatted?.hours ?? 0}h ${
-                response.metrics?.downtime?.formatted?.minutes ?? 0
-              }m`,
-              "Total Count": response.metrics?.output?.totalCount ?? 0,
-              "Misfeed Count": response.metrics?.output?.misfeedCount ?? 0,
-              Availability:
-                (response.metrics?.performance?.availability?.percentage ?? "0") +
-                "%",
-              Throughput:
-                (response.metrics?.performance?.throughput?.percentage ?? "0") +
-                "%",
-              Efficiency:
-                (response.metrics?.performance?.efficiency?.percentage ?? "0") +
-                "%",
-              OEE: (response.metrics?.performance?.oee?.percentage ?? "0") + "%",
-            }));
+            const formattedData = validResponses.map((response) => {
+              // Support both response structures:
+              // 1. metrics.output.totalCount (from cached/real-time summary routes)
+              // 2. itemSummary.machineSummary.totalCount (from dashboard route)
+              const totalCount = response.metrics?.output?.totalCount ?? 
+                                response.itemSummary?.machineSummary?.totalCount ?? 0;
+              const misfeedCount = response.metrics?.output?.misfeedCount ?? 
+                                  response.itemSummary?.machineSummary?.misfeedCount ?? 0;
+              
+              // Runtime and downtime can come from metrics or performance
+              const runtime = response.metrics?.runtime ?? response.performance?.runtime;
+              const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+              
+              // Performance metrics can come from metrics.performance or performance directly
+              const performance = response.metrics?.performance ?? response.performance;
+              
+              return {
+                Status: getStatusDotByCode(response.currentStatus?.code),
+                "Machine Name": response.machine?.name ?? "Unknown",
+                "Serial Number": response.machine?.serial,
+                Runtime: `${runtime?.formatted?.hours ?? 0}h ${
+                  runtime?.formatted?.minutes ?? 0
+                }m`,
+                Downtime: `${downtime?.formatted?.hours ?? 0}h ${
+                  downtime?.formatted?.minutes ?? 0
+                }m`,
+                "Total Count": totalCount,
+                "Misfeed Count": misfeedCount,
+                Availability:
+                  (performance?.availability?.percentage ?? "0") +
+                  "%",
+                Throughput:
+                  (performance?.throughput?.percentage ?? "0") +
+                  "%",
+                Efficiency:
+                  (performance?.efficiency?.percentage ?? "0") +
+                  "%",
+                OEE: (performance?.oee?.percentage ?? "0") + "%",
+              };
+            });
 
             const allColumns = Object.keys(formattedData[0]);
             const columnsToHide: string[] = [""];
@@ -405,6 +441,62 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Calculate modal-aware chart dimensions
+   * Modal is 90vw x 85vh, but we need to account for:
+   * - Modal padding: 1.5rem (24px) each side = 48px total
+   * - Modal content padding: 2rem (32px) each side = 64px total
+   * - Carousel padding: 12px each side = 24px total
+   * - Chart legend space: 200px on the right
+   * Total horizontal overhead: ~336px (136px padding + 200px legend)
+   */
+  private getModalAwareChartDimensions(): { width: number; height: number } {
+    const modalWidth = window.innerWidth * 0.9; // 90vw
+    const modalHeight = window.innerHeight * 0.85; // 85vh
+
+    // Account for all padding and margins
+    const horizontalPadding = 136; // 48 + 64 + 24 (modal + content + carousel padding)
+    const verticalPadding = 150; // Modal actions, tab headers, and spacing
+
+    // Available space for chart (before adding legend space)
+    const availableWidth = modalWidth - horizontalPadding - 200; // Remove legend width
+    const availableHeight = modalHeight - verticalPadding;
+
+    // Use the responsive breakpoints but cap at available space
+    const width = window.innerWidth;
+    let chartWidth = 800;
+    let chartHeight = 700;
+
+    if (width >= 1600) {
+      chartWidth = 800;
+      chartHeight = 700;
+    } else if (width >= 1210) {
+      chartWidth = 700;
+      chartHeight = 700;
+    } else if (width >= 1024) {
+      chartWidth = 600;
+      chartHeight = 600;
+    } else if (width >= 900) {
+      chartWidth = 500;
+      chartHeight = 500;
+    } else if (width >= 768) {
+      chartWidth = 400;
+      chartHeight = 400;
+    } else if (width >= 480) {
+      chartWidth = 300;
+      chartHeight = 300;
+    } else {
+      chartWidth = 300;
+      chartHeight = 350;
+    }
+
+    // Cap dimensions to available space
+    chartWidth = Math.min(chartWidth, availableWidth);
+    chartHeight = Math.min(chartHeight, availableHeight);
+
+    return { width: chartWidth, height: chartHeight };
+  }
+
   onRowClick(row: any): void {
     if (this.selectedRow === row) {
       this.selectedRow = null;
@@ -419,6 +511,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     const machineSerial = row["Serial Number"];
     const timeframe = this.dateTimeService.getTimeframe();
+
+    // Get modal-aware dimensions
+    const modalChartDimensions = this.getModalAwareChartDimensions();
     
     if (timeframe) {
       // Use timeframe-based API call
@@ -466,15 +561,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 startTime: this.startTime,
                 endTime: this.endTime,
                 machineSerial,
-                chartWidth: this.chartWidth,
-                chartHeight: this.chartHeight,
+                chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
+                chartHeight: modalChartDimensions.height,
                 isModal: this.isModal,
                 mode: "dashboard",
                 preloadedData: machineData.itemHourlyStack,
                 marginTop: 30,
-                marginRight: 15,
+                marginRight: 180,  // Increase right margin to accommodate legend
                 marginBottom: 60,
-                marginLeft: 100,
+                marginLeft: 100,  // Keep larger left margin for item labels
                 showLegend: true,
                 legendPosition: "right",
                 legendWidthPx: 120,
@@ -509,8 +604,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 startTime: this.startTime,
                 endTime: this.endTime,
                 machineSerial,
-                chartWidth: this.chartWidth,
-                chartHeight: this.chartHeight,
+                chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
+                chartHeight: modalChartDimensions.height,
                 isModal: this.isModal,
                 mode: "dashboard",
                 preloadedData: {
@@ -525,7 +620,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   hourlyData: machineData.operatorEfficiency ?? [],
                 },
                 marginTop: 30,
-                marginRight: 15,
+                marginRight: 180,  // Increase right margin to accommodate legend
                 marginBottom: 60,
                 marginLeft: 25,
                 showLegend: true,
@@ -578,6 +673,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             const faultSummaryData = machineData.faultData?.faultSummaries || [];
             const faultCycleData = machineData.faultData?.faultCycles || [];
 
+            // console.log("machineData.currentOperators", machineData.currentOperators)
           
             const carouselTabs = [
               {
@@ -609,15 +705,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   startTime: this.startTime,
                   endTime: this.endTime,
                   machineSerial,
-                  chartWidth: this.chartWidth,
-                  chartHeight: this.chartHeight,
+                  chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
+                  chartHeight: modalChartDimensions.height,
                   isModal: this.isModal,
                   mode: "dashboard",
                   preloadedData: machineData.itemHourlyStack,
                   marginTop: 30,
-                  marginRight: 15,
+                  marginRight: 180,  // Increase right margin to accommodate legend
                   marginBottom: 60,
-                  marginLeft: 25,
+                  marginLeft: 100,  // Keep larger left margin for item labels
                   showLegend: true,
                   legendPosition: "right",
                   legendWidthPx: 120,
@@ -652,8 +748,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   startTime: this.startTime,
                   endTime: this.endTime,
                   machineSerial,
-                  chartWidth: this.chartWidth,
-                  chartHeight: this.chartHeight,
+                  chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
+                  chartHeight: modalChartDimensions.height,
                   isModal: this.isModal,
                   mode: "dashboard",
                   preloadedData: {
@@ -668,7 +764,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     hourlyData: machineData.operatorEfficiency ?? [],
                   },
                   marginTop: 30,
-                  marginRight: 15,
+                  marginRight: 180,  // Increase right margin to accommodate legend
                   marginBottom: 60,
                   marginLeft: 25,
                   showLegend: true,

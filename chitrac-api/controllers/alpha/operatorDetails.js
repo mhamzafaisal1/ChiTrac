@@ -82,7 +82,7 @@ module.exports = function (server) {
         { "timestamps.end": { $exists: false } },
         { "timestamps.end": null }
       ],
-      ...(serial ? { "machine.serial": Number(serial) } : {})
+      ...(serial ? { "machine.id": Number(serial) } : {})
     };
 
     const sessions = await osColl.find(filter).project({
@@ -244,7 +244,7 @@ module.exports = function (server) {
       let countInWin = 0;
       if (Array.isArray(s.counts) && s.counts.length && s.counts.length <= 50000) {
         countInWin = s.counts.reduce((acc, c) => {
-          const ts = new Date(c.timestamp);
+          const ts = new Date(c.timestamps?.create || c.timestamp);
           const sameItem = !c.item?.id || c.item.id === it.id;
           const sameOperator = !c.operator?.id || c.operator.id === Number(operatorId);
           return acc + (sameItem && sameOperator && ts >= ovStart && ts <= ovEnd ? 1 : 0);
@@ -433,7 +433,7 @@ module.exports = function (server) {
       let machineName = null;
       if (serial) {
         const msColl = db.collection(config.machineSessionCollectionName);
-        const machineInfo = await msColl.find({ "machine.serial": Number(serial) })
+        const machineInfo = await msColl.find({ "machine.id": Number(serial) })
           .project({ _id: 0, "machine.name": 1 })
           .sort({ "timestamps.start": -1 })
           .limit(1)
@@ -443,7 +443,9 @@ module.exports = function (server) {
       }
 
       // Fetch states for the operator in the time window
+    
       const states = await fetchStatesForOperator(db, opId, new Date(start), new Date(end));
+     
 
             // Build the two main tabs
       const [itemSummary, dailyEfficiencyByHour] = await Promise.all([
@@ -453,26 +455,32 @@ module.exports = function (server) {
 
       // Build hourly item breakdown using count collection
       const countCollection = getCountCollectionName(start);
+      const countQuery = {
+        "operator.id": opId,
+        "timestamps.create": {
+          $gte: new Date(start).toISOString(),
+          $lt: new Date(end).toISOString()
+        },
+        misfeed: { $ne: true }, // valid counts only
+        ...(serial ? { "machine.id": Number(serial) } : {})
+      };
+     
       const counts = await db
         .collection(countCollection)
-        .find({
-          "operator.id": opId,
-          timestamp: { $gte: new Date(start), $lt: new Date(end) },
-          misfeed: { $ne: true }, // valid counts only
-          ...(serial ? { "machine.serial": Number(serial) } : {})
-        })
+        .find(countQuery)
         .project({
           _id: 0,
-          timestamp: 1,
+          "timestamps.create": 1,
           "item.id": 1,
           "item.name": 1
         })
         .toArray();
+      
 
       // Build hourly breakdown map
       const hourlyBreakdownMap = {};
       for (const c of counts) {
-        const hour = new Date(c.timestamp).getHours();
+        const hour = new Date(c.timestamps?.create).getHours();
         const itemName = c.item?.name || "Unknown";
         if (!hourlyBreakdownMap[itemName]) {
           hourlyBreakdownMap[itemName] = Array(24).fill(0);
