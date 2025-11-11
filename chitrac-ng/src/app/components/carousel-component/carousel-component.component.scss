@@ -32,10 +32,61 @@
       ::ng-deep .mat-mdc-tab-body,
       ::ng-deep .mat-mdc-tab-body-content {
         flex: 1;
+        width: 100%;
         height: 100%;
         display: flex;
         flex-direction: column;
         overflow: auto;
+      }
+
+      // Speed up tab transitions and prevent content overlap
+      ::ng-deep .mat-mdc-tab-body-wrapper {
+        position: relative;
+        width: 100%;
+      }
+
+      ::ng-deep .mat-mdc-tab-body {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+
+        &.mat-mdc-tab-body-active {
+          position: relative;
+          z-index: 1;
+          width: 100%;
+        }
+      }
+
+      // Faster animation for tab transitions
+      ::ng-deep .mat-mdc-tab-body-content {
+        transition: none !important;
+        animation: none !important;
+      }
+
+      // Ensure table components take full width
+      ::ng-deep app-machine-item-summary-table,
+      ::ng-deep app-machine-current-operators,
+      ::ng-deep app-machine-fault-history,
+      ::ng-deep app-operator-item-summary-table,
+      ::ng-deep app-operator-fault-history,
+      ::ng-deep app-operator-machine-summary {
+        width: 100%;
+        max-width: 100%;
+        align-self: stretch;
+      }
+
+      // Center only chart components
+      ::ng-deep app-machine-item-stacked-bar-chart,
+      ::ng-deep app-operator-performance-chart,
+      ::ng-deep app-operator-countbyitem-chart,
+      ::ng-deep app-operator-cycle-pie-chart,
+      ::ng-deep app-operator-line-chart {
+        align-self: center;
+        display: flex;
+        justify-content: center;
       }
     }
   }

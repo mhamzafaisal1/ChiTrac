@@ -70,20 +70,41 @@ export class MachineItemSummaryTableComponent implements OnInit {
     }
 
     return Object.values(summary).map((item: any) => {
-      console.log('Processing item:', item);
+      // Backend returns countTotal (not count) and workedTimeFormatted (already formatted)
+      // Handle both structures for backward compatibility
+      const count = item.countTotal ?? item.count ?? 0;
       
-      // Calculate worked time from workedTimeMs
-      const workedTimeMs = item.workedTimeMs ?? 0;
-      const hours = Math.floor(workedTimeMs / (1000 * 60 * 60));
-      const minutes = Math.floor((workedTimeMs % (1000 * 60 * 60)) / (1000 * 60));
+      // Worked time can come as formatted object or as milliseconds
+      let workedTimeStr = '';
+      if (item.workedTimeFormatted) {
+        // Already formatted object from backend: { hours: 0, minutes: 6 }
+        const hours = item.workedTimeFormatted.hours ?? 0;
+        const minutes = item.workedTimeFormatted.minutes ?? 0;
+        workedTimeStr = `${hours}h ${minutes}m`;
+      } else if (item.workedTimeMs) {
+        // Raw milliseconds - convert to hours/minutes
+        const hours = Math.floor(item.workedTimeMs / (1000 * 60 * 60));
+        const minutes = Math.floor((item.workedTimeMs % (1000 * 60 * 60)) / (1000 * 60));
+        workedTimeStr = `${hours}h ${minutes}m`;
+      } else {
+        workedTimeStr = '0h 0m';
+      }
       
-      // Convert efficiency decimal to percentage
-      const efficiencyPercentage = item.efficiency !== undefined ? Math.round(item.efficiency * 100 * 100) / 100 : 0;
+      // Efficiency is already a percentage from backend (e.g., 59.1), not a decimal
+      // Handle both formats for backward compatibility
+      let efficiencyPercentage = 0;
+      if (item.efficiency !== undefined) {
+        // If efficiency >= 1, it's already a percentage (e.g., 59.1)
+        // If efficiency < 1, it's a decimal (e.g., 0.591)
+        efficiencyPercentage = item.efficiency >= 1 
+          ? Math.round(item.efficiency * 100) / 100 
+          : Math.round(item.efficiency * 100 * 100) / 100;
+      }
       
       return {
         'Item Name': item.name || 'Unknown',
-        'Total Count': item.count ?? 0,
-        'Worked Time': `${hours}h ${minutes}m`,
+        'Total Count': count,
+        'Worked Time': workedTimeStr,
         'PPH': item.pph ?? 0,
         'Standard': item.standard ?? 0,
         'Efficiency': `${efficiencyPercentage}%`

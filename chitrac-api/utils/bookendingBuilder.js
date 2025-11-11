@@ -132,30 +132,107 @@ async function getBookendedStatesAndTimeRange(db, serial, start, end) {
   // Clamp future end date to current time
   if (endDate > now) endDate = now;
 
+  // Convert Date objects to ISO strings for comparison (timestamps.create is stored as ISO strings)
+  const startISO = startDate.toISOString();
+  const endISO = endDate.toISOString();
+
   // Prepare queries - use appropriate state collection based on time range
   const stateCollection = getStateCollectionName(startDate);
   
+  // Support both machine.id and machine.serial, and both timestamp and timestamps.create
   const inRangeStatesQ = db.collection(stateCollection)
     .find({
-      "machine.serial": serialNum,
-      timestamp: { $gte: startDate, $lte: endDate }
+      $or: [
+        {
+          $or: [
+            { "machine.id": serialNum },
+            { "machine.serial": serialNum }
+          ],
+          "timestamps.create": { $gte: startISO, $lte: endISO }
+        },
+        {
+          $or: [
+            { "machine.id": serialNum },
+            { "machine.serial": serialNum }
+          ],
+          timestamp: { $gte: startDate, $lte: endDate }
+        }
+      ]
     })
-    .sort({ timestamp: 1 });
+    .project({
+      timestamp: 1,
+      "timestamps.create": 1,
+      "machine.serial": 1,
+      "machine.id": 1,
+      "machine.name": 1,
+      "program.mode": 1,
+      "status.code": 1,
+      "status.name": 1
+    })
+    .sort({ "timestamps.create": 1, timestamp: 1 });
 
   const beforeStartQ = db.collection(stateCollection)
     .find({
-      "machine.serial": serialNum,
-      timestamp: { $lt: startDate }
+      $or: [
+        {
+          $or: [
+            { "machine.id": serialNum },
+            { "machine.serial": serialNum }
+          ],
+          "timestamps.create": { $lt: startISO }
+        },
+        {
+          $or: [
+            { "machine.id": serialNum },
+            { "machine.serial": serialNum }
+          ],
+          timestamp: { $lt: startDate }
+        }
+      ]
     })
-    .sort({ timestamp: -1 })
+    .project({
+      timestamp: 1,
+      "timestamps.create": 1,
+      "machine.serial": 1,
+      "machine.id": 1,
+      "machine.name": 1,
+      "program.mode": 1,
+      "status.code": 1,
+      "status.name": 1
+    })
+    .sort({ "timestamps.create": -1, timestamp: -1 })
     .limit(1);
 
   const afterEndQ = db.collection(stateCollection)
     .find({
-      "machine.serial": serialNum,
-      timestamp: { $gt: endDate }
+      $or: [
+        {
+          $or: [
+            { "machine.id": serialNum },
+            { "machine.serial": serialNum }
+          ],
+          "timestamps.create": { $gt: endISO }
+        },
+        {
+          $or: [
+            { "machine.id": serialNum },
+            { "machine.serial": serialNum }
+          ],
+          timestamp: { $gt: endDate }
+        }
+      ]
     })
-    .sort({ timestamp: 1 })
+    .project({
+      timestamp: 1,
+      "timestamps.create": 1,
+      "machine.serial": 1,
+      "machine.id": 1,
+      "machine.name": 1,
+      "program.mode": 1,
+      "status.code": 1,
+      "status.name": 1
+    })
+    .sort({ "timestamps.create": 1, timestamp: 1 })
     .limit(1);
 
   // Execute queries
@@ -165,12 +242,29 @@ async function getBookendedStatesAndTimeRange(db, serial, start, end) {
     afterEndQ.toArray()
   ]);
 
+
+  // Normalize states: map timestamps.create to timestamp and machine.id to machine.serial
+  const normalizeState = (state) => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    return state;
+  };
+
   // Merge and sort states
   const fullStates = [
-    ...(beforeStart ? [beforeStart] : []),
-    ...inRangeStates,
-    ...(afterEnd ? [afterEnd] : [])
-  ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    ...(beforeStart ? [normalizeState(beforeStart)] : []),
+    ...inRangeStates.map(normalizeState),
+    ...(afterEnd ? [normalizeState(afterEnd)] : [])
+  ].sort((a, b) => {
+    const aTime = a.timestamp || a.timestamps?.create;
+    const bTime = b.timestamp || b.timestamps?.create;
+    return new Date(aTime) - new Date(bTime);
+  });
 
   if (!fullStates.length) return null;
 
@@ -181,10 +275,11 @@ async function getBookendedStatesAndTimeRange(db, serial, start, end) {
   const sessionStart = runSessions[0].start;
   const sessionEnd = runSessions.at(-1).end;
 
-  const filteredStates = fullStates.filter(s =>
-    new Date(s.timestamp) >= sessionStart &&
-    new Date(s.timestamp) <= sessionEnd
-  );
+  const filteredStates = fullStates.filter(s => {
+    const stateTime = s.timestamp || s.timestamps?.create;
+    return new Date(stateTime) >= sessionStart &&
+           new Date(stateTime) <= sessionEnd;
+  });
 
   return {
     sessionStart,
@@ -240,24 +335,24 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
   const inRangeStatesQ = db.collection(stateCollection)
     .find({
       'operators.id': operatorId,
-      timestamp: { $gte: startDate, $lte: endDate }
+      'timestamps.create': { $gte: startDate, $lte: endDate }
     })
-    .sort({ timestamp: 1 });
+    .sort({ 'timestamps.create': 1 });
 
   const beforeStartQ = db.collection(stateCollection)
     .find({
       'operators.id': operatorId,
-      timestamp: { $lt: startDate }
+      'timestamps.create': { $lt: startDate }
     })
-    .sort({ timestamp: -1 })
+    .sort({ 'timestamps.create': -1 })
     .limit(1);
 
   const afterEndQ = db.collection(stateCollection)
     .find({
       'operators.id': operatorId,
-      timestamp: { $gt: endDate }
+      'timestamps.create': { $gt: endDate }
     })
-    .sort({ timestamp: 1 })
+    .sort({ 'timestamps.create': 1 })
     .limit(1);
 
   const [inRangeStates, [beforeStart], [afterEnd]] = await Promise.all([
@@ -266,16 +361,32 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
     afterEndQ.toArray()
   ]);
 
+  // Normalize states: map timestamps.create to timestamp
+  const normalizeState = (state) => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    return state;
+  };
+
   const fullStates = [
-    ...(beforeStart ? [beforeStart] : []),
-    ...inRangeStates,
-    ...(afterEnd ? [afterEnd] : [])
+    ...(beforeStart ? [normalizeState(beforeStart)] : []),
+    ...inRangeStates.map(normalizeState),
+    ...(afterEnd ? [normalizeState(afterEnd)] : [])
   ];
 
   if (!fullStates.length) return null;
 
   // Ensure states are sorted chronologically
-  fullStates.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  fullStates.sort((a, b) => {
+    const aTime = a.timestamp || a.timestamps?.create;
+    const bTime = b.timestamp || b.timestamps?.create;
+    return new Date(aTime) - new Date(bTime);
+  });
 
   const { running: runCycles } = extractAllCyclesFromStates(fullStates, startDate, endDate);
   if (!runCycles.length) return null;
@@ -283,9 +394,10 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
   const sessionStart = runCycles[0].start;
   const sessionEnd = runCycles[runCycles.length - 1].end;
 
-  const filteredStates = fullStates.filter(s =>
-    new Date(s.timestamp) >= sessionStart && new Date(s.timestamp) <= sessionEnd
-  );
+  const filteredStates = fullStates.filter(s => {
+    const stateTime = s.timestamp || s.timestamps?.create;
+    return new Date(stateTime) >= sessionStart && new Date(stateTime) <= sessionEnd;
+  });
 
   return { sessionStart, sessionEnd, states: filteredStates };
 }
