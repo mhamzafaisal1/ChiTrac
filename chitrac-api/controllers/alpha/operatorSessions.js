@@ -111,15 +111,48 @@ module.exports = function (server) {
         .find({})
         .toArray();
       
-      // Create a map of machine serial to current status
-      const machineStatusMap = new Map();
+      // Create a map of operator ID to their latest ticker context
+      const operatorTickerMap = new Map();
       for (const stateRecord of stateTickerData) {
-        machineStatusMap.set(stateRecord.machine.serial, {
-          code: stateRecord.status.code,
-          name: stateRecord.status.name,
-          softrolColor: stateRecord.status.softrolColor,
-          timestamp: stateRecord.status.timestamp
-        });
+        const machine = stateRecord.machine || {};
+        const status = stateRecord.status || {};
+        const timestamp = new Date(status.timestamp || stateRecord.timestamp || 0).getTime();
+
+        if (Array.isArray(stateRecord.operators)) {
+          for (const op of stateRecord.operators) {
+            if (!op || typeof op.id === "undefined" || op.id === null) {
+              continue;
+            }
+
+            const operatorKey =
+              typeof op.id === "string"
+                ? Number.parseInt(op.id, 10)
+                : op.id;
+
+            if (Number.isNaN(operatorKey)) {
+              continue;
+            }
+
+            const existing = operatorTickerMap.get(operatorKey);
+            if (!existing || existing.timestamp < timestamp) {
+              operatorTickerMap.set(operatorKey, {
+                machine: machine.serial
+                  ? {
+                      serial: machine.serial,
+                      name: machine.name || null,
+                    }
+                  : null,
+                status: typeof status.code !== "undefined" || typeof status.name !== "undefined"
+                  ? {
+                      code: status.code ?? null,
+                      name: status.name ?? null,
+                    }
+                  : null,
+                timestamp,
+              });
+            }
+          }
+        }
       }
       
       // Group by operator ID and aggregate metrics across machines
@@ -288,27 +321,109 @@ module.exports = function (server) {
       }
       
       // Get unique machine serials from cache records
-      const machineSerials = [...new Set(cacheRecords.map(r => r.machineSerial))];
+      const machineSerials = [
+        ...new Set(
+          cacheRecords
+            .map(r => r.machineSerial)
+            .filter(serial => serial !== null && serial !== undefined)
+        )
+      ];
+      const tickerSerialFilter = [
+        ...new Set([
+          ...machineSerials,
+          ...machineSerials.map(serial => serial.toString())
+        ])
+      ];
       
       // Get current machine statuses from stateTicker collection
-      const stateTickerData = await db.collection('stateTicker')
-        .find({ "machine.serial": { $in: machineSerials } })
+      // Build stateTicker query - support serial stored in different fields/types
+      const tickerQuery =
+        tickerSerialFilter.length > 0
+          ? {
+              $or: [
+                { "machine.serial": { $in: tickerSerialFilter } },
+                { "machine.id": { $in: tickerSerialFilter } },
+                {
+                  "machine.serial": {
+                    $in: tickerSerialFilter
+                      .map(Number)
+                      .filter(n => !Number.isNaN(n))
+                  }
+                },
+                {
+                  "machine.id": {
+                    $in: tickerSerialFilter
+                      .map(Number)
+                      .filter(n => !Number.isNaN(n))
+                  }
+                }
+              ]
+            }
+          : {};
+
+      // Get current machine statuses from stateTicker collection
+      const stateTickerData = await db.collection("stateTicker")
+        .find(tickerQuery)
         .toArray();
-      
-      // Create a map of machine serial to current status
-      const machineStatusMap = new Map();
+
+      // Build a map of latest ticker context per operator
+      const operatorTickerMap = new Map();
       for (const stateRecord of stateTickerData) {
-        machineStatusMap.set(stateRecord.machine.serial, {
-          code: stateRecord.status.code,
-          name: stateRecord.status.name,
-          softrolColor: stateRecord.status.softrolColor,
-          timestamp: stateRecord.status.timestamp
-        });
+        const machine = stateRecord.machine || {};
+        const status = stateRecord.status || {};
+        const timestamp = new Date(
+          status.timestamp ||
+            stateRecord.timestamp ||
+            (stateRecord.timestamps &&
+              (stateRecord.timestamps.update ||
+                stateRecord.timestamps.active ||
+                stateRecord.timestamps.create)) ||
+            0
+        ).getTime();
+
+        if (Array.isArray(stateRecord.operators)) {
+          for (const op of stateRecord.operators) {
+            if (!op || typeof op.id === "undefined" || op.id === null) {
+              continue;
+            }
+
+            const operatorKey =
+              typeof op.id === "string" ? Number.parseInt(op.id, 10) : op.id;
+
+            if (Number.isNaN(operatorKey)) {
+              continue;
+            }
+
+            const existing = operatorTickerMap.get(operatorKey);
+            if (!existing || existing.timestamp < timestamp) {
+              const serial =
+                machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+              operatorTickerMap.set(operatorKey, {
+                machine:
+                  serial !== null && serial !== undefined
+                    ? {
+                        serial,
+                        name: machine.name || null
+                      }
+                    : null,
+                status:
+                  typeof status.code !== "undefined" ||
+                  typeof status.name !== "undefined"
+                    ? {
+                        code: status.code ?? null,
+                        name: status.name ?? null
+                      }
+                    : null,
+                timestamp
+              });
+            }
+          }
+        }
       }
-      
+
       // Group by operator ID and aggregate metrics across machines
       const operatorMap = new Map();
-      
+
       for (const record of cacheRecords) {
         const opId = record.operatorId;
         
@@ -318,7 +433,7 @@ module.exports = function (server) {
               id: record.operatorId,
               name: record.operatorName
             },
-            currentStatus: { code: 1, name: "Running" }, // Will be updated below
+            currentStatus: null,
             currentMachine: null,
             metrics: {
               runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
@@ -339,25 +454,20 @@ module.exports = function (server) {
         
         const operatorData = operatorMap.get(opId);
         
-        // Add machine info
+        // Track machines seen in cache (for potential debugging)
         operatorData.machines.push({
           serial: record.machineSerial,
           name: record.machineName
         });
-        
-        // Set current machine to the most recent one (last in the list)
-        operatorData.currentMachine = {
-          serial: record.machineSerial,
-          name: record.machineName
-        };
-        
-        // Get current status from stateTicker for this machine
-        const currentMachineStatus = machineStatusMap.get(record.machineSerial);
-        if (currentMachineStatus) {
-          operatorData.currentStatus = {
-            code: currentMachineStatus.code,
-            name: currentMachineStatus.name
-          };
+
+        // Update current context from stateTicker (latest wins)
+        const tickerContext = operatorTickerMap.get(opId);
+        if (tickerContext) {
+          operatorData.currentMachine = tickerContext.machine;
+          operatorData.currentStatus = tickerContext.status;
+        } else {
+          operatorData.currentMachine = null;
+          operatorData.currentStatus = null;
         }
         
         // Aggregate metrics
