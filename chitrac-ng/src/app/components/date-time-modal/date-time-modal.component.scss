@@ -64,8 +64,8 @@
         display: flex;
         flex-direction: column;
         gap: 0.4rem;
-        max-height: 300px;
-        overflow-y: auto;
+        max-height: none;
+        overflow-y: visible;
 
         button {
           width: 100%;
@@ -89,9 +89,10 @@
   }
 
   .action-row {
-    position: absolute;
-    bottom: 1.5rem;
-    right: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-top: 0.5rem;
 
     button mat-icon {
       margin-right: 0.35em;

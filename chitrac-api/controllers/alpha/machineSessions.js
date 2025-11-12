@@ -12,8 +12,54 @@ module.exports = function (server) {
 
   // Helper function to parse and validate query parameters
   function parseAndValidateQueryParams(req) {
-    const { start, end, serial } = req.query;
+    const { start, end, serial, timeframe } = req.query;
 
+    // If timeframe is provided, calculate start and end from server time
+    if (timeframe) {
+      const now = new Date();
+      let calculatedStart;
+      let calculatedEnd = now;
+
+      switch (timeframe) {
+        case 'current':
+          calculatedStart = new Date(now.getTime() - 6 * 60 * 1000); // 6 minutes ago
+          break;
+        case 'lastFifteen':
+          calculatedStart = new Date(now.getTime() - 15 * 60 * 1000); // 15 minutes ago
+          break;
+        case 'lastHour':
+          calculatedStart = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
+          break;
+        case 'today':
+          calculatedStart = new Date(now);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        case 'thisWeek':
+          calculatedStart = new Date(now);
+          const day = calculatedStart.getDay();
+          calculatedStart.setDate(calculatedStart.getDate() - day);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        case 'thisMonth':
+          calculatedStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        case 'thisYear':
+          calculatedStart = new Date(now.getFullYear(), 0, 1);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        default:
+          throw new Error(`Invalid timeframe: ${timeframe}`);
+      }
+
+      return {
+        start: calculatedStart,
+        end: calculatedEnd,
+        serial: serial ? parseInt(serial) : null,
+      };
+    }
+
+    // Original logic for start/end parameters
     if (!start || !end) {
       throw new Error("Start and end dates are required");
     }
@@ -1268,6 +1314,10 @@ module.exports = function (server) {
       const now = new Date();
       if (queryEnd > now) queryEnd = now;
 
+      logger.info(
+        `[machineSessions] Real-time calculation for range: ${queryStart.toISOString()} to ${queryEnd.toISOString()}`
+      );
+
       // Active machines set
       const activeSerials = new Set(
         await db
@@ -1275,42 +1325,75 @@ module.exports = function (server) {
           .distinct("serial", { active: true })
       );
 
+      logger.info(
+        `[machineSessions] Found ${activeSerials.size} active machines: ${[...activeSerials].join(", ")}`
+      );
+
       // Pull tickers for active machines only
       const tickers = await db
         .collection(config.stateTickerCollectionName)
-        .find({ "machine.serial": { $in: [...activeSerials] } })
-        .project({ _id: 0 })
+        .find({ "machine.id": { $in: [...activeSerials] } })
+        .project({ _id: 0, "machine.id": 1, "machine.serial": 1, "machine.name": 1, status: 1, timestamp: 1 })
         .toArray();
+
+      logger.info(
+        `[machineSessions] Found ${tickers.length} tickers for active machines`
+      );
+
+      // Deduplicate and keep only latest ticker per machine ID
+      const latestTickers = new Map();
+      tickers.forEach((ticker) => {
+        const id = Number(ticker.machine?.id);
+        const ts = new Date(ticker.timestamp || 0);
+        const existing = latestTickers.get(id);
+        if (!existing || ts > new Date(existing.timestamp || 0)) {
+          latestTickers.set(id, ticker);
+        }
+      });
+
+      logger.info(
+        `[machineSessions] After deduplication: ${latestTickers.size} unique machines`
+      );
 
       // Build one promise per machine
       const results = await Promise.all(
-        tickers.map(async (t) => {
+        [...latestTickers.values()].map(async (t) => {
           const { machine, status } = t || {};
-          const serial = machine?.serial;
+          const serial = machine?.id || machine?.serial;
           if (!serial) {
             return null;
           }
 
+          // Normalize machine object to have serial field
+          const normalizedMachine = {
+            serial: serial,
+            name: machine?.name || `Serial ${serial}`,
+          };
+
           // Fetch sessions that overlap the window
-          // Spec: start in [S,E] OR end in [S,E].
-          // Add "spans entire window" guard to avoid misses.
+          // Proper overlap logic: session starts before window ends AND session ends after window starts
           const sessions = await db
             .collection(config.machineSessionCollectionName)
             .find({
               "machine.serial": serial,
+              "timestamps.start": { $lt: queryEnd },
               $or: [
-                { "timestamps.start": { $gte: queryStart, $lte: queryEnd } },
-                { "timestamps.end": { $gte: queryStart, $lte: queryEnd } },
+                { "timestamps.end": { $gt: queryStart } },
+                { "timestamps.end": { $exists: false } }, // Handle open sessions
               ],
             })
             .sort({ "timestamps.start": 1 })
             .toArray();
 
+          logger.info(
+            `[machineSessions] Machine ${serial}: Found ${sessions.length} sessions in time range`
+          );
+
           // If nothing in range, still return zeroed row for the machine
           if (!sessions.length) {
             const totalMs = queryEnd - queryStart;
             return formatMachinesSummaryRow({
-              machine,
+              machine: normalizedMachine,
               status,
               runtimeMs: 0,
               downtimeMs: totalMs,
@@ -1374,7 +1457,7 @@ module.exports = function (server) {
           const downtimeMs = Math.max(0, queryEnd - queryStart - runtimeMs);
 
           const result = formatMachinesSummaryRow({
-            machine,
+            machine: normalizedMachine,
             status,
             runtimeMs,
             downtimeMs,
@@ -1391,6 +1474,9 @@ module.exports = function (server) {
       );
 
       const finalResults = results.filter(Boolean);
+      logger.info(
+        `[machineSessions] Returning ${finalResults.length} machine summary results`
+      );
       res.json(finalResults);
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);

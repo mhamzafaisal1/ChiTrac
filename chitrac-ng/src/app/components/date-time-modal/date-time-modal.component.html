@@ -31,13 +31,20 @@
       <mat-timepicker-toggle matSuffix [for]="endTimePicker"></mat-timepicker-toggle>
       <mat-timepicker #endTimePicker></mat-timepicker>
     </mat-form-field>
+
+    <div class="action-row">
+      <button mat-flat-button color="primary" (click)="confirm()">
+        <mat-icon>done</mat-icon>
+        Confirm
+      </button>
+    </div>
   </div>
 
   <div class="divider"></div>
 
   <div class="mode-section">
     <mat-radio-group [(ngModel)]="mode" (change)="onModeChange(mode)">
-      <mat-radio-button value="live">Live Mode</mat-radio-button>
+      <mat-radio-button value="live">Today</mat-radio-button>
       <mat-radio-button value="manual">Manual</mat-radio-button>
     </mat-radio-group>
     
@@ -65,13 +72,13 @@
           [disabled]="mode === 'live'">
           Last Hour
         </button>
-        <button 
+        <!-- <button 
           mat-stroked-button 
           [class.selected]="selectedTimeframe === 'today'"
           (click)="onTimeframeSelect('today')"
           [disabled]="mode === 'live'">
           Today
-        </button>
+        </button> -->
         <button 
           mat-stroked-button 
           [class.selected]="selectedTimeframe === 'thisWeek'"
@@ -95,12 +102,5 @@
         </button>
       </div>
     </div>
-  </div>
-
-  <div class="action-row">
-    <button mat-flat-button color="primary" (click)="confirm()">
-      <mat-icon>done</mat-icon>
-      Confirm
-    </button>
   </div>
 </div>
