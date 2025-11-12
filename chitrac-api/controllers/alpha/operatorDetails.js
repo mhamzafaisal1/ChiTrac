@@ -82,7 +82,7 @@ module.exports = function (server) {
         { "timestamps.end": { $exists: false } },
         { "timestamps.end": null }
       ],
-      ...(serial ? { "machine.serial": Number(serial) } : {})
+      ...(serial ? { "machine.id": Number(serial) } : {})
     };
 
     const sessions = await osColl.find(filter).project({
@@ -229,6 +229,7 @@ module.exports = function (server) {
 
       const { ovSec, fullSec, factor, ovStart, ovEnd } =
         overlap(s.timestamps?.start, s.timestamps?.end, wStart, wEnd);
+
       if (ovSec === 0 || fullSec === 0) continue;
 
       const stations = typeof s.activeStations === "number" ? s.activeStations : 0;
@@ -239,18 +240,23 @@ module.exports = function (server) {
       const workedSec = baseWorkSec * factor;
       const workedMs = Math.round(workedSec * 1000);
 
-      // Count attribution logic: if counts[] has operator.id, count only those for this operator
-      // Otherwise, prorate by operator's work-time share
+      // Count attribution logic:
+      // If session has end timestamp AND embedded counts, filter counts by operator/item/time
+      // Otherwise, prorate by operator's work-time share using totalCount
       let countInWin = 0;
-      if (Array.isArray(s.counts) && s.counts.length && s.counts.length <= 50000) {
+      const hasEndTimestamp = s.timestamps?.end != null;
+
+      if (hasEndTimestamp && Array.isArray(s.counts) && s.counts.length && s.counts.length <= 50000) {
+        // Session is closed - can reliably filter embedded counts by timestamp
         countInWin = s.counts.reduce((acc, c) => {
-          const ts = new Date(c.timestamp);
+          const ts = new Date(c.timestamps?.create || c.timestamp);
           const sameItem = !c.item?.id || c.item.id === it.id;
           const sameOperator = !c.operator?.id || c.operator.id === Number(operatorId);
-          return acc + (sameItem && sameOperator && ts >= ovStart && ts <= ovEnd ? 1 : 0);
+          const inWindow = ts >= ovStart && ts <= ovEnd;
+          return acc + (sameItem && sameOperator && inWindow ? 1 : 0);
         }, 0);
       } else if (typeof s.totalCount === "number") {
-        // Prorate by operator's overlapped work-time share
+        // Session is open (no end timestamp) OR no embedded counts - prorate by time factor
         countInWin = Math.round(s.totalCount * factor);
       }
 
@@ -433,7 +439,7 @@ module.exports = function (server) {
       let machineName = null;
       if (serial) {
         const msColl = db.collection(config.machineSessionCollectionName);
-        const machineInfo = await msColl.find({ "machine.serial": Number(serial) })
+        const machineInfo = await msColl.find({ "machine.id": Number(serial) })
           .project({ _id: 0, "machine.name": 1 })
           .sort({ "timestamps.start": -1 })
           .limit(1)
@@ -443,7 +449,9 @@ module.exports = function (server) {
       }
 
       // Fetch states for the operator in the time window
+    
       const states = await fetchStatesForOperator(db, opId, new Date(start), new Date(end));
+     
 
             // Build the two main tabs
       const [itemSummary, dailyEfficiencyByHour] = await Promise.all([
@@ -453,26 +461,32 @@ module.exports = function (server) {
 
       // Build hourly item breakdown using count collection
       const countCollection = getCountCollectionName(start);
+      const countQuery = {
+        "operator.id": opId,
+        "timestamps.create": {
+          $gte: new Date(start),
+          $lt: new Date(end)
+        },
+        misfeed: { $ne: true }, // valid counts only
+        ...(serial ? { "machine.id": Number(serial) } : {})
+      };
+     
       const counts = await db
         .collection(countCollection)
-        .find({
-          "operator.id": opId,
-          timestamp: { $gte: new Date(start), $lt: new Date(end) },
-          misfeed: { $ne: true }, // valid counts only
-          ...(serial ? { "machine.serial": Number(serial) } : {})
-        })
+        .find(countQuery)
         .project({
           _id: 0,
-          timestamp: 1,
+          "timestamps.create": 1,
           "item.id": 1,
           "item.name": 1
         })
         .toArray();
+      
 
       // Build hourly breakdown map
       const hourlyBreakdownMap = {};
       for (const c of counts) {
-        const hour = new Date(c.timestamp).getHours();
+        const hour = new Date(c.timestamps?.create).getHours();
         const itemName = c.item?.name || "Unknown";
         if (!hourlyBreakdownMap[itemName]) {
           hourlyBreakdownMap[itemName] = Array(24).fill(0);

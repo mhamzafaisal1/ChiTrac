@@ -127,15 +127,15 @@ const { getStateCollectionName, getCountCollectionName } = require('./time');
 
 async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', options = {}) {
     const { targetSerials = [], operatorId = null } = options;
-    
-    // Convert Date objects to ISO strings for comparison (timestamps.create is stored as ISO strings)
-    const startISO = start instanceof Date ? start.toISOString() : start;
-    const endISO = end instanceof Date ? end.toISOString() : end;
-    
+
+    // Ensure start and end are Date objects for proper MongoDB comparison
+    const startDate = start instanceof Date ? start : new Date(start);
+    const endDate = end instanceof Date ? end : new Date(end);
+
     // Construct count query - handle both machine.serial and machine.id fields
-    // Use timestamps.create instead of timestamp (documents use timestamps.create)
+    // Use timestamps.create (stored as Date objects in MongoDB)
     const countQuery = {
-        "timestamps.create": { $gte: startISO, $lte: endISO },
+        "timestamps.create": { $gte: startDate, $lte: endDate },
         $or: [
             { "machine.serial": { $type: "int" } },
             { "machine.id": { $type: "int" } }
@@ -197,14 +197,14 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
         const stateQuery = {
             $or: [
                 {
-                    timestamp: { $gte: start, $lte: end },
+                    timestamp: { $gte: startDate, $lte: endDate },
                     $or: [
                         { "machine.serial": { $in: machineSerialsUsed } },
                         { "machine.id": { $in: machineSerialsUsed } }
                     ]
                 },
                 {
-                    "timestamps.create": { $gte: startISO, $lte: endISO },
+                    "timestamps.create": { $gte: startDate, $lte: endDate },
                     $or: [
                         { "machine.serial": { $in: machineSerialsUsed } },
                         { "machine.id": { $in: machineSerialsUsed } }
@@ -223,7 +223,8 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
                 "machine.name": 1,
                 "program.mode": 1,
                 "status.code": 1,
-                "status.name": 1
+                "status.name": 1,
+                "_tickerDoc.status": 1
             })
             .sort({ timestamp: 1, "timestamps.create": 1 })
             .toArray();
@@ -232,14 +233,14 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
         const stateQuery = {
             $or: [
                 {
-                    timestamp: { $gte: start, $lte: end },
+                    timestamp: { $gte: startDate, $lte: endDate },
                     $or: [
                         { "machine.serial": { $type: "int" } },
                         { "machine.id": { $type: "int" } }
                     ]
                 },
                 {
-                    "timestamps.create": { $gte: startISO, $lte: endISO },
+                    "timestamps.create": { $gte: startDate, $lte: endDate },
                     $or: [
                         { "machine.serial": { $type: "int" } },
                         { "machine.id": { $type: "int" } }
@@ -250,14 +251,14 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
         if (groupBy === 'machine' && targetSerials.length > 0) {
             stateQuery.$or = [
                 {
-                    timestamp: { $gte: start, $lte: end },
+                    timestamp: { $gte: startDate, $lte: endDate },
                     $or: [
                         { "machine.serial": { $in: targetSerials } },
                         { "machine.id": { $in: targetSerials } }
                     ]
                 },
                 {
-                    "timestamps.create": { $gte: startISO, $lte: endISO },
+                    "timestamps.create": { $gte: startDate, $lte: endDate },
                     $or: [
                         { "machine.serial": { $in: targetSerials } },
                         { "machine.id": { $in: targetSerials } }
@@ -276,7 +277,8 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
                 "machine.name": 1,
                 "program.mode": 1,
                 "status.code": 1,
-                "status.name": 1
+                "status.name": 1,
+                "_tickerDoc.status": 1
             })
             .sort({ timestamp: 1, "timestamps.create": 1 })
             .toArray();
@@ -292,6 +294,10 @@ async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', op
         if (!state.machine?.serial && state.machine?.id) {
             state.machine = state.machine || {};
             state.machine.serial = state.machine.id;
+        }
+        // Normalize status field - copy from _tickerDoc if top-level status doesn't exist
+        if (!state.status && state._tickerDoc?.status) {
+            state.status = state._tickerDoc.status;
         }
         return state;
     });

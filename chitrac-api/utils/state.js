@@ -72,7 +72,7 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     let currentFaultStart = null;
   
     for (const state of states) {
-      const code = state.status?.code;
+      const code = state.status?.code ?? state._tickerDoc?.status?.code;
       const timestamp = new Date(state.timestamps?.create || state.timestamp);
   
       // Running cycles only
@@ -302,8 +302,11 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
 
   async function fetchStatesForOperator(db, operatorId, paddedStart, paddedEnd, collectionName = 'state') {
   const query = {
-    timestamp: { $gte: paddedStart, $lte: paddedEnd },
-    'machine.serial': { $exists: true }
+    "timestamps.create": {
+      $gte: new Date(paddedStart),
+      $lte: new Date(paddedEnd)
+    },
+    'machine.id': { $exists: true }
   };
 
   if (operatorId) {
@@ -314,29 +317,55 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   const stateCollection = getStateCollectionName(paddedStart);
   const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
   const collection = collectionExists ? stateCollection : 'state';
-  
+
   // Debug: State collection check
-  
-  return db.collection(collection)
+  console.log(`fetchStatesForOperator query:`, JSON.stringify(query, null, 2));
+  console.log(`Using collection: ${collection}`);
+
+  const states = await db.collection(collection)
     .find(query)
-    .sort({ timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .project({
       _id:0, //RTI II: ADDED 06/10/25 to omit _ids from the API returns as those are extraneous outside of UPDATE or DELETE actions
-      timestamp: 1,
-      'machine.serial': 1,
+      "timestamps.create": 1,
+      timestamp: 1, // Keep for backward compatibility
+      'machine.id': 1,
+      'machine.serial': 1, // Keep for backward compatibility
       'machine.name': 1,
       'program.mode': 1,
       'status.code': 1,
       'status.name': 1,
+      '_tickerDoc.status': 1,
       operators: 1
     })
     .toArray();
+
+  console.log(`fetchStatesForOperator returned ${states.length} states`);
+
+  // Normalize states: map timestamps.create to timestamp and status
+  return states.map(state => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    // Normalize status field - copy from _tickerDoc if top-level status doesn't exist
+    if (!state.status && state._tickerDoc?.status) {
+      state.status = state._tickerDoc.status;
+    }
+    return state;
+  });
 }
 
 async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, paddedEnd) {
   const query = {
-    timestamp: { $gte: paddedStart, $lte: paddedEnd },
-    'machine.serial': { $exists: true }
+    "timestamps.create": {
+      $gte: new Date(paddedStart),
+      $lte: new Date(paddedEnd)
+    },
+    'machine.id': { $exists: true }
   };
 
   if (operatorId) {
@@ -344,21 +373,40 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
   }
 
   // Debug: Querying state collection
-  
-  return db.collection('state')
+
+  const states = await db.collection('state')
     .find(query)
-    .sort({ timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .project({
       _id:0,
-      timestamp: 1,
-      'machine.serial': 1,
+      "timestamps.create": 1,
+      timestamp: 1, // Keep for backward compatibility
+      'machine.id': 1,
+      'machine.serial': 1, // Keep for backward compatibility
       'machine.name': 1,
       'program.mode': 1,
       'status.code': 1,
       'status.name': 1,
+      '_tickerDoc.status': 1,
       operators: 1
     })
     .toArray();
+
+  // Normalize states: map timestamps.create to timestamp and status
+  return states.map(state => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    // Normalize status field - copy from _tickerDoc if top-level status doesn't exist
+    if (!state.status && state._tickerDoc?.status) {
+      state.status = state._tickerDoc.status;
+    }
+    return state;
+  });
 }
   
   
@@ -904,13 +952,13 @@ function extractFaultCycles(states, queryStart, queryEnd) {
   let currentCycle = null;
 
   const sortedStates = states
-    .filter(s => s.status?.code !== undefined && s.timestamp)
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    .filter(s => (s.status?.code !== undefined || s._tickerDoc?.status?.code !== undefined) && (s.timestamp || s.timestamps?.create))
+    .sort((a, b) => new Date(a.timestamp || a.timestamps?.create) - new Date(b.timestamp || b.timestamps?.create));
 
   for (const state of sortedStates) {
-    const code = state.status.code;
-    const faultName = state.status.name || 'Unknown';
-    const timestamp = new Date(state.timestamp);
+    const code = state.status?.code ?? state._tickerDoc?.status?.code;
+    const faultName = state.status?.name ?? state._tickerDoc?.status?.name ?? 'Unknown';
+    const timestamp = new Date(state.timestamp || state.timestamps?.create);
 
     // A fault cycle begins when the machine is NOT running (code !== 1)
     // and continues as long as it's not running.

@@ -293,15 +293,47 @@ function buildMachineItemSummary(states, validCounts, start, end) {
   // Filter counts to only those within the session time range
   const sessionStart = new Date(start);
   const sessionEnd = new Date(end);
-  
+
   const countsInSession = validCounts.filter((c) => {
     const countTime = c.timestamp || c.timestamps?.create;
     if (!countTime) return false;
     const ts = new Date(countTime);
     return ts >= sessionStart && ts <= sessionEnd;
   });
-  
-  const cycles = extractAllCyclesFromStates(states, start, end).running;
+
+  let cycles = extractAllCyclesFromStates(states, start, end).running;
+
+  // Fallback: If no cycles found OR cycles don't overlap with count timestamps
+  // This handles cases where state timestamps and count timestamps don't align
+  if (countsInSession.length > 0) {
+    if (cycles.length === 0) {
+      // No cycles at all - use full session range
+      cycles = [{
+        start: sessionStart,
+        end: sessionEnd,
+        duration: sessionEnd - sessionStart
+      }];
+    } else {
+      // Check if any counts fall within any cycle
+      const countsInCycles = countsInSession.some(c => {
+        const countTime = new Date(c.timestamp || c.timestamps?.create);
+        return cycles.some(cycle => {
+          const cycleStart = new Date(cycle.start);
+          const cycleEnd = new Date(cycle.end);
+          return countTime >= cycleStart && countTime <= cycleEnd;
+        });
+      });
+
+      if (!countsInCycles) {
+        // Cycles exist but don't capture any counts - use full session range
+        cycles = [{
+          start: sessionStart,
+          end: sessionEnd,
+          duration: sessionEnd - sessionStart
+        }];
+      }
+    }
+  }
   
   if (!cycles.length || !countsInSession.length) {
     return {
@@ -797,15 +829,18 @@ async function buildCurrentOperators(db, serial) {
       { "machine.id": serialNum }
     ]
   })
-    .project({ _id: 0, operators: 1, machine: 1, timestamps: 1 })
-    .sort({ "timestamps.start": -1, "timestamps.create": -1 })
+    .project({ _id: 0, operators: 1, "states.start.operators": 1, "states.end.operators": 1, machine: 1, timestamps: 1 })
+    .sort({ "timestamps.create": -1 })
     .limit(1)
     .toArray();
 
   if (!latest.length) return [];
 
+  // Get operators from either top-level operators field OR states.start.operators
+  const operators = latest[0].operators || latest[0].states?.start?.operators || [];
+
   const opIds = [...new Set(
-    (latest[0].operators || [])
+    operators
       .map(o => o && o.id)
       .filter(id => typeof id === "number" && id !== -1)
   )];
@@ -828,7 +863,7 @@ async function buildCurrentOperators(db, serial) {
       _id: 0, operator: 1, machine: 1, timestamps: 1,
       workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
     })
-    .sort({ "timestamps.start": -1, "timestamps.create": -1 })
+    .sort({ "timestamps.create": -1 })
     .limit(1)
     .toArray();
 
@@ -861,7 +896,7 @@ async function buildCurrentOperators(db, serial) {
       machineSerial,
       machineName: doc.machine?.name || "Unknown",
       session: {
-        start: doc.timestamps?.start || null,
+        start: doc.timestamps?.start || doc.timestamps?.create || null,
         end: doc.timestamps?.end || null
       },
       metrics: {

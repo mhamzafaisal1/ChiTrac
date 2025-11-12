@@ -54,7 +54,7 @@ module.exports = function faultHistoryRoute(server) {
         "timestamps.start": { $lte: endDate },
         $or: [{ "timestamps.end": { $exists: false } }, { "timestamps.end": { $gte: startDate } }],
       };
-      
+
       // Add machine filter - support both machine.serial and machine.id
       if (hasSerial) {
         match.$and = [
@@ -66,7 +66,7 @@ module.exports = function faultHistoryRoute(server) {
           }
         ];
       }
-      
+
       // Add operator filter
       if (hasOperator) {
         match["operators.id"] = operatorId;
