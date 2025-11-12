@@ -229,6 +229,7 @@ module.exports = function (server) {
 
       const { ovSec, fullSec, factor, ovStart, ovEnd } =
         overlap(s.timestamps?.start, s.timestamps?.end, wStart, wEnd);
+
       if (ovSec === 0 || fullSec === 0) continue;
 
       const stations = typeof s.activeStations === "number" ? s.activeStations : 0;
@@ -239,18 +240,23 @@ module.exports = function (server) {
       const workedSec = baseWorkSec * factor;
       const workedMs = Math.round(workedSec * 1000);
 
-      // Count attribution logic: if counts[] has operator.id, count only those for this operator
-      // Otherwise, prorate by operator's work-time share
+      // Count attribution logic:
+      // If session has end timestamp AND embedded counts, filter counts by operator/item/time
+      // Otherwise, prorate by operator's work-time share using totalCount
       let countInWin = 0;
-      if (Array.isArray(s.counts) && s.counts.length && s.counts.length <= 50000) {
+      const hasEndTimestamp = s.timestamps?.end != null;
+
+      if (hasEndTimestamp && Array.isArray(s.counts) && s.counts.length && s.counts.length <= 50000) {
+        // Session is closed - can reliably filter embedded counts by timestamp
         countInWin = s.counts.reduce((acc, c) => {
           const ts = new Date(c.timestamps?.create || c.timestamp);
           const sameItem = !c.item?.id || c.item.id === it.id;
           const sameOperator = !c.operator?.id || c.operator.id === Number(operatorId);
-          return acc + (sameItem && sameOperator && ts >= ovStart && ts <= ovEnd ? 1 : 0);
+          const inWindow = ts >= ovStart && ts <= ovEnd;
+          return acc + (sameItem && sameOperator && inWindow ? 1 : 0);
         }, 0);
       } else if (typeof s.totalCount === "number") {
-        // Prorate by operator's overlapped work-time share
+        // Session is open (no end timestamp) OR no embedded counts - prorate by time factor
         countInWin = Math.round(s.totalCount * factor);
       }
 
@@ -458,8 +464,8 @@ module.exports = function (server) {
       const countQuery = {
         "operator.id": opId,
         "timestamps.create": {
-          $gte: new Date(start).toISOString(),
-          $lt: new Date(end).toISOString()
+          $gte: new Date(start),
+          $lt: new Date(end)
         },
         misfeed: { $ne: true }, // valid counts only
         ...(serial ? { "machine.id": Number(serial) } : {})
