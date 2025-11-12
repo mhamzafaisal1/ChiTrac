@@ -72,9 +72,6 @@ module.exports = function faultHistoryRoute(server) {
         match["operators.id"] = operatorId;
       }
 
-      console.log("Fault session query:", JSON.stringify(match, null, 2));
-      console.log("Querying collection:", config.faultSessionCollectionName);
-
       // Pull overlapping fault-sessions and clip to [start,end]
       const raw = await db
         .collection(config.faultSessionCollectionName)
@@ -115,11 +112,6 @@ module.exports = function faultHistoryRoute(server) {
           },
         ])
         .toArray();
-
-      console.log(`Fault sessions found: ${raw.length}`);
-      if (raw.length > 0) {
-        console.log("Sample fault session:", JSON.stringify(raw[0], null, 2));
-      }
 
       if (!raw.length) {
         const response = {
