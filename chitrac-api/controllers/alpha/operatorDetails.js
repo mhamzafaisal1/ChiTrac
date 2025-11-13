@@ -221,7 +221,8 @@ module.exports = function (server) {
     const itemAgg = new Map(); // id -> { name, standard, count, workedMs }
     let totalValid = 0;
     let totalWorkedMs = 0;
-    const sessionRows = [];
+    // Aggregate sessions by machine + item combination
+    const sessionAgg = new Map(); // key: `${machineSerial}_${itemId}` -> { machine, itemId, name, standard, countTotal, workedTimeMs, earliestStart, latestEnd }
 
     for (const s of sessions) {
       const it = s.item || (Array.isArray(s.items) && s.items.length === 1 ? s.items[0] : null);
@@ -260,39 +261,69 @@ module.exports = function (server) {
         countInWin = Math.round(s.totalCount * factor);
       }
 
-      const hours = toHours(workedMs);
-      const std = Number(it.standard) || 0;
-      const stdPPH = normalizeStdPPH(std);
-      const pph = hours > 0 ? countInWin / hours : 0;
-      const eff = stdPPH > 0 ? pph / stdPPH : 0;
+      // Create aggregation key: machine serial + item id
+      const machineSerial = s.machine?.serial ?? null;
+      const aggKey = `${machineSerial}_${it.id}`;
 
-      sessionRows.push({
-        start: ovStart.toISOString(),
-        end: ovEnd.toISOString(),
-        workedTimeMs: workedMs,
-        workedTimeFormatted: formatDuration(workedMs),
-        machine: {                         // <-- add
-          serial: s.machine?.serial ?? null,
-          name: s.machine?.name ?? null
-        },
-        items: [{
+      // Get or create aggregated session record
+      let aggRec = sessionAgg.get(aggKey);
+      if (!aggRec) {
+        aggRec = {
+          machine: {
+            serial: machineSerial,
+            name: s.machine?.name ?? null
+          },
           itemId: it.id,
           name: it.name || "Unknown",
-          countTotal: countInWin,
-          standard: std,
-          pph: Math.round(pph * 100) / 100,
-          efficiency: Math.round(eff * 10000) / 100
-        }]
-      });
+          standard: Number(it.standard) || 0,
+          countTotal: 0,
+          workedTimeMs: 0,
+          earliestStart: ovStart,
+          latestEnd: ovEnd
+        };
+        sessionAgg.set(aggKey, aggRec);
+      }
 
-      const rec = itemAgg.get(it.id) || { name: it.name || "Unknown", standard: std, count: 0, workedMs: 0 };
+      // Aggregate values
+      aggRec.countTotal += countInWin;
+      aggRec.workedTimeMs += workedMs;
+      if (ovStart < aggRec.earliestStart) aggRec.earliestStart = ovStart;
+      if (ovEnd > aggRec.latestEnd) aggRec.latestEnd = ovEnd;
+      if (!aggRec.standard && Number(it.standard)) aggRec.standard = Number(it.standard);
+
+      const rec = itemAgg.get(it.id) || { name: it.name || "Unknown", standard: Number(it.standard) || 0, count: 0, workedMs: 0 };
       rec.count += countInWin;
       rec.workedMs += workedMs;
-      if (!rec.standard && std) rec.standard = std;
+      if (!rec.standard && Number(it.standard)) rec.standard = Number(it.standard);
       itemAgg.set(it.id, rec);
 
       totalValid += countInWin;
       totalWorkedMs += workedMs;
+    }
+
+    // Convert aggregated sessions to sessionRows format
+    const sessionRows = [];
+    for (const aggRec of sessionAgg.values()) {
+      const hours = toHours(aggRec.workedTimeMs);
+      const stdPPH = normalizeStdPPH(aggRec.standard);
+      const pph = hours > 0 ? aggRec.countTotal / hours : 0;
+      const eff = stdPPH > 0 ? pph / stdPPH : 0;
+
+      sessionRows.push({
+        start: aggRec.earliestStart.toISOString(),
+        end: aggRec.latestEnd.toISOString(),
+        workedTimeMs: aggRec.workedTimeMs,
+        workedTimeFormatted: formatDuration(aggRec.workedTimeMs),
+        machine: aggRec.machine,
+        items: [{
+          itemId: aggRec.itemId,
+          name: aggRec.name,
+          countTotal: aggRec.countTotal,
+          standard: aggRec.standard,
+          pph: Math.round(pph * 100) / 100,
+          efficiency: Math.round(eff * 10000) / 100
+        }]
+      });
     }
 
     const totalHours = toHours(totalWorkedMs);
