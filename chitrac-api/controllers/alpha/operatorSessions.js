@@ -14,8 +14,53 @@ module.exports = function (server) {
 
   // Helper function to parse and validate query parameters
   function parseAndValidateQueryParams(req) {
-    const { start, end } = req.query;
+    const { start, end, timeframe } = req.query;
 
+    // If timeframe is provided, calculate start and end from server time
+    if (timeframe) {
+      const now = new Date();
+      let calculatedStart;
+      let calculatedEnd = now;
+
+      switch (timeframe) {
+        case 'current':
+          calculatedStart = new Date(now.getTime() - 6 * 60 * 1000); // 6 minutes ago
+          break;
+        case 'lastFifteen':
+          calculatedStart = new Date(now.getTime() - 15 * 60 * 1000); // 15 minutes ago
+          break;
+        case 'lastHour':
+          calculatedStart = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
+          break;
+        case 'today':
+          calculatedStart = new Date(now);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        case 'thisWeek':
+          calculatedStart = new Date(now);
+          const day = calculatedStart.getDay();
+          calculatedStart.setDate(calculatedStart.getDate() - day);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        case 'thisMonth':
+          calculatedStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        case 'thisYear':
+          calculatedStart = new Date(now.getFullYear(), 0, 1);
+          calculatedStart.setHours(0, 0, 0, 0);
+          break;
+        default:
+          throw new Error(`Invalid timeframe: ${timeframe}`);
+      }
+
+      return {
+        start: calculatedStart,
+        end: calculatedEnd,
+      };
+    }
+
+    // Original logic for start/end parameters
     if (!start || !end) {
       throw new Error('Start and end dates are required');
     }
@@ -755,12 +800,298 @@ module.exports = function (server) {
     }
   });
 
+  // Helper function to build hybrid operators summary
+  async function buildHybridOperatorsSummary(exactStart, exactEnd) {
+    const { SYSTEM_TIMEZONE } = require('../../utils/time');
+    const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold
+    const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+
+    const startOfFirstDay = DateTime.fromJSDate(exactStart, { zone: SYSTEM_TIMEZONE }).startOf('day');
+    const endOfLastDay = DateTime.fromJSDate(exactEnd, { zone: SYSTEM_TIMEZONE }).endOf('day');
+    
+    const completeDays = [];
+    const partialDays = [];
+    
+    // Add complete days (full 24-hour periods)
+    let currentDay = startOfFirstDay;
+    while (currentDay < endOfLastDay) {
+      const dayStart = currentDay.toJSDate();
+      const dayEnd = currentDay.plus({ days: 1 }).startOf('day').toJSDate();
+      
+      // Only include if the day is completely within the query range
+      if (dayStart >= exactStart && dayEnd <= exactEnd) {
+        completeDays.push({
+          start: dayStart,
+          end: dayEnd,
+          dateStr: currentDay.toFormat('yyyy-LL-dd')
+        });
+      }
+      
+      currentDay = currentDay.plus({ days: 1 });
+    }
+    
+    // Add partial days (beginning and end of range)
+    const nextDayStart = startOfFirstDay.plus({ days: 1 }).toJSDate();
+    if (exactStart < nextDayStart) {
+      const partialEnd = exactEnd < nextDayStart ? exactEnd : nextDayStart;
+      if (partialEnd > exactStart) {
+        partialDays.push({
+          start: exactStart,
+          end: partialEnd,
+          type: 'start'
+        });
+      }
+    }
+    
+    const previousDayEnd = endOfLastDay.minus({ days: 1 }).toJSDate();
+    if (exactEnd > previousDayEnd) {
+      const partialStart = exactStart > previousDayEnd ? exactStart : previousDayEnd;
+      if (exactEnd > partialStart) {
+        partialDays.push({
+          start: partialStart,
+          end: exactEnd,
+          type: 'end'
+        });
+      }
+    }
+
+    // Remove duplicate partial days if they overlap
+    if (partialDays.length === 2 &&
+        partialDays[0].start.getTime() === partialDays[1].start.getTime() &&
+        partialDays[0].end.getTime() === partialDays[1].end.getTime()) {
+      partialDays.splice(1, 1);
+    }
+
+    // Query daily cache for complete days
+    const dailyRecords = await queryOperatorsSummaryDailyCache(completeDays);
+    logger.info(`[operatorSessions] Daily cache query returned ${dailyRecords.length} records`);
+    
+    // Query sessions for partial days
+    const sessionData = await queryOperatorsSummarySessions(partialDays);
+    logger.info(`[operatorSessions] Session query returned ${sessionData.length} records`);
+    
+    // Combine the data
+    const combinedData = combineOperatorsSummaryData(dailyRecords, sessionData);
+    logger.info(`[operatorSessions] Combined data has ${combinedData.size} operators`);
+    
+    // Get current machine statuses from stateTicker collection
+    const stateTickerData = await db.collection('stateTicker')
+      .find({})
+      .toArray();
+    
+    // Build operator ticker map (latest machine/status per operator)
+    const operatorTickerMap = new Map();
+    for (const stateRecord of stateTickerData) {
+      const machine = stateRecord.machine || {};
+      const status = stateRecord.status || {};
+      const timestamp = new Date(
+        status.timestamp ||
+        stateRecord.timestamp ||
+        (stateRecord.timestamps &&
+          (stateRecord.timestamps.update ||
+            stateRecord.timestamps.active ||
+            stateRecord.timestamps.create)) ||
+        0
+      ).getTime();
+
+      if (Array.isArray(stateRecord.operators)) {
+        for (const op of stateRecord.operators) {
+          if (!op || typeof op.id === "undefined" || op.id === null) {
+            continue;
+          }
+
+          const operatorKey =
+            typeof op.id === "string" ? Number.parseInt(op.id, 10) : op.id;
+
+          if (Number.isNaN(operatorKey)) {
+            continue;
+          }
+
+          const existing = operatorTickerMap.get(operatorKey);
+          if (!existing || existing.timestamp < timestamp) {
+            const serial =
+              machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+            operatorTickerMap.set(operatorKey, {
+              machine:
+                serial !== null && serial !== undefined
+                  ? {
+                      serial,
+                      name: machine.name || null
+                    }
+                  : null,
+              status:
+                typeof status.code !== "undefined" ||
+                typeof status.name !== "undefined"
+                  ? {
+                      code: status.code ?? null,
+                      name: status.name ?? null
+                    }
+                  : null,
+              timestamp
+            });
+          }
+        }
+      }
+    }
+    
+    // Build final results
+    const results = [];
+    for (const [operatorId, data] of combinedData) {
+      // Get current machine and status from ticker map
+      const tickerContext = operatorTickerMap.get(operatorId);
+      const currentMachine = tickerContext?.machine || data.currentMachine || null;
+      const currentStatus = tickerContext?.status || data.currentStatus || { code: 0, name: "Unknown" };
+      
+      const result = {
+        operator: {
+          id: operatorId,
+          name: data.operatorName
+        },
+        currentMachine,
+        currentStatus,
+        metrics: {
+          runtime: {
+            total: data.runtimeMs,
+            formatted: formatDuration(data.runtimeMs)
+          },
+          downtime: {
+            total: data.downtimeMs,
+            formatted: formatDuration(data.downtimeMs)
+          },
+          output: {
+            totalCount: data.totalCount,
+            misfeedCount: data.misfeedCount
+          },
+          performance: {
+            availability: {
+              value: data.availability,
+              percentage: (data.availability * 100).toFixed(2)
+            },
+            throughput: {
+              value: data.throughput,
+              percentage: (data.throughput * 100).toFixed(2)
+            },
+            efficiency: {
+              value: data.efficiency,
+              percentage: (data.efficiency * 100).toFixed(2)
+            },
+            oee: {
+              value: data.oee,
+              percentage: (data.oee * 100).toFixed(2)
+            }
+          }
+        },
+        timeRange: {
+          start: exactStart,
+          end: exactEnd
+        }
+      };
+      
+      results.push(result);
+    }
+
+    const metadata = {
+      timeRange: {
+        start: exactStart,
+        end: exactEnd,
+        hours: Math.round(timeRangeHours * 100) / 100
+      },
+      optimization: {
+        used: true,
+        approach: 'hybrid',
+        thresholdHours: HYBRID_THRESHOLD_HOURS,
+        timeRangeHours: Math.round(timeRangeHours * 100) / 100,
+        completeDays: completeDays.length,
+        partialDays: partialDays.length,
+        dailyRecords: dailyRecords.length,
+        sessionRecords: sessionData.length,
+        performance: {
+          estimatedSpeedup: `${Math.round((timeRangeHours / 24) * 10)}x faster for ${Math.round(timeRangeHours / 24)} days`
+        }
+      }
+    };
+
+    return { results, metadata };
+  }
+
+  // New route: /analytics/operator-summary-timeframe
+  router.get("/analytics/operator-summary-timeframe", async (req, res) => {
+    try {
+      const { timeframe } = req.query;
+
+      if (!timeframe) {
+        return res
+          .status(400)
+          .json({ error: "timeframe query parameter is required" });
+      }
+
+      const shortTimeframes = new Set(["current", "lastFifteen", "lastHour"]);
+      const extendedTimeframes = new Set([
+        "today",
+        "thisWeek",
+        "thisMonth",
+        "thisYear",
+      ]);
+
+      if (shortTimeframes.has(timeframe)) {
+        return await getOperatorsSummaryRealTime(req, res);
+      }
+
+      if (!extendedTimeframes.has(timeframe)) {
+        return res
+          .status(400)
+          .json({ error: `Unsupported timeframe: ${timeframe}` });
+      }
+
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+
+      const { results } = await buildHybridOperatorsSummary(
+        exactStart,
+        exactEnd
+      );
+
+      if (!results.length) {
+        logger.warn(
+          `[operatorSessions] No data for timeframe ${timeframe}, falling back to real-time calculation`
+        );
+        return await getOperatorsSummaryRealTime(req, res);
+      }
+
+      res.json(results);
+    } catch (err) {
+      logger.error(
+        `[operatorSessions] Error in operator-summary-timeframe: `,
+        err
+      );
+
+      if (
+        err.message?.includes("Start and end dates are required") ||
+        err.message?.includes("Invalid date format") ||
+        err.message?.includes("Start date must be before end date") ||
+        err.message?.includes("Invalid timeframe")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+
+      res
+        .status(500)
+        .json({ error: "Failed to build operator summary for timeframe" });
+    }
+  });
+
   // Helper function for real-time calculation (extracted from original route)
   async function getOperatorsSummaryRealTime(req, res) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
-      const queryStart = new Date(DateTime.fromISO(req.query.start).toISO()); //new Date(start); NEED LUXON FOR TIMEZONE ISSUES
-      let queryEnd = new Date(DateTime.fromISO(req.query.end).toISO()); //new Date(end);
+      // Use parsed dates directly, but handle timezone conversion if start/end are provided as ISO strings
+      const queryStart = req.query.start && !req.query.timeframe
+        ? new Date(DateTime.fromISO(req.query.start).toISO())
+        : new Date(start);
+      let queryEnd = req.query.end && !req.query.timeframe
+        ? new Date(DateTime.fromISO(req.query.end).toISO())
+        : new Date(end);
       const now = new Date(DateTime.now().toISO());
       if (queryEnd > now) queryEnd = now;
       if (!(queryStart < queryEnd)) {
@@ -864,12 +1195,65 @@ module.exports = function (server) {
             let misfeedCount = 0;
             let totalTimeCredit = 0;
 
+            // Fetch counts directly from count collection for this operator within the time window
+            const allCounts = await db
+              .collection("count")
+              .find({
+                "operator.id": opId,
+                "timestamps.create": { $gte: queryStart, $lte: queryEnd },
+              })
+              .toArray();
+
+            // Separate valid counts from misfeeds
+            const validCounts = allCounts.filter(c => !c.misfeed);
+            const misfeedCounts = allCounts.filter(c => c.misfeed);
+
+            totalCount = validCounts.length;
+            misfeedCount = misfeedCounts.length;
+
+            // Calculate runtime from sessions (clamped to query window)
             for (const s of sessions) {
-              runtimeMs += Math.floor(s.runtime) * 1000;
-              workTimeSec += Math.floor(s.workTime);
-              totalCount += s.totalCount;
-              misfeedCount += s.misfeedCount;
-              totalTimeCredit += s.totalTimeCredit;
+              // Calculate runtime for this session (clamped to query window)
+              const sessionStart = new Date(s.timestamps?.start);
+              const sessionEnd = s.timestamps?.end ? new Date(s.timestamps.end) : queryEnd;
+              const clampedStart = sessionStart < queryStart ? queryStart : sessionStart;
+              const clampedEnd = sessionEnd > queryEnd ? queryEnd : sessionEnd;
+              const sessionRuntimeMs = Math.max(0, clampedEnd - clampedStart);
+
+              runtimeMs += sessionRuntimeMs;
+            }
+
+            // For operators, work time == runtime
+            workTimeSec = runtimeMs / 1000;
+
+            // Calculate time credit based on filtered counts and item standards
+            const perItemCounts = new Map();
+
+            for (const c of validCounts) {
+              const id = c.item?.id;
+              if (id != null) {
+                perItemCounts.set(id, (perItemCounts.get(id) || 0) + 1);
+              }
+            }
+
+            // Get items from the first session that has them
+            let items = [];
+            for (const s of sessions) {
+              const sessionItems = s.program?.items || s.states?.start?.program?.items || [];
+              if (sessionItems.length > 0) {
+                items = sessionItems;
+                break;
+              }
+            }
+
+            for (const [id, cnt] of perItemCounts) {
+              const item = items.find((it) => it && it.id === id);
+              if (item && item.standard) {
+                const pph = normalizePPH(item.standard);
+                if (pph > 0) {
+                  totalTimeCredit += cnt / (pph / 3600); // seconds
+                }
+              }
             }
 
             const totalMs = Math.max(0, queryEnd - queryStart);

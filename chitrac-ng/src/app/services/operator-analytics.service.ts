@@ -29,6 +29,13 @@ export class OperatorAnalyticsService {
     return this.http.get('/api/alpha/analytics/operators-summary-daily-cached', { params });
   }
 
+  getOperatorSummaryWithTimeframe(timeframe: string): Observable<any> {
+    const params = new HttpParams()
+      .set('timeframe', timeframe);
+
+    return this.http.get('/api/alpha/analytics/operator-summary-timeframe', { params });
+  }
+
   getOperatorDetails(start: string, end: string, operatorId: number): Observable<any> {
     const params = new HttpParams()
       .set('start', start)
