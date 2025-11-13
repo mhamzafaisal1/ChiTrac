@@ -459,11 +459,9 @@ module.exports = function (server) {
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
-      // Configurable threshold for hybrid approach (36 hours)
       const HYBRID_THRESHOLD_HOURS = config.hybridThresholdHours;
       const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
 
-      // If time range is less than threshold, use original route
       if (timeRangeHours <= HYBRID_THRESHOLD_HOURS) {
         return res.status(400).json({
           error: "Time range too short for hybrid approach",
@@ -473,156 +471,87 @@ module.exports = function (server) {
         });
       }
 
-      // Import required modules
-      const { DateTime } = require("luxon");
-      const { SYSTEM_TIMEZONE } = require("../../utils/time");
-
-      // Split time range into complete days and partial days
-      const startOfFirstDay = DateTime.fromJSDate(exactStart, {
-        zone: SYSTEM_TIMEZONE,
-      }).startOf("day");
-      const endOfLastDay = DateTime.fromJSDate(exactEnd, {
-        zone: SYSTEM_TIMEZONE,
-      }).endOf("day");
-
-      const completeDays = [];
-      const partialDays = [];
-
-      // Add complete days (full 24-hour periods)
-      let currentDay = startOfFirstDay;
-      while (currentDay < endOfLastDay) {
-        const dayStart = currentDay.toJSDate();
-        const dayEnd = currentDay.plus({ days: 1 }).startOf("day").toJSDate();
-
-        // Only include if the day is completely within the query range
-        if (dayStart >= exactStart && dayEnd <= exactEnd) {
-          completeDays.push({
-            start: dayStart,
-            end: dayEnd,
-            dateStr: currentDay.toFormat("yyyy-LL-dd"),
-          });
-        }
-
-        currentDay = currentDay.plus({ days: 1 });
-      }
-
-      // Add partial days (beginning and end of range)
-      if (exactStart < startOfFirstDay.plus({ days: 1 }).toJSDate()) {
-        partialDays.push({
-          start: exactStart,
-          end: Math.min(exactEnd, startOfFirstDay.plus({ days: 1 }).toJSDate()),
-          type: "start",
-        });
-      }
-
-      if (exactEnd > endOfLastDay.minus({ days: 1 }).toJSDate()) {
-        partialDays.push({
-          start: Math.max(
-            exactStart,
-            endOfLastDay.minus({ days: 1 }).toJSDate()
-          ),
-          end: exactEnd,
-          type: "end",
-        });
-      }
-
-      // Query daily cache for complete days
-      const dailyRecords = await queryMachinesSummaryDailyCache(completeDays);
-      logger.info(
-        `[machineSessions] Daily cache query returned ${dailyRecords.length} records`
+      const { results, metadata } = await buildHybridMachinesSummary(
+        exactStart,
+        exactEnd
       );
-
-      // Query sessions for partial days
-      const sessionData = await queryMachinesSummarySessions(partialDays);
-      logger.info(
-        `[machineSessions] Session query returned ${sessionData.length} records`
-      );
-
-      // Combine the data
-      const combinedData = combineMachinesSummaryData(
-        dailyRecords,
-        sessionData
-      );
-      logger.info(
-        `[machineSessions] Combined data has ${combinedData.size} machines`
-      );
-
-      // Get active machines for status information
-      const activeSerials = new Set(
-        await db
-          .collection(config.machineCollectionName)
-          .distinct("serial", { active: true })
-      );
-
-      // Get current status for each machine
-      const tickers = await db
-        .collection(config.stateTickerCollectionName)
-        .find({ "machine.serial": { $in: [...activeSerials] } })
-        .project({ _id: 0 })
-        .toArray();
-
-      const statusMap = new Map();
-      tickers.forEach((ticker) => {
-        if (ticker.machine?.serial) {
-          statusMap.set(ticker.machine.serial, ticker.status);
-        }
-      });
-
-      // Build final results
-      const results = [];
-      for (const [machineSerial, data] of combinedData) {
-        const status = statusMap.get(machineSerial) || {
-          code: 0,
-          name: "Unknown",
-        };
-
-        const result = formatMachinesSummaryRow({
-          machine: { serial: machineSerial, name: data.machineName },
-          status,
-          runtimeMs: data.runtimeMs,
-          downtimeMs: data.downtimeMs,
-          totalCount: data.totalCount,
-          misfeedCount: data.misfeedCount,
-          workTimeSec: data.workTimeSec,
-          totalTimeCredit: data.totalTimeCredit,
-          queryStart: exactStart,
-          queryEnd: exactEnd,
-        });
-
-        results.push(result);
-      }
 
       res.json({
         success: true,
         data: results,
-        metadata: {
-          timeRange: {
-            start: exactStart,
-            end: exactEnd,
-            hours: Math.round(timeRangeHours * 100) / 100,
-          },
-          optimization: {
-            used: true,
-            approach: "hybrid",
-            thresholdHours: HYBRID_THRESHOLD_HOURS,
-            timeRangeHours: Math.round(timeRangeHours * 100) / 100,
-            completeDays: completeDays.length,
-            partialDays: partialDays.length,
-            dailyRecords: dailyRecords.length,
-            sessionRecords: sessionData.length,
-            performance: {
-              estimatedSpeedup: `${Math.round(
-                (timeRangeHours / 24) * 10
-              )}x faster for ${Math.round(timeRangeHours / 24)} days`,
-            },
-          },
-        },
+        metadata,
       });
     } catch (error) {
       logger.error("Error in machines-summary-hybrid:", error);
       res
         .status(500)
         .json({ error: "Internal server error", details: error.message });
+    }
+  });
+
+  router.get("/analytics/machine-summary-timeframe", async (req, res) => {
+    try {
+      const { timeframe } = req.query;
+
+      if (!timeframe) {
+        return res
+          .status(400)
+          .json({ error: "timeframe query parameter is required" });
+      }
+
+      const shortTimeframes = new Set(["current", "lastFifteen", "lastHour"]);
+      const extendedTimeframes = new Set([
+        "today",
+        "thisWeek",
+        "thisMonth",
+        "thisYear",
+      ]);
+
+      if (shortTimeframes.has(timeframe)) {
+        return await getMachinesSummaryRealTime(req, res);
+      }
+
+      if (!extendedTimeframes.has(timeframe)) {
+        return res
+          .status(400)
+          .json({ error: `Unsupported timeframe: ${timeframe}` });
+      }
+
+      const { start, end } = parseAndValidateQueryParams(req);
+      const exactStart = new Date(start);
+      const exactEnd = new Date(end);
+
+      const { results } = await buildHybridMachinesSummary(
+        exactStart,
+        exactEnd
+      );
+
+      if (!results.length) {
+        logger.warn(
+          `[machineSessions] No data for timeframe ${timeframe}, falling back to real-time calculation`
+        );
+        return await getMachinesSummaryRealTime(req, res);
+      }
+
+      res.json(results);
+    } catch (err) {
+      logger.error(
+        `[machineSessions] Error in machine-summary-timeframe: `,
+        err
+      );
+
+      if (
+        err.message?.includes("Start and end dates are required") ||
+        err.message?.includes("Invalid date format") ||
+        err.message?.includes("Start date must be before end date") ||
+        err.message?.includes("Invalid timeframe")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+
+      res
+        .status(500)
+        .json({ error: "Failed to build machine summary for timeframe" });
     }
   });
 
@@ -973,7 +902,7 @@ module.exports = function (server) {
         const sessions = await db
           .collection(config.machineSessionCollectionName)
           .find({
-            "machine.serial": serial,
+            "machine.id": serial,
             "timestamps.start": { $lt: partialDay.end },
             $or: [
               { "timestamps.end": { $gt: partialDay.start } },
@@ -1026,11 +955,12 @@ module.exports = function (server) {
         let totalTimeCredit = 0;
 
         for (const s of sessions) {
-          runtimeMs += Math.floor(s.runtime) * 1000;
-          workTimeSec += Math.floor(s.workTime);
-          totalCount += s.totalCount;
-          misfeedCount += s.misfeedCount;
-          totalTimeCredit += s.totalTimeCredit;
+          // Extract from session document structure
+          runtimeMs += Math.floor((s.metrics?.timers?.run || s.runtime || 0)) * 1000;
+          workTimeSec += Math.floor(s.metrics?.timers?.worked || s.workTime || 0);
+          totalCount += s.metrics?.totals?.counts?.valid || s.totalCount || 0;
+          misfeedCount += s.metrics?.totals?.counts?.misfeed || s.misfeedCount || 0;
+          totalTimeCredit += s.metrics?.totals?.timeCredit || s.totalTimeCredit || 0;
         }
 
         const downtimeMs = Math.max(
@@ -1116,6 +1046,198 @@ module.exports = function (server) {
     }
 
     return combinedMap;
+  }
+
+  async function buildHybridMachinesSummary(exactStart, exactEnd) {
+    const { DateTime } = require("luxon");
+    const { SYSTEM_TIMEZONE } = require("../../utils/time");
+
+    const HYBRID_THRESHOLD_HOURS = config.hybridThresholdHours;
+    const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
+
+    const startOfFirstDay = DateTime.fromJSDate(exactStart, {
+      zone: SYSTEM_TIMEZONE,
+    }).startOf("day");
+    const endOfLastDay = DateTime.fromJSDate(exactEnd, {
+      zone: SYSTEM_TIMEZONE,
+    }).endOf("day");
+
+    const completeDays = [];
+    const partialDays = [];
+
+    let currentDay = startOfFirstDay;
+    while (currentDay < endOfLastDay) {
+      const dayStart = currentDay.toJSDate();
+      const dayEnd = currentDay.plus({ days: 1 }).startOf("day").toJSDate();
+
+      if (dayStart >= exactStart && dayEnd <= exactEnd) {
+        completeDays.push({
+          start: dayStart,
+          end: dayEnd,
+          dateStr: currentDay.toFormat("yyyy-LL-dd"),
+        });
+      }
+
+      currentDay = currentDay.plus({ days: 1 });
+    }
+
+    const nextDayStart = startOfFirstDay.plus({ days: 1 }).toJSDate();
+    if (exactStart < nextDayStart) {
+      const partialEnd = exactEnd < nextDayStart ? exactEnd : nextDayStart;
+      if (partialEnd > exactStart) {
+        partialDays.push({
+          start: exactStart,
+          end: partialEnd,
+          type: "start",
+        });
+      }
+    }
+
+    const previousDayEnd = endOfLastDay.minus({ days: 1 }).toJSDate();
+    if (exactEnd > previousDayEnd) {
+      const partialStart =
+        exactStart > previousDayEnd ? exactStart : previousDayEnd;
+      if (exactEnd > partialStart) {
+        partialDays.push({
+          start: partialStart,
+          end: exactEnd,
+          type: "end",
+        });
+      }
+    }
+
+    if (
+      partialDays.length === 2 &&
+      partialDays[0].start.getTime() === partialDays[1].start.getTime() &&
+      partialDays[0].end.getTime() === partialDays[1].end.getTime()
+    ) {
+      partialDays.splice(1, 1);
+    }
+
+    const dailyRecords = await queryMachinesSummaryDailyCache(completeDays);
+    logger.info(
+      `[machineSessions] Daily cache query returned ${dailyRecords.length} records`
+    );
+
+    const sessionData = await queryMachinesSummarySessions(partialDays);
+    logger.info(
+      `[machineSessions] Session query returned ${sessionData.length} records`
+    );
+
+    const combinedData = combineMachinesSummaryData(
+      dailyRecords,
+      sessionData
+    );
+    logger.info(
+      `[machineSessions] Combined data has ${combinedData.size} machines`
+    );
+
+    if (!combinedData.size) {
+      return {
+        results: [],
+        metadata: {
+          timeRange: {
+            start: exactStart,
+            end: exactEnd,
+            hours: Math.round(timeRangeHours * 100) / 100,
+          },
+          optimization: {
+            used: true,
+            approach: "hybrid",
+            thresholdHours: HYBRID_THRESHOLD_HOURS,
+            timeRangeHours: Math.round(timeRangeHours * 100) / 100,
+            completeDays: completeDays.length,
+            partialDays: partialDays.length,
+            dailyRecords: dailyRecords.length,
+            sessionRecords: sessionData.length,
+            performance: {
+              estimatedSpeedup: `${Math.round(
+                (timeRangeHours / 24) * 10
+              )}x faster for ${Math.round(timeRangeHours / 24)} days`,
+            },
+          },
+        },
+      };
+    }
+
+    const activeSerials = new Set(
+      await db
+        .collection(config.machineCollectionName)
+        .distinct("serial", { active: true })
+    );
+
+    const tickers = await db
+      .collection(config.stateTickerCollectionName)
+      .find({ "machine.serial": { $in: [...activeSerials] } })
+      .project({ _id: 0, timestamp: 1, status: 1, "machine.serial": 1 })
+      .toArray();
+
+    const statusMap = new Map();
+    tickers.forEach((ticker) => {
+      const serial = ticker.machine?.serial;
+      if (!serial) {
+        return;
+      }
+      const ts = new Date(ticker.timestamp || 0).getTime();
+      const existing = statusMap.get(serial);
+      if (!existing || ts > existing.timestamp) {
+        statusMap.set(serial, {
+          status: {
+            code: ticker.status?.code ?? 0,
+            name: ticker.status?.name ?? "Unknown",
+          },
+          timestamp: ts,
+        });
+      }
+    });
+
+    const results = [];
+    for (const [machineSerial, data] of combinedData) {
+      const statusEntry = statusMap.get(machineSerial)?.status || {
+        code: 0,
+        name: "Unknown",
+      };
+
+      const result = formatMachinesSummaryRow({
+        machine: { serial: machineSerial, name: data.machineName },
+        status: statusEntry,
+        runtimeMs: data.runtimeMs,
+        downtimeMs: data.downtimeMs,
+        totalCount: data.totalCount,
+        misfeedCount: data.misfeedCount,
+        workTimeSec: data.workTimeSec,
+        totalTimeCredit: data.totalTimeCredit,
+        queryStart: exactStart,
+        queryEnd: exactEnd,
+      });
+
+      results.push(result);
+    }
+
+    const metadata = {
+      timeRange: {
+        start: exactStart,
+        end: exactEnd,
+        hours: Math.round(timeRangeHours * 100) / 100,
+      },
+      optimization: {
+        used: true,
+        approach: "hybrid",
+        thresholdHours: HYBRID_THRESHOLD_HOURS,
+        timeRangeHours: Math.round(timeRangeHours * 100) / 100,
+        completeDays: completeDays.length,
+        partialDays: partialDays.length,
+        dailyRecords: dailyRecords.length,
+        sessionRecords: sessionData.length,
+        performance: {
+          estimatedSpeedup: `${Math.round(
+            (timeRangeHours / 24) * 10
+          )}x faster for ${Math.round(timeRangeHours / 24)} days`,
+        },
+      },
+    };
+
+    return { results, metadata };
   }
 
   // Helper function to query machine daily cache
@@ -1375,7 +1497,7 @@ module.exports = function (server) {
           const sessions = await db
             .collection(config.machineSessionCollectionName)
             .find({
-              "machine.serial": serial,
+              "machine.id": serial,
               "timestamps.start": { $lt: queryEnd },
               $or: [
                 { "timestamps.end": { $gt: queryStart } },
@@ -1439,21 +1561,68 @@ module.exports = function (server) {
             }
           }
 
-          // Aggregate
+          // Fetch counts directly from count collection for this machine within the time window
+          const allCounts = await db
+            .collection("count")
+            .find({
+              "machine.id": serial,
+              "timestamps.create": { $gte: queryStart, $lte: queryEnd },
+            })
+            .toArray();
+
+          // Separate valid counts from misfeeds
+          const validCounts = allCounts.filter(c => !c.misfeed);
+          const misfeedCounts = allCounts.filter(c => c.misfeed);
+
+          logger.info(
+            `[machineSessions] Machine ${serial}: Found ${validCounts.length} valid counts, ${misfeedCounts.length} misfeed counts in time window`
+          );
+
+          // Aggregate - calculate metrics based on sessions and counts
           let runtimeMs = 0;
           let workTimeSec = 0;
-          let totalCount = 0;
-          let misfeedCount = 0;
           let totalTimeCredit = 0;
 
           for (const s of sessions) {
-            runtimeMs += Math.floor(s.runtime) * 1000;
-            workTimeSec += Math.floor(s.workTime);
-            totalCount += s.totalCount;
-            misfeedCount += s.misfeedCount;
-            totalTimeCredit += s.totalTimeCredit;
+            // Calculate runtime for this session (clamped to query window)
+            const sessionStart = new Date(s.timestamps?.start);
+            const sessionEnd = s.timestamps?.end ? new Date(s.timestamps.end) : queryEnd;
+            const clampedStart = sessionStart < queryStart ? queryStart : sessionStart;
+            const clampedEnd = sessionEnd > queryEnd ? queryEnd : sessionEnd;
+            const sessionRuntimeMs = Math.max(0, clampedEnd - clampedStart);
+
+            // Get operators count for work time calculation
+            const operators = s.states?.start?.operators || [];
+            const activeStations = operators.filter((op) => op && op.id !== -1).length;
+            const sessionWorkTimeSec = (sessionRuntimeMs / 1000) * activeStations;
+
+            runtimeMs += sessionRuntimeMs;
+            workTimeSec += sessionWorkTimeSec;
           }
 
+          // Calculate time credit based on counts
+          const items = sessions[0]?.program?.items || sessions[0]?.states?.start?.program?.items || [];
+          const perItemCounts = new Map();
+
+          for (const c of validCounts) {
+            const id = c.item?.id;
+            if (id != null) {
+              perItemCounts.set(id, (perItemCounts.get(id) || 0) + 1);
+            }
+          }
+
+          for (const [id, cnt] of perItemCounts) {
+            const item = items.find((it) => it && it.id === id);
+            if (item && item.standard) {
+              const pph = normalizePPH(item.standard);
+              if (pph > 0) {
+                totalTimeCredit += cnt / (pph / 3600); // seconds
+              }
+            }
+          }
+
+          const totalCount = validCounts.length;
+          const misfeedCount = misfeedCounts.length;
           const downtimeMs = Math.max(0, queryEnd - queryStart - runtimeMs);
 
           const result = formatMachinesSummaryRow({
@@ -1672,8 +1841,10 @@ module.exports = function (server) {
     const runtimeSec = runtimeMs / 1000;
 
     // Active stations = non-dummy operators
-    const activeStations = Array.isArray(session.operators)
-      ? session.operators.filter((op) => op && op.id !== -1).length
+    // Handle both old structure (session.operators) and new structure (session.states.start.operators)
+    const operators = session.operators || session.states?.start?.operators || [];
+    const activeStations = Array.isArray(operators)
+      ? operators.filter((op) => op && op.id !== -1).length
       : 0;
 
     const workTimeSec = runtimeSec * activeStations;
@@ -1696,9 +1867,11 @@ module.exports = function (server) {
     }
 
     // 2. Calculate time credit for each item based on its actual count and standard
+    // Handle both old structure (session.items) and new structure (session.program.items or session.states.start.program.items)
+    const items = session.items || session.program?.items || session.states?.start?.program?.items || [];
     for (const [id, cnt] of perItemCounts) {
       // Find the standard for this specific item from session.items
-      const item = session.items?.find((it) => it && it.id === id);
+      const item = items.find((it) => it && it.id === id);
       if (item && item.standard) {
         const pph = normalizePPH(item.standard);
         if (pph > 0) {
@@ -1719,12 +1892,20 @@ module.exports = function (server) {
 
   // Truncate a session to [start,end] and recalc
   function truncateAndRecalc(original, newStart, newEnd) {
+    // Handle both old structure (counts as array) and new structure (counts.valid)
+    const countsArray = Array.isArray(original.counts)
+      ? original.counts
+      : (original.counts?.valid || []);
+    const misfeedsArray = Array.isArray(original.misfeeds)
+      ? original.misfeeds
+      : (original.counts?.misfeed || []);
+
     // Only clone what we need to modify
     const s = {
       ...original,
       timestamps: { ...original.timestamps },
-      counts: [...(original.counts || [])],
-      misfeeds: [...(original.misfeeds || [])],
+      counts: [...countsArray],
+      misfeeds: [...misfeedsArray],
     };
 
     // Clamp timestamps
@@ -1739,7 +1920,7 @@ module.exports = function (server) {
 
     // Filter counts/misfeeds to window
     const inWindow = (d) => {
-      const ts = new Date(d.timestamp);
+      const ts = new Date(d.timestamp || d.timestamps?.create);
       return ts >= clampedStart && ts <= clampedEnd;
     };
 
