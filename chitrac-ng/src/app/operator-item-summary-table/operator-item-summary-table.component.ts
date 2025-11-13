@@ -120,4 +120,15 @@ export class OperatorItemSummaryTableComponent implements OnInit, OnChanges {
       }
     });
   }
+
+  getEfficiencyClass(value: any, column: string): string {
+    if ((column === 'Efficiency') && typeof value === 'string' && value.includes('%')) {
+      const num = parseInt(value.replace('%', ''));
+      if (isNaN(num)) return '';
+      if (num >= 90) return 'green';
+      if (num >= 70) return 'yellow';
+      return 'red';
+    }
+    return '';
+  }
 }

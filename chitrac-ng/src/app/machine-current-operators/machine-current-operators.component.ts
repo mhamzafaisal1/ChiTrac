@@ -109,4 +109,15 @@ export class MachineCurrentOperatorsComponent implements OnInit {
       };
     });
   }
+
+  getEfficiencyClass(value: any, column: string): string {
+    if ((column === 'Efficiency') && typeof value === 'string' && value.includes('%')) {
+      const num = parseFloat(value.replace('%', ''));
+      if (isNaN(num)) return '';
+      if (num >= 90) return 'green';
+      if (num >= 70) return 'yellow';
+      return 'red';
+    }
+    return '';
+  }
 }
