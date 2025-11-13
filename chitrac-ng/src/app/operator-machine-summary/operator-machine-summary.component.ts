@@ -202,7 +202,7 @@ import {
           'Total Misfeeds': totals.totalMisfeed ?? 0,
           'Total Runtime': this.formatDuration(runtimeSec),
           'Total Sessions': m.sessions ?? 0,
-          'Efficiency %': eff.toFixed(1),
+          'Efficiency %': `${eff.toFixed(1)}%`,
         };
       });
   
@@ -245,6 +245,17 @@ import {
       if (h > 0) return `${h}h ${m}m ${sec}s`;
       if (m > 0) return `${m}m ${sec}s`;
       return `${sec}s`;
+    }
+
+    getEfficiencyClass(value: any, column: string): string {
+      if ((column === 'Efficiency %') && typeof value === 'string' && value.includes('%')) {
+        const num = parseFloat(value.replace('%', ''));
+        if (isNaN(num)) return '';
+        if (num >= 90) return 'green';
+        if (num >= 70) return 'yellow';
+        return 'red';
+      }
+      return '';
     }
   }
   

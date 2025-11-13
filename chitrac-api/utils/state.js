@@ -318,10 +318,6 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
   const collection = collectionExists ? stateCollection : 'state';
 
-  // Debug: State collection check
-  console.log(`fetchStatesForOperator query:`, JSON.stringify(query, null, 2));
-  console.log(`Using collection: ${collection}`);
-
   const states = await db.collection(collection)
     .find(query)
     .sort({ "timestamps.create": 1 })
@@ -339,8 +335,6 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
       operators: 1
     })
     .toArray();
-
-  console.log(`fetchStatesForOperator returned ${states.length} states`);
 
   // Normalize states: map timestamps.create to timestamp and status
   return states.map(state => {
