@@ -244,7 +244,7 @@ module.exports = function (server) {
 
   //     res.json(results);
   //   } catch (error) {
-  //     logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+  //     console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
   //     res
   //       .status(500)
   //       .json({ error: "Failed to generate machine item summary" });
@@ -843,7 +843,7 @@ module.exports = function (server) {
         },
       });
     } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to generate machine item summary" });
     }
   });
@@ -1051,7 +1051,7 @@ module.exports = function (server) {
   
 //       res.json(rows);
 //     } catch (err) {
-//       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+//       console.log(`Error in ${req.method} ${req.originalUrl}:`, err);
 //       res.status(500).json({ error: "Failed to generate operator item summary report" });
 //     }
 //   });
@@ -1627,7 +1627,7 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
       },
     });
   } catch (err) {
-    logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+    console.log(`Error in ${req.method} ${req.originalUrl}:`, err);
     res.status(500).json({ error: "Failed to generate operator item summary report" });
   }
 });
@@ -1773,7 +1773,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
     res.json(results);
   } catch (err) {
-    logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+    console.log(`Error in ${req.method} ${req.originalUrl}:`, err);
     res.status(500).json({ error: "Failed to generate item summary report" });
   }
 });
@@ -1796,11 +1796,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
       }
 
-      logger.info(`Using daily totals optimization for timeframe: ${req.query.timeframe}`);
+      console.log(`Using daily totals optimization for timeframe: ${req.query.timeframe}`);
 
       // Validate dates before processing
       if (!exactStart || !exactEnd) {
-        logger.error('Invalid date range:', { exactStart, exactEnd });
+        console.log('Invalid date range:', { exactStart, exactEnd });
         return res.status(400).json({ error: 'Invalid date range' });
       }
 
@@ -1831,7 +1831,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       try {
         dailyTotals = await dailyTotalsCollection.find(query).toArray();
       } catch (dbError) {
-        logger.error('Database query error:', dbError);
+        console.log('Database query error:', dbError);
         return res.status(500).json({ 
           error: 'Database query failed',
           message: dbError.message 
@@ -1857,7 +1857,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
       }
 
-      logger.info(`Processing ${dailyTotals.length} machine daily total records`);
+      console.log(`Processing ${dailyTotals.length} machine daily total records`);
 
       try {
         // Aggregate daily totals by machine
@@ -1874,7 +1874,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
           // Validate that we have required fields
           if (!total.machineSerial) {
-            logger.warn(`Record ${index + 1} missing machineSerial:`, {
+            console.log(`Record ${index + 1} missing machineSerial:`, {
               _id: total._id,
               date: total.date,
               machineName: total.machineName,
@@ -1922,7 +1922,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             machine.dateRange.end = total.date;
           }
         } catch (itemError) {
-          logger.error(`Error processing record ${index + 1}:`, {
+          console.log(`Error processing record ${index + 1}:`, {
             error: itemError.message,
             record: total
           });
@@ -1945,7 +1945,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const statusByMachine = new Map();
       const faultsByMachine = new Map();
 
-      logger.info(`Aggregated ${aggregated.size} machines, processing results...`);
+      console.log(`Aggregated ${aggregated.size} machines, processing results...`);
 
       for (const [key, machine] of aggregated) {
         try {
@@ -1973,7 +1973,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
         // Validate machine data before adding to results
         if (!machine.machineSerial) {
-          logger.warn(`Skipping machine with undefined serial:`, {
+          console.log(`Skipping machine with undefined serial:`, {
             machineName: machine.machineName,
             machineSerial: machine.machineSerial,
             runtimeMs: machine.runtimeMs
@@ -2022,7 +2022,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           });
         }
         } catch (machineError) {
-          logger.error(`Error processing machine ${key}:`, machineError);
+          console.log(`Error processing machine ${key}:`, machineError);
           throw machineError;
         }
       }
@@ -2041,7 +2041,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         .map(r => r.machine.serial)
         .filter(serial => serial !== undefined && serial !== null);
       
-      logger.info(`Building charts for ${finalOrderSerials.length} machines (filtered from ${results.length} results)`);
+      console.log(`Building charts for ${finalOrderSerials.length} machines (filtered from ${results.length} results)`);
       
       // Status stacked chart
       const statusStacked = finalOrderSerials.map(serial => {
@@ -2060,7 +2060,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             }))
           };
         } catch (chartError) {
-          logger.error(`Error building status chart for machine ${serial}:`, chartError);
+          console.log(`Error building status chart for machine ${serial}:`, chartError);
           throw chartError;
         }
       });
@@ -2082,7 +2082,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             }))
           };
         } catch (chartError) {
-          logger.error(`Error building faults chart for machine ${serial}:`, chartError);
+          console.log(`Error building faults chart for machine ${serial}:`, chartError);
           throw chartError;
         }
       });
@@ -2154,7 +2154,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       });
 
       } catch (processingError) {
-        logger.error(`Error in data processing:`, processingError);
+        console.log(`Error in data processing:`, processingError);
         return res.status(500).json({ 
           error: "Failed to process daily totals data",
           message: processingError.message,
@@ -2163,10 +2163,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
     } catch (error) {
-      logger.error(`Error in optimized machine item summary:`, error);
+      console.log(`Error in optimized machine item summary:`, error);
       
       // Log the error and return a proper error response
-      logger.warn('Error accessing totals-daily collection:', error.message);
+      console.log('Error accessing totals-daily collection:', error.message);
       
       res.status(500).json({ 
         error: "Failed to generate optimized machine item summary",
@@ -2194,11 +2194,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
       }
 
-      logger.info(`Using daily totals optimization for operator route, timeframe: ${req.query.timeframe}`);
+      console.log(`Using daily totals optimization for operator route, timeframe: ${req.query.timeframe}`);
 
       // Validate dates before processing
       if (!exactStart || !exactEnd) {
-        logger.error('Invalid date range:', { exactStart, exactEnd });
+        console.log('Invalid date range:', { exactStart, exactEnd });
         return res.status(400).json({ error: 'Invalid date range' });
       }
 
@@ -2229,7 +2229,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       try {
         operatorTotals = await dailyTotalsCollection.find(query).toArray();
       } catch (dbError) {
-        logger.error('Database query error:', dbError);
+        console.log('Database query error:', dbError);
         return res.status(500).json({ 
           error: 'Database query failed',
           message: dbError.message 
@@ -2311,7 +2311,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Aggregate operator totals by operator ID
         const aggregated = new Map();
       
-        logger.info(`Processing ${operatorTotals.length} operator daily total records`);
+        console.log(`Processing ${operatorTotals.length} operator daily total records`);
         
         operatorTotals.forEach((total, index) => {
           try {
@@ -2326,7 +2326,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
             // Validate that we have required fields
             if (!total.operatorId || !validId(total.operatorId)) {
-              logger.warn(`Record ${index + 1} missing or invalid operatorId:`, {
+              console.log(`Record ${index + 1} missing or invalid operatorId:`, {
                 _id: total._id,
                 date: total.date,
                 operatorId: total.operatorId,
@@ -2379,7 +2379,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               operator.operatorName = total.operatorName;
             }
           } catch (itemError) {
-            logger.error(`Error processing operator record ${index + 1}:`, {
+            console.log(`Error processing operator record ${index + 1}:`, {
               error: itemError.message,
               record: total
             });
@@ -2393,7 +2393,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const statusByOperator = new Map();
         const faultsByOperator = new Map();
 
-        logger.info(`Aggregated ${aggregated.size} operators, processing results...`);
+        console.log(`Aggregated ${aggregated.size} operators, processing results...`);
 
         for (const [key, operator] of aggregated) {
           try {
@@ -2406,7 +2406,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
             // Validate operator data before adding to results
             if (!operator.operatorId) {
-              logger.warn(`Skipping operator with undefined ID:`, {
+              console.log(`Skipping operator with undefined ID:`, {
                 operatorName: operator.operatorName,
                 operatorId: operator.operatorId,
                 runtimeMs: operator.runtimeMs
@@ -2466,7 +2466,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               "No Faults": 0 // Operators don't track separate faults in daily totals
             });
           } catch (operatorError) {
-            logger.error(`Error processing operator ${key}:`, operatorError);
+            console.log(`Error processing operator ${key}:`, operatorError);
             throw operatorError;
           }
         }
@@ -2485,7 +2485,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           .map(r => r.operator.id)
           .filter(id => id !== undefined && id !== null);
         
-        logger.info(`Building charts for ${finalOrderOperators.length} operators (filtered from ${results.length} results)`);
+        console.log(`Building charts for ${finalOrderOperators.length} operators (filtered from ${results.length} results)`);
         
         // Status stacked chart
         const statusStacked = toStackedSeries(statusByOperator, operatorIdToName, finalOrderOperators, "status");
@@ -2560,7 +2560,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
 
       } catch (processingError) {
-        logger.error(`Error in operator data processing:`, processingError);
+        console.log(`Error in operator data processing:`, processingError);
         return res.status(500).json({ 
           error: "Failed to process operator daily totals data",
           message: processingError.message,
@@ -2569,10 +2569,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
     } catch (error) {
-      logger.error(`Error in optimized operator item summary:`, error);
+      console.log(`Error in optimized operator item summary:`, error);
       
       // Log the error and return a proper error response
-      logger.warn('Error accessing totals-daily collection:', error.message);
+      console.log('Error accessing totals-daily collection:', error.message);
       
       res.status(500).json({ 
         error: "Failed to generate optimized operator item summary",
@@ -2599,11 +2599,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
       }
 
-      logger.info(`Using daily totals optimization for item route, timeframe: ${req.query.timeframe}`);
+      console.log(`Using daily totals optimization for item route, timeframe: ${req.query.timeframe}`);
 
       // Validate dates before processing
       if (!exactStart || !exactEnd) {
-        logger.error('Invalid date range:', { exactStart, exactEnd });
+        console.log('Invalid date range:', { exactStart, exactEnd });
         return res.status(400).json({ error: 'Invalid date range' });
       }
 
@@ -2629,7 +2629,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       try {
         itemTotals = await dailyTotalsCollection.find(query).toArray();
       } catch (dbError) {
-        logger.error('Database query error:', dbError);
+        console.log('Database query error:', dbError);
         return res.status(500).json({ 
           error: 'Database query failed',
           message: dbError.message 
@@ -2659,7 +2659,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Aggregate item totals by item ID
         const aggregated = new Map();
       
-        logger.info(`Processing ${itemTotals.length} item daily total records`);
+        console.log(`Processing ${itemTotals.length} item daily total records`);
         
         itemTotals.forEach((total, index) => {
           try {
@@ -2673,7 +2673,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
             // Validate that we have required fields
             if (!total.itemId) {
-              logger.warn(`Record ${index + 1} missing itemId:`, {
+              console.log(`Record ${index + 1} missing itemId:`, {
                 _id: total._id,
                 date: total.date,
                 itemName: total.itemName,
@@ -2724,7 +2724,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               item.itemName = total.itemName;
             }
           } catch (itemError) {
-            logger.error(`Error processing item record ${index + 1}:`, {
+            console.log(`Error processing item record ${index + 1}:`, {
               error: itemError.message,
               record: total
             });
@@ -2735,7 +2735,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Convert to results format matching the original route
         const results = [];
 
-        logger.info(`Aggregated ${aggregated.size} items, processing results...`);
+        console.log(`Aggregated ${aggregated.size} items, processing results...`);
 
         for (const [key, item] of aggregated) {
           try {
@@ -2760,7 +2760,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
             // Validate item data before adding to results
             if (!item.itemId) {
-              logger.warn(`Skipping item with undefined ID:`, {
+              console.log(`Skipping item with undefined ID:`, {
                 itemName: item.itemName,
                 itemId: item.itemId,
                 totalCounts: item.totalCounts
@@ -2783,7 +2783,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               daysProcessed: item.days.length
             });
           } catch (itemError) {
-            logger.error(`Error processing item ${key}:`, itemError);
+            console.log(`Error processing item ${key}:`, itemError);
             throw itemError;
           }
         }
@@ -2795,7 +2795,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         res.json(results);
 
       } catch (processingError) {
-        logger.error(`Error in item data processing:`, processingError);
+        console.log(`Error in item data processing:`, processingError);
         return res.status(500).json({ 
           error: "Failed to process item daily totals data",
           message: processingError.message,
@@ -2804,10 +2804,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
 
     } catch (error) {
-      logger.error(`Error in optimized item summary:`, error);
+      console.log(`Error in optimized item summary:`, error);
       
       // Log the error and return a proper error response
-      logger.warn('Error accessing totals-daily collection:', error.message);
+      console.log('Error accessing totals-daily collection:', error.message);
       
       res.status(500).json({ 
         error: "Failed to generate optimized item summary",
@@ -2836,7 +2836,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
       }
 
-      logger.info(`Using hybrid approach for time range: ${timeRangeHours.toFixed(1)} hours`);
+      console.log(`Using hybrid approach for time range: ${timeRangeHours.toFixed(1)} hours`);
 
       // Helper function to split time range into complete days and partial days
       function splitTimeRange(start, end) {
@@ -3126,7 +3126,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // Split time range
       const { completeDays, partialDays } = splitTimeRange(exactStart, exactEnd);
       
-      logger.info(`Time range split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+      console.log(`Time range split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
       
       // Query both data sources
       const [dailyRecords, sessionData] = await Promise.all([
@@ -3355,7 +3355,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       });
       
     } catch (error) {
-      logger.error(`Error in hybrid machine item summary:`, error);
+      console.log(`Error in hybrid machine item summary:`, error);
       res.status(500).json({ 
         error: "Failed to generate hybrid machine item summary",
         message: error.message 
@@ -3384,7 +3384,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
       }
 
-      logger.info(`Using hybrid approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours`);
+      console.log(`Using hybrid approach for operator route, time range: ${timeRangeHours.toFixed(1)} hours`);
 
       // Helper function to split time range into complete days and partial days
       function splitTimeRange(start, end) {
@@ -3670,7 +3670,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // Split time range
       const { completeDays, partialDays } = splitTimeRange(exactStart, exactEnd);
       
-      logger.info(`Time range split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+      console.log(`Time range split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
       
       // Query both data sources
       const [dailyRecords, sessionData] = await Promise.all([
@@ -3899,7 +3899,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       });
       
     } catch (error) {
-      logger.error(`Error in hybrid operator item summary:`, error);
+      console.log(`Error in hybrid operator item summary:`, error);
       res.status(500).json({ 
         error: "Failed to generate hybrid operator item summary",
         message: error.message 
@@ -4049,7 +4049,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       });
 
     } catch (error) {
-      logger.error("Error in item-sessions-summary-hybrid:", error);
+      console.log("Error in item-sessions-summary-hybrid:", error);
       res.status(500).json({ error: "Internal server error", details: error.message });
     }
   });
@@ -4233,7 +4233,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
     const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
     
-    logger.info(`[HYBRID-SPLIT] Input: start=${startDt.toISO()}, end=${endDt.toISO()}`);
+    console.log(`[HYBRID-SPLIT] Input: start=${startDt.toISO()}, end=${endDt.toISO()}`);
     
     // Get the date range (midnight to midnight boundaries)
     const startOfFirstDay = startDt.startOf('day');
@@ -4244,7 +4244,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     // Check if end is at midnight (within 1 second tolerance)
     const endIsAtMidnight = Math.abs(endDt.diff(endDt.startOf('day'), 'seconds').seconds) < 1;
     
-    logger.info(`[HYBRID-SPLIT] Start is at midnight: ${startIsAtMidnight}, End is at midnight: ${endIsAtMidnight}`);
+    console.log(`[HYBRID-SPLIT] Start is at midnight: ${startIsAtMidnight}, End is at midnight: ${endIsAtMidnight}`);
     
     // Iterate through each day in the range
     let currentDay = startOfFirstDay;
@@ -4267,7 +4267,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             end: dayEnd.toJSDate(),
             dateStr: dateStr
           });
-          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (single day, midnight to midnight+)`);
+          console.log(`[HYBRID-SPLIT] Day ${dateStr}: Complete (single day, midnight to midnight+)`);
         } else {
           // Partial day within this day
           partialDays.push({
@@ -4275,7 +4275,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             end: end,
             type: 'single'
           });
-          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (single day, not midnight to midnight)`);
+          console.log(`[HYBRID-SPLIT] Day ${dateStr}: Partial (single day, not midnight to midnight)`);
         }
       } else if (isFirstDay) {
         // First day of multi-day range
@@ -4286,7 +4286,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             end: dayEnd.toJSDate(),
             dateStr: dateStr
           });
-          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (first day, starts at midnight)`);
+          console.log(`[HYBRID-SPLIT] Day ${dateStr}: Complete (first day, starts at midnight)`);
         } else {
           // Starts mid-day - it's partial
           partialDays.push({
@@ -4294,7 +4294,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             end: dayEnd.toJSDate(),
             type: 'start'
           });
-          logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (first day, starts mid-day)`);
+          console.log(`[HYBRID-SPLIT] Day ${dateStr}: Partial (first day, starts mid-day)`);
         }
       } else if (isLastDay) {
         // Last day of multi-day range
@@ -4308,14 +4308,14 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               end: end,
               type: 'end'
             });
-            logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Partial (last day, ends mid-day)`);
+            console.log(`[HYBRID-SPLIT] Day ${dateStr}: Partial (last day, ends mid-day)`);
           } else {
             // Ends exactly at midnight - this day boundary is not included
-            logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Skipped (ends exactly at midnight of this day)`);
+            console.log(`[HYBRID-SPLIT] Day ${dateStr}: Skipped (ends exactly at midnight of this day)`);
           }
         } else {
           // Shouldn't reach here if logic is correct
-          logger.warn(`[HYBRID-SPLIT] Day ${dateStr}: Unexpected condition in last day logic`);
+          console.log(`[HYBRID-SPLIT] Day ${dateStr}: Unexpected condition in last day logic`);
         }
       } else {
         // Middle day - always complete
@@ -4324,14 +4324,14 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           end: dayEnd.toJSDate(),
           dateStr: dateStr
         });
-        logger.info(`[HYBRID-SPLIT] Day ${dateStr}: Complete (middle day)`);
+        console.log(`[HYBRID-SPLIT] Day ${dateStr}: Complete (middle day)`);
       }
       
       // Move to next day
       currentDay = currentDay.plus({ days: 1 });
     }
     
-    logger.info(`[HYBRID-SPLIT] Result: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+    console.log(`[HYBRID-SPLIT] Result: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
     
     return { completeDays, partialDays };
   }
@@ -4625,7 +4625,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         startDt.equals(normalizedStart) &&
         endDt <= nowLocal;
       
-      logger.info(`[MACHINE-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
+      console.log(`[MACHINE-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
       
       // Always use UTC timestamps corresponding to local day boundaries
       const exactStart = normalizedStart.toUTC().toJSDate();
@@ -4633,7 +4633,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         ? nowLocal.toUTC().toJSDate() 
         : endDt.toUTC().toJSDate();
       
-      logger.info(`[MACHINE-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
+      console.log(`[MACHINE-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -4707,7 +4707,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           }],
           partialDays: [],
         };
-        logger.info(`[MACHINE-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
+        console.log(`[MACHINE-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
       } else {
         split = splitTimeRangeForHybrid(exactStart, exactEnd);
 
@@ -4724,10 +4724,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
           }];
           split.partialDays = [];
-          logger.warn(`[MACHINE-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
+          console.log(`[MACHINE-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
         }
 
-        logger.info(`[MACHINE-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
+        console.log(`[MACHINE-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
       }
       
       const { completeDays, partialDays } = split;
@@ -4757,24 +4757,24 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         machineCache = cacheDocs.filter(d => d.entityType === 'machine');
         machineItemCache = cacheDocs.filter(d => d.entityType === 'machine-item');
         
-        logger.info(`[MACHINE-CACHE] Retrieved ${machineCache.length} machine + ${machineItemCache.length} machine-item cache records`);
+        console.log(`[MACHINE-CACHE] Retrieved ${machineCache.length} machine + ${machineItemCache.length} machine-item cache records`);
       }
       
       // Get data from sessions for partial days only
       let sessionData = { machines: [], machineItems: [] };
       if (partialDays.length > 0) {
         sessionData = await getSessionDataForPartialDays(partialDays, serial);
-        logger.info(`[MACHINE-CACHE] Retrieved ${sessionData.machines.length} session machine + ${sessionData.machineItems.length} session machine-item records`);
+        console.log(`[MACHINE-CACHE] Retrieved ${sessionData.machines.length} session machine + ${sessionData.machineItems.length} session machine-item records`);
       }
       
       // Combine cached and session data (disjoint date ranges)
       const combinedData = combineHybridData(machineCache, machineItemCache, sessionData);
       let machineTotals = combinedData.machines;
       let machineItemTotals = combinedData.machineItems;
-      logger.info(`[MACHINE-CACHE] After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
+      console.log(`[MACHINE-CACHE] After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
 
       if (!machineTotals.length) {
-        logger.warn(`[MACHINE-CACHE] No cache data found — attempting session data fallback`);
+        console.log(`[MACHINE-CACHE] No cache data found — attempting session data fallback`);
         
         // Try session data as fallback when cache is missing
         const partialDay = {
@@ -4790,12 +4790,12 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           machineTotals = recombined.machines;
           machineItemTotals = recombined.machineItems;
           
-          logger.info(`[MACHINE-CACHE] Session fallback resulted in ${machineTotals.length} machines, ${machineItemTotals.length} machine-items`);
+          console.log(`[MACHINE-CACHE] Session fallback resulted in ${machineTotals.length} machines, ${machineItemTotals.length} machine-items`);
         }
         
         // Final check after fallback attempt
         if (!machineTotals.length) {
-          logger.warn(`[MACHINE-CACHE] No data found even after session fallback — returning empty results`);
+          console.log(`[MACHINE-CACHE] No data found even after session fallback — returning empty results`);
           return res.json({
             timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
             results: []
@@ -4839,11 +4839,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // Cap each machine to 24h per day
       for (const [key, dayBucket] of groupedByMachineDay) {
         if (dayBucket.runtimeMs > 86400000) {
-          logger.warn(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.runtimeMs/3600000).toFixed(1)}h runtime (>24h), capping`);
+          console.log(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.runtimeMs/3600000).toFixed(1)}h runtime (>24h), capping`);
           dayBucket.runtimeMs = 86400000;
         }
         if (dayBucket.workedTimeMs > 86400000) {
-          logger.warn(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.workedTimeMs/3600000).toFixed(1)}h worked (>24h), capping`);
+          console.log(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.workedTimeMs/3600000).toFixed(1)}h worked (>24h), capping`);
           dayBucket.workedTimeMs = 86400000;
         }
       }
@@ -4925,11 +4925,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         let validatedWorkedMs = machineData.workedTimeMs;
         
         if (validatedRuntimeMs > queryWindowMs) {
-          logger.warn(`[DATA VALIDATION] Machine ${serial} runtime ${(validatedRuntimeMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
+          console.log(`[DATA VALIDATION] Machine ${serial} runtime ${(validatedRuntimeMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
           validatedRuntimeMs = queryWindowMs;
         }
         if (validatedWorkedMs > queryWindowMs) {
-          logger.warn(`[DATA VALIDATION] Machine ${serial} worked ${(validatedWorkedMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
+          console.log(`[DATA VALIDATION] Machine ${serial} worked ${(validatedWorkedMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
           validatedWorkedMs = queryWindowMs;
         }
 
@@ -5071,7 +5071,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // },
       });
     } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to generate cached machine item summary" });
     }
   });
@@ -5096,7 +5096,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         startDt.equals(normalizedStart) &&
         endDt <= nowLocal;
       
-      logger.info(`[OPERATOR-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
+      console.log(`[OPERATOR-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
       
       // Always use UTC timestamps corresponding to local day boundaries
       const exactStart = normalizedStart.toUTC().toJSDate();
@@ -5104,7 +5104,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         ? nowLocal.toUTC().toJSDate() 
         : endDt.toUTC().toJSDate();
       
-      logger.info(`[OPERATOR-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
+      console.log(`[OPERATOR-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -5168,7 +5168,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           }],
           partialDays: [],
         };
-        logger.info(`[OPERATOR-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
+        console.log(`[OPERATOR-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
       } else {
         split = splitTimeRangeForHybrid(exactStart, exactEnd);
 
@@ -5185,10 +5185,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
           }];
           split.partialDays = [];
-          logger.warn(`[OPERATOR-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
+          console.log(`[OPERATOR-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
         }
 
-        logger.info(`[OPERATOR-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
+        console.log(`[OPERATOR-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
       }
       
       const { completeDays, partialDays } = split;
@@ -5220,19 +5220,19 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         operatorMachineCache = cacheDocs.filter(d => d.entityType === 'operator-machine');
         operatorItemCache = cacheDocs.filter(d => d.entityType === 'operator-item');
         
-        logger.info(`[OPERATOR-CACHE] Retrieved ${operatorMachineCache.length} operator-machine + ${operatorItemCache.length} operator-item cache records`);
+        console.log(`[OPERATOR-CACHE] Retrieved ${operatorMachineCache.length} operator-machine + ${operatorItemCache.length} operator-item cache records`);
         
         // If cache is empty, fallback to sessions for entire range
         if (operatorMachineCache.length === 0 && operatorItemCache.length === 0) {
-          logger.warn(`[OPERATOR-CACHE] Cache empty, falling back to sessions for entire range`);
+          console.log(`[OPERATOR-CACHE] Cache empty, falling back to sessions for entire range`);
           sessionData = await getOperatorSessionDataForPartialDays([{ start: exactStart, end: exactEnd }], operatorId);
-          logger.info(`[OPERATOR-CACHE] Session fallback returned ${sessionData.operators.length} operators`);
+          console.log(`[OPERATOR-CACHE] Session fallback returned ${sessionData.operators.length} operators`);
         }
       } else {
         // No complete days, use sessions for entire range
-        logger.info(`[OPERATOR-CACHE] No complete days, using sessions for entire range`);
+        console.log(`[OPERATOR-CACHE] No complete days, using sessions for entire range`);
         sessionData = await getOperatorSessionDataForPartialDays([{ start: exactStart, end: exactEnd }], operatorId);
-        logger.info(`[OPERATOR-CACHE] Sessions returned ${sessionData.operators.length} operators`);
+        console.log(`[OPERATOR-CACHE] Sessions returned ${sessionData.operators.length} operators`);
       }
 
       // ========== FIX #4: Aggregate operator-machine data by (operatorId, date) first ==========
@@ -5311,7 +5311,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             daysWorked: 0,
             machinesWorked: new Set(),
           });
-          logger.info(`[OPERATOR-CACHE] Operator ${opId} found in item cache but not machine cache`);
+          console.log(`[OPERATOR-CACHE] Operator ${opId} found in item cache but not machine cache`);
         }
       }
       
@@ -5339,11 +5339,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         bucket.totalRuntimeMs += sessionOp.runtimeMs || 0;
       }
       
-      logger.info(`[OPERATOR-CACHE] Aggregated ${operatorDataMap.size} operators`);
+      console.log(`[OPERATOR-CACHE] Aggregated ${operatorDataMap.size} operators`);
       
       // Return empty results if no data found
       if (operatorDataMap.size === 0) {
-        logger.warn(`[OPERATOR-CACHE] No data found — returning empty results`);
+        console.log(`[OPERATOR-CACHE] No data found — returning empty results`);
         return res.json({
           timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
           results: []
@@ -5366,66 +5366,195 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const sessionOperator = sessionData.operators.find(op => op.operatorId === opId);
         const sessionItems = sessionOperator?.itemTotals || [];
         
-        logger.info(`[OPERATOR-CACHE] Operator ${opId}: ${opItemsForOperator.length} cache items, ${sessionItems.length} session items`);
+        console.log(`[OPERATOR-CACHE] Operator ${opId}: ${opItemsForOperator.length} cache items, ${sessionItems.length} session items`);
         
-        // Combine cache items + session items (no overlap - different date ranges)
-        const allItemsMap = new Map();
+        // ========== Group by itemName to sum up same items (operator + item combination) ==========
+        // Group by itemName (not itemId) to combine items with same name but different standards
+        // This aggregates across all dates/machines AND different itemIds for the same item name
+        const allItemsMap = new Map(); // key: normalized itemName (String, case-insensitive)
         
-        // Add cache items
+        // Helper to normalize item name for consistent grouping
+        // Handles whitespace, case, and common variations
+        const normalizeItemName = (name) => {
+          if (!name) return 'Unknown';
+          // Convert to string if not already
+          const str = String(name);
+          // Trim and normalize whitespace (replace multiple spaces with single space)
+          const normalized = str.trim().replace(/\s+/g, ' ').toLowerCase();
+          return normalized || 'Unknown';
+        };
+        
+        // Add cache items - group by itemName and sum metrics (prorate standard by counts)
+        // Multiple cache records for same operator+item (different dates or different itemIds) will be aggregated here
+        const seenItemNames = new Set(); // Track for logging duplicates
+        console.log(`[OPERATOR-CACHE] Operator ${opId}: Processing ${opItemsForOperator.length} cache items`);
         for (const cacheItem of opItemsForOperator) {
-          const itemId = cacheItem.itemId;
-          if (!allItemsMap.has(itemId)) {
-            allItemsMap.set(itemId, {
-              itemId: itemId,
-              itemName: cacheItem.itemName || 'Unknown',
-              itemStandard: cacheItem.itemStandard || 0,
+          const normalizedName = normalizeItemName(cacheItem.itemName);
+          if (normalizedName === 'Unknown' || !normalizedName) {
+            console.log(`[OPERATOR-CACHE] Skipping item with no name for operator ${opId}, itemId: ${cacheItem.itemId}`);
+            continue;
+          }
+          
+          // Log all items being processed for debugging
+          console.log(`[OPERATOR-CACHE] Operator ${opId}: Cache item - itemId: ${cacheItem.itemId}, originalName: "${cacheItem.itemName}", normalizedName: "${normalizedName}", counts: ${cacheItem.totalCounts}`);
+          
+          // Log if we see the same normalized name with different original names (potential duplicates)
+          if (seenItemNames.has(normalizedName) && cacheItem.itemName) {
+            const existingItem = allItemsMap.get(normalizedName);
+            if (existingItem && existingItem.itemName !== cacheItem.itemName) {
+              console.log(`[OPERATOR-CACHE] Operator ${opId}: Found item name variation - "${existingItem.itemName}" vs "${cacheItem.itemName}" (normalized: "${normalizedName}") - combining`);
+            } else {
+              console.log(`[OPERATOR-CACHE] Operator ${opId}: Duplicate normalized name "${normalizedName}" (same original name) - aggregating counts`);
+            }
+          }
+          seenItemNames.add(normalizedName);
+          
+          const counts = Number(cacheItem.totalCounts) || 0;
+          const standard = Number(cacheItem.itemStandard) || 0;
+          const workedMs = Number(cacheItem.workedTimeMs) || 0;
+          
+          if (!allItemsMap.has(normalizedName)) {
+            allItemsMap.set(normalizedName, {
+              itemName: cacheItem.itemName || 'Unknown', // Keep original casing for display
               totalCounts: 0,
-              workedTimeMs: 0
+              workedTimeMs: 0,
+              standardWeightedSum: 0, // Sum of (count * standard) for prorated standard calculation
+              totalCountsForStandard: 0 // Total counts used for standard calculation
             });
           }
-          const item = allItemsMap.get(itemId);
-          item.totalCounts += cacheItem.totalCounts || 0;
-          item.workedTimeMs += cacheItem.workedTimeMs || 0;
+          const item = allItemsMap.get(normalizedName);
+          
+          // Sum up all metrics for same item name (aggregates across dates/machines/itemIds)
+          item.totalCounts += counts;
+          item.workedTimeMs += workedMs;
+          
+          // Accumulate weighted standard: sum(count * standard) for prorated calculation
+          if (counts > 0 && standard > 0) {
+            item.standardWeightedSum += counts * standard;
+            item.totalCountsForStandard += counts;
+          }
+          
+          // Keep the original item name (first non-empty one found, or prefer longer/more specific name)
+          if (cacheItem.itemName && (
+            !item.itemName || 
+            item.itemName === 'Unknown' ||
+            cacheItem.itemName.length > item.itemName.length // Prefer more specific name
+          )) {
+            item.itemName = cacheItem.itemName;
+          }
         }
         
-        // Add session items (disjoint from cache items by date range)
+        // Add session items - group by itemName and sum metrics (prorate standard by counts)
+        console.log(`[OPERATOR-CACHE] Operator ${opId}: Processing ${sessionItems.length} session items`);
         for (const sessionItem of sessionItems) {
-          const itemId = sessionItem.itemId;
-          if (!allItemsMap.has(itemId)) {
-            allItemsMap.set(itemId, {
-              itemId: itemId,
-              itemName: sessionItem.itemName || 'Unknown',
-              itemStandard: sessionItem.itemStandard || 0,
-              totalCounts: 0,
-              workedTimeMs: 0
-            });
+          const normalizedName = normalizeItemName(sessionItem.itemName);
+          if (normalizedName === 'Unknown' || !normalizedName) {
+            console.log(`[OPERATOR-CACHE] Skipping session item with no name for operator ${opId}, itemId: ${sessionItem.itemId}`);
+            continue;
           }
-          const item = allItemsMap.get(itemId);
-          item.totalCounts += sessionItem.totalCounts || 0;
+          
+          // Log all items being processed for debugging
+          console.log(`[OPERATOR-CACHE] Operator ${opId}: Session item - itemId: ${sessionItem.itemId}, originalName: "${sessionItem.itemName}", normalizedName: "${normalizedName}", counts: ${sessionItem.totalCounts}`);
+          
+          // Log if we see the same normalized name with different original names (potential duplicates)
+          if (seenItemNames.has(normalizedName) && sessionItem.itemName) {
+            const existingItem = allItemsMap.get(normalizedName);
+            if (existingItem && existingItem.itemName !== sessionItem.itemName) {
+              console.log(`[OPERATOR-CACHE] Operator ${opId}: Found session item name variation - "${existingItem.itemName}" vs "${sessionItem.itemName}" (normalized: "${normalizedName}") - combining`);
+            } else {
+              console.log(`[OPERATOR-CACHE] Operator ${opId}: Duplicate normalized name "${normalizedName}" (same original name) - aggregating counts`);
+            }
+          }
+          seenItemNames.add(normalizedName);
+          
+          const counts = Number(sessionItem.totalCounts) || 0;
+          const standard = Number(sessionItem.itemStandard) || 0;
+          
           // For session items, calculate worked time proportionally
           const sessionWorkedMs = operatorData.totalWorkedMs > 0 && operatorData.totalCount > 0
-            ? (sessionItem.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs
+            ? counts / operatorData.totalCount * operatorData.totalWorkedMs
             : 0;
+          
+          if (!allItemsMap.has(normalizedName)) {
+            allItemsMap.set(normalizedName, {
+              itemName: sessionItem.itemName || 'Unknown', // Keep original casing for display
+              totalCounts: 0,
+              workedTimeMs: 0,
+              standardWeightedSum: 0,
+              totalCountsForStandard: 0
+            });
+          }
+          const item = allItemsMap.get(normalizedName);
+          
+          // Sum up all metrics for same item name
+          item.totalCounts += counts;
           item.workedTimeMs += sessionWorkedMs;
+          
+          // Accumulate weighted standard: sum(count * standard) for prorated calculation
+          if (counts > 0 && standard > 0) {
+            item.standardWeightedSum += counts * standard;
+            item.totalCountsForStandard += counts;
+          }
+          
+          // Keep the original item name (first non-empty one found, or prefer longer/more specific name)
+          if (sessionItem.itemName && (
+            !item.itemName || 
+            item.itemName === 'Unknown' ||
+            sessionItem.itemName.length > item.itemName.length // Prefer more specific name
+          )) {
+            item.itemName = sessionItem.itemName;
+          }
         }
         
-        // Build itemSummaries from combined items
-        for (const [itemId, item] of allItemsMap) {
+        console.log(`[OPERATOR-CACHE] Operator ${opId}: After grouping by name, ${allItemsMap.size} unique items`);
+        
+        // Log all final unique items
+        console.log(`[OPERATOR-CACHE] Operator ${opId}: Final unique items:`);
+        for (const [normalizedName, item] of allItemsMap) {
+          console.log(`  - "${normalizedName}" -> name: "${item.itemName}", counts: ${item.totalCounts}, standardWeightedSum: ${item.standardWeightedSum}, totalCountsForStandard: ${item.totalCountsForStandard}`);
+        }
+        
+        // Build itemSummaries from combined items (grouped by itemName)
+        const itemSummaryKeys = new Set(); // Track keys to detect duplicates
+        for (const [normalizedName, item] of allItemsMap) {
+          // ✅ Skip items with zero counts to avoid cluttering the response
+          if (item.totalCounts === 0) {
+            continue;
+          }
+
+          // Validate no duplicate keys (shouldn't happen, but check for safety)
+          if (itemSummaryKeys.has(normalizedName)) {
+            console.log(`[OPERATOR-CACHE] Operator ${opId}: DUPLICATE KEY DETECTED: "${normalizedName}" - this should not happen!`);
+            continue; // Skip duplicate to prevent overwriting
+          }
+          itemSummaryKeys.add(normalizedName);
+
+          // Calculate prorated standard: weighted average based on counts
+          // proratedStandard = sum(count * standard) / sum(count)
+          const proratedItemStandard = item.totalCountsForStandard > 0
+            ? item.standardWeightedSum / item.totalCountsForStandard
+            : 0;
+
           const hours = item.workedTimeMs / 3600000;
           const pph = hours > 0 ? item.totalCounts / hours : 0;
-          const eff = item.itemStandard ? pph / item.itemStandard : null;
+          const eff = proratedItemStandard > 0 ? pph / proratedItemStandard : null;
           const weight = operatorData.totalCount > 0 ? item.totalCounts / operatorData.totalCount : 0;
-          proratedStandard += weight * item.itemStandard;
-          
-          itemSummaries[itemId] = {
-            name: item.itemName,
-            standard: item.itemStandard,
+          proratedStandard += weight * proratedItemStandard;
+
+          // Use itemName as key (normalized) for itemSummaries
+          // This ensures items with same name but different itemIds are combined
+          itemSummaries[normalizedName] = {
+            name: item.itemName, // Original casing for display
+            standard: Math.round(proratedItemStandard * 100) / 100, // Round to 2 decimals
             countTotal: item.totalCounts,
             workedTimeFormatted: formatMs(item.workedTimeMs),
             pph: Math.round(pph * 100) / 100,
             efficiency: eff ? Math.round(eff * 10000) / 100 : null,
           };
         }
+        
+        console.log(`[OPERATOR-CACHE] Operator ${opId}: Created ${Object.keys(itemSummaries).length} item summaries`);
+        console.log(`[OPERATOR-CACHE] Operator ${opId}: itemSummaries keys:`, Object.keys(itemSummaries).join(', '));
         
         // Calculate operator-level metrics
         const hours = operatorData.totalWorkedMs / 3600000;
@@ -5434,7 +5563,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         
         // Skip operators with no actual production data
         if (operatorData.totalCount === 0) {
-          logger.warn(`[OPERATOR-CACHE] Skipping operator ${opId} - no production counts`);
+          console.log(`[OPERATOR-CACHE] Skipping operator ${opId} - no production counts`);
           continue;
         }
 
@@ -5578,7 +5707,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // },
       });
     } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to generate cached operator item summary" });
     }
   });
@@ -5588,7 +5717,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
-    logger.info(`Operator cache query for date strings:`, dateStrings);
+    console.log(`Operator cache query for date strings:`, dateStrings);
     
     // Get operator-machine daily totals for complete days
     // Handle both old format (no entityType) and new format (with entityType)
@@ -5615,7 +5744,20 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
   async function getOperatorSessionDataForPartialDays(partialDays, operatorId) {
     const operators = [];
-    
+
+    // Helper to normalize operator name from either string or {first, surname} format
+    const normalizeOperatorName = (name, opId) => {
+      if (!name) return `Operator ${opId}`;
+      if (typeof name === 'string') return name;
+      if (typeof name === 'object' && name.first && name.surname) {
+        return `${name.first} ${name.surname}`;
+      }
+      if (typeof name === 'object' && name.first) {
+        return name.first;
+      }
+      return `Operator ${opId}`;
+    };
+
     for (const partialDay of partialDays) {
       // Simple query - just get sessions that overlap the time window
       const match = {
@@ -5643,19 +5785,19 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         })
         .toArray();
 
-      logger.info(`[SESSION-AGG] Got ${sessions.length} sessions for ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
+      console.log(`[SESSION-AGG] Got ${sessions.length} sessions for ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
 
       // Group by operator and sum up the totals
       const grouped = new Map();
-      
+
       for (const session of sessions) {
         const opId = session.operator?.id;
         if (!opId || opId === -1) continue;
-        
+
         if (!grouped.has(opId)) {
           grouped.set(opId, {
             operatorId: opId,
-            operatorName: session.operator?.name || `Operator ${opId}`,
+            operatorName: normalizeOperatorName(session.operator?.name, opId),
             totalCounts: 0,
             runtimeMs: 0,
             workedTimeMs: 0,
@@ -5670,23 +5812,43 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         bucket.runtimeMs += (session.runtime || 0) * 1000; // Convert seconds to ms
         bucket.workedTimeMs += (session.workTime || 0) * 1000; // Convert seconds to ms
         
-        // Track item-level counts
+        // Track item-level counts - group by itemName (not itemId) to combine items with same name but different standards
         if (Array.isArray(session.counts)) {
+          // Helper to normalize item name (same as in main processing)
+          const normalizeItemName = (name) => {
+            if (!name) return 'Unknown';
+            const str = String(name);
+            const normalized = str.trim().replace(/\s+/g, ' ').toLowerCase();
+            return normalized || 'Unknown';
+          };
+          
           for (const count of session.counts) {
-            const itemId = count.item?.id;
-            if (!itemId) continue;
+            const itemName = count.item?.name;
+            if (!itemName) continue;
             
-            const key = `${itemId}`;
-            if (!bucket.itemCounts.has(key)) {
-              bucket.itemCounts.set(key, {
-                itemId: itemId,
-                itemName: count.item?.name || 'Unknown',
-                itemStandard: count.item?.standard || 0,
-                count: 0
+            // Normalize item name for consistent grouping (case-insensitive, whitespace normalized)
+            const normalizedName = normalizeItemName(itemName);
+            if (normalizedName === 'Unknown') continue;
+            
+            const itemCount = count.item?.count ?? 1;
+            const itemStandard = count.item?.standard || 0;
+            
+            if (!bucket.itemCounts.has(normalizedName)) {
+              bucket.itemCounts.set(normalizedName, {
+                itemName: itemName, // Keep original casing for display
+                count: 0,
+                standardWeightedSum: 0, // Sum of (count * standard) for prorated standard
+                totalCountsForStandard: 0 // Total counts used for standard calculation
               });
             }
-            bucket.itemCounts.get(key).count += count.item?.count ?? 1;
-            bucket.itemCounts.get(key).itemStandard = count.item?.standard ?? bucket.itemCounts.get(key).itemStandard;
+            const itemData = bucket.itemCounts.get(normalizedName);
+            itemData.count += itemCount;
+            
+            // Accumulate weighted standard: sum(count * standard) for prorated calculation
+            if (itemCount > 0 && itemStandard > 0) {
+              itemData.standardWeightedSum += itemCount * itemStandard;
+              itemData.totalCountsForStandard += itemCount;
+            }
           }
         }
       }
@@ -5694,11 +5856,16 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // Convert to output format
       for (const [opId, bucket] of grouped) {
         const itemTotals = [];
-        for (const [key, itemData] of bucket.itemCounts) {
+        for (const [normalizedName, itemData] of bucket.itemCounts) {
+          // Calculate prorated standard: weighted average based on counts
+          const proratedItemStandard = itemData.totalCountsForStandard > 0
+            ? itemData.standardWeightedSum / itemData.totalCountsForStandard
+            : 0;
+          
           itemTotals.push({
-            itemId: itemData.itemId,
-            itemName: itemData.itemName,
-            itemStandard: itemData.itemStandard,
+            itemId: null, // No longer using itemId as identifier
+            itemName: itemData.itemName, // Original casing for display
+            itemStandard: Math.round(proratedItemStandard * 100) / 100, // Prorated standard
             totalCounts: itemData.count,
             workedTimeMs: 0
           });
@@ -5720,7 +5887,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       }
     }
     
-    logger.info(`[SESSION-AGG] Returning ${operators.length} operators`);
+    console.log(`[SESSION-AGG] Returning ${operators.length} operators`);
     return { operators };
   }
 
@@ -5765,11 +5932,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       // Validate parsed dates
       if (!startDt.isValid) {
-        logger.error(`[ITEM-CACHE] Invalid start date: ${start}, reason: ${startDt.invalidReason}`);
+        console.log(`[ITEM-CACHE] Invalid start date: ${start}, reason: ${startDt.invalidReason}`);
         return res.status(400).json({ error: `Invalid start date: ${startDt.invalidReason}` });
       }
       if (!endDt.isValid) {
-        logger.error(`[ITEM-CACHE] Invalid end date: ${end}, reason: ${endDt.invalidReason}`);
+        console.log(`[ITEM-CACHE] Invalid end date: ${end}, reason: ${endDt.invalidReason}`);
         return res.status(400).json({ error: `Invalid end date: ${endDt.invalidReason}` });
       }
       
@@ -5784,7 +5951,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
       
       if (useHybrid) {
-        logger.info(`Using hybrid approach for item route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
+        console.log(`Using hybrid approach for item route, time range: ${timeRangeHours.toFixed(1)} hours (threshold: ${HYBRID_THRESHOLD_HOURS} hours)`);
       }
 
       // ---------- helpers (local to route) ----------
@@ -5801,7 +5968,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Split time range into complete days and partial days
         const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
         
-        logger.info(`Item hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        console.log(`Item hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
         
         // Get data from daily cache for complete days
         if (completeDays.length > 0) {
@@ -5912,7 +6079,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
       res.json(results);
     } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to generate cached item summary" });
     }
   });
@@ -6099,7 +6266,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
-      logger.info(`[item-sessions-summary-daily-cache] Query start: ${exactStart.toISOString()}, end: ${exactEnd.toISOString()}`);
+      console.log(`[item-sessions-summary-daily-cache] Query start: ${exactStart.toISOString()}, end: ${exactEnd.toISOString()}`);
 
       // ---------- Check if we're querying complete days ----------
       const startOfDayStart = new Date(exactStart);
@@ -6114,7 +6281,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       
       const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
       
-      logger.info(`[item-sessions-summary-daily-cache] Time window analysis:`, {
+      console.log(`[item-sessions-summary-daily-cache] Time window analysis:`, {
         isStartOfDay,
         isEndOfDay,
         isSameDay,
@@ -6127,15 +6294,15 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
       // If querying a partial day, MUST use session data for accurate time windowing
       if (isPartialDay) {
-        logger.warn(`[item-sessions-summary-daily-cache] ⚠️ PARTIAL DAY DETECTED - Falling back to session-based query for accurate time windowing`);
-        logger.warn(`[item-sessions-summary-daily-cache] Reason: Cached item records contain cumulative daily totals, not time-windowed data`);
-        logger.warn(`[item-sessions-summary-daily-cache] Use /analytics/items-summary for partial day queries`);
+        console.log(`[item-sessions-summary-daily-cache] ⚠️ PARTIAL DAY DETECTED - Falling back to session-based query for accurate time windowing`);
+        console.log(`[item-sessions-summary-daily-cache] Reason: Cached item records contain cumulative daily totals, not time-windowed data`);
+        console.log(`[item-sessions-summary-daily-cache] Use /analytics/items-summary for partial day queries`);
         
         // Fall back to session-based approach
         const partialDays = [{ start: exactStart, end: exactEnd }];
         const sessionData = await getItemSessionDataForPartialDays(partialDays);
         
-        logger.info(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions`);
+        console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions`);
         
         // Process session data
         const resultsMap = new Map();
@@ -6180,7 +6347,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           };
         });
         
-        logger.info(`[item-sessions-summary-daily-cache] Returning ${results.length} items from session-based fallback`);
+        console.log(`[item-sessions-summary-daily-cache] Returning ${results.length} items from session-based fallback`);
         return res.json(results);
       }
 
@@ -6191,7 +6358,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // Determine if we should use hybrid approach
       const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
       
-      logger.info(`[item-sessions-summary-daily-cache] Strategy: ${useHybrid ? 'HYBRID' : 'CACHE ONLY'}, time range: ${timeRangeHours.toFixed(2)} hours`);
+      console.log(`[item-sessions-summary-daily-cache] Strategy: ${useHybrid ? 'HYBRID' : 'CACHE ONLY'}, time range: ${timeRangeHours.toFixed(2)} hours`);
 
       // ---------- helpers (local to route) ----------
       const normalizePPH = (std) => {
@@ -6206,22 +6373,22 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Split time range into complete days and partial days
         const { completeDays, partialDays } = splitTimeRangeForHybrid(exactStart, exactEnd);
         
-        logger.info(`[item-sessions-summary-daily-cache] Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
-        logger.info(`[item-sessions-summary-daily-cache] Complete days:`, completeDays.map(d => d.dateStr));
-        logger.info(`[item-sessions-summary-daily-cache] Partial days:`, partialDays.map(d => ({ start: d.start.toISOString(), end: d.end.toISOString() })));
+        console.log(`[item-sessions-summary-daily-cache] Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
+        console.log(`[item-sessions-summary-daily-cache] Complete days:`, completeDays.map(d => d.dateStr));
+        console.log(`[item-sessions-summary-daily-cache] Partial days:`, partialDays.map(d => ({ start: d.start.toISOString(), end: d.end.toISOString() })));
         
         // Get data from daily cache for complete days (using simulator's item records)
         if (completeDays.length > 0) {
           itemTotals = await getItemDailyCachedDataForDays(completeDays);
-          logger.info(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache for complete days`);
+          console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache for complete days`);
         }
         
         // Get data from sessions for partial days
         if (partialDays.length > 0) {
           const sessionData = await getItemSessionDataForPartialDays(partialDays);
-          logger.info(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions for partial days`);
+          console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions for partial days`);
           itemTotals = combineItemDailyHybridData(itemTotals, sessionData.items);
-          logger.info(`[item-sessions-summary-daily-cache] Combined to ${itemTotals.length} total item records`);
+          console.log(`[item-sessions-summary-daily-cache] Combined to ${itemTotals.length} total item records`);
         }
         
       } else {
@@ -6244,7 +6411,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         };
 
         itemTotals = await cacheCollection.find(itemQuery).toArray();
-        logger.info(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache`);
+        console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache`);
       }
 
       if (!itemTotals.length) {
@@ -6254,7 +6421,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // ---------- 2) Process item data ----------
       const resultsMap = new Map();
 
-      logger.info(`[item-sessions-summary-daily-cache] Processing ${itemTotals.length} item total records`);
+      console.log(`[item-sessions-summary-daily-cache] Processing ${itemTotals.length} item total records`);
 
       // Group item totals by item ID
       for (const itemTotal of itemTotals) {
@@ -6277,7 +6444,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         logger.debug(`[item-sessions-summary-daily-cache] Item ${itemId} (${itemTotal.itemName}): +${itemTotal.totalCounts} counts, +${(itemTotal.workedTimeMs/1000).toFixed(0)}s worked time`);
       }
 
-      logger.info(`[item-sessions-summary-daily-cache] Aggregated into ${resultsMap.size} unique items`);
+      console.log(`[item-sessions-summary-daily-cache] Aggregated into ${resultsMap.size} unique items`);
 
       // ---------- 3) Finalize results (same format as original route) ----------
       const results = Array.from(resultsMap.values()).map((entry) => {
@@ -6297,11 +6464,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         };
       });
 
-      logger.info(`[item-sessions-summary-daily-cache] Returning ${results.length} items in final response`);
+      console.log(`[item-sessions-summary-daily-cache] Returning ${results.length} items in final response`);
 
       res.json(results);
     } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to generate daily cached item summary" });
     }
   });
