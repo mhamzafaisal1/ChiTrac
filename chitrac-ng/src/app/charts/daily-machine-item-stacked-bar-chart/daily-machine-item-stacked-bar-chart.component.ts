@@ -185,16 +185,18 @@ export class DailyMachineItemStackedBarChartComponent implements OnInit, OnDestr
     (res: any) => {
       // Handle the nested response structure and transform to StackedBarChartData format
       if (res && res.itemHourlyStack && res.itemHourlyStack.data) {
-        // Transform ISO timestamps to hour indices for the chart
+        // The API returns hours as numbers [14, 15, 16, 17] - use them directly
         const hours = res.itemHourlyStack.data.hours || [];
-        const hourIndices = hours.map((timestamp: string, index: number) => index);
+        
+        // The API returns 'items' but the chart expects 'operators' - map items to operators
+        const items = res.itemHourlyStack.data.items || {};
         
         // Transform the API response to match StackedBarChartData interface
         const transformedData: StackedBarChartData = {
           title: res.itemHourlyStack.title || 'Daily Machine Item Hourly Production',
           data: {
-            hours: hourIndices,
-            operators: res.itemHourlyStack.data.operators || {},
+            hours: hours, // Use hours directly as they're already numbers
+            operators: items, // Map items to operators (same structure: { [key: string]: number[] })
             machineNames: res.itemHourlyStack.data.machineNames || []
           }
         };

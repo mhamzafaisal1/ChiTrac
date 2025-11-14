@@ -78,7 +78,10 @@ async function buildDailyItemHourlyStack(db, start, end) {
     const pipeline = [
       {
         $match: {
-          timestamp: { $gte: startDate, $lte: endDate },
+          $or: [
+            { timestamp: { $gte: startDate, $lte: endDate } },
+            { "timestamps.create": { $gte: startDate, $lte: endDate } }
+          ],
           misfeed: { $ne: true },
           'operator.id': { $exists: true, $ne: -1 }
         }
@@ -88,11 +91,10 @@ async function buildDailyItemHourlyStack(db, start, end) {
           itemName: { $ifNull: ["$item.name", "Unknown"] },
           hour: {
             $hour: {
-              date: "$timestamp",
-              timezone: "America/Chicago"
-            }
+              $ifNull: ["$timestamp", "$timestamps.create"]
+            }  // Use local hour without timezone conversion, handle both timestamp formats
           }
-          
+
         }
       },
       {
@@ -123,33 +125,33 @@ async function buildDailyItemHourlyStack(db, start, end) {
     const results = await db.collection('count').aggregate(pipeline).toArray();
 
     const hourSet = new Set();
-    const operators = {};
+    const items = {};
 
     for (const result of results) {
       const itemName = result._id;
-      operators[itemName] = {};
+      items[itemName] = {};
 
       for (const entry of result.hourlyCounts) {
         hourSet.add(entry.hour);
-        operators[itemName][entry.hour] = entry.count;
+        items[itemName][entry.hour] = entry.count;
       }
     }
 
     const hours = Array.from(hourSet).sort((a, b) => a - b);
 
-    
 
-    const finalizedOperators = {};
-    const sortedItemNames = Object.keys(operators).sort(); // JS-side sorting for extra safety
+
+    const finalizedItems = {};
+    const sortedItemNames = Object.keys(items).sort(); // JS-side sorting for extra safety
     for (const itemName of sortedItemNames) {
-      const hourCounts = operators[itemName];
-      finalizedOperators[itemName] = hours.map(h => hourCounts[h] || 0);
+      const hourCounts = items[itemName];
+      finalizedItems[itemName] = hours.map(h => hourCounts[h] || 0);
     }
 
     if (hours.length === 0) {
       return {
         title: "No data",
-        data: { hours: [], operators: {} }
+        data: { hours: [], items: {} }
       };
     }
 
@@ -157,7 +159,7 @@ async function buildDailyItemHourlyStack(db, start, end) {
       title: "Item Counts by Hour (All Machines)",
       data: {
         hours,
-        operators: finalizedOperators
+        items: finalizedItems
       }
     };
 
