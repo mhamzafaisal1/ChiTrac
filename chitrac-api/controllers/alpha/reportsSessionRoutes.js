@@ -5368,12 +5368,33 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         
         logger.info(`[OPERATOR-CACHE] Operator ${opId}: ${opItemsForOperator.length} cache items, ${sessionItems.length} session items`);
         
-        // Combine cache items + session items (no overlap - different date ranges)
-        const allItemsMap = new Map();
+        // ========== Group by itemId to sum up same items (operator + item combination) ==========
+        // Normalize itemId to ensure consistent grouping (handle both number and string)
+        // This aggregates across all dates/machines for the same operator+item
+        const allItemsMap = new Map(); // key: normalized itemId (Number)
         
-        // Add cache items
+        // Debug: Track itemId occurrences
+        const itemIdCounts = new Map();
+        
+        // Add cache items - group by itemId and sum metrics
+        // Multiple cache records for same operator+item (different dates) will be aggregated here
         for (const cacheItem of opItemsForOperator) {
-          const itemId = cacheItem.itemId;
+          // Robust normalization: handle string, number, null, undefined
+          let itemId = cacheItem.itemId;
+          if (itemId == null || itemId === '') {
+            logger.warn(`[OPERATOR-CACHE] Skipping null/empty itemId for operator ${opId}`);
+            continue;
+          }
+          // Convert to number, handling string numbers
+          itemId = typeof itemId === 'string' ? Number(itemId.trim()) : Number(itemId);
+          if (isNaN(itemId) || !isFinite(itemId)) {
+            logger.warn(`[OPERATOR-CACHE] Skipping invalid itemId for operator ${opId}:`, cacheItem.itemId);
+            continue;
+          }
+          
+          // Track occurrences for debugging
+          itemIdCounts.set(itemId, (itemIdCounts.get(itemId) || 0) + 1);
+          
           if (!allItemsMap.has(itemId)) {
             allItemsMap.set(itemId, {
               itemId: itemId,
@@ -5384,13 +5405,41 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             });
           }
           const item = allItemsMap.get(itemId);
-          item.totalCounts += cacheItem.totalCounts || 0;
-          item.workedTimeMs += cacheItem.workedTimeMs || 0;
+          // Sum up all metrics for same item (aggregates across dates/machines)
+          item.totalCounts += Number(cacheItem.totalCounts) || 0;
+          item.workedTimeMs += Number(cacheItem.workedTimeMs) || 0;
+          // Use the first non-zero standard found
+          if (!item.itemStandard && cacheItem.itemStandard) {
+            item.itemStandard = Number(cacheItem.itemStandard) || 0;
+          }
+          // Use the first non-empty name found
+          if ((!item.itemName || item.itemName === 'Unknown') && cacheItem.itemName) {
+            item.itemName = cacheItem.itemName;
+          }
         }
         
-        // Add session items (disjoint from cache items by date range)
+        // Log if we found duplicate itemIds in cache
+        for (const [itemId, count] of itemIdCounts) {
+          if (count > 1) {
+            logger.info(`[OPERATOR-CACHE] Operator ${opId}, Item ${itemId}: Found ${count} cache records - aggregating`);
+          }
+        }
+        
+        // Add session items - group by itemId and sum metrics
         for (const sessionItem of sessionItems) {
-          const itemId = sessionItem.itemId;
+          // Robust normalization: handle string, number, null, undefined
+          let itemId = sessionItem.itemId;
+          if (itemId == null || itemId === '') {
+            logger.warn(`[OPERATOR-CACHE] Skipping null/empty itemId in session for operator ${opId}`);
+            continue;
+          }
+          // Convert to number, handling string numbers
+          itemId = typeof itemId === 'string' ? Number(itemId.trim()) : Number(itemId);
+          if (isNaN(itemId) || !isFinite(itemId)) {
+            logger.warn(`[OPERATOR-CACHE] Skipping invalid itemId in session for operator ${opId}:`, sessionItem.itemId);
+            continue;
+          }
+          
           if (!allItemsMap.has(itemId)) {
             allItemsMap.set(itemId, {
               itemId: itemId,
@@ -5401,22 +5450,38 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             });
           }
           const item = allItemsMap.get(itemId);
-          item.totalCounts += sessionItem.totalCounts || 0;
+          // Sum up all metrics for same item
+          item.totalCounts += Number(sessionItem.totalCounts) || 0;
           // For session items, calculate worked time proportionally
           const sessionWorkedMs = operatorData.totalWorkedMs > 0 && operatorData.totalCount > 0
-            ? (sessionItem.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs
+            ? (Number(sessionItem.totalCounts) || 0) / operatorData.totalCount * operatorData.totalWorkedMs
             : 0;
           item.workedTimeMs += sessionWorkedMs;
+          // Use the first non-zero standard found
+          if (!item.itemStandard && sessionItem.itemStandard) {
+            item.itemStandard = Number(sessionItem.itemStandard) || 0;
+          }
+          // Use the first non-empty name found
+          if ((!item.itemName || item.itemName === 'Unknown') && sessionItem.itemName) {
+            item.itemName = sessionItem.itemName;
+          }
         }
+        
+        logger.info(`[OPERATOR-CACHE] Operator ${opId}: After grouping, ${allItemsMap.size} unique items`);
         
         // Build itemSummaries from combined items
         for (const [itemId, item] of allItemsMap) {
+          // ✅ Skip items with zero counts to avoid cluttering the response
+          if (item.totalCounts === 0) {
+            continue;
+          }
+
           const hours = item.workedTimeMs / 3600000;
           const pph = hours > 0 ? item.totalCounts / hours : 0;
           const eff = item.itemStandard ? pph / item.itemStandard : null;
           const weight = operatorData.totalCount > 0 ? item.totalCounts / operatorData.totalCount : 0;
           proratedStandard += weight * item.itemStandard;
-          
+
           itemSummaries[itemId] = {
             name: item.itemName,
             standard: item.itemStandard,
