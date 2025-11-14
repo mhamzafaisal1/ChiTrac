@@ -881,7 +881,7 @@ async function buildCurrentOperators(db, serial) {
       .toArray();
 
     // If no open session, fallback to most recent session (closed or open)
-    if (!s.length) {
+    if (!s.length) { 
       s = await osColl.find({
         "operator.id": opId,
         $or: [
