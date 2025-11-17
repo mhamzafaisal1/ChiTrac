@@ -2,7 +2,7 @@
 const express = require("express");
 const { DateTime } = require("luxon");
 const config = require("../../modules/config");
-const { formatDuration } = require("../../utils/time"); 
+const { formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time"); 
 const {
   buildDailyItemHourlyStack,
   buildPlantwideMetricsByHour,
@@ -414,7 +414,7 @@ module.exports = function (server) {
   // Route 1: Machine Status Breakdowns
   router.get('/analytics/daily/machine-status', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
@@ -433,7 +433,7 @@ module.exports = function (server) {
   // Route 1B: Machine Status Breakdowns (Fast - using daily totals cache)
   router.get('/analytics/daily/machine-status-cache', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
@@ -452,7 +452,7 @@ module.exports = function (server) {
   // Route 2: Machine OEE Rankings
   router.get('/analytics/daily/machine-oee', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
@@ -471,7 +471,7 @@ module.exports = function (server) {
   // Route 3: Item Hourly Production Data
   router.get('/analytics/daily/item-hourly-production', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
@@ -490,7 +490,7 @@ module.exports = function (server) {
   // Route 4: Top Operator Rankings
   router.get('/analytics/daily/top-operators', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
@@ -509,7 +509,7 @@ module.exports = function (server) {
   // Route 4B: Top Operator Rankings (Fast - using daily totals cache)
   router.get('/analytics/daily/top-operators-cache', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
@@ -528,7 +528,7 @@ module.exports = function (server) {
   // Route 5: Plant-wide Metrics
   router.get('/analytics/daily/plantwide-metrics', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
@@ -547,11 +547,12 @@ module.exports = function (server) {
   // Route 5B: Plant-wide Metrics (Fast - using daily totals cache)
   router.get('/analytics/daily/plantwide-metrics-cache', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
-      const plantwideMetrics = await buildPlantwideMetricsFromDailyTotals(db, dayStart, dayEnd);
+      // Note: buildPlantwideMetricsFromDailyTotals doesn't exist yet, using session-based version
+      const plantwideMetrics = await buildPlantwideMetricsByHour(db, dayStart, dayEnd);
 
       return res.json({
         timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
@@ -566,7 +567,7 @@ module.exports = function (server) {
   // Route 6: Daily Count Totals
   router.get('/analytics/daily/count-totals', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayEnd = now.toJSDate();
 
       const dailyCounts = await buildDailyCountTotals(db, null, dayEnd);
@@ -584,7 +585,7 @@ module.exports = function (server) {
   // Route 6B: Daily Count Totals (Fast - using daily totals cache)
   router.get('/analytics/daily/count-totals-cache', async (req, res) => {
     try {
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayEnd = now.toJSDate();
 
       const dailyCounts = await buildCountTotalsFromDailyTotals(db, dayEnd);
