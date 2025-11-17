@@ -333,12 +333,37 @@ module.exports = function (server) {
       // Note: dateObj is set to start of day (00:00:00), so we need to query by date string instead
       const dateStr = dayStart.toISOString().split('T')[0]; // Get YYYY-MM-DD format
       
+      // Get the most recent pollingCycleId from operator-machine records for today
+      // All records in the same update batch share the same pollingCycleId, ensuring consistency
+      const latestRecord = await db.collection('totals-daily')
+        .findOne(
+          { 
+            entityType: 'operator-machine',
+            date: dateStr,
+            pollingCycleId: { $exists: true }
+          },
+          { 
+            sort: { lastUpdated: -1 },
+            projection: { pollingCycleId: 1 }
+          }
+        );
+      
+      // Build match stage - filter to records from the latest polling cycle for consistency
+      const matchStage = {
+        entityType: 'operator-machine',
+        date: dateStr
+      };
+      
+      // If we found a polling cycle ID, filter to that cycle
+      // This ensures we get a consistent snapshot from the same update batch
+      // All records in a batch share the same pollingCycleId, preventing partial reads
+      if (latestRecord?.pollingCycleId) {
+        matchStage.pollingCycleId = latestRecord.pollingCycleId;
+      }
+      
       const pipeline = [
         {
-          $match: {
-            entityType: 'operator-machine',
-            date: dateStr  // Use date string instead of dateObj range
-          }
+          $match: matchStage
         },
         {
           $group: {
