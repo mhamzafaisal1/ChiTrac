@@ -91,8 +91,9 @@ async function buildDailyItemHourlyStack(db, start, end) {
           itemName: { $ifNull: ["$item.name", "Unknown"] },
           hour: {
             $hour: {
-              $ifNull: ["$timestamp", "$timestamps.create"]
-            }  // Use local hour without timezone conversion, handle both timestamp formats
+              date: { $ifNull: ["$timestamp", "$timestamps.create"] },
+              timezone: "America/Chicago"
+            }  // Use timezone-aware hour extraction, handle both timestamp formats
           }
 
         }
