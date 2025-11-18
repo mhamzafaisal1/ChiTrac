@@ -49,7 +49,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
 
   get displayedRows(): any[] {
     if (this.showSummaryOnly) {
-      return this.rows.filter(row => row['Item'] === 'TOTAL');
+      return this.rows.filter(row => row['Item'] === 'Total');
     }
     return this.rows;
   }
@@ -118,19 +118,14 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     results.forEach((machine: any) => {
       const summary = machine.machineSummary;
 
-      // Add machine-wide summary
-      formattedData.push({
-        'Machine': machine.machine.name,
-        'Item': 'TOTAL',
-        'Total Time (Runtime)': `${summary.runtimeFormatted.hours}h ${summary.runtimeFormatted.minutes}m`,
-        'Total Count': summary.totalCount,
-        'PPH': summary.pph,
-        'Standard': summary.proratedStandard ? Number(summary.proratedStandard).toFixed(2) : 'N/A',
-        'Efficiency': summary.efficiency !== null ? `${summary.efficiency}%` : 'N/A'
-      });
+      // Convert itemSummaries to array and ensure "Total" is first
+      const items = Object.values(summary.itemSummaries || {});
+      const totalItem = items.find((item: any) => item.name === 'Total');
+      const otherItems = items.filter((item: any) => item.name !== 'Total');
+      const sortedItems = totalItem ? [totalItem, ...otherItems] : items;
 
-      // Add item summaries under this machine
-      Object.values(summary.itemSummaries).forEach((item: any) => {
+      // Add item summaries with Total first
+      sortedItems.forEach((item: any) => {
         formattedData.push({
           'Machine': machine.machine.name,
           'Item': item.name,
