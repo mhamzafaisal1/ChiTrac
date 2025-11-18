@@ -1,5 +1,5 @@
 // charts/plantwide-metrics-chart/plantwide-metrics-chart.component.ts
-import { Component, Input, OnInit, OnDestroy } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../../charts/cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
@@ -14,9 +14,10 @@ import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
   standalone: true,
   imports: [CommonModule, CartesianChartComponent],
   templateUrl: './plantwide-metrics-chart.component.html',
-  styleUrls: ['./plantwide-metrics-chart.component.scss']
+  styleUrls: ['./plantwide-metrics-chart.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
+export class PlantwideMetricsChartComponent implements OnInit, OnDestroy, OnChanges {
   @Input() chartWidth = 600;
   @Input() chartHeight = 400;
 
@@ -43,6 +44,7 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private pollingSub: any;
   private readonly POLLING_INTERVAL = 6000;
+  private cdr = inject(ChangeDetectorRef);
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
@@ -53,6 +55,11 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
     new MutationObserver(() => {
       this.isDarkTheme = document.body.classList.contains('dark-theme');
     }).observe(document.body, { attributes: true });
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // console.log('PlantwideMetricsChart: Input changes:', changes);
+    // console.log('PlantwideMetricsChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
   }
 
   ngOnInit(): void {
@@ -165,31 +172,32 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
-      try {
-        type Row = { hour:number; availability:number; efficiency:number; throughput:number; oee:number };
-        let rows: Row[] = [];
-        
-        if (res?.plantwideMetrics && Array.isArray(res.plantwideMetrics)) {
-          rows = res.plantwideMetrics;
-        } else if (Array.isArray(res)) {
-          rows = res;
-        }
-        
-        if (rows.length === 0) {
-          this.chartConfig = null;
-          this.hasInitialData = false;
-          this.isLoading = false;
-          this.dummyMode = false;
-          return;
-        }
+      // Handle the API response structure with plantwideMetrics array
+      type Row = { hour:number; availability:number; efficiency:number; throughput:number; oee:number };
+      let rows: Row[] = [];
+      
+      if (res?.plantwideMetrics && Array.isArray(res.plantwideMetrics)) {
+        rows = res.plantwideMetrics;
+      } else if (Array.isArray(res)) {
+        rows = res;
+      }
+      
+      if (rows.length === 0) {
+        this.chartConfig = null;
+        this.hasInitialData = false;
+        this.isLoading = false;
+        this.dummyMode = false;
+        this.cdr.markForCheck();
+        return;
+      }
 
-        rows.sort((a,b)=>(a.hour??0)-(b.hour??0));
+      rows.sort((a,b)=>(a.hour??0)-(b.hour??0));
 
-        const hours = rows.map(r => Number(r.hour ?? 0));
-        const fmt = (h:number) => h===0?'12am':h===12?'12pm':h<12?`${h}am`:`${h-12}pm`;
-        const labels = hours.map(fmt);
+      const hours = rows.map(r => Number(r.hour ?? 0));
+      const fmt = (h:number) => h===0?'12am':h===12?'12pm':h<12?`${h}am`:`${h-12}pm`;
+      const labels = hours.map(fmt);
 
-        const series: XYSeries[] = [
+      const series: XYSeries[] = [
         {
           id:'availability', title:'Availability', type:'bar', color:'#66bb6a',
           data: rows.map((r,i)=>({ x: labels[i] || `Hour ${i}`, y: Number(r.availability ?? 0) })),
@@ -219,7 +227,7 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
         xLabel: 'Hour',
         yLabel: 'Value',
         margin: {
-          top:    Math.max(this.marginTop ?? 50, 60),
+          top:    Math.max(this.marginTop ?? 50, (this.legendPosition === 'top' ? 80 : 60)),
           right:  Math.max(this.marginRight ?? 30, (this.legendPosition === 'right' ? 120 : 30)),
           bottom: Math.max(this.marginBottom ?? 56, 92), // space for rotated ticks + label
           left:   this.marginLeft ?? 50
@@ -231,16 +239,11 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
         series
       };
 
-        this.hasInitialData = rows.length > 0;
-        this.isLoading = false;
-        this.dummyMode = false;
-      } catch (error) {
-        console.error('Error processing plantwide metrics data:', error);
-        this.chartConfig = null;
-        this.hasInitialData = false;
-        this.isLoading = false;
-        this.dummyMode = false;
-      }
+      this.isLoading = false;          // set to false unconditionally
+      this.dummyMode = false;
+      this.hasInitialData = !!this.chartConfig;
+      
+      this.cdr.markForCheck();        // <— critical
     };
 
   private enterDummy(): void {
@@ -248,6 +251,7 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy {
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 
   // utils

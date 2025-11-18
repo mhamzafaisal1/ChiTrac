@@ -7,6 +7,7 @@ const {
   buildDailyItemHourlyStack,
   buildPlantwideMetricsByHour,
   buildDailyCountTotals,
+  buildMachineOEE,
 } = require("../../utils/dailyDashboardBuilder");
 
 module.exports = function (server) {
@@ -93,36 +94,72 @@ module.exports = function (server) {
     return perMachine;
   }
 
-  // #2 Machine OEE Rankings Route
+  // #2 Machine OEE Rankings Route (Session-based)
   async function buildMachineOEEFromSessions(db, dayStart, dayEnd) {
     const msColl = db.collection(config.machineSessionCollectionName);
 
-    const serials = await msColl.distinct("machine.serial", {
+    // Try both machine.serial and machine.id for backward compatibility
+    const serialsFromSerial = await msColl.distinct("machine.serial", {
       "timestamps.start": { $lt: dayEnd },
       $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }],
     });
+
+    const serialsFromId = await msColl.distinct("machine.id", {
+      "timestamps.start": { $lt: dayEnd },
+      $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }],
+    });
+
+    // Combine and deduplicate
+    const serials = [...new Set([...serialsFromSerial, ...serialsFromId])].filter(Boolean);
+
+    if (serials.length === 0) {
+      return [];
+    }
 
     const windowSec = (dayEnd - dayStart) / 1000;
 
     const rows = await Promise.all(serials.map(async (serial) => {
       const sessions = await msColl.find({
-        "machine.serial": serial,
-        "timestamps.start": { $lt: dayEnd },
-        $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }],
+        $and: [
+          {
+            $or: [
+              { "machine.serial": serial },
+              { "machine.id": serial }
+            ]
+          },
+          { "timestamps.start": { $lt: dayEnd } },
+          {
+            $or: [
+              { "timestamps.end": { $gt: dayStart } },
+              { "timestamps.end": { $exists: false } },
+              { "timestamps.end": null }
+            ]
+          }
+        ]
       }).project({
         _id: 0, machine: 1, timestamps: 1,
-        runtime: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
+        runtime: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1,
+        'metrics.timers.run': 1, 'metrics.timers.worked': 1, 'metrics.totals.timeCredit': 1,
+        'metrics.totals.counts.valid': 1, 'metrics.totals.counts.misfeed': 1
       }).toArray();
 
       let runtimeSec = 0, workSec = 0, timeCreditSec = 0, totalCount = 0, misfeed = 0;
 
       for (const s of sessions) {
         const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, dayStart, dayEnd);
-        runtimeSec      += safe(s.runtime)          * factor;
-        workSec         += safe(s.workTime)         * factor;
-        timeCreditSec   += safe(s.totalTimeCredit)  * factor;
-        totalCount      += safe(s.totalCount)       * factor;
-        misfeed         += safe(s.misfeedCount)     * factor;
+
+        // Try new structure first (metrics.timers), then fall back to old structure
+        const runtime = s.metrics?.timers?.run || s.runtime || 0;
+        const worked = s.metrics?.timers?.worked || s.workTime || 0;
+        const timeCredit = s.metrics?.totals?.timeCredit || s.totalTimeCredit || 0;
+        const validCount = s.metrics?.totals?.counts?.valid || s.totalCount || 0;
+        const misfeedCount = s.metrics?.totals?.counts?.misfeed || s.misfeedCount || 0;
+
+        runtimeSec    += safe(runtime)      * factor;
+        workSec       += safe(worked)       * factor;
+        timeCreditSec += safe(timeCredit)   * factor;
+        totalCount    += safe(validCount)   * factor;
+        misfeed       += safe(misfeedCount) * factor;
       }
 
       const availability = windowSec > 0 ? (runtimeSec / windowSec) : 0;
@@ -140,6 +177,70 @@ module.exports = function (server) {
     // sort desc by OEE as before
     rows.sort((a,b) => b.oee - a.oee);
     return rows;
+  }
+
+  // #2B Machine OEE Rankings Route (Cached - using same logic as machines-summary-daily-cached)
+  async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd) {
+    try {
+      // Get date string for today (YYYY-MM-DD format)
+      const dateStr = dayStart.toISOString().split('T')[0];
+      
+      // Query the totals-daily collection for machine records
+      const cacheRecords = await db
+        .collection("totals-daily")
+        .find({
+          entityType: "machine",
+          date: dateStr,
+        })
+        .toArray();
+
+      if (cacheRecords.length === 0) {
+        logger.warn(
+          `[dailyDashboard] No daily cached data found for date: ${dateStr}, falling back to session-based calculation`
+        );
+        // Fallback to session-based calculation
+        return await buildMachineOEEFromSessions(db, dayStart, dayEnd);
+      }
+
+      // Transform cache records to OEE format using the same calculation logic
+      const rows = cacheRecords.map((record) => {
+        // Calculate window time (total time in query range)
+        const windowMs =
+          new Date(record.timeRange.end) - new Date(record.timeRange.start);
+
+        // Calculate performance metrics (same logic as machines-summary-daily-cached)
+        const availability =
+          windowMs > 0
+            ? Math.min(Math.max(record.runtimeMs / windowMs, 0), 1)
+            : 0;
+        const totalOutput = record.totalCounts + record.totalMisfeeds;
+        const throughput =
+          totalOutput > 0 ? record.totalCounts / totalOutput : 0;
+        const workTimeSec = record.workedTimeMs / 1000;
+        const totalTimeCreditSec = record.totalTimeCreditMs / 1000;
+        const efficiency =
+          workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
+        const oee = availability * throughput * efficiency;
+
+        return {
+          serial: record.machineSerial,
+          name: record.machineName || `Serial ${record.machineSerial}`,
+          oee: +(oee * 100).toFixed(2),
+        };
+      });
+
+      // Sort descending by OEE
+      rows.sort((a, b) => b.oee - a.oee);
+
+      logger.info(
+        `[dailyDashboard] Retrieved ${rows.length} machine OEE records from cache for date: ${dateStr}`
+      );
+      return rows;
+    } catch (error) {
+      logger.error('Error building machine OEE from daily totals:', error);
+      // Fallback to session-based calculation on error
+      return await buildMachineOEEFromSessions(db, dayStart, dayEnd);
+    }
   }
 
   // #3 Top Operator Rankings Route
@@ -164,16 +265,26 @@ module.exports = function (server) {
         "timestamps.start": { $lt: dayEnd },
         $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }],
       }).project({
-        _id: 0, timestamps: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
+        _id: 0, timestamps: 1,
+        workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1,
+        'metrics.timers.worked': 1, 'metrics.totals.timeCredit': 1,
+        'metrics.totals.counts.valid': 1, 'metrics.totals.counts.misfeed': 1
       }).toArray();
 
       let workSec = 0, timeCreditSec = 0, totalCount = 0, misfeed = 0;
       for (const s of sessions) {
         const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, dayStart, dayEnd);
-        workSec       += safe(s.workTime)        * factor;
-        timeCreditSec += safe(s.totalTimeCredit) * factor;
-        totalCount    += safe(s.totalCount)      * factor;
-        misfeed       += safe(s.misfeedCount)    * factor;
+
+        // Try new structure first (metrics), then fall back to old structure
+        const worked = s.metrics?.timers?.worked || s.workTime || 0;
+        const timeCredit = s.metrics?.totals?.timeCredit || s.totalTimeCredit || 0;
+        const validCount = s.metrics?.totals?.counts?.valid || s.totalCount || 0;
+        const misfeedCount = s.metrics?.totals?.counts?.misfeed || s.misfeedCount || 0;
+
+        workSec       += safe(worked)       * factor;
+        timeCreditSec += safe(timeCredit)   * factor;
+        totalCount    += safe(validCount)   * factor;
+        misfeed       += safe(misfeedCount) * factor;
       }
 
       const efficiency = workSec > 0 ? (timeCreditSec / workSec) : 0;
@@ -194,7 +305,12 @@ module.exports = function (server) {
       };
     }));
 
-    return rows.sort((a,b) => b.efficiency - a.efficiency).slice(0, 10);
+    // Sort by efficiency (descending), then by ID (ascending) for stable ordering
+    return rows.sort((a, b) => {
+      const effDiff = b.efficiency - a.efficiency;
+      if (effDiff !== 0) return effDiff;
+      return a.id - b.id;
+    }).slice(0, 10);
   }
 
   // ---- HELPER FUNCTIONS ----
@@ -360,7 +476,7 @@ module.exports = function (server) {
       if (latestRecord?.pollingCycleId) {
         matchStage.pollingCycleId = latestRecord.pollingCycleId;
       }
-      
+
       const pipeline = [
         {
           $match: matchStage
@@ -420,9 +536,14 @@ module.exports = function (server) {
         };
       });
 
-      // Sort by efficiency and return top 10
+      // Sort by efficiency (descending), then by ID (ascending) for stable ordering
       const topOperators = operatorData
-        .sort((a, b) => b.efficiency - a.efficiency)
+        .sort((a, b) => {
+          const effDiff = b.efficiency - a.efficiency;
+          if (effDiff !== 0) return effDiff;
+          // Secondary sort by ID for consistent ordering when efficiencies are equal
+          return a.id - b.id;
+        })
         .slice(0, 10);
 
       logger.info(`Built top operator efficiency from cache for ${topOperators.length} operators`);
@@ -481,7 +602,8 @@ module.exports = function (server) {
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
-      const machineOee = await buildMachineOEEFromSessions(db, dayStart, dayEnd);
+      // Use cached OEE calculation with same logic as machines-summary-daily-cached
+      const machineOee = await buildMachineOEEFromDailyTotals(db, dayStart, dayEnd);
 
       return res.json({
         timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
@@ -531,14 +653,20 @@ module.exports = function (server) {
     }
   });
 
-  // Route 4B: Top Operator Rankings (Fast - using daily totals cache)
+  // Route 4B: Top Operator Rankings (Fast - using daily totals cache with fallback)
   router.get('/analytics/daily/top-operators-cache', async (req, res) => {
     try {
       const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
-      const topOperators = await buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd);
+      let topOperators = await buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd);
+
+      // If cache returns empty or all zeros, fall back to session-based calculation
+      if (topOperators.length === 0 || topOperators.every(op => op.efficiency === 0 && op.metrics.runtime.total === 0)) {
+        logger.warn('Cache data is empty or all zeros, falling back to session-based calculation');
+        topOperators = await buildTopOperatorEfficiencyFromSessions(db, dayStart, dayEnd);
+      }
 
       return res.json({
         timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
@@ -622,6 +750,45 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch fast daily count totals data" });
+    }
+  });
+
+  // Diagnostic route to check state collections
+  router.get('/analytics/daily/debug-collections', async (req, res) => {
+    try {
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+      const dayStart = now.startOf('day').toJSDate();
+
+      // List all collections
+      const collections = await db.listCollections().toArray();
+      const stateCollections = collections.filter(c => c.name.includes('state'));
+
+      // Count documents in each state collection for today
+      const counts = {};
+      for (const coll of stateCollections) {
+        const count = await db.collection(coll.name).countDocuments({
+          timestamp: { $gte: dayStart }
+        });
+        counts[coll.name] = count;
+      }
+
+      // Get a sample document from state-machine-daily if it exists
+      let sampleDoc = null;
+      if (collections.find(c => c.name === 'state-machine-daily')) {
+        sampleDoc = await db.collection('state-machine-daily').findOne({
+          timestamp: { $gte: dayStart }
+        });
+      }
+
+      return res.json({
+        allStateCollections: stateCollections.map(c => c.name),
+        documentCounts: counts,
+        sampleDocument: sampleDoc,
+        queryDate: dayStart
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch debug info" });
     }
   });
 
