@@ -94,7 +94,7 @@ module.exports = function (server) {
     return perMachine;
   }
 
-  // #2 Machine OEE Rankings Route
+  // #2 Machine OEE Rankings Route (Session-based)
   async function buildMachineOEEFromSessions(db, dayStart, dayEnd) {
     const msColl = db.collection(config.machineSessionCollectionName);
 
@@ -177,6 +177,70 @@ module.exports = function (server) {
     // sort desc by OEE as before
     rows.sort((a,b) => b.oee - a.oee);
     return rows;
+  }
+
+  // #2B Machine OEE Rankings Route (Cached - using same logic as machines-summary-daily-cached)
+  async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd) {
+    try {
+      // Get date string for today (YYYY-MM-DD format)
+      const dateStr = dayStart.toISOString().split('T')[0];
+      
+      // Query the totals-daily collection for machine records
+      const cacheRecords = await db
+        .collection("totals-daily")
+        .find({
+          entityType: "machine",
+          date: dateStr,
+        })
+        .toArray();
+
+      if (cacheRecords.length === 0) {
+        logger.warn(
+          `[dailyDashboard] No daily cached data found for date: ${dateStr}, falling back to session-based calculation`
+        );
+        // Fallback to session-based calculation
+        return await buildMachineOEEFromSessions(db, dayStart, dayEnd);
+      }
+
+      // Transform cache records to OEE format using the same calculation logic
+      const rows = cacheRecords.map((record) => {
+        // Calculate window time (total time in query range)
+        const windowMs =
+          new Date(record.timeRange.end) - new Date(record.timeRange.start);
+
+        // Calculate performance metrics (same logic as machines-summary-daily-cached)
+        const availability =
+          windowMs > 0
+            ? Math.min(Math.max(record.runtimeMs / windowMs, 0), 1)
+            : 0;
+        const totalOutput = record.totalCounts + record.totalMisfeeds;
+        const throughput =
+          totalOutput > 0 ? record.totalCounts / totalOutput : 0;
+        const workTimeSec = record.workedTimeMs / 1000;
+        const totalTimeCreditSec = record.totalTimeCreditMs / 1000;
+        const efficiency =
+          workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
+        const oee = availability * throughput * efficiency;
+
+        return {
+          serial: record.machineSerial,
+          name: record.machineName || `Serial ${record.machineSerial}`,
+          oee: +(oee * 100).toFixed(2),
+        };
+      });
+
+      // Sort descending by OEE
+      rows.sort((a, b) => b.oee - a.oee);
+
+      logger.info(
+        `[dailyDashboard] Retrieved ${rows.length} machine OEE records from cache for date: ${dateStr}`
+      );
+      return rows;
+    } catch (error) {
+      logger.error('Error building machine OEE from daily totals:', error);
+      // Fallback to session-based calculation on error
+      return await buildMachineOEEFromSessions(db, dayStart, dayEnd);
+    }
   }
 
   // #3 Top Operator Rankings Route
@@ -538,8 +602,8 @@ module.exports = function (server) {
       const dayStart = now.startOf('day').toJSDate();
       const dayEnd = now.toJSDate();
 
-      // Use session-based OEE calculation for accurate OEE values
-      const machineOee = await buildMachineOEEFromSessions(db, dayStart, dayEnd);
+      // Use cached OEE calculation with same logic as machines-summary-daily-cached
+      const machineOee = await buildMachineOEEFromDailyTotals(db, dayStart, dayEnd);
 
       return res.json({
         timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
