@@ -139,10 +139,12 @@ import {
   
       // ===== Title =====
       if (cfg.title) {
+        // Position title above legend when legend is on top, otherwise use default position
+        const titleY = (cfg.legend?.show && cfg.legend?.position === 'top') ? -40 : -10;
         g.append('text')
           .attr('class', 'cc-title')
           .attr('x', innerW / 2)
-          .attr('y', -10)
+          .attr('y', titleY)
           .attr('text-anchor', 'middle')
           .style('fill', textColor)
           .text(cfg.title);
