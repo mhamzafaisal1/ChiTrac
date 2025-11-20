@@ -1,0 +1,74 @@
+<div class="server-logs-container" [class.dark-mode]="isDarkTheme">
+  <div class="loading-overlay" *ngIf="isLoading && rows.length === 0">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading logs...</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <app-date-time-picker
+      label="Start Time"
+      [(value)]="startTime"
+    ></app-date-time-picker>
+    <app-date-time-picker
+      label="End Time"
+      [(value)]="endTime"
+    ></app-date-time-picker>
+
+    <mat-form-field appearance="outline" class="level-filter">
+      <mat-label>Log Level</mat-label>
+      <mat-select [(ngModel)]="selectedLevel" (selectionChange)="onLevelChange()">
+        <mat-option value="">All Levels</mat-option>
+        <mat-option *ngFor="let level of logLevels.slice(1)" [value]="level">
+          {{ level.toUpperCase() }}
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <div class="button-group">
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="fetchLogs()"
+        [disabled]="!startTime || !endTime || isLoading"
+      >
+        <mat-icon>refresh</mat-icon>
+        {{ isLoading && rows.length === 0 ? "Loading..." : "Refresh" }}
+      </button>
+    </div>
+  </div>
+
+  <div class="table-container" [class.loading]="isLoading">
+    <div class="table-header">
+      <span class="log-count">Showing {{ rows.length }} of {{ totalCount }} logs</span>
+    </div>
+    <base-table
+      *ngIf="rows.length"
+      [class.dark]="isDarkTheme"
+      [class.light]="!isDarkTheme"
+      [columns]="columns"
+      [rows]="rows"
+      [selectedRow]="selectedRow"
+      (rowClicked)="onRowClick($event)"
+      style="height: calc(100% - 60px); border-radius: 4px;"
+    ></base-table>
+    <div *ngIf="!rows.length && !isLoading" class="no-logs">
+      <mat-icon>info</mat-icon>
+      <p>No logs found for the selected criteria</p>
+    </div>
+  </div>
+
+  <div class="load-more-container" *ngIf="hasMore && rows.length > 0">
+    <button
+      mat-flat-button
+      color="primary"
+      (click)="loadMore()"
+      [disabled]="isLoading"
+    >
+      <mat-icon>expand_more</mat-icon>
+      {{ isLoading ? "Loading..." : "Load More" }}
+    </button>
+  </div>
+</div>
+
