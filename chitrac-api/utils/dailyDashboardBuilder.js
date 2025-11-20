@@ -18,7 +18,16 @@ const {
   getHourlyIntervals
 } = require("./time");
 
-const { extractAllCyclesFromStates, fetchStatesForMachine, getAllMachinesFromStates, groupStatesByOperator, fetchAllStates, groupStatesByMachine } = require('./state');
+const {
+  extractAllCyclesFromStates,
+  fetchStatesForMachine,
+  getAllMachinesFromStates,
+  groupStatesByOperator,
+  fetchAllStates,
+  groupStatesByMachine,
+  getAllMachinesFromStatesForOEE,
+  fetchStatesForMachineForOEE
+} = require('./state');
 const {
     getValidCounts,
     groupCountsByOperator,
@@ -35,11 +44,12 @@ async function buildMachineOEE(db, start, end) {
     const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
     const totalWindowMs = new Date(paddedEnd) - new Date(paddedStart);
 
-    const machines = await getAllMachinesFromStates(db, paddedStart, paddedEnd);
+    // Use OEE-specific functions that handle timestamps.create
+    const machines = await getAllMachinesFromStatesForOEE(db, paddedStart, paddedEnd);
     const results = [];
 
     for (const machine of machines) {
-      const states = await fetchStatesForMachine(db, machine.serial, paddedStart, paddedEnd);
+      const states = await fetchStatesForMachineForOEE(db, machine.serial, paddedStart, paddedEnd);
       if (!states.length) continue;
 
       const cycles = extractAllCyclesFromStates(states, start, end);
@@ -78,7 +88,10 @@ async function buildDailyItemHourlyStack(db, start, end) {
     const pipeline = [
       {
         $match: {
-          timestamp: { $gte: startDate, $lte: endDate },
+          $or: [
+            { timestamp: { $gte: startDate, $lte: endDate } },
+            { "timestamps.create": { $gte: startDate, $lte: endDate } }
+          ],
           misfeed: { $ne: true },
           'operator.id': { $exists: true, $ne: -1 }
         }
@@ -88,11 +101,11 @@ async function buildDailyItemHourlyStack(db, start, end) {
           itemName: { $ifNull: ["$item.name", "Unknown"] },
           hour: {
             $hour: {
-              date: "$timestamp",
+              date: { $ifNull: ["$timestamp", "$timestamps.create"] },
               timezone: "America/Chicago"
-            }
+            }  // Use timezone-aware hour extraction, handle both timestamp formats
           }
-          
+
         }
       },
       {
@@ -123,33 +136,33 @@ async function buildDailyItemHourlyStack(db, start, end) {
     const results = await db.collection('count').aggregate(pipeline).toArray();
 
     const hourSet = new Set();
-    const operators = {};
+    const items = {};
 
     for (const result of results) {
       const itemName = result._id;
-      operators[itemName] = {};
+      items[itemName] = {};
 
       for (const entry of result.hourlyCounts) {
         hourSet.add(entry.hour);
-        operators[itemName][entry.hour] = entry.count;
+        items[itemName][entry.hour] = entry.count;
       }
     }
 
     const hours = Array.from(hourSet).sort((a, b) => a - b);
 
-    
 
-    const finalizedOperators = {};
-    const sortedItemNames = Object.keys(operators).sort(); // JS-side sorting for extra safety
+
+    const finalizedItems = {};
+    const sortedItemNames = Object.keys(items).sort(); // JS-side sorting for extra safety
     for (const itemName of sortedItemNames) {
-      const hourCounts = operators[itemName];
-      finalizedOperators[itemName] = hours.map(h => hourCounts[h] || 0);
+      const hourCounts = items[itemName];
+      finalizedItems[itemName] = hours.map(h => hourCounts[h] || 0);
     }
 
     if (hours.length === 0) {
       return {
         title: "No data",
-        data: { hours: [], operators: {} }
+        data: { hours: [], items: {} }
       };
     }
 
@@ -157,7 +170,7 @@ async function buildDailyItemHourlyStack(db, start, end) {
       title: "Item Counts by Hour (All Machines)",
       data: {
         hours,
-        operators: finalizedOperators
+        items: finalizedItems
       }
     };
 
@@ -389,7 +402,8 @@ async function buildPlantwideMetricsByHour(db, start, end) {
     .map(iv => ({ start: iv.start.toJSDate(), end: iv.end.toJSDate() }));
 
   // machines that ran today (overlapped any session)
-  const machineSerials = await msColl.distinct("machine.serial", {
+  // Try both machine.serial and machine.id for backward compatibility
+  const serialsFromSerial = await msColl.distinct("machine.serial", {
     "timestamps.start": { $lt: wEnd },
     $or: [
       { "timestamps.end": { $gt: wStart } },
@@ -397,6 +411,18 @@ async function buildPlantwideMetricsByHour(db, start, end) {
       { "timestamps.end": null }
     ]
   });
+
+  const serialsFromId = await msColl.distinct("machine.id", {
+    "timestamps.start": { $lt: wEnd },
+    $or: [
+      { "timestamps.end": { $gt: wStart } },
+      { "timestamps.end": { $exists: false } },
+      { "timestamps.end": null }
+    ]
+  });
+
+  // Combine and deduplicate
+  const machineSerials = [...new Set([...serialsFromSerial, ...serialsFromId])].filter(Boolean);
 
   const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
   const overlapFactor = (sStart, sEnd, wStart, wEnd) => {
@@ -419,19 +445,30 @@ async function buildPlantwideMetricsByHour(db, start, end) {
     // per-machine queries in parallel for this hour
     const machineRows = await Promise.all(machineSerials.map(async (serial) => {
       const sessions = await msColl.find({
-        "machine.serial": Number(serial),
-        "timestamps.start": { $lt: iv.end },
-        $or: [
-          { "timestamps.end": { $gt: iv.start } },
-          { "timestamps.end": { $exists: false } },
-          { "timestamps.end": { $exists: true, $eq: null } }
+        $and: [
+          {
+            $or: [
+              { "machine.serial": serial },
+              { "machine.id": serial }
+            ]
+          },
+          { "timestamps.start": { $lt: iv.end } },
+          {
+            $or: [
+              { "timestamps.end": { $gt: iv.start } },
+              { "timestamps.end": { $exists: false } },
+              { "timestamps.end": null }
+            ]
+          }
         ]
       })
       .project({
         _id: 0,
         timestamps: 1,
         runtime: 1, workTime: 1, totalTimeCredit: 1,
-        totalCount: 1, misfeedCount: 1
+        totalCount: 1, misfeedCount: 1,
+        'metrics.timers.run': 1, 'metrics.timers.worked': 1, 'metrics.totals.timeCredit': 1,
+        'metrics.totals.counts.valid': 1, 'metrics.totals.counts.misfeed': 1
       })
       .toArray();
 
@@ -442,11 +479,19 @@ async function buildPlantwideMetricsByHour(db, start, end) {
       for (const s of sessions) {
         const { factor } = overlapFactor(s.timestamps?.start, s.timestamps?.end, iv.start, iv.end);
         if (factor <= 0) continue;
-        runtimeSec += safe(s.runtime)          * factor;
-        workSec    += safe(s.workTime)         * factor;
-        creditSec  += safe(s.totalTimeCredit)  * factor;
-        valid      += safe(s.totalCount)       * factor;
-        mis        += safe(s.misfeedCount)     * factor;
+
+        // Try new structure first (metrics), then fall back to old structure
+        const runtime = s.metrics?.timers?.run || s.runtime || 0;
+        const worked = s.metrics?.timers?.worked || s.workTime || 0;
+        const timeCredit = s.metrics?.totals?.timeCredit || s.totalTimeCredit || 0;
+        const validCount = s.metrics?.totals?.counts?.valid || s.totalCount || 0;
+        const misfeedCount = s.metrics?.totals?.counts?.misfeed || s.misfeedCount || 0;
+
+        runtimeSec += safe(runtime)      * factor;
+        workSec    += safe(worked)       * factor;
+        creditSec  += safe(timeCredit)   * factor;
+        valid      += safe(validCount)   * factor;
+        mis        += safe(misfeedCount) * factor;
       }
 
       if (runtimeSec <= 0 && workSec <= 0 && (valid + mis) <= 0) return null;

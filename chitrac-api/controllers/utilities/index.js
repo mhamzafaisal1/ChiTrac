@@ -1976,5 +1976,58 @@ function constructor(server) {
     }
   });
 
+  // Server logs route - fetch logs from api-http collection
+  const { fetchServerLogs, getServerLogsCount } = require("../../utils/serverLogs");
+  
+  router.get("/server-logs", async (req, res) => {
+    try {
+      const logDb = server.logDb;
+      
+      if (!logDb) {
+        return res.status(500).json({ error: "Logging database not available" });
+      }
+
+      // Parse query parameters
+      const start = req.query.start ? new Date(req.query.start) : null;
+      const end = req.query.end ? new Date(req.query.end) : null;
+      const level = req.query.level || null;
+      const limit = parseInt(req.query.limit) || 100;
+      const skip = parseInt(req.query.skip) || 0;
+
+      // Validate limit (max 1000 to prevent performance issues)
+      const safeLimit = Math.min(limit, 1000);
+      const safeSkip = Math.max(0, skip);
+
+      // Fetch logs and total count
+      const [logs, totalCount] = await Promise.all([
+        fetchServerLogs(logDb, {
+          start,
+          end,
+          level,
+          limit: safeLimit,
+          skip: safeSkip
+        }),
+        getServerLogsCount(logDb, {
+          start,
+          end,
+          level
+        })
+      ]);
+
+      res.json({
+        logs,
+        pagination: {
+          total: totalCount,
+          limit: safeLimit,
+          skip: safeSkip,
+          hasMore: (safeSkip + safeLimit) < totalCount
+        }
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.url}:`, error);
+      res.status(500).json({ error: "Failed to fetch server logs", details: error.message });
+    }
+  });
+
   return router;
 }

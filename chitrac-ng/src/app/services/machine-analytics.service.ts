@@ -126,7 +126,7 @@ export class MachineAnalyticsService {
     const params = new HttpParams()
       .set('timeframe', timeframe);
   
-    return this.http.get(`${this.apiUrl}/analytics/machines-summary-cached`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/machine-summary-timeframe`, { params });
   }
 
   getMachineDetails(start: string, end: string, serial: number): Observable<any> {

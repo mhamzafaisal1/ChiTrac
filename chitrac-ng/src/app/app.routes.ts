@@ -29,6 +29,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/machines', component: MachineGridComponent },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
 	
 	// Login/Auth
 	{ path: 'ng/login', component: UserLoginComponent },

@@ -200,13 +200,29 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         () => {
           this.endTime = this.pollingService.updateEndTimestampToNow();
           this.dateTimeService.setEndTime(this.endTime);
-          return this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
-            .pipe(
-              tap((data: any) => {
-                this.updateDashboardData(data);
-              }),
-              delay(0) // Force change detection cycle
-            );
+          
+          // Check if we have a timeframe selected
+          const timeframe = this.dateTimeService.getTimeframe();
+          
+          if (timeframe) {
+            // Use timeframe-based API call
+            return this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
+              .pipe(
+                tap((data: any) => {
+                  this.updateDashboardData(data);
+                }),
+                delay(0) // Force change detection cycle
+              );
+          } else {
+            // Use regular API call with start/end times
+            return this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
+              .pipe(
+                tap((data: any) => {
+                  this.updateDashboardData(data);
+                }),
+                delay(0) // Force change detection cycle
+              );
+          }
         },
         this.POLLING_INTERVAL,
         this.destroy$,
@@ -253,19 +269,39 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     if (!this.startTime || !this.endTime) return;
 
     this.isLoading = true;
-    // Use operator-summary route for initial table data (all operators)
-    this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
-      .subscribe({
-        next: (data: any) => {
-          this.updateDashboardData(data);
-          this.isLoading = false;
-        },
-        error: (error) => {
-          console.error('Error fetching analytics data:', error);
-          this.rows = [];
-          this.isLoading = false;
-        }
-      });
+    
+    // Check if we have a timeframe selected
+    const timeframe = this.dateTimeService.getTimeframe();
+    
+    if (timeframe) {
+      // Use timeframe-based API call
+      this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
+        .subscribe({
+          next: (data: any) => {
+            this.updateDashboardData(data);
+            this.isLoading = false;
+          },
+          error: (error) => {
+            console.error('Error fetching analytics data:', error);
+            this.rows = [];
+            this.isLoading = false;
+          }
+        });
+    } else {
+      // Use operator-summary route for initial table data (all operators)
+      this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
+        .subscribe({
+          next: (data: any) => {
+            this.updateDashboardData(data);
+            this.isLoading = false;
+          },
+          error: (error) => {
+            console.error('Error fetching analytics data:', error);
+            this.rows = [];
+            this.isLoading = false;
+          }
+        });
+    }
   }
 
   onDateChange(): void {
@@ -354,9 +390,15 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     // Get modal-aware dimensions
     const modalChartDimensions = this.getModalAwareChartDimensions();
 
+    // Check if we have a timeframe selected
+    const timeframe = this.dateTimeService.getTimeframe();
+
     // Fetch detailed operator data for the modal
-    this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
-    .subscribe({
+    const summaryObservable = timeframe
+      ? this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
+      : this.analyticsService.getOperatorSummary(this.startTime, this.endTime);
+
+    summaryObservable.subscribe({
       next: (summaryData) => {
         const base = Array.isArray(summaryData) ? summaryData.find(d => d.operator.id === operatorId) : summaryData;
   

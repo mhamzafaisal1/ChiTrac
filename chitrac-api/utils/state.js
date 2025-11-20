@@ -4,9 +4,9 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     const query = {
       timestamp: { $gte: paddedStart, $lte: paddedEnd }
     };
-  
+
     if (serial) query['machine.serial'] = serial;
-  
+
     const stateCollection = getStateCollectionName(paddedStart);
     return db.collection(stateCollection)
       .find(query)
@@ -19,7 +19,7 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
         'program.mode': 1,
         'status.code': 1,
         'status.name': 1,
-        operators: 1 
+        operators: 1
       })
       .toArray();
   }
@@ -171,13 +171,13 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
         'machine.name': 1
       })
       .toArray();
-    
+
     // Create unique machine list
     const uniqueMachines = {};
     machines.forEach(state => {
       const serial = state.machine?.serial;
       if (serial && !uniqueMachines[serial]) {
-        uniqueMachines[serial] = {  
+        uniqueMachines[serial] = {
           serial: serial,
           name: state.machine?.name || null
         };
@@ -318,10 +318,6 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
   const collection = collectionExists ? stateCollection : 'state';
 
-  // Debug: State collection check
-  console.log(`fetchStatesForOperator query:`, JSON.stringify(query, null, 2));
-  console.log(`Using collection: ${collection}`);
-
   const states = await db.collection(collection)
     .find(query)
     .sort({ "timestamps.create": 1 })
@@ -339,8 +335,6 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
       operators: 1
     })
     .toArray();
-
-  console.log(`fetchStatesForOperator returned ${states.length} states`);
 
   // Normalize states: map timestamps.create to timestamp and status
   return states.map(state => {
@@ -1112,7 +1106,97 @@ async function fetchAllStates(db, start, end) {
     .toArray();
 }
 
-  
+// OEE-specific functions that work with new timestamp structure (timestamps.create)
+async function getAllMachinesFromStatesForOEE(db, start, end) {
+  const query = {
+    $or: [
+      { timestamp: { $gte: start, $lte: end } },
+      { 'timestamps.create': { $gte: start, $lte: end } }
+    ]
+  };
+
+  const stateCollection = getStateCollectionName(start);
+
+  const machines = await db.collection(stateCollection)
+    .find(query)
+    .project({
+      _id:0,
+      'machine.serial': 1,
+      'machine.id': 1,
+      'machine.name': 1
+    })
+    .toArray();
+
+  const uniqueMachines = {};
+  machines.forEach(state => {
+    const serial = state.machine?.serial || state.machine?.id;
+    if (serial && !uniqueMachines[serial]) {
+      uniqueMachines[serial] = {
+        serial: serial,
+        name: state.machine?.name || null
+      };
+    }
+  });
+
+  return Object.values(uniqueMachines);
+}
+
+async function fetchStatesForMachineForOEE(db, serial, paddedStart, paddedEnd) {
+  const query = {
+    $and: [
+      {
+        $or: [
+          { timestamp: { $gte: paddedStart, $lte: paddedEnd } },
+          { 'timestamps.create': { $gte: paddedStart, $lte: paddedEnd } }
+        ]
+      },
+      {
+        $or: [
+          { 'machine.serial': serial },
+          { 'machine.id': serial }
+        ]
+      }
+    ]
+  };
+
+  const stateCollection = getStateCollectionName(paddedStart);
+
+  const states = await db.collection(stateCollection)
+    .find(query)
+    .sort({ timestamp: 1, 'timestamps.create': 1 })
+    .project({
+      _id:0,
+      timestamp: 1,
+      'timestamps.create': 1,
+      'machine.serial': 1,
+      'machine.id': 1,
+      'machine.name': 1,
+      'program.mode': 1,
+      'status.code': 1,
+      'status.name': 1,
+      '_tickerDoc.status': 1,
+      operators: 1
+    })
+    .toArray();
+
+  // Normalize: create timestamp field if it doesn't exist
+  return states.map(state => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    // Normalize status field - copy from _tickerDoc if top-level status doesn't exist
+    if (!state.status && state._tickerDoc?.status) {
+      state.status = state._tickerDoc.status;
+    }
+    return state;
+  });
+}
+
+
 
   module.exports = {
     fetchStatesForMachine,
@@ -1131,6 +1215,9 @@ async function fetchAllStates(db, start, end) {
     getAllMachineSerialsAndNames,
     fetchAllStates,
     groupStatesByMachineAndStation,
-    getCompletedCyclesWithOperatorSplit
+    getCompletedCyclesWithOperatorSplit,
+    // New OEE-specific functions
+    getAllMachinesFromStatesForOEE,
+    fetchStatesForMachineForOEE
   };
   

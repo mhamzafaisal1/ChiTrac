@@ -812,33 +812,33 @@ async function buildOperatorEfficiency(states, counts, start, end, serial) {
 // utils/currentOperators.js (or inline in the route file)
 
 /**
- * Return most-recent sessions for operators on the latest machine-session for a serial.
- * “Current” here = operators from the latest machine-session, then each operator’s
- * most recent operator-session on this machine.
+ * Return current operators on a machine using stateTicker (real-time source of truth).
+ * For each current operator, finds their OPEN/ACTIVE operator-session for metrics.
+ * Falls back to most recent session if no open session exists.
  */
 async function buildCurrentOperators(db, serial) {
   const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
-  const msColl = db.collection(config.machineSessionCollectionName);
   const serialNum = Number(serial);
 
-  // latest machine-session → operator IDs
-  // Support both machine.serial and machine.id
-  const latest = await msColl.find({
+  // Step 1: Get current operators from stateTicker (real-time source of truth)
+  const tickerColl = db.collection(config.stateTickerCollectionName);
+  const ticker = await tickerColl.findOne({
     $or: [
       { "machine.serial": serialNum },
       { "machine.id": serialNum }
     ]
-  })
-    .project({ _id: 0, operators: 1, "states.start.operators": 1, "states.end.operators": 1, machine: 1, timestamps: 1 })
-    .sort({ "timestamps.create": -1 })
-    .limit(1)
-    .toArray();
+  }, {
+    projection: {
+      _id: 0,
+      operators: 1,
+      machine: 1
+    }
+  });
 
-  if (!latest.length) return [];
+  if (!ticker) return [];
 
-  // Get operators from either top-level operators field OR states.start.operators
-  const operators = latest[0].operators || latest[0].states?.start?.operators || [];
-
+  // Extract operator IDs from ticker (current operators on machine)
+  const operators = Array.isArray(ticker.operators) ? ticker.operators : [];
   const opIds = [...new Set(
     operators
       .map(o => o && o.id)
@@ -847,25 +847,56 @@ async function buildCurrentOperators(db, serial) {
 
   if (!opIds.length) return [];
 
+  // Step 2: For each current operator, find their OPEN session first, then fallback to most recent
   const osColl = db.collection(config.operatorSessionCollectionName);
+  const machineSerial = ticker.machine?.serial ?? ticker.machine?.id ?? serialNum;
+  const machineName = ticker.machine?.name || "Unknown";
 
-  // most-recent operator-session for each operator on this machine
-  // Support both machine.serial and machine.id
   const rows = await Promise.all(opIds.map(async (opId) => {
-    const s = await osColl.find({
+    // First, try to find OPEN/ACTIVE session (no end timestamp)
+    // Combine machine match with open session check using $and
+    let s = await osColl.find({
       "operator.id": opId,
-      $or: [
-        { "machine.serial": serialNum },
-        { "machine.id": serialNum }
+      $and: [
+        {
+          $or: [
+            { "machine.serial": serialNum },
+            { "machine.id": serialNum }
+          ]
+        },
+        {
+          $or: [
+            { "timestamps.end": { $exists: false } },
+            { "timestamps.end": null }
+          ]
+        }
       ]
     })
-    .project({
-      _id: 0, operator: 1, machine: 1, timestamps: 1,
-      workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
-    })
-    .sort({ "timestamps.create": -1 })
-    .limit(1)
-    .toArray();
+      .project({
+        _id: 0, operator: 1, machine: 1, timestamps: 1,
+        workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
+      })
+      .sort({ "timestamps.create": -1 })
+      .limit(1)
+      .toArray();
+
+    // If no open session, fallback to most recent session (closed or open)
+    if (!s.length) { 
+      s = await osColl.find({
+        "operator.id": opId,
+        $or: [
+          { "machine.serial": serialNum },
+          { "machine.id": serialNum }
+        ]
+      })
+      .project({
+        _id: 0, operator: 1, machine: 1, timestamps: 1,
+        workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
+      })
+      .sort({ "timestamps.create": -1 })
+      .limit(1)
+      .toArray();
+    }
 
     const doc = s[0];
     if (!doc) return null;
@@ -877,12 +908,18 @@ async function buildCurrentOperators(db, serial) {
     const eff       = workSec > 0 ? (creditSec / workSec) : 0;
     const workedMs  = Math.round(workSec * 1000);
 
-    // Normalize machine serial/id
-    const machineSerial = doc.machine?.serial ?? doc.machine?.id ?? Number(serial);
-    
     // Handle operator name - can be string or object with first/surname
+    // Prefer name from ticker if available, otherwise from session
     let operatorName = "Unknown";
-    if (doc.operator?.name) {
+    const tickerOp = operators.find(o => o && o.id === opId);
+    
+    if (tickerOp?.name) {
+      if (typeof tickerOp.name === 'string') {
+        operatorName = tickerOp.name;
+      } else if (tickerOp.name.first || tickerOp.name.surname) {
+        operatorName = `${tickerOp.name.first || ''} ${tickerOp.name.surname || ''}`.trim() || "Unknown";
+      }
+    } else if (doc.operator?.name) {
       if (typeof doc.operator.name === 'string') {
         operatorName = doc.operator.name;
       } else if (doc.operator.name.first || doc.operator.name.surname) {
@@ -891,10 +928,10 @@ async function buildCurrentOperators(db, serial) {
     }
     
     return {
-      operatorId: doc.operator?.id ?? null,
+      operatorId: opId,
       operatorName,
       machineSerial,
-      machineName: doc.machine?.name || "Unknown",
+      machineName,
       session: {
         start: doc.timestamps?.start || doc.timestamps?.create || null,
         end: doc.timestamps?.end || null

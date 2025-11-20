@@ -21,6 +21,7 @@
         *ngIf="!loading && itemRows.length"
         [columns]="itemColumns"
         [rows]="itemRows"
+        [getCellClass]="getEfficiencyClass"
         [class.dark]="isDarkTheme"
         [class.light]="!isDarkTheme"
       ></base-table>
