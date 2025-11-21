@@ -2,7 +2,7 @@
 const express = require("express");
 const { DateTime } = require("luxon");
 const config = require("../../modules/config");
-const { formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time"); 
+const { formatDuration, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require("../../utils/time"); 
 const {
   buildDailyItemHourlyStack,
   buildPlantwideMetricsByHour,
@@ -681,9 +681,18 @@ module.exports = function (server) {
   // Route 5: Plant-wide Metrics
   router.get('/analytics/daily/plantwide-metrics', async (req, res) => {
     try {
-      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
-      const dayStart = now.startOf('day').toJSDate();
-      const dayEnd = now.toJSDate();
+      // Parse query parameters, with fallback to today if not provided
+      let dayStart, dayEnd;
+      try {
+        const { start, end } = parseAndValidateQueryParams(req);
+        dayStart = new Date(start);
+        dayEnd = new Date(end);
+      } catch (error) {
+        // If query params are invalid or missing, default to today
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+        dayStart = now.startOf('day').toJSDate();
+        dayEnd = now.toJSDate();
+      }
 
       const plantwideMetrics = await buildPlantwideMetricsByHour(db, dayStart, dayEnd);
 
