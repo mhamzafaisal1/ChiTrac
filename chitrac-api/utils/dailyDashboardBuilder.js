@@ -508,39 +508,48 @@ async function buildPlantwideMetricsByHour(db, start, end) {
       const throughput   = (valid + mis) > 0 ? (valid / (valid + mis)) : 0;
       const oee          = calcOEE(availability, efficiency, throughput);
 
-      return { runtimeSec, availability, efficiency, throughput, oee };
+      return { runtimeSec, workSec, creditSec, valid, mis, availability, efficiency, throughput, oee };
     }));
 
-    // aggregate plantwide (runtime-weighted)
-    let totalRuntime = 0, wAvail = 0, wEff = 0, wThru = 0, wOee = 0;
+    // aggregate plantwide - sum all machine values
+    let totalRuntime = 0, totalWorkSec = 0, totalCreditSec = 0, totalValid = 0, totalMis = 0;
 
     for (const r of machineRows) {
       if (!r) continue;
       totalRuntime += r.runtimeSec;
-      wAvail += r.availability * r.runtimeSec;
-      wEff   += r.efficiency   * r.runtimeSec;
-      wThru  += r.throughput   * r.runtimeSec;
-      wOee   += r.oee          * r.runtimeSec;
+      totalWorkSec += r.workSec || 0;
+      totalCreditSec += r.creditSec || 0;
+      totalValid += r.valid || 0;
+      totalMis += r.mis || 0;
     }
 
     // Extract hour in SYSTEM_TIMEZONE
     const hourInTimezone = iv.hourDT.hour; // Use Luxon DateTime to get hour in correct timezone
 
-    // Calculate metrics - include all hours, even if no runtime
+    // Calculate plantwide metrics from aggregated values
     let availability, efficiency, throughput, oee;
     
-    if (totalRuntime > 0) {
-      availability = +( (wAvail / totalRuntime) * 100 ).toFixed(2);
-      efficiency   = +( (wEff   / totalRuntime) * 100 ).toFixed(2);
-      throughput   = +( (wThru  / totalRuntime) * 100 ).toFixed(2);
-      oee          = +( (wOee   / totalRuntime) * 100 ).toFixed(2);
-    } else {
-      // No runtime in this hour - set all metrics to 0
-      availability = 0;
-      efficiency = 0;
-      throughput = 0;
-      oee = 0;
-    }
+    // Calculate plantwide availability: total runtime / (number of machines * hour duration)
+    // This gives us the actual plantwide availability percentage
+    const totalPossibleSec = machineSerials.length * slotSec;
+    availability = totalPossibleSec > 0 ? (totalRuntime / totalPossibleSec) * 100 : 0;
+    
+    // Calculate efficiency from aggregated work time and time credit
+    efficiency = totalWorkSec > 0 ? (totalCreditSec / totalWorkSec) * 100 : 0;
+    
+    // Calculate throughput from aggregated counts
+    throughput = (totalValid + totalMis) > 0 ? (totalValid / (totalValid + totalMis)) * 100 : 0;
+    
+    // Calculate OEE = Availability * Efficiency * Throughput (all as ratios 0-1)
+    const availRatio = availability / 100;
+    const effRatio = efficiency / 100;
+    const thruRatio = throughput / 100;
+    oee = +( (availRatio * effRatio * thruRatio) * 100 ).toFixed(2);
+    
+    // Round values
+    availability = +(availability.toFixed(2));
+    efficiency = +(efficiency.toFixed(2));
+    throughput = +(throughput.toFixed(2));
 
     // Include all hours in the range, even if metrics are all zero
     hourlyMetrics.push({
