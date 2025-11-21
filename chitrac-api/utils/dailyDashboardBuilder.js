@@ -15,7 +15,8 @@ const {
   parseAndValidateQueryParams,
   createPaddedTimeRange,
   formatDuration,
-  getHourlyIntervals
+  getHourlyIntervals,
+  SYSTEM_TIMEZONE
 } = require("./time");
 
 const {
@@ -395,11 +396,17 @@ async function buildPlantwideMetricsByHour(db, start, end) {
   const wStart = new Date(start);
   const wEnd = new Date(end);
 
-  // hour slots [start,end) using Luxon (timezone inferred upstream)
+  // hour slots [start,end) using Luxon with SYSTEM_TIMEZONE
+  const startDT = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf("hour");
+  const endDT = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf("hour");
   const intervals = Interval
-    .fromDateTimes(DateTime.fromJSDate(wStart).startOf("hour"), DateTime.fromJSDate(wEnd).endOf("hour"))
+    .fromDateTimes(startDT, endDT)
     .splitBy({ hours: 1 })
-    .map(iv => ({ start: iv.start.toJSDate(), end: iv.end.toJSDate() }));
+    .map(iv => ({ 
+      start: iv.start.toJSDate(), 
+      end: iv.end.toJSDate(),
+      hourDT: iv.start // Keep Luxon DateTime for timezone-aware hour extraction
+    }));
 
   // machines that ran today (overlapped any session)
   // Try both machine.serial and machine.id for backward compatibility
@@ -516,23 +523,33 @@ async function buildPlantwideMetricsByHour(db, start, end) {
       wOee   += r.oee          * r.runtimeSec;
     }
 
-    if (totalRuntime > 0) {
-      const availability = +( (wAvail / totalRuntime) * 100 ).toFixed(2);
-      const efficiency   = +( (wEff   / totalRuntime) * 100 ).toFixed(2);
-      const throughput   = +( (wThru  / totalRuntime) * 100 ).toFixed(2);
-      const oee          = +( (wOee   / totalRuntime) * 100 ).toFixed(2);
+    // Extract hour in SYSTEM_TIMEZONE
+    const hourInTimezone = iv.hourDT.hour; // Use Luxon DateTime to get hour in correct timezone
 
-      // skip all-zero rows
-      if (availability || efficiency || throughput || oee) {
-        hourlyMetrics.push({
-          hour: iv.start.getHours(),
-          availability,
-          efficiency,
-          throughput,
-          oee
-        });
-      }
+    // Calculate metrics - include all hours, even if no runtime
+    let availability, efficiency, throughput, oee;
+    
+    if (totalRuntime > 0) {
+      availability = +( (wAvail / totalRuntime) * 100 ).toFixed(2);
+      efficiency   = +( (wEff   / totalRuntime) * 100 ).toFixed(2);
+      throughput   = +( (wThru  / totalRuntime) * 100 ).toFixed(2);
+      oee          = +( (wOee   / totalRuntime) * 100 ).toFixed(2);
+    } else {
+      // No runtime in this hour - set all metrics to 0
+      availability = 0;
+      efficiency = 0;
+      throughput = 0;
+      oee = 0;
     }
+
+    // Include all hours in the range, even if metrics are all zero
+    hourlyMetrics.push({
+      hour: hourInTimezone,
+      availability,
+      efficiency,
+      throughput,
+      oee
+    });
   }
 
   return hourlyMetrics;
