@@ -56,6 +56,7 @@ const logger = new winston(logDb);
 
 server.config = config;
 server.db = db;
+server.logDb = logDb;
 server.logger = logger;
 
 server.defaults = {
