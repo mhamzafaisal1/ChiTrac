@@ -194,19 +194,22 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     };
 
   private formatChartData(data: OperatorRow[]): CartesianChartConfig {
-    // Convert operator data to cartesian chart format with horizontal bars
-    const series: XYSeries[] = [
-      {
-        id: 'efficiency',
-        title: 'Efficiency',
-        type: 'bar',
-        data: data.map((op, i) => ({ 
-          x: op.name,  // operator names on Y-axis (horizontal bars)
-          y: op.efficiency  // efficiency values on X-axis
-        })),
-        color: '#42a5f5'
+    // Convert operator data to cartesian chart format with color-coded horizontal bars
+    // Create one series per operator with individual colors based on efficiency
+    // Using multiple series to enable per-bar coloring while maintaining grouped bar width
+    const series: XYSeries[] = data.map((op, index) => ({
+      id: `operator-${index}`,
+      title: op.name,
+      type: 'bar',
+      data: [{ 
+        x: op.name,  // operator names on Y-axis (horizontal bars)
+        y: op.efficiency  // efficiency values on X-axis
+      }],
+      color: this.getEfficiencyColor(op.efficiency), // Color based on efficiency percentage
+      options: {
+        barPadding: 0.2  // Match the original grouped bar padding to maintain same width
       }
-    ];
+    }));
 
     return {
       title: 'Top Operators by Efficiency',
@@ -223,11 +226,18 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         left: Math.max(this.marginLeft || 50, 120) // more space for operator names
       },
       legend: {
-        show: this.showLegend !== false,
-        position: this.legendPosition || 'top'
+        show: false,  // No legend needed for individual operator bars
+        position: 'top'  // Required property, but not used since show is false
       },
       series: series
     };
+  }
+
+  private getEfficiencyColor(efficiency: number): string {
+    // Same color logic as machine OEE chart for consistency
+    if (efficiency >= 85) return '#66bb6a';  // Green: Excellent (85%+)
+    if (efficiency >= 60) return '#ffca28';  // Yellow: Good (60-84%)
+    return '#ef5350';                        // Red: Poor (<60%)
   }
 
   private enterDummy(): void {
