@@ -489,27 +489,16 @@ router.get("/historic-data", async (req, res) => {
     const effectiveEnd =
       new Date(end) > new Date() ? latestState?.timestamp || new Date() : end;
 
-    // Log the time range being queried
-    // Debug: Querying states
+    // Create padded time range for state queries to capture boundary states
+    const { paddedStart, paddedEnd } = createPaddedTimeRange(start, effectiveEnd);
 
-    // Diagnostic: Check what timestamps exist in the database
-    const sampleStates = await db.collection('state')
-      .find()
-      .sort({ timestamp: -1 })
-      .limit(5)
-      .project({ timestamp: 1, 'machine.serial': 1 })
-      .toArray();
-    // Debug: Sample states in DB
-
-    // 1. Fetch and group states by machine and station
+    // 1. Fetch and group states by machine and station (with padding)
     const allStates = await fetchStatesForOperatorForSoftrol(
       db,
       null,
-      start,
-      effectiveEnd
+      paddedStart,
+      paddedEnd
     );
-
-    // Debug: Fetched states count
 
     const groupedStates = groupStatesByMachineAndStation(allStates);
 
@@ -522,8 +511,9 @@ router.get("/historic-data", async (req, res) => {
       }
     }
 
-    // 3. Get machine-station pairs for count lookup
-    const machineStationPairs = Object.keys(completedCyclesByGroup).map((key) => {
+    // 3. Get ALL machine-station pairs from grouped states (not just those with cycles)
+    // This ensures we fetch counts for all operators, even if they don't have completed cycles
+    const allMachineStationPairs = Object.keys(groupedStates).map((key) => {
       const [machineSerial, station] = key.split("-");
       return {
         machineSerial: parseInt(machineSerial),
@@ -531,29 +521,20 @@ router.get("/historic-data", async (req, res) => {
       };
     });
 
-    // 4. Fetch and group counts
-    // Diagnostic: Check what timestamps exist in counts
-    const sampleCounts = await db.collection('count')
-      .find()
-      .sort({ timestamp: -1 })
-      .limit(5)
-      .project({ timestamp: 1, 'machine.serial': 1, station: 1 })
-      .toArray();
-    // Debug: Sample counts in DB
-
+    // 4. Fetch and group counts using aligned time range (effectiveEnd)
     const allCounts = await getCountsForMachineStationPairsForSoftrol(
       db,
-      machineStationPairs,
+      allMachineStationPairs,
       start,
-      end
+      effectiveEnd  // Use effectiveEnd to align with state query range
     );
-    
-    // Debug: Fetched counts
     
     const groupedCounts = groupCountsByMachineAndStation(allCounts);
 
     // 5. Process each group's cycles and counts
     const results = [];
+    
+    // First, process groups with completed cycles
     for (const [key, group] of Object.entries(completedCyclesByGroup)) {
       const [machineSerial, station] = key.split("-");
       const countGroup = groupedCounts[`${machineSerial}-${station}`];
@@ -579,6 +560,63 @@ router.get("/historic-data", async (req, res) => {
             station: parseInt(station),
             ...summary,
           });
+        }
+      }
+    }
+
+    // 6. Handle groups with counts but no completed cycles (e.g., currently running operators)
+    for (const [key, group] of Object.entries(groupedStates)) {
+      // Skip if already processed in completed cycles
+      if (completedCyclesByGroup[key]) continue;
+
+      const [machineSerial, station] = key.split("-");
+      const countGroup = groupedCounts[`${machineSerial}-${station}`];
+      
+      // If there are counts but no completed cycles, create a summary from all counts
+      if (countGroup && countGroup.counts.length > 0) {
+        const sortedCounts = countGroup.counts.sort(
+          (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+        );
+
+        // Find the operator from the first count or first state
+        const operatorId = countGroup.operator?.id || 
+                          group.states[0]?.operators?.[0]?.id || 
+                          null;
+
+        // Create a pseudo-cycle from the entire time range
+        const firstCountTime = new Date(sortedCounts[0].timestamp);
+        const lastCountTime = new Date(sortedCounts[sortedCounts.length - 1].timestamp);
+        
+        // Filter states that overlap with count time range
+        const relevantStates = group.states.filter(state => {
+          const stateTime = new Date(state.timestamp);
+          return stateTime >= firstCountTime && stateTime <= lastCountTime;
+        });
+
+        if (relevantStates.length > 0) {
+          const pseudoCycle = {
+            start: firstCountTime,
+            end: lastCountTime,
+            startState: relevantStates[0],
+            endState: relevantStates[relevantStates.length - 1],
+            states: relevantStates,
+            duration: lastCountTime - firstCountTime
+          };
+
+          const summary = buildSoftrolCycleSummary(
+            pseudoCycle,
+            sortedCounts,
+            countGroup
+          );
+
+          if (summary) {
+            results.push({
+              operatorId,
+              machineSerial: parseInt(machineSerial),
+              station: parseInt(station),
+              ...summary,
+            });
+          }
         }
       }
     }

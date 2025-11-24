@@ -354,23 +354,35 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
 }
 
 async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, paddedEnd) {
+  // Build query to handle both document formats (old and new)
   const query = {
-    "timestamps.create": {
-      $gte: new Date(paddedStart),
-      $lte: new Date(paddedEnd)
-    },
-    'machine.id': { $exists: true }
+    $and: [
+      {
+        $or: [
+          { timestamp: { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } },
+          { "timestamps.create": { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } }
+        ]
+      },
+      {
+        $or: [
+          { 'machine.serial': { $exists: true } },
+          { 'machine.id': { $exists: true } }
+        ]
+      }
+    ]
   };
 
   if (operatorId) {
-    query['operators.id'] = operatorId;
+    query.$and.push({
+      'operators.id': operatorId
+    });
   }
 
   // Debug: Querying state collection
 
   const states = await db.collection('state')
     .find(query)
-    .sort({ "timestamps.create": 1 })
+    .sort({ "timestamps.create": 1, timestamp: 1 })
     .project({
       _id:0,
       "timestamps.create": 1,
@@ -545,7 +557,8 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
       if (!Array.isArray(operators) || !machineSerial) continue;
 
       for (const operator of operators) {
-        if (!operator) continue;
+        // Skip invalid operators (null, undefined, or id === -1)
+        if (!operator || typeof operator.id !== 'number' || operator.id === -1) continue;
 
         const station = typeof operator.station === 'number' ? operator.station : 1;
         const key = `${machineSerial}-${station}`;
