@@ -236,7 +236,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.machineRows = arr.map((m:any)=>({
       Status: getStatusDotByCode(m.currentStatus?.code),
       'Machine Name': m.machine?.name ?? 'Unknown',
-      'OEE': m.performance?.performance?.oee?.percentage ?? '0%',
+      'OEE': this.formatPercentage(m.performance?.oee?.percentage ?? 0),
       'Total Count': m.performance?.output?.totalCount ?? 0,
       serial: m.machine?.serial
     }));
@@ -249,7 +249,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       Status: getStatusDotByCode(o.currentStatus?.code),
       'Operator Name': o.operator?.name ?? 'Unknown',
       'Worked Time': `${o.metrics?.runtime?.formatted?.hours ?? 0}h ${o.metrics?.runtime?.formatted?.minutes ?? 0}m`,
-      'Efficiency': o.metrics?.performance?.efficiency?.percentage ?? '0%',
+      'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
       operatorId: o.operator?.id
     }));
   }
@@ -306,6 +306,27 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const num = typeof value === 'number' ? value : parseFloat(value);
     if (isNaN(num)) return '0%';
     return `${(num * 100).toFixed(2)}%`;
+  }
+
+  private formatPercentage(value: any): string {
+    // Handle both number and string inputs
+    // Backend returns percentage as a number (0-100) or string with '%'
+    let num: number;
+    if (typeof value === 'number') {
+      num = value;
+    } else if (typeof value === 'string') {
+      // Remove '%' if present and parse
+      num = parseFloat(value.replace('%', ''));
+    } else {
+      num = 0;
+    }
+    
+    if (isNaN(num)) return '0%';
+    
+    // Backend already returns 0-100 range, so use as is
+    // Ensure it's clamped to valid percentage range
+    const percentage = Math.max(0, Math.min(100, num));
+    return `${percentage.toFixed(2)}%`;
   }
   
   

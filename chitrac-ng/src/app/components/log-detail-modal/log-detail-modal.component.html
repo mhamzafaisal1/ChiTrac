@@ -1,0 +1,66 @@
+<div class="log-modal-container" [ngClass]="getLevelClass()">
+  <!-- Header -->
+  <div class="log-modal-header">
+    <div class="log-title">
+      <mat-icon class="log-icon">description</mat-icon>
+      <h2>Log Entry Details</h2>
+    </div>
+    <button mat-icon-button class="close-button" (click)="close()" aria-label="Close">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <!-- Log Details -->
+  <div class="log-modal-content">
+    <div class="log-metadata">
+      <div class="log-meta-item">
+        <span class="meta-label">Timestamp:</span>
+        <span class="meta-value">{{ getFormattedTime() }}</span>
+      </div>
+      <div class="log-meta-item">
+        <span class="meta-label">Level:</span>
+        <span class="meta-value level-badge" [ngClass]="getLevelClass()">{{ logData.level?.toUpperCase() || 'UNKNOWN' }}</span>
+      </div>
+      <div class="log-meta-item" *ngIf="logData.hostname">
+        <span class="meta-label">Hostname:</span>
+        <span class="meta-value">{{ logData.hostname }}</span>
+      </div>
+    </div>
+
+    <div class="log-message">
+      <h3>Message:</h3>
+      <pre>{{ logData.message || 'N/A' }}</pre>
+    </div>
+
+    <div class="log-details" *ngIf="logData.meta">
+      <details>
+        <summary>Metadata (expand for more info)</summary>
+        <pre>{{ logData.meta | json }}</pre>
+      </details>
+    </div>
+
+    <div class="log-full-data">
+      <details>
+        <summary>Full Log Data (expand for complete JSON)</summary>
+        <pre>{{ logData | json }}</pre>
+      </details>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="log-modal-actions">
+    <button 
+      mat-raised-button 
+      [color]="copySuccess ? 'accent' : 'primary'"
+      (click)="copyToClipboard()"
+      class="copy-button">
+      <mat-icon>{{ copySuccess ? 'check' : 'content_copy' }}</mat-icon>
+      {{ copySuccess ? 'Copied!' : 'Copy Log Details' }}
+    </button>
+    
+    <button mat-raised-button color="warn" (click)="close()">
+      Close
+    </button>
+  </div>
+</div>
+

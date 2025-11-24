@@ -267,6 +267,13 @@ module.exports = function (server) {
 
       logger.info(`[items-summary-daily-cache] Query start: ${exactStart.toISOString()}, end: ${exactEnd.toISOString()}`);
 
+      // ---------- Check if we're querying today ----------
+      const today = new Date();
+      const todayDateStr = today.toISOString().split('T')[0];
+      const startDateStr = exactStart.toISOString().split('T')[0];
+      const endDateStr = exactEnd.toISOString().split('T')[0];
+      const isToday = startDateStr === todayDateStr || endDateStr === todayDateStr;
+      
       // ---------- Check if we're querying complete days ----------
       const startOfDayStart = new Date(exactStart);
       startOfDayStart.setHours(0, 0, 0, 0);
@@ -276,24 +283,27 @@ module.exports = function (server) {
       
       const isStartOfDay = exactStart.getTime() === startOfDayStart.getTime();
       const isEndOfDay = exactEnd.getTime() >= endOfDayEnd.getTime();
-      const isSameDay = exactStart.toISOString().split('T')[0] === exactEnd.toISOString().split('T')[0];
+      const isSameDay = startDateStr === endDateStr;
       
       const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
       
       logger.info(`[items-summary-daily-cache] Time window analysis:`, {
+        isToday,
         isStartOfDay,
         isEndOfDay,
         isSameDay,
         isPartialDay,
-        startDate: exactStart.toISOString().split('T')[0],
-        endDate: exactEnd.toISOString().split('T')[0],
+        startDate: startDateStr,
+        endDate: endDateStr,
+        todayDate: todayDateStr,
         startTime: exactStart.toISOString().split('T')[1],
         endTime: exactEnd.toISOString().split('T')[1]
       });
 
-      // If querying a partial day, MUST use session data for accurate time windowing
-      if (isPartialDay) {
-        logger.warn(`[items-summary-daily-cache] ⚠️ PARTIAL DAY DETECTED - Falling back to session-based query for accurate time windowing`);
+      // If querying a partial day AND it's NOT today, use session data for accurate time windowing
+      // If it's today, use totals-daily collection regardless of partial day status
+      if (isPartialDay && !isToday) {
+        logger.warn(`[items-summary-daily-cache] ⚠️ PARTIAL DAY DETECTED (not today) - Falling back to session-based query for accurate time windowing`);
         logger.warn(`[items-summary-daily-cache] Reason: Cached item records contain cumulative daily totals, not time-windowed data`);
         logger.warn(`[items-summary-daily-cache] Redirecting to session-based calculation`);
         
@@ -350,6 +360,11 @@ module.exports = function (server) {
         logger.info(`[items-summary-daily-cache] Returning ${results.length} items from session-based fallback`);
         return res.json(results);
       }
+      
+      // If it's a partial day but it's today, log that we're using cache anyway
+      if (isPartialDay && isToday) {
+        logger.info(`[items-summary-daily-cache] ✓ PARTIAL DAY DETECTED but it's TODAY - Using totals-daily collection anyway`);
+      }
 
       // ---------- Hybrid query configuration (for multi-day queries) ----------
       const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
@@ -373,20 +388,48 @@ module.exports = function (server) {
         // Split time range into complete days and partial days
         const { completeDays, partialDays } = splitTimeRangeForHybridItems(exactStart, exactEnd);
         
-        logger.info(`[items-summary-daily-cache] Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
-        logger.info(`[items-summary-daily-cache] Complete days:`, completeDays.map(d => d.dateStr));
-        logger.info(`[items-summary-daily-cache] Partial days:`, partialDays.map(d => ({ start: d.start.toISOString(), end: d.end.toISOString() })));
+        // Separate partial days into today and non-today
+        // If a partial day is today, we still want to use cache for it (per requirement)
+        const today = new Date();
+        const todayDateStr = today.toISOString().split('T')[0];
         
-        // Get data from daily cache for complete days (using simulator's item records)
-        if (completeDays.length > 0) {
-          itemTotals = await getItemsCachedDataForDays(completeDays, db);
-          logger.info(`[items-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache for complete days`);
+        const partialDaysToday = [];
+        const partialDaysNotToday = [];
+        
+        for (const partialDay of partialDays) {
+          const partialDayDateStr = new Date(partialDay.start).toISOString().split('T')[0];
+          if (partialDayDateStr === todayDateStr) {
+            // If partial day is today, treat it as a complete day and use cache
+            partialDaysToday.push({
+              dateStr: partialDayDateStr,
+              start: new Date(partialDayDateStr + 'T00:00:00.000Z'),
+              end: new Date(partialDayDateStr + 'T23:59:59.999Z')
+            });
+          } else {
+            // If partial day is not today, use sessions
+            partialDaysNotToday.push(partialDay);
+          }
         }
         
-        // Get data from sessions for partial days
-        if (partialDays.length > 0) {
-          const sessionData = await getItemsSessionDataForPartialDays(partialDays, db, logger);
-          logger.info(`[items-summary-daily-cache] Retrieved ${sessionData.length} item records from sessions for partial days`);
+        // Combine complete days with today's partial days (both use cache)
+        const daysForCache = [...completeDays, ...partialDaysToday];
+        
+        logger.info(`[items-summary-daily-cache] Hybrid split: ${completeDays.length} complete days, ${partialDaysToday.length} partial days (today - using cache), ${partialDaysNotToday.length} partial day ranges (not today - using sessions)`);
+        logger.info(`[items-summary-daily-cache] Days for cache:`, daysForCache.map(d => d.dateStr));
+        if (partialDaysNotToday.length > 0) {
+          logger.info(`[items-summary-daily-cache] Partial days for sessions:`, partialDaysNotToday.map(d => ({ start: d.start.toISOString(), end: d.end.toISOString() })));
+        }
+        
+        // Get data from daily cache for complete days AND today's partial days
+        if (daysForCache.length > 0) {
+          itemTotals = await getItemsCachedDataForDays(daysForCache, db);
+          logger.info(`[items-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache for complete days + today`);
+        }
+        
+        // Get data from sessions for partial days that are NOT today
+        if (partialDaysNotToday.length > 0) {
+          const sessionData = await getItemsSessionDataForPartialDays(partialDaysNotToday, db, logger);
+          logger.info(`[items-summary-daily-cache] Retrieved ${sessionData.length} item records from sessions for partial days (not today)`);
           itemTotals = combineItemsHybridData(itemTotals, sessionData);
           logger.info(`[items-summary-daily-cache] Combined to ${itemTotals.length} total item records`);
         }
@@ -401,18 +444,53 @@ module.exports = function (server) {
 
         logger.info(`[items-summary-daily-cache] Querying cache for complete day(s): ${startDate} to ${endDate}`);
 
-        // Get item daily totals from simulator (with itemStandard already included)
-        const itemQuery = { 
+        // Build query - handle both date and dateObj fields, make source optional
+        // Try query with entityType and date range first
+        const itemQuery = {
           entityType: 'item',
-          source: 'simulator', // Only get simulator records
-          dateObj: { 
-            $gte: new Date(startDate + 'T00:00:00.000Z'), 
-            $lte: new Date(endDate + 'T23:59:59.999Z') 
-          }
+          $or: [
+            { date: { $gte: startDate, $lte: endDate } },
+            { dateObj: { 
+              $gte: new Date(startDate + 'T00:00:00.000Z'), 
+              $lte: new Date(endDate + 'T23:59:59.999Z') 
+            }}
+          ]
         };
 
+        logger.info(`[items-summary-daily-cache] Query filter:`, JSON.stringify(itemQuery, null, 2));
+        
         itemTotals = await cacheCollection.find(itemQuery).toArray();
-        logger.info(`[items-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache`);
+        logger.info(`[items-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache with entityType filter`);
+        
+        // If no results, try without entityType filter to see what records exist
+        if (itemTotals.length === 0) {
+          logger.warn(`[items-summary-daily-cache] No results with entityType filter, checking what records exist in date range...`);
+          const testQuery = {
+            $or: [
+              { date: { $gte: startDate, $lte: endDate } },
+              { dateObj: { 
+                $gte: new Date(startDate + 'T00:00:00.000Z'), 
+                $lte: new Date(endDate + 'T23:59:59.999Z') 
+              }}
+            ]
+          };
+          const testResults = await cacheCollection.find(testQuery).limit(10).toArray();
+          logger.info(`[items-summary-daily-cache] Found ${testResults.length} total records in date range (sample):`, 
+            testResults.map(r => ({ 
+              entityType: r.entityType, 
+              itemId: r.itemId,
+              itemName: r.itemName,
+              date: r.date, 
+              dateObj: r.dateObj,
+              source: r.source 
+            })));
+          
+          // Try querying by machine-item entityType as fallback
+          if (testResults.length > 0) {
+            logger.info(`[items-summary-daily-cache] Found records but none with entityType='item'. Checking if we should use machine-item records...`);
+            // We could fall back to aggregating machine-item records, but for now let's just log
+          }
+        }
       }
 
       if (!itemTotals.length) {
@@ -538,14 +616,34 @@ module.exports = function (server) {
     const cacheCollection = db.collection('totals-daily');
     const dateStrings = completeDays.map(day => day.dateStr);
     
-    // Get item daily totals from simulator (itemStandard already included)
+    // Get item daily totals - try with date field first, fall back to dateObj
     const itemQuery = { 
       entityType: 'item',
-      source: 'simulator', // Only get simulator records
-      date: { $in: dateStrings }
+      $or: [
+        { date: { $in: dateStrings } },
+        { dateObj: { 
+          $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
+        }}
+      ]
     };
 
     const itemTotals = await cacheCollection.find(itemQuery).toArray();
+    
+    // If no results, try without entityType filter to debug
+    if (itemTotals.length === 0 && dateStrings.length > 0) {
+      console.log(`[getItemsCachedDataForDays] No results found. Date strings:`, dateStrings);
+      const testQuery = {
+        $or: [
+          { date: { $in: dateStrings } },
+          { dateObj: { 
+            $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
+          }}
+        ]
+      };
+      const testResults = await cacheCollection.find(testQuery).limit(5).toArray();
+      console.log(`[getItemsCachedDataForDays] Found ${testResults.length} records in date range (without entityType filter):`, 
+        testResults.map(r => ({ entityType: r.entityType, itemId: r.itemId, date: r.date })));
+    }
     
     return itemTotals;
   }

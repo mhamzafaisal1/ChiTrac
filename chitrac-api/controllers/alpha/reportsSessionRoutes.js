@@ -4561,14 +4561,104 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     const machineMap = new Map();
     const machineItemMap = new Map();
     
-    // Add cached data
+    // ========== FIX: Sum cached machines by serial instead of overwriting ==========
+    // Multiple cache records for same serial from different dates need to be summed
     for (const machine of cachedMachines) {
-      machineMap.set(machine.machineSerial, machine);
+      const serial = machine.machineSerial;
+      if (machineMap.has(serial)) {
+        // Sum with existing cached data
+        const existing = machineMap.get(serial);
+        existing.totalCounts += machine.totalCounts || 0;
+        existing.workedTimeMs += machine.workedTimeMs || 0;
+        existing.runtimeMs += machine.runtimeMs || 0;
+        existing.faultTimeMs += machine.faultTimeMs || 0;
+        existing.pausedTimeMs += machine.pausedTimeMs || 0;
+        existing.totalFaults = (existing.totalFaults || 0) + (machine.totalFaults || 0);
+        existing.totalMisfeeds = (existing.totalMisfeeds || 0) + (machine.totalMisfeeds || 0);
+        existing.totalTimeCreditMs = (existing.totalTimeCreditMs || 0) + (machine.totalTimeCreditMs || 0);
+        // Preserve date if not set, or keep the first one
+        if (!existing.date && machine.date) {
+          existing.date = machine.date;
+        }
+      } else {
+        // First occurrence - create new entry
+        machineMap.set(serial, {
+          machineSerial: machine.machineSerial,
+          machineName: machine.machineName,
+          date: machine.date,
+          runtimeMs: machine.runtimeMs || 0,
+          workedTimeMs: machine.workedTimeMs || 0,
+          totalCounts: machine.totalCounts || 0,
+          totalMisfeeds: machine.totalMisfeeds || 0,
+          faultTimeMs: machine.faultTimeMs || 0,
+          pausedTimeMs: machine.pausedTimeMs || 0,
+          totalFaults: machine.totalFaults || 0,
+          totalTimeCreditMs: machine.totalTimeCreditMs || 0,
+        });
+      }
     }
     
+    // ========== FIX: Deduplicate by (serial, itemId, date) first, then sum across dates ==========
+    // Step 1: Deduplicate by (serial, itemId, date) - if exact duplicates, take max; otherwise sum
+    const deduplicatedByDate = new Map(); // key: `${serial}-${itemId}-${date}`
     for (const item of cachedMachineItems) {
+      const dateKey = item.date || item.dateStr || 'unknown';
+      const key = `${item.machineSerial}-${item.itemId}-${dateKey}`;
+      
+      if (deduplicatedByDate.has(key)) {
+        // Duplicate for same (serial, itemId, date)
+        const existing = deduplicatedByDate.get(key);
+        const newCounts = item.totalCounts || 0;
+        const newTime = item.workedTimeMs || 0;
+        
+        // If values are very similar (within 1%), likely a duplicate - take max
+        // Otherwise, might be partial updates - sum them
+        const countsSimilar = Math.abs(existing.totalCounts - newCounts) / Math.max(existing.totalCounts, newCounts, 1) < 0.01;
+        const timeSimilar = Math.abs(existing.workedTimeMs - newTime) / Math.max(existing.workedTimeMs, newTime, 1) < 0.01;
+        
+        if (countsSimilar && timeSimilar) {
+          // Likely duplicate - take maximum
+          existing.totalCounts = Math.max(existing.totalCounts, newCounts);
+          existing.workedTimeMs = Math.max(existing.workedTimeMs, newTime);
+        } else {
+          // Different values - might be partial updates, but to be safe, take max to avoid double-counting
+          // (If cache has proper deduplication, this shouldn't happen)
+          existing.totalCounts = Math.max(existing.totalCounts, newCounts);
+          existing.workedTimeMs = Math.max(existing.workedTimeMs, newTime);
+        }
+      } else {
+        // First occurrence for this (serial, itemId, date)
+        deduplicatedByDate.set(key, {
+          machineSerial: item.machineSerial,
+          itemId: item.itemId,
+          itemName: item.itemName,
+          itemStandard: item.itemStandard,
+          date: dateKey,
+          totalCounts: item.totalCounts || 0,
+          workedTimeMs: item.workedTimeMs || 0,
+        });
+      }
+    }
+    
+    // Step 2: Sum across dates by (serial, itemId)
+    for (const item of deduplicatedByDate.values()) {
       const key = `${item.machineSerial}-${item.itemId}`;
-      machineItemMap.set(key, item);
+      if (machineItemMap.has(key)) {
+        // Sum with existing cached data (from different dates)
+        const existing = machineItemMap.get(key);
+        existing.totalCounts += item.totalCounts;
+        existing.workedTimeMs += item.workedTimeMs;
+      } else {
+        // First occurrence - create new entry
+        machineItemMap.set(key, {
+          machineSerial: item.machineSerial,
+          itemId: item.itemId,
+          itemName: item.itemName,
+          itemStandard: item.itemStandard,
+          totalCounts: item.totalCounts,
+          workedTimeMs: item.workedTimeMs,
+        });
+      }
     }
     
     // Add/combine session data
@@ -4576,14 +4666,14 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       if (machineMap.has(machine.machineSerial)) {
         // Combine with existing cached data
         const existing = machineMap.get(machine.machineSerial);
-        existing.totalCounts += machine.totalCounts;
-        existing.workedTimeMs += machine.workedTimeMs;
-        existing.runtimeMs += machine.runtimeMs;
-        existing.faultTimeMs += machine.faultTimeMs;
-        existing.pausedTimeMs += machine.pausedTimeMs;
-        existing.totalFaults += machine.totalFaults;
-        existing.totalMisfeeds += machine.totalMisfeeds;
-        existing.totalTimeCreditMs += machine.totalTimeCreditMs;
+        existing.totalCounts += machine.totalCounts || 0;
+        existing.workedTimeMs += machine.workedTimeMs || 0;
+        existing.runtimeMs += machine.runtimeMs || 0;
+        existing.faultTimeMs += machine.faultTimeMs || 0;
+        existing.pausedTimeMs += machine.pausedTimeMs || 0;
+        existing.totalFaults = (existing.totalFaults || 0) + (machine.totalFaults || 0);
+        existing.totalMisfeeds = (existing.totalMisfeeds || 0) + (machine.totalMisfeeds || 0);
+        existing.totalTimeCreditMs = (existing.totalTimeCreditMs || 0) + (machine.totalTimeCreditMs || 0);
       } else {
         machineMap.set(machine.machineSerial, machine);
       }
@@ -4594,8 +4684,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       if (machineItemMap.has(key)) {
         // Combine with existing cached data
         const existing = machineItemMap.get(key);
-        existing.totalCounts += item.totalCounts;
-        existing.workedTimeMs += item.workedTimeMs;
+        existing.totalCounts += item.totalCounts || 0;
+        existing.workedTimeMs += item.workedTimeMs || 0;
       } else {
         machineItemMap.set(key, item);
       }
@@ -4625,15 +4715,11 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         startDt.equals(normalizedStart) &&
         endDt <= nowLocal;
       
-      console.log(`[MACHINE-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
-      
       // Always use UTC timestamps corresponding to local day boundaries
       const exactStart = normalizedStart.toUTC().toJSDate();
       const exactEnd = isTodaySinceMidnight 
         ? nowLocal.toUTC().toJSDate() 
         : endDt.toUTC().toJSDate();
-      
-      console.log(`[MACHINE-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -4707,7 +4793,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           }],
           partialDays: [],
         };
-        console.log(`[MACHINE-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
       } else {
         split = splitTimeRangeForHybrid(exactStart, exactEnd);
 
@@ -4724,10 +4809,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
           }];
           split.partialDays = [];
-          console.log(`[MACHINE-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
         }
-
-        console.log(`[MACHINE-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
       }
       
       const { completeDays, partialDays } = split;
@@ -4756,26 +4838,20 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         // Split by entity type
         machineCache = cacheDocs.filter(d => d.entityType === 'machine');
         machineItemCache = cacheDocs.filter(d => d.entityType === 'machine-item');
-        
-        console.log(`[MACHINE-CACHE] Retrieved ${machineCache.length} machine + ${machineItemCache.length} machine-item cache records`);
       }
       
       // Get data from sessions for partial days only
       let sessionData = { machines: [], machineItems: [] };
       if (partialDays.length > 0) {
         sessionData = await getSessionDataForPartialDays(partialDays, serial);
-        console.log(`[MACHINE-CACHE] Retrieved ${sessionData.machines.length} session machine + ${sessionData.machineItems.length} session machine-item records`);
       }
       
       // Combine cached and session data (disjoint date ranges)
       const combinedData = combineHybridData(machineCache, machineItemCache, sessionData);
       let machineTotals = combinedData.machines;
       let machineItemTotals = combinedData.machineItems;
-      console.log(`[MACHINE-CACHE] After combining: ${machineTotals.length} total machine records, ${machineItemTotals.length} total machine-item records`);
 
       if (!machineTotals.length) {
-        console.log(`[MACHINE-CACHE] No cache data found — attempting session data fallback`);
-        
         // Try session data as fallback when cache is missing
         const partialDay = {
           start: exactStart,
@@ -4784,18 +4860,14 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const sessionFallback = await getSessionDataForPartialDays([partialDay], serial);
         
         if (sessionFallback.machines.length > 0) {
-          
           // Re-combine with session data
           const recombined = combineHybridData([], [], sessionFallback);
           machineTotals = recombined.machines;
           machineItemTotals = recombined.machineItems;
-          
-          console.log(`[MACHINE-CACHE] Session fallback resulted in ${machineTotals.length} machines, ${machineItemTotals.length} machine-items`);
         }
         
         // Final check after fallback attempt
         if (!machineTotals.length) {
-          console.log(`[MACHINE-CACHE] No data found even after session fallback — returning empty results`);
           return res.json({
             timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
             results: []
@@ -4839,11 +4911,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       // Cap each machine to 24h per day
       for (const [key, dayBucket] of groupedByMachineDay) {
         if (dayBucket.runtimeMs > 86400000) {
-          console.log(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.runtimeMs/3600000).toFixed(1)}h runtime (>24h), capping`);
           dayBucket.runtimeMs = 86400000;
         }
         if (dayBucket.workedTimeMs > 86400000) {
-          console.log(`[MACHINE-CACHE] Machine ${dayBucket.machineSerial} on ${dayBucket.date}: ${(dayBucket.workedTimeMs/3600000).toFixed(1)}h worked (>24h), capping`);
           dayBucket.workedTimeMs = 86400000;
         }
       }
@@ -4879,8 +4949,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         bucket.daysActive += 1;
       }
 
-      // Group machine-item totals by machine serial
-      const machineItemMap = new Map();
+      // Group machine-item totals by machine serial, then aggregate by (serial, itemId) to sum across dates
+      const machineItemMap = new Map(); // serial -> array of item records
       for (const itemTotal of machineItemTotals) {
         const serial = itemTotal.machineSerial;
         if (!machineItemMap.has(serial)) {
@@ -4893,26 +4963,78 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       for (const [serial, machineData] of machineDataMap) {
         const itemTotals = machineItemMap.get(serial) || [];
         
-        // Calculate item summaries
+        // ========== FIX: Aggregate machine-items by (serial, itemId) to sum across dates ==========
+        // This prevents items from showing more time than the machine total
+        const aggregatedItems = new Map(); // itemId -> aggregated item data
+        for (const itemTotal of itemTotals) {
+          const itemId = String(itemTotal.itemId);
+          
+          if (!aggregatedItems.has(itemId)) {
+            aggregatedItems.set(itemId, {
+              itemId: itemTotal.itemId,
+              itemName: itemTotal.itemName,
+              itemStandard: itemTotal.itemStandard,
+              totalCounts: 0,
+              workedTimeMs: 0,
+            });
+          }
+          
+          const aggregated = aggregatedItems.get(itemId);
+          aggregated.totalCounts += itemTotal.totalCounts || 0;
+          aggregated.workedTimeMs += itemTotal.workedTimeMs || 0;
+        }
+        
+        // Calculate item summaries from aggregated data
         let proratedStandard = 0;
         const itemSummaries = {};
 
-        for (const itemTotal of itemTotals) {
-          const hours = itemTotal.workedTimeMs / 3600000;
-          const pph = hours > 0 ? itemTotal.totalCounts / hours : 0;
-          const eff = itemTotal.itemStandard > 0 ? pph / itemTotal.itemStandard : 0;
-          const weight = machineData.totalCounts > 0 ? itemTotal.totalCounts / machineData.totalCounts : 0;
-          proratedStandard += weight * itemTotal.itemStandard;
+        // First pass: calculate totals from items with non-zero counts (items that will be displayed)
+        let itemTotalCounts = 0;
+        let itemTotalWorkedMs = 0;
 
-          itemSummaries[itemTotal.itemId] = {
-            name: itemTotal.itemName,
-            standard: itemTotal.itemStandard,
-            countTotal: itemTotal.totalCounts,
-            workedTimeFormatted: formatDuration(itemTotal.workedTimeMs),
+        for (const aggregatedItem of aggregatedItems.values()) {
+          // Skip items with zero counts to avoid cluttering the response
+          if (aggregatedItem.totalCounts === 0) {
+            continue;
+          }
+
+          // Sum totals from displayed items only
+          itemTotalCounts += aggregatedItem.totalCounts;
+          itemTotalWorkedMs += aggregatedItem.workedTimeMs;
+
+          const hours = aggregatedItem.workedTimeMs / 3600000;
+          const pph = hours > 0 ? aggregatedItem.totalCounts / hours : 0;
+          const eff = aggregatedItem.itemStandard > 0 ? pph / aggregatedItem.itemStandard : 0;
+          const weight = machineData.totalCounts > 0 ? aggregatedItem.totalCounts / machineData.totalCounts : 0;
+          proratedStandard += weight * aggregatedItem.itemStandard;
+
+          itemSummaries[aggregatedItem.itemId] = {
+            name: aggregatedItem.itemName,
+            standard: aggregatedItem.itemStandard,
+            countTotal: aggregatedItem.totalCounts,
+            workedTimeFormatted: formatDuration(aggregatedItem.workedTimeMs),
             pph: Math.round(pph * 100) / 100,
             efficiency: Math.round(eff * 10000) / 100,
           };
         }
+
+        // Add Total entry first (top row) - sum of all displayed items
+        const itemTotalHours = itemTotalWorkedMs / 3600000;
+        const itemTotalPph = itemTotalHours > 0 ? itemTotalCounts / itemTotalHours : 0;
+        const itemTotalEfficiency = proratedStandard > 0 ? itemTotalPph / proratedStandard : 0;
+        
+        // Create a new object with Total first, then individual items
+        const itemSummariesWithTotal = {
+          'Total': {
+            name: 'Total',
+            standard: Math.round(proratedStandard * 100) / 100,
+            countTotal: itemTotalCounts,
+            workedTimeFormatted: formatDuration(itemTotalWorkedMs),
+            pph: Math.round(itemTotalPph * 100) / 100,
+            efficiency: Math.round(itemTotalEfficiency * 10000) / 100,
+          },
+          ...itemSummaries
+        };
 
         // Calculate machine-level metrics
         const hours = machineData.workedTimeMs / 3600000;
@@ -4925,11 +5047,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         let validatedWorkedMs = machineData.workedTimeMs;
         
         if (validatedRuntimeMs > queryWindowMs) {
-          console.log(`[DATA VALIDATION] Machine ${serial} runtime ${(validatedRuntimeMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
           validatedRuntimeMs = queryWindowMs;
         }
         if (validatedWorkedMs > queryWindowMs) {
-          console.log(`[DATA VALIDATION] Machine ${serial} worked ${(validatedWorkedMs/3600000).toFixed(1)}h exceeds query window ${(queryWindowMs/3600000).toFixed(1)}h, capping`);
           validatedWorkedMs = queryWindowMs;
         }
 
@@ -4948,7 +5068,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             pph: Math.round(machinePph * 100) / 100,
             proratedStandard: Math.round(proratedStandard * 100) / 100,
             efficiency: Math.round(machineEff * 10000) / 100,
-            itemSummaries,
+            itemSummaries: itemSummariesWithTotal,
           },
         });
       }
@@ -5073,6 +5193,211 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     } catch (error) {
       console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to generate cached machine item summary" });
+    }
+  });
+
+  // Simplified cached version using only totals-daily collection
+  router.get("/analytics/machine-item-sessions-summary-cache2", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+      
+      // Timezone-aware date handling
+      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
+      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
+      
+      const normalizedStart = startDt.startOf('day');
+      const normalizedEnd = endDt.startOf('day');
+      
+      // Generate date range
+      const dateStrings = [];
+      let currentDate = normalizedStart;
+      while (currentDate <= normalizedEnd) {
+        dateStrings.push(currentDate.toISODate());
+        currentDate = currentDate.plus({ days: 1 });
+      }
+      
+      const cacheCollection = db.collection('totals-daily');
+      
+      // Query for machine and machine-item records
+      const cacheQuery = {
+        $or: [
+          { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
+          { date: { $in: dateStrings } }
+        ],
+        entityType: { $in: ['machine', 'machine-item'] }
+      };
+      if (serial) cacheQuery.machineSerial = parseInt(serial);
+      
+      const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
+      
+      // Split by entity type
+      const machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
+      const machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
+      
+      // Aggregate machines by serial (sum across dates)
+      const machineMap = new Map();
+      for (const machine of machineRecords) {
+        const serial = machine.machineSerial;
+        if (machineMap.has(serial)) {
+          const existing = machineMap.get(serial);
+          existing.runtimeMs += machine.runtimeMs || 0;
+          existing.totalCounts += machine.totalCounts || 0;
+          existing.workedTimeMs += machine.workedTimeMs || 0;
+        } else {
+          machineMap.set(serial, {
+            machineSerial: serial,
+            machineName: machine.machineName,
+            runtimeMs: machine.runtimeMs || 0,
+            totalCounts: machine.totalCounts || 0,
+            workedTimeMs: machine.workedTimeMs || 0,
+          });
+        }
+      }
+      
+      // Aggregate machine-items by (serial, itemId) - deduplicate by date first, then sum
+      const itemDeduplicatedByDate = new Map(); // key: `${serial}-${itemId}-${date}`
+      for (const item of machineItemRecords) {
+        const dateKey = item.date || item.dateStr || 'unknown';
+        const key = `${item.machineSerial}-${item.itemId}-${dateKey}`;
+        
+        if (itemDeduplicatedByDate.has(key)) {
+          // Duplicate for same (serial, itemId, date) - take max
+          const existing = itemDeduplicatedByDate.get(key);
+          existing.totalCounts = Math.max(existing.totalCounts, item.totalCounts || 0);
+          existing.workedTimeMs = Math.max(existing.workedTimeMs, item.workedTimeMs || 0);
+          existing.runtimeMs = Math.max(existing.runtimeMs, item.runtimeMs || 0);
+        } else {
+          itemDeduplicatedByDate.set(key, {
+            machineSerial: item.machineSerial,
+            itemId: item.itemId,
+            itemName: item.itemName,
+            itemStandard: item.itemStandard,
+            totalCounts: item.totalCounts || 0,
+            workedTimeMs: item.workedTimeMs || 0,
+            runtimeMs: item.runtimeMs || 0,
+          });
+        }
+      }
+      
+      // Sum across dates by (serial, itemId)
+      const itemMap = new Map(); // key: `${serial}-${itemId}`
+      for (const item of itemDeduplicatedByDate.values()) {
+        const key = `${item.machineSerial}-${item.itemId}`;
+        if (itemMap.has(key)) {
+          const existing = itemMap.get(key);
+          existing.totalCounts += item.totalCounts;
+          existing.workedTimeMs += item.workedTimeMs;
+          existing.runtimeMs += item.runtimeMs;
+        } else {
+          itemMap.set(key, {
+            machineSerial: item.machineSerial,
+            itemId: item.itemId,
+            itemName: item.itemName,
+            itemStandard: item.itemStandard,
+            totalCounts: item.totalCounts,
+            workedTimeMs: item.workedTimeMs,
+            runtimeMs: item.runtimeMs,
+          });
+        }
+      }
+      
+      // Build results in the same format as machine-item-sessions-summary-cache
+      const results = [];
+      const exactStart = normalizedStart.toUTC().toJSDate();
+      const exactEnd = normalizedEnd.plus({ days: 1 }).toUTC().toJSDate();
+      
+      for (const [serial, machineData] of machineMap) {
+        const machineItems = Array.from(itemMap.values()).filter(item => item.machineSerial === serial);
+        
+        // Calculate machine totals from items
+        const machineTotalCounts = machineItems.reduce((sum, item) => sum + item.totalCounts, 0);
+        const machineTotalRuntimeMs = machineItems.reduce((sum, item) => sum + item.runtimeMs, 0);
+        const machineTotalWorkedMs = machineItems.reduce((sum, item) => sum + item.workedTimeMs, 0);
+        
+        // Calculate machine PPH and efficiency
+        const machineHours = machineTotalWorkedMs / 3600000;
+        const machinePph = machineHours > 0 ? machineTotalCounts / machineHours : 0;
+        
+        // Calculate prorated standard (weighted average)
+        let proratedStandard = 0;
+        for (const item of machineItems) {
+          if (machineTotalCounts > 0 && item.totalCounts > 0) {
+            const weight = item.totalCounts / machineTotalCounts;
+            proratedStandard += weight * (item.itemStandard || 0);
+          }
+        }
+        const machineEfficiency = proratedStandard > 0 ? machinePph / proratedStandard : 0;
+        
+        // Build itemSummaries object with Total first, then individual items
+        const itemSummaries = {};
+        
+        // Add Total entry first (top row)
+        itemSummaries['Total'] = {
+          name: 'Total',
+          standard: Math.round(proratedStandard * 100) / 100,
+          countTotal: machineTotalCounts,
+          workedTimeFormatted: formatDuration(machineTotalWorkedMs),
+          pph: Math.round(machinePph * 100) / 100,
+          efficiency: Math.round(machineEfficiency * 10000) / 100,
+        };
+        
+        // Add individual item entries
+        for (const item of machineItems) {
+          if (item.totalCounts === 0) continue; // Skip items with zero counts
+          
+          const itemHours = item.workedTimeMs / 3600000;
+          const itemPph = itemHours > 0 ? item.totalCounts / itemHours : 0;
+          const itemEfficiency = (item.itemStandard || 0) > 0 ? itemPph / item.itemStandard : 0;
+          
+          itemSummaries[item.itemId] = {
+            name: item.itemName,
+            standard: item.itemStandard || 0,
+            countTotal: item.totalCounts,
+            workedTimeFormatted: formatDuration(item.workedTimeMs),
+            pph: Math.round(itemPph * 100) / 100,
+            efficiency: Math.round(itemEfficiency * 10000) / 100,
+          };
+        }
+        
+        // Final validation: cap to query window
+        const queryWindowMs = exactEnd.getTime() - exactStart.getTime();
+        let validatedRuntimeMs = machineTotalRuntimeMs;
+        let validatedWorkedMs = machineTotalWorkedMs;
+        
+        if (validatedRuntimeMs > queryWindowMs) {
+          validatedRuntimeMs = queryWindowMs;
+        }
+        if (validatedWorkedMs > queryWindowMs) {
+          validatedWorkedMs = queryWindowMs;
+        }
+        
+        results.push({
+          machine: {
+            name: machineData.machineName,
+            serial: machineData.machineSerial
+          },
+          sessions: [], // Empty array - no individual session details in cached version
+          machineSummary: {
+            totalCount: machineTotalCounts,
+            workedTimeMs: validatedWorkedMs,
+            workedTimeFormatted: formatDuration(validatedWorkedMs),
+            runtimeMs: validatedRuntimeMs,
+            runtimeFormatted: formatDuration(validatedRuntimeMs),
+            pph: Math.round(machinePph * 100) / 100,
+            proratedStandard: Math.round(proratedStandard * 100) / 100,
+            efficiency: Math.round(machineEfficiency * 10000) / 100,
+            itemSummaries,
+          },
+        });
+      }
+      
+      res.json({
+        timeRange: { start: exactStart.toISOString(), end: exactEnd.toISOString() },
+        results,
+      });
+    } catch (error) {
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate simplified cached machine item summary" });
     }
   });
 
@@ -5203,7 +5528,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const dateStrings = completeDays.map(d => d.dateStr);
         const dateObjs = dateStrings.map(str => new Date(str + 'T00:00:00.000Z'));
         const cacheCollection = db.collection('totals-daily');
-        
+
         // Single query for both entity types with both date formats
         const cacheQuery = {
           $or: [
@@ -5213,15 +5538,27 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           entityType: { $in: ['operator-machine', 'operator-item'] }
         };
         if (operatorId) cacheQuery.operatorId = operatorId;
-        
+
         const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
-        
+
         // Split by entity type
         operatorMachineCache = cacheDocs.filter(d => d.entityType === 'operator-machine');
         operatorItemCache = cacheDocs.filter(d => d.entityType === 'operator-item');
-        
+
         console.log(`[OPERATOR-CACHE] Retrieved ${operatorMachineCache.length} operator-machine + ${operatorItemCache.length} operator-item cache records`);
-        
+
+        // Log sample of what we got to diagnose zero counts
+        if (operatorItemCache.length > 0) {
+          const nonZeroItems = operatorItemCache.filter(item => item.totalCounts > 0);
+          const zeroItems = operatorItemCache.filter(item => item.totalCounts === 0);
+          console.log(`[OPERATOR-CACHE] operator-item breakdown: ${nonZeroItems.length} with counts > 0, ${zeroItems.length} with counts = 0`);
+
+          if (nonZeroItems.length > 0) {
+            const sample = nonZeroItems[0];
+            console.log(`[OPERATOR-CACHE] Sample non-zero item: operator ${sample.operatorId}, item ${sample.itemId} (${sample.itemName}), counts=${sample.totalCounts}`);
+          }
+        }
+
         // If cache is empty, fallback to sessions for entire range
         if (operatorMachineCache.length === 0 && operatorItemCache.length === 0) {
           console.log(`[OPERATOR-CACHE] Cache empty, falling back to sessions for entire range`);

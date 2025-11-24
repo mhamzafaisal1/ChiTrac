@@ -22,6 +22,7 @@ import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-ef
 import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
+import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 
 export const routes: Routes = [
 	// Settings pages
@@ -30,6 +31,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/machines', component: MachineGridComponent },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
 	
 	// Login/Auth
 	{ path: 'ng/login', component: UserLoginComponent },
