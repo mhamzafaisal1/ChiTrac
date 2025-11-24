@@ -584,12 +584,29 @@ module.exports = function (server) {
         // Clean up temporary data
         delete operatorData.machines;
         delete operatorData.efficiencyData;
-        
+
         return operatorData;
       });
-      
-      logger.info(`[operatorSessions] Retrieved ${results.length} daily cached operator records for date: ${dateStr}`);
-      res.json(results);
+
+      // ✅ FIX: Filter out "phantom operators" - operators who worked earlier but are no longer assigned
+      // Only show operators who meet ALL of these criteria:
+      // 1. Have actual runtime (> 0), AND
+      // 2. Have actual production (totalCount > 0), AND
+      // 3. Either currently assigned to a machine OR worked for at least 1 hour
+      const MIN_RUNTIME_TO_SHOW_MS = 3600000; // 1 hour
+      const filteredResults = results.filter(operatorData => {
+        const hasRuntime = operatorData.metrics.runtime.total > 0;
+        const hasProduction = operatorData.metrics.output.totalCount > 0;
+        const hasCurrentMachine = operatorData.currentMachine !== null;
+        const hasSignificantRuntime = operatorData.metrics.runtime.total >= MIN_RUNTIME_TO_SHOW_MS;
+
+        // Must have actual work (runtime AND production)
+        // AND either currently assigned OR significant history
+        return hasRuntime && hasProduction && (hasCurrentMachine || hasSignificantRuntime);
+      });
+
+      logger.info(`[operatorSessions] Retrieved ${results.length} daily cached operator records (${filteredResults.length} after filtering phantoms) for date: ${dateStr}`);
+      res.json(filteredResults);
       
     } catch (err) {
       logger.error(`[operatorSessions] Error in daily cached operators-summary route:`, err);
