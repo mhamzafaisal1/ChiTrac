@@ -537,30 +537,30 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
 
   function groupStatesByMachineAndStation(states) {
     const grouped = new Map();
-  
+
     for (const state of states) {
       const operators = state.operators;
       const machineSerial = state.machine?.serial;
-  
+
       if (!Array.isArray(operators) || !machineSerial) continue;
-  
-      // Extract essential state data
-      const essentialState = {
-        timestamp: state.timestamp,
-        status: state.status,
-        machine: state.machine,
-        program: state.program,
-        operators: state.operators
-      };
-  
+
       for (const operator of operators) {
         if (!operator) continue;
-  
+
         const station = typeof operator.station === 'number' ? operator.station : 1;
         const key = `${machineSerial}-${station}`;
-  
+
+        // Extract essential state data with ONLY the operator for THIS station
+        const essentialState = {
+          timestamp: state.timestamp,
+          status: state.status,
+          machine: state.machine,
+          program: state.program,
+          operators: [operator] // Only include the operator for this specific station
+        };
+
         let group = grouped.get(key);
-  
+
         if (!group) {
           group = {
             machineSerial,
@@ -569,11 +569,11 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
           };
           grouped.set(key, group);
         }
-  
+
         group.states.push(essentialState);
       }
     }
-  
+
     return Object.fromEntries(grouped);
   }
   
