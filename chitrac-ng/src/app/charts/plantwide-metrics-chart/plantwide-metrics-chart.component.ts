@@ -102,18 +102,26 @@ export class PlantwideMetricsChartComponent implements OnInit, OnDestroy, OnChan
 
   // flow
   private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
-    // Determine if we should fetch data based on the current state
-    const shouldFetch = !isLive || wasConfirmed;
-    
-    if (shouldFetch) {
-      // Use confirmed times if available, otherwise use default times
-      if (wasConfirmed) {
-        this.startTime = this.dateTimeService.getStartTime();
-        this.endTime = this.dateTimeService.getEndTime();
-      }
-      
-      this.fetchOnce().subscribe();
+    // If in live mode, start polling immediately
+    if (isLive) {
+      this.liveMode = true;
+      this.startLive();
+      return;
     }
+    
+    // Otherwise, fetch once with confirmed or default times
+    if (wasConfirmed) {
+      this.startTime = this.dateTimeService.getStartTime();
+      this.endTime = this.dateTimeService.getEndTime();
+    }
+    
+    this.fetchOnce().subscribe({
+      error: (err) => {
+        console.error('Error fetching plantwide metrics:', err);
+        this.isLoading = false;
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   private startLive(): void {

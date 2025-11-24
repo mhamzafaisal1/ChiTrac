@@ -6,6 +6,7 @@ const { formatDuration, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require
 const {
   buildDailyItemHourlyStack,
   buildPlantwideMetricsByHour,
+  buildPlantwideMetricsByHourFromCache,
   buildDailyCountTotals,
   buildMachineOEE,
 } = require("../../utils/dailyDashboardBuilder");
@@ -704,17 +705,25 @@ module.exports = function (server) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch plant-wide metrics data" });
     }
-  });
+  }); 
 
   // Route 5B: Plant-wide Metrics (Fast - using daily totals cache)
   router.get('/analytics/daily/plantwide-metrics-cache', async (req, res) => {
     try {
-      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
-      const dayStart = now.startOf('day').toJSDate();
-      const dayEnd = now.toJSDate();
+      // Parse query parameters, with fallback to today if not provided
+      let dayStart, dayEnd;
+      try {
+        const { start, end } = parseAndValidateQueryParams(req);
+        dayStart = new Date(start);
+        dayEnd = new Date(end);
+      } catch (error) {
+        // If query params are invalid or missing, default to today
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+        dayStart = now.startOf('day').toJSDate();
+        dayEnd = now.toJSDate();
+      }
 
-      // Note: buildPlantwideMetricsFromDailyTotals doesn't exist yet, using session-based version
-      const plantwideMetrics = await buildPlantwideMetricsByHour(db, dayStart, dayEnd);
+      const plantwideMetrics = await buildPlantwideMetricsByHourFromCache(db, dayStart, dayEnd);
 
       return res.json({
         timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
