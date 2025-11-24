@@ -30,6 +30,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   isDarkTheme: boolean = false;
   chartWidth: number = 600;
   chartHeight: number = 450;
+  private readonly handleResize = () => this.calculateChartDimensions();
 
   constructor() {}
 
@@ -38,9 +39,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     this.calculateChartDimensions();
     
     // Listen for window resize to recalculate chart dimensions
-    window.addEventListener('resize', () => {
-      this.calculateChartDimensions();
-    });
+    window.addEventListener('resize', this.handleResize);
   }
 
   ngAfterViewInit(): void {
@@ -54,9 +53,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
 
   ngOnDestroy(): void {
     // Clean up event listener
-    window.removeEventListener('resize', () => {
-      this.calculateChartDimensions();
-    });
+    window.removeEventListener('resize', this.handleResize);
   }
 
   detectTheme() {
