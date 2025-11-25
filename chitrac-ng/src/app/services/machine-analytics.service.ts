@@ -135,7 +135,7 @@ export class MachineAnalyticsService {
       .set('end', end)
       .set('serial', serial.toString());
   
-    return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-cached`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-daily-cached`, { params });
   }
 
   getMachineDetailsWithTimeframe(timeframe: string, serial: number): Observable<any> {
