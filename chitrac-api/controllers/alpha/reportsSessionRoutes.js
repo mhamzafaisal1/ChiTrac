@@ -5018,20 +5018,20 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           };
         }
 
-        // Add Total entry first (top row) - sum of all displayed items
-        const itemTotalHours = itemTotalWorkedMs / 3600000;
-        const itemTotalPph = itemTotalHours > 0 ? itemTotalCounts / itemTotalHours : 0;
-        const itemTotalEfficiency = proratedStandard > 0 ? itemTotalPph / proratedStandard : 0;
-        
+        // Add Total entry first (top row) - uses machine's runtimeMs
+        const machineRuntimeHours = machineData.runtimeMs / 3600000;
+        const machineTotalPph = machineRuntimeHours > 0 ? itemTotalCounts / machineRuntimeHours : 0;
+        const machineTotalEfficiency = proratedStandard > 0 ? machineTotalPph / proratedStandard : 0;
+
         // Create a new object with Total first, then individual items
         const itemSummariesWithTotal = {
           'Total': {
             name: 'Total',
             standard: Math.round(proratedStandard * 100) / 100,
             countTotal: itemTotalCounts,
-            workedTimeFormatted: formatDuration(itemTotalWorkedMs),
-            pph: Math.round(itemTotalPph * 100) / 100,
-            efficiency: Math.round(itemTotalEfficiency * 10000) / 100,
+            workedTimeFormatted: formatDuration(machineData.runtimeMs),
+            pph: Math.round(machineTotalPph * 100) / 100,
+            efficiency: Math.round(machineTotalEfficiency * 10000) / 100,
           },
           ...itemSummaries
         };
