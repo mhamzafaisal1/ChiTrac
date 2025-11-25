@@ -1,6 +1,7 @@
 const express = require("express");
 
 const { formatDuration } = require("../../utils/time");
+const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -591,6 +592,7 @@ module.exports = function (server) {
         .toArray();
 
       if (data.length === 0) {
+        console.log("No cached dashboard data found for date: ", dateStr);
         logger.warn(
           `[machineSessions] No cached dashboard data found for date: ${dateStr}, falling back to real-time calculation`
         );
@@ -622,6 +624,167 @@ module.exports = function (server) {
         `[machineSessions] Falling back to real-time calculation due to error`
       );
       return await getMachineDashboardRealTime(req, res);
+    }
+  });
+
+  // ---- /api/alpha/machine-dashboard-daily-cached ----
+  router.get("/analytics/machine-dashboard-daily-cached", async (req, res) => {
+    try {
+      const serialParam =
+        typeof req.query.serial !== "undefined"
+          ? Number.parseInt(req.query.serial, 10)
+          : null;
+      const machineSerialFilter = Number.isFinite(serialParam)
+        ? serialParam
+        : null;
+
+      // Get today's date string in Chicago timezone (same as cache service)
+      const today = new Date();
+      const chicagoTime = new Date(
+        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      );
+      const dateStr = chicagoTime.toISOString().split("T")[0];
+
+      const cacheCollection = db.collection("totals-daily");
+      const machineFilter = {
+        entityType: "machine",
+        date: dateStr,
+      };
+
+      if (machineSerialFilter !== null) {
+        machineFilter.machineSerial = machineSerialFilter;
+      }
+
+      const machineTotals = await cacheCollection.find(machineFilter).toArray();
+
+      if (machineTotals.length === 0) {
+        logger.warn(
+          `[machineSessions] No machine totals found in totals-daily for ${dateStr}`
+        );
+        return res.json([]);
+      }
+
+      const machineSerials = machineTotals
+        .map((record) => Number(record.machineSerial))
+        .filter((serial) => Number.isFinite(serial));
+
+      if (!machineSerials.length) {
+        logger.warn(
+          "[machineSessions] Machine totals missing serial numbers, cannot build response"
+        );
+        return res.json([]);
+      }
+
+      const serialSet = new Set(machineSerials);
+      const tickerSerialFilter = [
+        ...new Set([
+          ...machineSerials,
+          ...machineSerials.map((serial) => String(serial)),
+        ]),
+      ];
+
+      const [machineItemRecords, operatorMachineRecords, stateTickerData] =
+        await Promise.all([
+          cacheCollection
+            .find({
+              entityType: "machine-item",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          cacheCollection
+            .find({
+              entityType: "operator-machine",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          tickerSerialFilter.length
+            ? db
+                .collection(config.stateTickerCollectionName)
+                .find({
+                  $or: [
+                    { "machine.serial": { $in: tickerSerialFilter } },
+                    { "machine.id": { $in: tickerSerialFilter } },
+                  ],
+                })
+                .toArray()
+            : [],
+        ]);
+
+      const tickerMap = buildLatestTickerMap(stateTickerData);
+      const machineItemsBySerial = groupRecordsBySerial(machineItemRecords);
+      const operatorTotalsBySerial = groupRecordsBySerial(
+        operatorMachineRecords
+      );
+
+      const results = await Promise.all(
+        machineTotals.map(async (record) => {
+          const serial = Number(record.machineSerial);
+          if (!Number.isFinite(serial) || !serialSet.has(serial)) {
+            return null;
+          }
+
+          const sessionStart = record.timeRange?.start
+            ? new Date(record.timeRange.start)
+            : new Date(`${dateStr}T00:00:00.000Z`);
+          const sessionEnd = record.timeRange?.end
+            ? new Date(record.timeRange.end)
+            : chicagoTime;
+
+          const performance = buildPerformanceFromMachineRecord(record);
+          const machineItems = machineItemsBySerial.get(serial) || [];
+          const itemSummary = buildItemSummaryFromRecords(
+            machineItems,
+            sessionStart,
+            sessionEnd
+          );
+          const itemHourlyStack = buildItemHourlyStackFromRecords(
+            machineItems,
+            sessionStart
+          );
+          const operatorEfficiency = buildOperatorEfficiencyFromRecords(
+            operatorTotalsBySerial.get(serial) || [],
+            sessionStart
+          );
+          const currentOperators = await buildCurrentOperators(db, serial);
+
+          const latestTicker = tickerMap.get(serial);
+
+          return {
+            machine: {
+              serial,
+              name: record.machineName || `Serial ${serial}`,
+            },
+            currentStatus: latestTicker?.status || {
+              code: 0,
+              name: "Unknown",
+            },
+            performance,
+            itemSummary,
+            itemHourlyStack,
+            faultData: {
+              faultSummaries: [],
+              faultCycles: [],
+            },
+            operatorEfficiency,
+            currentOperators,
+            timestamp: record.lastUpdated || chicagoTime,
+            sessionStart,
+            sessionEnd,
+          };
+        })
+      );
+
+      res.json(results.filter(Boolean));
+    } catch (err) {
+      logger.error(
+        `[machineSessions] Error in machine-dashboard-daily-cached route:`,
+        err
+      );
+      res
+        .status(500)
+        .json({ error: "Failed to fetch machine dashboard daily cache" });
     }
   });
 
@@ -1998,6 +2161,297 @@ module.exports = function (server) {
         end: queryEnd,
       },
     };
+  }
+
+  function safeNumber(value, fallback = 0) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  }
+
+  function groupRecordsBySerial(records) {
+    const map = new Map();
+    for (const record of records || []) {
+      const serial = safeNumber(record.machineSerial, null);
+      if (serial === null) continue;
+      if (!map.has(serial)) {
+        map.set(serial, []);
+      }
+      map.get(serial).push(record);
+    }
+    return map;
+  }
+
+  function buildLatestTickerMap(stateTickerData) {
+    const tickerMap = new Map();
+    for (const record of stateTickerData || []) {
+      const candidates = [
+        record.machine?.serial,
+        record.machine?.id,
+        record.machine?.serialNumber,
+      ];
+      const ts =
+        new Date(
+          record.status?.timestamp ||
+            record.timestamp ||
+            record.timestamps?.update ||
+            record.timestamps?.active ||
+            record.timestamps?.create ||
+            0
+        ).getTime() || 0;
+
+      for (const candidate of candidates) {
+        const serial = safeNumber(candidate, null);
+        if (serial === null) continue;
+
+        const existing = tickerMap.get(serial);
+        if (!existing || ts > existing.timestamp) {
+          tickerMap.set(serial, {
+            status: {
+              code: record.status?.code ?? 0,
+              name: record.status?.name || "Unknown",
+            },
+            timestamp: ts,
+          });
+        }
+      }
+    }
+    return tickerMap;
+  }
+
+  function buildPerformanceFromMachineRecord(record) {
+    const runtimeMs = safeNumber(record.runtimeMs);
+    const pausedMs = safeNumber(record.pausedTimeMs);
+    const faultMs = safeNumber(record.faultTimeMs);
+    const downtimeMs = pausedMs + faultMs;
+    const workedTimeMs = safeNumber(record.workedTimeMs);
+    const timeCreditMs = safeNumber(record.totalTimeCreditMs);
+    const totalCounts = safeNumber(record.totalCounts);
+    const totalMisfeeds = safeNumber(record.totalMisfeeds);
+    const totalOutput = totalCounts + totalMisfeeds;
+
+    const windowMs =
+      record.timeRange?.start && record.timeRange?.end
+        ? Math.max(
+            0,
+            new Date(record.timeRange.end) - new Date(record.timeRange.start)
+          )
+        : runtimeMs + downtimeMs;
+
+    const availability =
+      windowMs > 0 ? Math.min(Math.max(runtimeMs / windowMs, 0), 1) : 0;
+    const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
+    const efficiency =
+      workedTimeMs > 0 ? Math.min(Math.max(timeCreditMs / workedTimeMs, 0), 1) : 0;
+    const oee = availability * throughput * efficiency;
+
+    return {
+      runtime: {
+        total: runtimeMs,
+        formatted: formatDuration(runtimeMs),
+      },
+      downtime: {
+        total: downtimeMs,
+        formatted: formatDuration(downtimeMs),
+      },
+      output: {
+        totalCount: totalCounts,
+        misfeedCount: totalMisfeeds,
+      },
+      performance: {
+        availability: {
+          value: availability,
+          percentage: (availability * 100).toFixed(2) + "%",
+        },
+        throughput: {
+          value: throughput,
+          percentage: (throughput * 100).toFixed(2) + "%",
+        },
+        efficiency: {
+          value: efficiency,
+          percentage: (efficiency * 100).toFixed(2) + "%",
+        },
+        oee: {
+          value: oee,
+          percentage: (oee * 100).toFixed(2) + "%",
+        },
+      },
+    };
+  }
+
+  function buildItemSummaryFromRecords(records, sessionStart, sessionEnd) {
+    if (!records.length) {
+      return {
+        sessions: [],
+        machineSummary: {
+          totalCount: 0,
+          workedTimeMs: 0,
+          workedTimeFormatted: formatDuration(0),
+          pph: 0,
+          proratedStandard: 0,
+          efficiency: 0,
+          itemSummaries: {},
+        },
+      };
+    }
+
+    let totalWorkedMs = 0;
+    let totalCounts = 0;
+    const sessionItems = [];
+    const itemSummaries = {};
+
+    for (const record of records) {
+      const counts = safeNumber(record.totalCounts);
+      const workedMs =
+        safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
+      const standard = safeNumber(record.itemStandard);
+      const hours = workedMs / 3600000 || 0;
+      const pph = hours > 0 ? counts / hours : 0;
+      const efficiency = standard > 0 ? pph / standard : 0;
+      const itemId = record.itemId ?? record.itemName ?? "unknown";
+      const itemKey = String(itemId);
+      const itemName = record.itemName || `Item ${itemKey}`;
+
+      totalWorkedMs += workedMs;
+      totalCounts += counts;
+
+      sessionItems.push({
+        itemId: record.itemId,
+        name: itemName,
+        countTotal: counts,
+        standard,
+        pph: Math.round(pph * 100) / 100,
+        efficiency: Math.round(efficiency * 10000) / 100,
+      });
+
+      itemSummaries[itemKey] = {
+        name: itemName,
+        standard,
+        countTotal: counts,
+        workedTimeFormatted: formatDuration(workedMs),
+        pph: Math.round(pph * 100) / 100,
+        efficiency: Math.round(efficiency * 10000) / 100,
+      };
+    }
+
+    const totalHours = totalWorkedMs / 3600000 || 0;
+    const machinePph = totalHours > 0 ? totalCounts / totalHours : 0;
+    const proratedStandard = sessionItems.reduce((acc, item) => {
+      const weight = totalCounts > 0 ? item.countTotal / totalCounts : 0;
+      return acc + weight * (item.standard || 0);
+    }, 0);
+    const machineEfficiency =
+      proratedStandard > 0 ? machinePph / proratedStandard : 0;
+
+    return {
+      sessions: [
+        {
+          start: sessionStart.toISOString(),
+          end: sessionEnd.toISOString(),
+          workedTimeMs: totalWorkedMs,
+          workedTimeFormatted: formatDuration(totalWorkedMs),
+          items: sessionItems,
+        },
+      ],
+      machineSummary: {
+        totalCount: totalCounts,
+        workedTimeMs: totalWorkedMs,
+        workedTimeFormatted: formatDuration(totalWorkedMs),
+        pph: Math.round(machinePph * 100) / 100,
+        proratedStandard: Math.round(proratedStandard * 100) / 100,
+        efficiency: Math.round(machineEfficiency * 10000) / 100,
+        itemSummaries,
+      },
+    };
+  }
+
+  function buildItemHourlyStackFromRecords(records, sessionStart) {
+    if (!records.length) {
+      return {
+        title: "No data",
+        data: { hours: [], operators: {} },
+      };
+    }
+
+    const hourMap = new Map();
+    const itemNames = new Set();
+
+    for (const record of records) {
+      const endTime = record.timeRange?.end
+        ? new Date(record.timeRange.end)
+        : sessionStart;
+      const diff = endTime - sessionStart;
+      const hourIndex = Math.max(0, Math.floor(diff / (60 * 60 * 1000)));
+      const itemName = record.itemName || `Item ${record.itemId ?? "Unknown"}`;
+      const count = safeNumber(record.totalCounts);
+
+      if (!hourMap.has(hourIndex)) {
+        hourMap.set(hourIndex, {});
+      }
+      const entry = hourMap.get(hourIndex);
+      entry[itemName] = (entry[itemName] || 0) + count;
+      itemNames.add(itemName);
+    }
+
+    const maxHour = Math.max(...hourMap.keys());
+    if (!Number.isFinite(maxHour) || maxHour < 0) {
+      return {
+        title: "Item Stacked Count Chart",
+        data: { hours: [], operators: {} },
+      };
+    }
+
+    const hours = Array.from({ length: maxHour + 1 }, (_, idx) => idx);
+    const operators = {};
+
+    for (const name of itemNames) {
+      operators[name] = Array(maxHour + 1).fill(0);
+    }
+
+    for (const [hourIndex, counts] of hourMap.entries()) {
+      for (const [itemName, total] of Object.entries(counts)) {
+        operators[itemName][hourIndex] = total;
+      }
+    }
+
+    return {
+      title: "Item Stacked Count Chart",
+      data: {
+        hours,
+        operators,
+      },
+    };
+  }
+
+  function buildOperatorEfficiencyFromRecords(records, sessionStart) {
+    if (!records.length) {
+      return [];
+    }
+
+    const operatorEntries = [];
+    for (const record of records) {
+      const workedMs =
+        safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
+      const timeCreditMs = safeNumber(record.totalTimeCreditMs);
+      const ratio =
+        workedMs > 0 ? Math.min(Math.max(timeCreditMs / workedMs, 0), 2) : 0;
+      operatorEntries.push({
+        id: safeNumber(record.operatorId, record.operatorId),
+        name: record.operatorName || "Unknown",
+        efficiency: Math.round(ratio * 10000) / 100,
+      });
+    }
+
+    const avgEfficiency =
+      operatorEntries.reduce((sum, entry) => sum + entry.efficiency, 0) /
+      operatorEntries.length;
+
+    return [
+      {
+        hour: sessionStart.toISOString(),
+        oee: Math.round(avgEfficiency * 100) / 100,
+        operators: operatorEntries,
+      },
+    ];
   }
 
   return router;
