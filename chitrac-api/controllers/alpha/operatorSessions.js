@@ -339,7 +339,8 @@ module.exports = function (server) {
   // ---- /api/alpha/analytics/operators-summary-daily-cached ----
   router.get("/analytics/operators-summary-daily-cached", async (req, res) => {
     try {
-      const { start, end, operatorId } = parseAndValidateQueryParams(req);
+      const { start, end } = parseAndValidateQueryParams(req);
+      const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
       
       // Get today's date string in Chicago timezone
       const today = new Date();
@@ -355,8 +356,8 @@ module.exports = function (server) {
       };
       
       // Add operator filter if specified
-      if (operatorId) {
-        filter.operatorId = parseInt(operatorId);
+      if (operatorId && !Number.isNaN(operatorId)) {
+        filter.operatorId = operatorId;
       }
       
       // Query the totals-daily collection
@@ -378,42 +379,12 @@ module.exports = function (server) {
             .filter(serial => serial !== null && serial !== undefined)
         )
       ];
-      const tickerSerialFilter = [
-        ...new Set([
-          ...machineSerials,
-          ...machineSerials.map(serial => serial.toString())
-        ])
-      ];
       
       // Get current machine statuses from stateTicker collection
-      // Build stateTicker query - support serial stored in different fields/types
-      const tickerQuery =
-        tickerSerialFilter.length > 0
-          ? {
-              $or: [
-                { "machine.serial": { $in: tickerSerialFilter } },
-                { "machine.id": { $in: tickerSerialFilter } },
-                {
-                  "machine.serial": {
-                    $in: tickerSerialFilter
-                      .map(Number)
-                      .filter(n => !Number.isNaN(n))
-                  }
-                },
-                {
-                  "machine.id": {
-                    $in: tickerSerialFilter
-                      .map(Number)
-                      .filter(n => !Number.isNaN(n))
-                  }
-                }
-              ]
-            }
-          : {};
-
-      // Get current machine statuses from stateTicker collection
+      // Use same approach as operators-summary-cached: get all stateTicker records
+      // This avoids complex query issues and is more reliable across environments
       const stateTickerData = await db.collection("stateTicker")
-        .find(tickerQuery)
+        .find({})
         .toArray();
 
       // Build a map of latest ticker context per operator
@@ -521,7 +492,7 @@ module.exports = function (server) {
         }
         
         // Aggregate metrics
-        const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
+        const downtimeMs = (record.pausedTimeMs || 0) + (record.faultTimeMs || 0);
         operatorData.metrics.runtime.total += record.runtimeMs;
         operatorData.metrics.downtime.total += downtimeMs;
         operatorData.metrics.output.totalCount += record.totalCounts;
@@ -542,8 +513,25 @@ module.exports = function (server) {
       const results = Array.from(operatorMap.values()).map(operatorData => {
         const { runtime, downtime, output } = operatorData.metrics;
         
-        // Calculate window time from timeRange
-        const windowMs = new Date(operatorData.timeRange.end) - new Date(operatorData.timeRange.start);
+        // Calculate window time from timeRange with fallback
+        let windowMs = 0;
+        if (operatorData.timeRange && operatorData.timeRange.start && operatorData.timeRange.end) {
+          try {
+            const startDate = new Date(operatorData.timeRange.start);
+            const endDate = new Date(operatorData.timeRange.end);
+            if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && endDate > startDate) {
+              windowMs = endDate.getTime() - startDate.getTime();
+            }
+          } catch (e) {
+            logger.warn(`[operatorSessions] Invalid timeRange for operator ${operatorData.operator.id}:`, e);
+          }
+        }
+        
+        // Fallback to default time range if windowMs is invalid
+        if (windowMs <= 0) {
+          const defaultStart = new Date(`${dateStr}T06:00:00.000Z`);
+          windowMs = Math.max(0, chicagoTime.getTime() - defaultStart.getTime());
+        }
         
         // Calculate aggregated performance metrics
         const availability = windowMs > 0 ? runtime.total / windowMs : 0;
