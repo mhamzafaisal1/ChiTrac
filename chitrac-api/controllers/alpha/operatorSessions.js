@@ -129,34 +129,34 @@ module.exports = function (server) {
   router.get("/analytics/operators-summary-cached", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
-      
+
       // Get today's date string in Chicago timezone (same as cache service)
       const today = new Date();
       const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
       const dateStr = chicagoTime.toISOString().split('T')[0];
-      
+
       logger.info(`[operatorSessions] Fetching cached operators summary for date: ${dateStr}`);
-      
-      // Query the operator-cache-today collection directly
-      const data = await db.collection('operator-cache-today')
-        .find({ 
-          date: dateStr,
-          _id: { $ne: 'metadata' }
+
+      // Query totals-daily collection for operator-machine records
+      const data = await db.collection('totals-daily')
+        .find({
+          entityType: 'operator-machine',
+          date: dateStr
         })
         .toArray();
-      
+
       if (data.length === 0) {
         logger.warn(`[operatorSessions] No cached data found for date: ${dateStr}, falling back to real-time calculation`);
         // Fallback to real-time calculation
         return await getOperatorsSummaryRealTime(req, res);
       }
-      
+
       // Get current machine statuses from stateTicker collection
       const stateTickerData = await db.collection('stateTicker')
         .find({})
         .toArray();
-      
-      // Create a map of operator ID to their latest ticker context
+
+      // Create a map of operator ID to their latest ticker context (machine + status)
       const operatorTickerMap = new Map();
       for (const stateRecord of stateTickerData) {
         const machine = stateRecord.machine || {};
@@ -199,17 +199,20 @@ module.exports = function (server) {
           }
         }
       }
-      
+
       // Group by operator ID and aggregate metrics across machines
       const operatorMap = new Map();
-      
+
       for (const record of data) {
-        const operatorId = record.operator.id;
-        
+        const operatorId = record.operatorId;
+
         if (!operatorMap.has(operatorId)) {
           operatorMap.set(operatorId, {
-            operator: record.operator,
-            currentStatus: { code: 1, name: "Running" }, // Default status
+            operator: {
+              id: operatorId,
+              name: record.operatorName || `Operator ${operatorId}`
+            },
+            currentStatus: { code: 0, name: "Offline" }, // Default status
             currentMachine: null,
             metrics: {
               runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
@@ -222,70 +225,70 @@ module.exports = function (server) {
                 oee: { value: 0, percentage: "0.00" }
               }
             },
-            timeRange: record.timeRange,
-            machines: []
+            timeRange: record.timeRange || {
+              start: new Date(`${dateStr}T06:00:00.000Z`),
+              end: chicagoTime
+            },
+            machines: [],
+            totalTimeCreditMs: 0,
+            totalWorkedMs: 0
           });
         }
-        
+
         const operatorData = operatorMap.get(operatorId);
-        
+
         // Add machine info
         operatorData.machines.push({
-          serial: record.machine.serial,
-          name: record.machine.name
+          serial: record.machineSerial,
+          name: record.machineName
         });
-        
-        // Set current machine to the most recent one (last in the list)
-        operatorData.currentMachine = {
-          serial: record.machine.serial,
-          name: record.machine.name
-        };
-        
-        // Get current status from stateTicker for this machine
-        const currentMachineStatus = machineStatusMap.get(record.machine.serial);
-        if (currentMachineStatus) {
-          operatorData.currentStatus = {
-            code: currentMachineStatus.code,
-            name: currentMachineStatus.name
-          };
+
+        // Aggregate metrics (convert ms to total)
+        operatorData.metrics.runtime.total += (record.runtimeMs || 0);
+        operatorData.metrics.downtime.total += (record.pausedTimeMs || 0);
+        operatorData.metrics.output.totalCount += (record.totalCounts || 0);
+        operatorData.metrics.output.misfeedCount += (record.totalMisfeeds || 0);
+        operatorData.totalTimeCreditMs += (record.totalTimeCreditMs || 0);
+        operatorData.totalWorkedMs += (record.workedTimeMs || 0);
+
+        // Update time range to use the latest
+        if (record.timeRange?.end) {
+          const recordEnd = new Date(record.timeRange.end);
+          const currentEnd = new Date(operatorData.timeRange.end);
+          if (recordEnd > currentEnd) {
+            operatorData.timeRange.end = recordEnd;
+          }
         }
-        
-        // Aggregate metrics
-        operatorData.metrics.runtime.total += record.metrics.runtime.total;
-        operatorData.metrics.downtime.total += record.metrics.downtime.total;
-        operatorData.metrics.output.totalCount += record.metrics.output.totalCount;
-        operatorData.metrics.output.misfeedCount += record.metrics.output.misfeedCount;
       }
-      
+
       // Calculate aggregated performance metrics for each operator
       const results = Array.from(operatorMap.values()).map(operatorData => {
         const { runtime, downtime, output } = operatorData.metrics;
-        
-        // Calculate aggregated performance metrics
-        const totalMs = operatorData.timeRange.end - operatorData.timeRange.start;
-        const availability = totalMs > 0 ? runtime.total / totalMs : 0;
-        const throughput = (output.totalCount + output.misfeedCount) > 0 ? 
-          output.totalCount / (output.totalCount + output.misfeedCount) : 0;
-        
-        // For efficiency, we'll use a weighted average based on runtime
-        let totalWeightedEfficiency = 0;
-        let totalWeight = 0;
-        
-        for (const record of data) {
-          if (record.operator.id === operatorData.operator.id) {
-            const weight = record.metrics.runtime.total;
-            totalWeightedEfficiency += record.metrics.performance.efficiency.value * weight;
-            totalWeight += weight;
-          }
+
+        // Get current status and machine from stateTicker
+        const tickerInfo = operatorTickerMap.get(operatorData.operator.id);
+        if (tickerInfo) {
+          operatorData.currentMachine = tickerInfo.machine;
+          operatorData.currentStatus = tickerInfo.status || { code: 0, name: "Offline" };
         }
-        
-        const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
+
+        // Calculate aggregated performance metrics
+        const totalMs = new Date(operatorData.timeRange.end).getTime() -
+                       new Date(operatorData.timeRange.start).getTime();
+        const availability = totalMs > 0 ? runtime.total / totalMs : 0;
+        const throughput = (output.totalCount + output.misfeedCount) > 0 ?
+          output.totalCount / (output.totalCount + output.misfeedCount) : 0;
+
+        // Efficiency = time credit / worked time
+        const efficiency = operatorData.totalWorkedMs > 0 ?
+          (operatorData.totalTimeCreditMs / operatorData.totalWorkedMs) : 0;
+
         const oee = availability * throughput * efficiency;
-        
-        // Update formatted runtime
+
+        // Update formatted runtime and downtime
         operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
         operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
-        
+
         // Update performance metrics
         operatorData.metrics.performance = {
           availability: {
@@ -305,26 +308,28 @@ module.exports = function (server) {
             percentage: (oee * 100).toFixed(2)
           }
         };
-        
-        // Remove machines array from final output
+
+        // Remove temporary fields from final output
         delete operatorData.machines;
-        
+        delete operatorData.totalTimeCreditMs;
+        delete operatorData.totalWorkedMs;
+
         return operatorData;
       });
-      
+
       logger.info(`[operatorSessions] Retrieved ${results.length} cached operator records for date: ${dateStr}`);
       res.json(results);
-      
+
     } catch (err) {
       logger.error(`[operatorSessions] Error in cached operators-summary route:`, err);
-      
+
       // Check if it's a validation error
       if (err.message.includes('Start and end dates are required') ||
         err.message.includes('Invalid date format') ||
         err.message.includes('Start date must be before end date')) {
         return res.status(400).json({ error: err.message });
       }
-      
+
       // Fallback to real-time calculation on any error
       logger.info(`[operatorSessions] Falling back to real-time calculation due to error`);
       return await getOperatorsSummaryRealTime(req, res);
