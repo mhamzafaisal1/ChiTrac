@@ -11,18 +11,19 @@ module.exports = function (server) {
 
   router.get('/analytics/machine-live-session-summary', async (req, res) => {
   try {
+    console.log('[SPL Route] Received request:', req.query);
     const { serial, date } = req.query;
     if (!serial || !date) {
       return res.status(400).json({ error: 'Missing serial or date' });
     }
 
     const serialNum = Number(serial);
+    console.log('[SPL Route] Looking for machine.id:', serialNum);
     const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
       .findOne(
-        { 'machine.serial': serialNum },
+        { 'machine.id': serialNum },
         {
           projection: {
-            _id: 0,
             timestamp: 1,
             machine: 1,
             program: 1,
@@ -32,29 +33,57 @@ module.exports = function (server) {
         }
       );
 
-    // No ticker: Offline
+    console.log('[SPL Route] Ticker result:', ticker ? 'Found' : 'Not found');
+    // No ticker: Offline - but still return flipperData structure
     if (!ticker) {
-      return res.json({
-        status: { code: -1, name: 'Offline' },
-        machine: { serial: serialNum }
-      });
+      console.log('[SPL Route] No ticker, returning offline response');
+      // Fetch machine configuration to get machine name
+      const machineConfig = await db.collection('machines').findOne(
+        { serial: serialNum },
+        { projection: { name: 1 } }
+      );
+
+      const machineName = machineConfig?.name || `Serial ${serialNum}`;
+
+      // Return a single offline lane entry for full-height display
+      const offlineLanes = [{
+        status: -1,
+        fault: 'Offline',
+        operator: null,
+        operatorId: null,
+        machine: machineName,
+        timers: { on: 0, ready: 0 },
+        displayTimers: { on: '', run: '' },
+        efficiency: buildZeroEfficiencyPayload(),
+        oee: {},
+        batch: { item: '', code: 0 }
+      }];
+
+      return res.json({ flipperData: offlineLanes });
     }
 
+    console.log('[SPL Route] Processing ticker, status code:', ticker.status?.code);
     // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
     const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
       .filter(op => op && op.id !== -1)
       .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
 
+    console.log('[SPL Route] Found operators:', onMachineOperators.length);
+
     // If machine is NOT running, mirror existing route behavior by returning entries with 0% efficiency
     // (we still include operator/machine/batch info for the screen to render cleanly)
     if ((ticker.status?.code ?? 0) !== 1) {
+      console.log('[SPL Route] Machine not running, returning zero efficiency');
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op, idx) => {
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
+          const operatorName = op.name?.first && op.name?.surname
+            ? `${op.name.first} ${op.name.surname}`
+            : (op.name || 'Unknown');
           return {
             status: ticker.status?.code ?? 0,
             fault: ticker.status?.name ?? 'Unknown',
-            operator: op.name || 'Unknown',
+            operator: operatorName,
             operatorId: op.id,
             machine: ticker.machine?.name || `Serial ${serialNum}`,
             timers: { on: 0, ready: 0 },
@@ -67,10 +96,12 @@ module.exports = function (server) {
         })
       );
 
+      console.log('[SPL Route] Returning performance data with', performanceData.length, 'entries');
       // Back-compat: preserve existing top-level shape/key
       return res.json({ flipperData: performanceData });
     }
 
+    console.log('[SPL Route] Machine is running, computing performance');
     // Running: compute performance from operator-sessions over four windows
     const now = DateTime.now();
     const frames = {
@@ -80,23 +111,32 @@ module.exports = function (server) {
       today: { start: now.startOf('day'), label: 'All Day' }
     };
 
+    console.log('[SPL Route] Starting Promise.all for', onMachineOperators.length, 'operators');
     const performanceData = await Promise.all(
       onMachineOperators.map(async (op, idx) => {
+        console.log('[SPL Route] Processing operator', idx + 1, 'of', onMachineOperators.length, '- ID:', op.id);
         // Run the four timeframe queries in parallel
         const results = await queryOperatorTimeframes(db, serialNum, op.id, frames);
+        console.log('[SPL Route] Got results for operator', op.id);
 
         // If ANY timeframe came back empty, fetch most recent OPEN session and use it for all frames
-        if (Object.values(results).some(arr => arr.length === 0)) {
+        const hasEmpty = Object.values(results).some(arr => arr.length === 0);
+        console.log('[SPL Route] Has empty results?', hasEmpty, 'for operator', op.id);
+
+        if (hasEmpty) {
+          console.log('[SPL Route] Fetching open session for operator', op.id);
           const open = await db.collection(config.operatorSessionCollectionName)
             .findOne(
               { 'operator.id': op.id, 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
               { sort: { 'timestamps.start': -1 }, projection: projectSessionForPerf() }
             );
+          console.log('[SPL Route] Open session found?', !!open, 'for operator', op.id);
           if (open) {
             for (const k of Object.keys(results)) results[k] = [open];
           }
         }
 
+        console.log('[SPL Route] Computing efficiency for operator', op.id);
         // Compute efficiency% per timeframe from sessions (truncate overlap at frame start)
         const efficiencyObj = {};
         for (const [key, arr] of Object.entries(results)) {
@@ -109,14 +149,23 @@ module.exports = function (server) {
             color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
           };
         }
+        console.log('[SPL Route] Efficiency computed for operator', op.id);
 
+        console.log('[SPL Route] Resolving batch item for operator', op.id);
         // Batch item: concatenate current items if multiple (prefer the most recent session; fallback to union)
         const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
+        console.log('[SPL Route] Batch item resolved for operator', op.id);
+
+        const operatorName = op.name?.first && op.name?.surname
+          ? `${op.name.first} ${op.name.surname}`
+          : (op.name || 'Unknown');
+
+        console.log('[SPL Route] Building return object for operator', op.id);
 
         return {
           status: ticker.status?.code ?? 0,
           fault: ticker.status?.name ?? 'Unknown',
-          operator: op.name || 'Unknown',
+          operator: operatorName,
           operatorId: op.id,
           machine: ticker.machine?.name || `Serial ${serialNum}`,
           timers: { on: 0, ready: 0 },
@@ -129,9 +178,16 @@ module.exports = function (server) {
       })
     );
 
+    console.log('[SPL Route] Returning running performance data with', performanceData.length, 'entries');
+    console.log('[SPL Route] Sample entry:', JSON.stringify(performanceData[0]).substring(0, 200));
     // Back-compat: preserve existing top-level shape/key
-    return res.json({ flipperData: performanceData });
+    const response = { flipperData: performanceData };
+    console.log('[SPL Route] About to send JSON response...');
+    res.json(response);
+    console.log('[SPL Route] JSON response sent');
+    return;
   } catch (err) {
+    console.error('[SPL Route] ERROR:', err);
     logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -143,7 +199,6 @@ module.exports = function (server) {
   function projectSessionForPerf() {
     return {
       projection: {
-        _id: 0,
         timestamps: 1,
         items: 1,
         machine: 1,
@@ -155,6 +210,7 @@ module.exports = function (server) {
 
 // Query all four time windows in parallel for a single operator
   async function queryOperatorTimeframes(db, serialNum, operatorId, frames) {
+    console.log('[queryOperatorTimeframes] Starting for operator:', operatorId, 'collection:', config.operatorSessionCollectionName);
     const coll = db.collection(config.operatorSessionCollectionName);
     const nowJs = new Date();
 
@@ -169,19 +225,43 @@ module.exports = function (server) {
       ]
     });
 
-    const [six, fifteen, hour, today] = await Promise.all([
-      coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
-      coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
-      coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
-      coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()
-    ]);
+    console.log('[queryOperatorTimeframes] Running 4 parallel queries...');
 
-    return {
-      lastSixMinutes: six,
-      lastFifteenMinutes: fifteen,
-      lastHour: hour,
-      today
+    // Add timeout wrapper to prevent hanging
+    const queryWithTimeout = (promise, timeoutMs = 5000) => {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Query timeout')), timeoutMs)
+        )
+      ]);
     };
+
+    try {
+      const [six, fifteen, hour, today] = await Promise.all([
+        queryWithTimeout(coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray())
+      ]);
+      console.log('[queryOperatorTimeframes] Queries complete. Results:', six.length, fifteen.length, hour.length, today.length);
+
+      return {
+        lastSixMinutes: six,
+        lastFifteenMinutes: fifteen,
+        lastHour: hour,
+        today
+      };
+    } catch (err) {
+      console.error('[queryOperatorTimeframes] Query error or timeout:', err.message);
+      // Return empty results on timeout
+      return {
+        lastSixMinutes: [],
+        lastFifteenMinutes: [],
+        lastHour: [],
+        today: []
+      };
+    }
   }
 
 // Sum runtime + time credit for a given window across an array of sessions
@@ -221,11 +301,11 @@ module.exports = function (server) {
     const session =
       (await coll.findOne(
         { 'operator.id': operatorId, 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
-        { sort: { 'timestamps.start': -1 }, projection: { _id: 0, items: 1 } }
+        { sort: { 'timestamps.start': -1 }, projection: { items: 1 } }
       )) ||
       (await coll.findOne(
         { 'operator.id': operatorId, 'machine.serial': serialNum },
-        { sort: { 'timestamps.start': -1 }, projection: { _id: 0, items: 1 } }
+        { sort: { 'timestamps.start': -1 }, projection: { items: 1 } }
       ));
 
     const names = new Set(
@@ -290,8 +370,8 @@ module.exports = function (server) {
 
       // Live status from ticker
       const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker').findOne(
-        { 'machine.serial': serialNum },
-        { projection: { _id: 0, timestamp: 1, machine: 1, status: 1 } }
+        { 'machine.id': serialNum },
+        { projection: { timestamp: 1, machine: 1, status: 1 } }
       );
 
       if (!ticker) {
@@ -362,7 +442,6 @@ module.exports = function (server) {
   function projectMachineForPerf() {
     return {
       projection: {
-        _id: 0,
         timestamps: 1,
         items: 1,
         machine: 1,
@@ -474,10 +553,9 @@ module.exports = function (server) {
       // Get machine ticker to find operator at specified station
       const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
         .findOne(
-          { 'machine.serial': serialNum },
+          { 'machine.id': serialNum },
           {
             projection: {
-              _id: 0,
               timestamp: 1,
               machine: 1,
               program: 1,
@@ -573,10 +651,13 @@ module.exports = function (server) {
       // If machine is NOT running, return zero efficiency but keep operator info
       if ((ticker.status?.code ?? 0) !== 1) {
         const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
+        const operatorName = operator.name?.first && operator.name?.surname
+          ? `${operator.name.first} ${operator.name.surname}`
+          : (operator.name || 'Unknown');
         return res.json({
           status: ticker.status?.code ?? 0,
           fault: ticker.status?.name ?? 'Unknown',
-          operator: operator.name || 'Unknown',
+          operator: operatorName,
           operatorId: operator.id,
           machine: ticker.machine?.name || `Serial ${serialNum}`,
           timers: { on: 0, ready: 0 },
@@ -627,10 +708,14 @@ module.exports = function (server) {
       // Batch item: concatenate current items if multiple (prefer the most recent session; fallback to union)
       const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
 
+      const operatorName = operator.name?.first && operator.name?.surname
+        ? `${operator.name.first} ${operator.name.surname}`
+        : (operator.name || 'Unknown');
+
       return res.json({
         status: ticker.status?.code ?? 0,
         fault: ticker.status?.name ?? 'Unknown',
-        operator: operator.name || 'Unknown',
+        operator: operatorName,
         operatorId: operator.id,
         machine: ticker.machine?.name || `Serial ${serialNum}`,
         timers: { on: 0, ready: 0 },

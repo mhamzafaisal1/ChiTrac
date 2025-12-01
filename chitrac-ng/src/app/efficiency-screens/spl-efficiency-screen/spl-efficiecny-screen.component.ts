@@ -49,16 +49,21 @@ export class SplEfficiencyScreen implements OnDestroy {
   startPolling() {
     this.pollingActive = true;
 
+    console.log(`Starting polling for serial ${this.SERIAL_NUMBER}, date: ${this.date}`);
+
     timer(0, this.POLL_INTERVAL)
       .pipe(
         takeUntil(this.destroy$),
-        switchMap(() =>
-          this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER, this.date)
-        )
+        switchMap(() => {
+          console.log(`Making API call to /api/alpha/analytics/machine-live-session-summary?serial=${this.SERIAL_NUMBER}&date=${new Date(this.date).toISOString().split('T')[0]}`);
+          return this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER, this.date);
+        })
       )
       .subscribe({
         next: (res) => {
+          console.log('API Response received:', res);
           this.lanes = res?.flipperData || [];
+          console.log('Lanes array:', this.lanes);
         },
         error: (err) => {
           console.error('Polling error:', err);
