@@ -11,14 +11,12 @@ module.exports = function (server) {
 
   router.get('/analytics/machine-live-session-summary', async (req, res) => {
   try {
-    console.log('[SPL Route] Received request:', req.query);
     const { serial, date } = req.query;
     if (!serial || !date) {
       return res.status(400).json({ error: 'Missing serial or date' });
     }
 
     const serialNum = Number(serial);
-    console.log('[SPL Route] Looking for machine.id:', serialNum);
     const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
       .findOne(
         { 'machine.id': serialNum },
@@ -33,10 +31,8 @@ module.exports = function (server) {
         }
       );
 
-    console.log('[SPL Route] Ticker result:', ticker ? 'Found' : 'Not found');
     // No ticker: Offline - but still return flipperData structure
     if (!ticker) {
-      console.log('[SPL Route] No ticker, returning offline response');
       // Fetch machine configuration to get machine name
       const machineConfig = await db.collection('machines').findOne(
         { serial: serialNum },
@@ -62,18 +58,14 @@ module.exports = function (server) {
       return res.json({ flipperData: offlineLanes });
     }
 
-    console.log('[SPL Route] Processing ticker, status code:', ticker.status?.code);
     // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
     const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
       .filter(op => op && op.id !== -1)
       .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
 
-    console.log('[SPL Route] Found operators:', onMachineOperators.length);
-
     // If machine is NOT running, mirror existing route behavior by returning entries with 0% efficiency
     // (we still include operator/machine/batch info for the screen to render cleanly)
     if ((ticker.status?.code ?? 0) !== 1) {
-      console.log('[SPL Route] Machine not running, returning zero efficiency');
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op, idx) => {
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -96,12 +88,10 @@ module.exports = function (server) {
         })
       );
 
-      console.log('[SPL Route] Returning performance data with', performanceData.length, 'entries');
       // Back-compat: preserve existing top-level shape/key
       return res.json({ flipperData: performanceData });
     }
 
-    console.log('[SPL Route] Machine is running, computing performance');
     // Running: compute performance from operator-sessions over four windows
     const now = DateTime.now();
     const frames = {
@@ -111,37 +101,42 @@ module.exports = function (server) {
       today: { start: now.startOf('day'), label: 'All Day' }
     };
 
-    console.log('[SPL Route] Starting Promise.all for', onMachineOperators.length, 'operators');
     const performanceData = await Promise.all(
       onMachineOperators.map(async (op, idx) => {
-        console.log('[SPL Route] Processing operator', idx + 1, 'of', onMachineOperators.length, '- ID:', op.id);
         // Run the four timeframe queries in parallel
         const results = await queryOperatorTimeframes(db, serialNum, op.id, frames);
-        console.log('[SPL Route] Got results for operator', op.id);
 
         // If ANY timeframe came back empty, fetch most recent OPEN session and use it for all frames
         const hasEmpty = Object.values(results).some(arr => arr.length === 0);
-        console.log('[SPL Route] Has empty results?', hasEmpty, 'for operator', op.id);
 
         if (hasEmpty) {
-          console.log('[SPL Route] Fetching open session for operator', op.id);
           const open = await db.collection(config.operatorSessionCollectionName)
             .findOne(
               { 'operator.id': op.id, 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
               { sort: { 'timestamps.start': -1 }, projection: projectSessionForPerf() }
             );
-          console.log('[SPL Route] Open session found?', !!open, 'for operator', op.id);
           if (open) {
             for (const k of Object.keys(results)) results[k] = [open];
           }
         }
 
-        console.log('[SPL Route] Computing efficiency for operator', op.id);
         // Compute efficiency% per timeframe from sessions (truncate overlap at frame start)
         const efficiencyObj = {};
         for (const [key, arr] of Object.entries(results)) {
           const { start, label } = frames[key];
-          const { runtimeSec, totalTimeCreditSec } = sumWindow(arr, start, now);
+          // Query counts directly from count collection for this time window
+          const windowStart = new Date(start.toISO());
+          const windowEnd = new Date(now.toISO());
+          const counts = await db.collection('count')
+            .find({
+              'operator.id': op.id,
+              'machine.id': serialNum,
+              'timestamps.create': { $gte: windowStart, $lte: windowEnd },
+              misfeed: { $ne: true }
+            })
+            .toArray();
+          
+          const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
           const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
           efficiencyObj[key] = {
             value: Math.round(eff * 100),
@@ -149,18 +144,13 @@ module.exports = function (server) {
             color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
           };
         }
-        console.log('[SPL Route] Efficiency computed for operator', op.id);
 
-        console.log('[SPL Route] Resolving batch item for operator', op.id);
         // Batch item: concatenate current items if multiple (prefer the most recent session; fallback to union)
         const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
-        console.log('[SPL Route] Batch item resolved for operator', op.id);
 
         const operatorName = op.name?.first && op.name?.surname
           ? `${op.name.first} ${op.name.surname}`
           : (op.name || 'Unknown');
-
-        console.log('[SPL Route] Building return object for operator', op.id);
 
         return {
           status: ticker.status?.code ?? 0,
@@ -178,16 +168,9 @@ module.exports = function (server) {
       })
     );
 
-    console.log('[SPL Route] Returning running performance data with', performanceData.length, 'entries');
-    console.log('[SPL Route] Sample entry:', JSON.stringify(performanceData[0]).substring(0, 200));
     // Back-compat: preserve existing top-level shape/key
-    const response = { flipperData: performanceData };
-    console.log('[SPL Route] About to send JSON response...');
-    res.json(response);
-    console.log('[SPL Route] JSON response sent');
-    return;
+    return res.json({ flipperData: performanceData });
   } catch (err) {
-    console.error('[SPL Route] ERROR:', err);
     logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -198,19 +181,16 @@ module.exports = function (server) {
 // Projection for operator-session queries used by this route
   function projectSessionForPerf() {
     return {
-      projection: {
-        timestamps: 1,
-        items: 1,
-        machine: 1,
-        operator: 1,
-        counts: 1
-      }
+      timestamps: 1,
+      items: 1,
+      machine: 1,
+      operator: 1,
+      counts: 1
     };
   }
 
 // Query all four time windows in parallel for a single operator
   async function queryOperatorTimeframes(db, serialNum, operatorId, frames) {
-    console.log('[queryOperatorTimeframes] Starting for operator:', operatorId, 'collection:', config.operatorSessionCollectionName);
     const coll = db.collection(config.operatorSessionCollectionName);
     const nowJs = new Date();
 
@@ -224,8 +204,6 @@ module.exports = function (server) {
         { 'timestamps.end': { $gte: new Date(windowStart.toISO()) } }
       ]
     });
-
-    console.log('[queryOperatorTimeframes] Running 4 parallel queries...');
 
     // Add timeout wrapper to prevent hanging
     const queryWithTimeout = (promise, timeoutMs = 5000) => {
@@ -244,7 +222,6 @@ module.exports = function (server) {
         queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()),
         queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray())
       ]);
-      console.log('[queryOperatorTimeframes] Queries complete. Results:', six.length, fifteen.length, hour.length, today.length);
 
       return {
         lastSixMinutes: six,
@@ -253,7 +230,7 @@ module.exports = function (server) {
         today
       };
     } catch (err) {
-      console.error('[queryOperatorTimeframes] Query error or timeout:', err.message);
+      logger.error('[queryOperatorTimeframes] Query error or timeout:', err);
       // Return empty results on timeout
       return {
         lastSixMinutes: [],
@@ -265,13 +242,15 @@ module.exports = function (server) {
   }
 
 // Sum runtime + time credit for a given window across an array of sessions
-  function sumWindow(sessions, windowStartDT, windowEndDT) {
+// Uses counts queried directly from count collection (not session-embedded counts)
+  function sumWindowWithCounts(sessions, counts, windowStartDT, windowEndDT) {
     const windowStart = new Date(windowStartDT.toISO());
     const windowEnd = new Date(windowEndDT.toISO());
 
     let runtimeSec = 0;
     let totalTimeCreditSec = 0;
 
+    // Calculate runtime from sessions
     for (const s of sessions) {
       const sStart = new Date(s.timestamps.start);
       const sEnd = s.timestamps.end ? new Date(s.timestamps.end) : windowEnd;
@@ -282,15 +261,19 @@ module.exports = function (server) {
       if (effEnd <= effStart) continue;
 
       runtimeSec += (effEnd - effStart) / 1000;
-
-      // Count records inside the effective window
-      const inWindowCounts = (Array.isArray(s.counts) ? s.counts : []).filter(c => {
-        const t = new Date(c.timestamp);
-        return t >= effStart && t <= effEnd && !c.misfeed;
-      });
-
-      totalTimeCreditSec += calculateTotalTimeCredit(inWindowCounts);
     }
+
+    // Filter counts to only those within the window
+    const inWindowCounts = counts.filter(c => {
+      if (!c) return false;
+      const ts = c.timestamps?.create || c.timestamp;
+      if (!ts) return false;
+      const t = new Date(ts);
+      return t >= windowStart && t <= windowEnd;
+    });
+
+    totalTimeCreditSec = calculateTotalTimeCredit(inWindowCounts);
+    
     return { runtimeSec: Math.round(runtimeSec), totalTimeCreditSec: totalTimeCreditSec };
   }
 
@@ -441,13 +424,11 @@ module.exports = function (server) {
 
   function projectMachineForPerf() {
     return {
-      projection: {
-        timestamps: 1,
-        items: 1,
-        machine: 1,
-        // Use session-embedded counts to avoid double-counting across operators
-        counts: { timestamp: 1, item: { id: 1, name: 1, standard: 1 }, misfeed: 1 }
-      }
+      timestamps: 1,
+      items: 1,
+      machine: 1,
+      // Use session-embedded counts to avoid double-counting across operators
+      counts: 1
     };
   }
 
@@ -498,8 +479,22 @@ module.exports = function (server) {
       runtimeSec += (effEnd - effStart) / 1000;
 
       // Time credit from in-window counts
-      const inWindowCounts = (Array.isArray(s.counts) ? s.counts : []).filter(c => {
-        const t = new Date(c.timestamp);
+      // Handle both old format (counts as array) and new format (counts.valid array)
+      let allCounts = [];
+      if (Array.isArray(s.counts)) {
+        allCounts = s.counts;
+      } else if (s.counts && Array.isArray(s.counts.valid)) {
+        allCounts = s.counts.valid;
+      } else if (s.counts && typeof s.counts === 'object') {
+        allCounts = s.counts.valid || [];
+      }
+      
+      const inWindowCounts = allCounts.filter(c => {
+        if (!c) return false;
+        // Handle both timestamp formats: c.timestamp or c.timestamps.create
+        const ts = c.timestamp || c.timestamps?.create;
+        if (!ts) return false;
+        const t = new Date(ts);
         return t >= effStart && t <= effEnd && !c.misfeed;
       });
       timeCreditSec += calcTimeCredit(inWindowCounts);
@@ -696,7 +691,19 @@ module.exports = function (server) {
       const efficiencyObj = {};
       for (const [key, arr] of Object.entries(results)) {
         const { start, label } = frames[key];
-        const { runtimeSec, totalTimeCreditSec } = sumWindow(arr, start, now);
+        // Query counts directly from count collection for this time window
+        const windowStart = new Date(start.toISO());
+        const windowEnd = new Date(now.toISO());
+        const counts = await db.collection('count')
+          .find({
+            'operator.id': operator.id,
+            'machine.id': serialNum,
+            'timestamps.create': { $gte: windowStart, $lte: windowEnd },
+            misfeed: { $ne: true }
+          })
+          .toArray();
+        
+        const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
         const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
         efficiencyObj[key] = {
           value: Math.round(eff * 100),

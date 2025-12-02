@@ -6,17 +6,21 @@
 
 /* Data Bar Container - matches Bootstrap h-100 */
 .data-bar-container {
-  height: 100%; /* h-100 equivalent */
+  height: 100% !important; /* h-100 equivalent - force height */
+  min-height: 200px; /* Ensure minimum height for debugging */
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* Bar Chart - matches Bootstrap position-relative */
 .bar-chart {
   position: relative; /* position-relative equivalent */
-  height: 87%;
   overflow: hidden;
+  display: block;
+  background-color: rgba(255, 0, 0, 0.2); /* Temporary red tint for debugging - remove after fixing */
+  min-height: 150px; /* Temporary min-height for debugging */
 }
 
 /* Bar Fill - matches Bootstrap justify-content-center */
@@ -28,6 +32,8 @@
   width: 100%;
   position: absolute;
   overflow: hidden;
+  min-height: 0;
+  transition: height 0.3s ease;
 }
 
 /* Bar Value - matches Bootstrap d-flex, text-center, justify-content-center, flex-column, w-100, fs-4 */
@@ -42,6 +48,10 @@
   font-weight: 600;
   margin-bottom: 0.25em;
   color: var(--sg-color-background);
+  position: absolute;
+  bottom: 0;
+  z-index: 100;
+  pointer-events: none;
 }
 
 /* Bar Label - matches Bootstrap d-flex, text-center, justify-content-center, flex-column, border-light, fs-6 */
@@ -56,6 +66,8 @@
   color: white; /* White text for dark mode */
   background-color: var(--sg-color-blue-gray-light-200);
   padding: 0.25rem;
+  flex-shrink: 0;
+  min-height: fit-content;
 }
 
 /* Color Classes */
