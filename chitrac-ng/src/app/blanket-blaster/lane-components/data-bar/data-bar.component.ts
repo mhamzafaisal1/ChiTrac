@@ -1,4 +1,4 @@
-import { Component, OnInit, Input } from '@angular/core';
+import { Component, OnInit, Input, OnChanges, SimpleChanges } from '@angular/core';
 
 @Component({
     selector: 'ct-data-bar',
@@ -6,7 +6,7 @@ import { Component, OnInit, Input } from '@angular/core';
     styleUrls: ['./data-bar.component.scss'],
     standalone: false
 })
-export class DataBarComponent implements OnInit {
+export class DataBarComponent implements OnInit, OnChanges {
 
   @Input()
   efficiency: any;
@@ -17,6 +17,12 @@ export class DataBarComponent implements OnInit {
   constructor() { }
 
   ngOnInit() {
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['efficiency'] && this.efficiency) {
+      console.log('DataBar received efficiency:', this.efficiency);
+    }
   }
 
 }
