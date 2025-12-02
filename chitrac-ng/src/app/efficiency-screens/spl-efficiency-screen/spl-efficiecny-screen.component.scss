@@ -10,6 +10,7 @@ html, body {
   overflow: hidden;
   flex: 1;
   max-height: calc(100vh - 64px); /* Subtract toolbar height */
+  margin-top: 64px; /* Add margin to account for navbar */
 }
   
   .custom-container {
@@ -46,11 +47,12 @@ html, body {
   }
 
 .loading-overlay {
-  position: absolute;
-  top: 0;
+  position: fixed;
+  top: 64px; /* Start below navbar */
   left: 0;
   right: 0;
   bottom: 0;
+  min-height: calc(100vh - 64px); /* Full viewport height minus navbar */
   background-color: var(--sg-color-blue-gray-medium-200);
   z-index: 9999;
   display: flex;
