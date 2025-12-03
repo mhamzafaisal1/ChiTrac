@@ -106,13 +106,24 @@ module.exports = function (server) {
         // Run the four timeframe queries in parallel
         const results = await queryOperatorTimeframes(db, serialNum, op.id, frames);
 
+        // Debug: Log session counts
+        logger.info(`[Efficiency Debug] Operator ${op.id} (${op.name?.first || op.name}): sessions found - lastSixMinutes=${results.lastSixMinutes.length}, lastFifteenMinutes=${results.lastFifteenMinutes.length}, lastHour=${results.lastHour.length}, today=${results.today.length}`);
+
         // If ANY timeframe came back empty, fetch most recent OPEN session and use it for all frames
         const hasEmpty = Object.values(results).some(arr => arr.length === 0);
 
         if (hasEmpty) {
+          // Try both machine.serial and machine.id
           const open = await db.collection(config.operatorSessionCollectionName)
             .findOne(
-              { 'operator.id': op.id, 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
+              {
+                'operator.id': op.id,
+                $or: [
+                  { 'machine.serial': serialNum },
+                  { 'machine.id': serialNum }
+                ],
+                'timestamps.end': { $exists: false }
+              },
               { sort: { 'timestamps.start': -1 }, projection: projectSessionForPerf() }
             );
           if (open) {
@@ -127,17 +138,43 @@ module.exports = function (server) {
           // Query counts directly from count collection for this time window
           const windowStart = new Date(start.toISO());
           const windowEnd = new Date(now.toISO());
-          const counts = await db.collection('count')
+          
+          // Try primary format first (production database format)
+          let counts = await db.collection('count')
             .find({
               'operator.id': op.id,
-              'machine.id': serialNum,
-              'timestamps.create': { $gte: windowStart, $lte: windowEnd },
+              'machine.serial': serialNum,
+              $or: [
+                { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
+                { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
+              ],
               misfeed: { $ne: true }
             })
             .toArray();
           
+          // If no counts found, try alternative machine field
+          if (counts.length === 0) {
+            counts = await db.collection('count')
+              .find({
+                'operator.id': op.id,
+                'machine.id': serialNum,
+                $or: [
+                  { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
+                  { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
+                ],
+                misfeed: { $ne: true }
+              })
+              .toArray();
+          }
+          
           const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
           const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+          
+          // Debug logging
+          if (key === 'lastSixMinutes') {
+            logger.info(`[Efficiency Debug] Operator ${op.id}, Window ${key}: sessions=${arr.length}, counts=${counts.length}, runtime=${runtimeSec}s, timeCredit=${totalTimeCreditSec}s, eff=${eff}`);
+          }
+          
           efficiencyObj[key] = {
             value: Math.round(eff * 100),
             label,
@@ -195,18 +232,28 @@ module.exports = function (server) {
     const nowJs = new Date();
 
     // Build the overlap filter template: (start < now) AND (end >= windowStart OR end missing)
+    // Support both machine.serial and machine.id for backward compatibility
     const buildFilter = (windowStart) => ({
       'operator.id': operatorId,
-      'machine.serial': serialNum,
-      'timestamps.start': { $lt: nowJs },
-      $or: [
-        { 'timestamps.end': { $exists: false } },
-        { 'timestamps.end': { $gte: new Date(windowStart.toISO()) } }
+      $and: [
+        {
+          $or: [
+            { 'machine.serial': serialNum },
+            { 'machine.id': serialNum }
+          ]
+        },
+        {
+          'timestamps.start': { $lt: nowJs },
+          $or: [
+            { 'timestamps.end': { $exists: false } },
+            { 'timestamps.end': { $gte: new Date(windowStart.toISO()) } }
+          ]
+        }
       ]
     });
 
-    // Add timeout wrapper to prevent hanging
-    const queryWithTimeout = (promise, timeoutMs = 5000) => {
+    // Add timeout wrapper to prevent hanging - increased timeout for production database
+    const queryWithTimeout = (promise, timeoutMs = 15000) => {
       return Promise.race([
         promise,
         new Promise((_, reject) =>
@@ -216,11 +263,12 @@ module.exports = function (server) {
     };
 
     try {
+      // Use limit to prevent loading too many sessions (especially for "today" which can have many)
       const [six, fifteen, hour, today] = await Promise.all([
-        queryWithTimeout(coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray())
+        queryWithTimeout(coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(10).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(10).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(20).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': -1 }).limit(50).toArray()) // Most recent first for today
       ]);
 
       return {
@@ -677,9 +725,17 @@ module.exports = function (server) {
 
       // If ANY timeframe came back empty, fetch most recent OPEN session and use it for all frames
       if (Object.values(results).some(arr => arr.length === 0)) {
+        // Try both machine.serial and machine.id
         const open = await db.collection(config.operatorSessionCollectionName)
           .findOne(
-            { 'operator.id': operator.id, 'machine.serial': serialNum, 'timestamps.end': { $exists: false } },
+            {
+              'operator.id': operator.id,
+              $or: [
+                { 'machine.serial': serialNum },
+                { 'machine.id': serialNum }
+              ],
+              'timestamps.end': { $exists: false }
+            },
             { sort: { 'timestamps.start': -1 }, projection: projectSessionForPerf() }
           );
         if (open) {
@@ -694,14 +750,33 @@ module.exports = function (server) {
         // Query counts directly from count collection for this time window
         const windowStart = new Date(start.toISO());
         const windowEnd = new Date(now.toISO());
-        const counts = await db.collection('count')
+        // Try primary format first (production database format)
+        let counts = await db.collection('count')
           .find({
             'operator.id': operator.id,
-            'machine.id': serialNum,
-            'timestamps.create': { $gte: windowStart, $lte: windowEnd },
+            'machine.serial': serialNum,
+            $or: [
+              { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
+              { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
+            ],
             misfeed: { $ne: true }
           })
           .toArray();
+        
+        // If no counts found, try alternative machine field
+        if (counts.length === 0) {
+          counts = await db.collection('count')
+            .find({
+              'operator.id': operator.id,
+              'machine.id': serialNum,
+              $or: [
+                { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
+                { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
+              ],
+              misfeed: { $ne: true }
+            })
+            .toArray();
+        }
         
         const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
         const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
