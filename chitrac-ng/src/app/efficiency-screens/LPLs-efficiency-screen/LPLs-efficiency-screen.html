@@ -1,0 +1,291 @@
+<div class="screen-container">
+  <div class="lanes-wrapper">
+    <!-- Lane 1: Running with operator -->
+    <div class="lane-container">
+      <div class="lane-background lane-running-bg">
+        <div class="lane-inner">
+          <!-- Operator Block -->
+          <div class="operator-block" [style.background-color]="lanes[0].efficiency.lastSixMinutes.color">
+            <div class="operator-text">
+              <div class="operator-content">{{ lanes[0].operator }}</div>
+            </div>
+          </div>
+
+          <!-- Data Block -->
+          <div class="data-block">
+            <div class="efficiency-value" [style.background-color]="lanes[0].efficiency.lastSixMinutes.color">
+              <div class="value-text">{{ lanes[0].efficiency.lastSixMinutes.value | number: '1.0-0' }}%</div>
+            </div>
+            <div class="bars-container">
+              <div class="bars">
+                <!-- 15 Minutes Bar -->
+                <div class="bar-item" style="margin: 10px 5px 0 0;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[0].efficiency.lastFifteenMinutes.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[0].efficiency.lastFifteenMinutes.value || 0"
+                         [style.background-color]="lanes[0].efficiency.lastFifteenMinutes.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[0].efficiency.lastFifteenMinutes.label }}</div>
+                </div>
+                <!-- 1 Hour Bar -->
+                <div class="bar-item" style="margin: 10px 2px 0 2px;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[0].efficiency.lastHour.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[0].efficiency.lastHour.value || 0"
+                         [style.background-color]="lanes[0].efficiency.lastHour.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[0].efficiency.lastHour.label }}</div>
+                </div>
+                <!-- Today Bar -->
+                <div class="bar-item" style="margin: 10px 0 0 5px;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[0].efficiency.today.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[0].efficiency.today.value || 0"
+                         [style.background-color]="lanes[0].efficiency.today.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[0].efficiency.today.label }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Item Block -->
+      <div class="item-block">
+        <div class="item-line">{{ lanes[0].machine }}</div>
+        <div class="item-line">{{ lanes[0].batch.item }}</div>
+        <div class="item-line">{{ lanes[0].batch.code }}</div>
+      </div>
+    </div>
+
+    <!-- Lane 2: Running without operator (greyed) -->
+    <div class="lane-container">
+      <div class="lane-background lane-greyed-bg">
+        <div class="lane-inner">
+          <!-- Operator Block -->
+          <div class="operator-block no-operator" [style.background-color]="lanes[1].efficiency.lastSixMinutes.color">
+            <div class="operator-text">
+              <div class="operator-content">NO OPERATOR</div>
+            </div>
+          </div>
+
+          <!-- Data Block -->
+          <div class="data-block">
+            <div class="efficiency-value" [style.background-color]="lanes[1].efficiency.lastSixMinutes.color">
+              <div class="value-text">{{ lanes[1].efficiency.lastSixMinutes.value | number: '1.0-0' }}%</div>
+            </div>
+            <div class="bars-container">
+              <div class="bars">
+                <!-- 15 Minutes Bar -->
+                <div class="bar-item" style="margin: 10px 5px 0 0;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[1].efficiency.lastFifteenMinutes.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[1].efficiency.lastFifteenMinutes.value || 0"
+                         [style.background-color]="lanes[1].efficiency.lastFifteenMinutes.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[1].efficiency.lastFifteenMinutes.label }}</div>
+                </div>
+                <!-- 1 Hour Bar -->
+                <div class="bar-item" style="margin: 10px 2px 0 2px;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[1].efficiency.lastHour.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[1].efficiency.lastHour.value || 0"
+                         [style.background-color]="lanes[1].efficiency.lastHour.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[1].efficiency.lastHour.label }}</div>
+                </div>
+                <!-- Today Bar -->
+                <div class="bar-item" style="margin: 10px 0 0 5px;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[1].efficiency.today.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[1].efficiency.today.value || 0"
+                         [style.background-color]="lanes[1].efficiency.today.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[1].efficiency.today.label }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Item Block -->
+      <div class="item-block item-block-greyed">
+        <div class="item-line">{{ lanes[1].machine }}</div>
+        <div class="item-line">{{ lanes[1].batch.item }}</div>
+        <div class="item-line">{{ lanes[1].batch.code }}</div>
+      </div>
+    </div>
+
+    <!-- Lane 3: Stopped -->
+    <div class="lane-container">
+      <div class="lane-background lane-stop-bg">
+        <div class="lane-inner">
+          <!-- Operator Block -->
+          <div class="operator-block stopped">
+            <div class="operator-text">
+              <div class="operator-content">{{ lanes[2].operator }}</div>
+            </div>
+          </div>
+
+          <!-- Fault Display -->
+          <div class="data-block stopped">
+            <div class="fault-display">
+              <div style="height: 40%;"></div>
+              <div class="fault-text">{{ lanes[2].fault }}</div>
+            </div>
+            <div class="timer-display">
+              <div class="timer-text">ELAPSED TIME: {{ lanes[2].displayTimers.on }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Item Block -->
+      <div class="item-block item-block-stopped">
+        <div class="item-line">{{ lanes[2].machine }}</div>
+        <div class="item-line">{{ lanes[2].batch.item }}</div>
+        <div class="item-line">{{ lanes[2].batch.code }}</div>
+      </div>
+    </div>
+
+    <!-- Lane 4: Running with operator -->
+    <div class="lane-container">
+      <div class="lane-background lane-running-bg">
+        <div class="lane-inner">
+          <!-- Operator Block -->
+          <div class="operator-block" [style.background-color]="lanes[3].efficiency.lastSixMinutes.color">
+            <div class="operator-text">
+              <div class="operator-content">{{ lanes[3].operator }}</div>
+            </div>
+          </div>
+
+          <!-- Data Block -->
+          <div class="data-block">
+            <div class="efficiency-value" [style.background-color]="lanes[3].efficiency.lastSixMinutes.color">
+              <div class="value-text">{{ lanes[3].efficiency.lastSixMinutes.value | number: '1.0-0' }}%</div>
+            </div>
+            <div class="bars-container">
+              <div class="bars">
+                <!-- 15 Minutes Bar -->
+                <div class="bar-item" style="margin: 10px 5px 0 0;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[3].efficiency.lastFifteenMinutes.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[3].efficiency.lastFifteenMinutes.value || 0"
+                         [style.background-color]="lanes[3].efficiency.lastFifteenMinutes.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[3].efficiency.lastFifteenMinutes.label }}</div>
+                </div>
+                <!-- 1 Hour Bar -->
+                <div class="bar-item" style="margin: 10px 2px 0 2px;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[3].efficiency.lastHour.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[3].efficiency.lastHour.value || 0"
+                         [style.background-color]="lanes[3].efficiency.lastHour.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[3].efficiency.lastHour.label }}</div>
+                </div>
+                <!-- Today Bar -->
+                <div class="bar-item" style="margin: 10px 0 0 5px;">
+                  <div class="bar-chart">
+                    <div class="bar-value">{{ lanes[3].efficiency.today.value | number: '1.0-0' }}%</div>
+                    <div class="bar-fill" 
+                         [style.height.%]="lanes[3].efficiency.today.value || 0"
+                         [style.background-color]="lanes[3].efficiency.today.color">
+                    </div>
+                  </div>
+                  <div class="bar-label">{{ lanes[3].efficiency.today.label }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Item Block -->
+      <div class="item-block">
+        <div class="item-line">{{ lanes[3].machine }}</div>
+        <div class="item-line">{{ lanes[3].batch.item }}</div>
+        <div class="item-line">{{ lanes[3].batch.code }}</div>
+      </div>
+    </div>
+
+    <!-- Lane 5: Stopped -->
+    <div class="lane-container">
+      <div class="lane-background lane-stop-bg">
+        <div class="lane-inner">
+          <!-- Operator Block -->
+          <div class="operator-block stopped">
+            <div class="operator-text">
+              <div class="operator-content">{{ lanes[4].operator }}</div>
+            </div>
+          </div>
+
+          <!-- Fault Display -->
+          <div class="data-block stopped">
+            <div class="fault-display">
+              <div style="height: 40%;"></div>
+              <div class="fault-text">{{ lanes[4].fault }}</div>
+            </div>
+            <div class="timer-display">
+              <div class="timer-text">ELAPSED TIME: {{ lanes[4].displayTimers.on }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Item Block -->
+      <div class="item-block item-block-stopped">
+        <div class="item-line">{{ lanes[4].machine }}</div>
+        <div class="item-line">{{ lanes[4].batch.item }}</div>
+        <div class="item-line">{{ lanes[4].batch.code }}</div>
+      </div>
+    </div>
+
+    <!-- Lane 6: Fault -->
+    <div class="lane-container">
+      <div class="lane-background lane-fault-bg">
+        <div class="lane-inner">
+          <!-- Operator Block -->
+          <div class="operator-block fault">
+            <div class="operator-text">
+              <div class="operator-content">{{ lanes[5].operator }}</div>
+            </div>
+          </div>
+
+          <!-- Fault Info -->
+          <div class="data-block fault">
+            <div class="fault-display">
+              <div style="height: 40%;"></div>
+              <div class="fault-text">{{ lanes[5].fault }}</div>
+              <div class="fault-label">FAULT</div>
+              <div class="fault-code">CODE: {{ lanes[5].status }}</div>
+            </div>
+            <div class="timer-display">
+              <div class="timer-text">ELAPSED TIME: {{ lanes[5].displayTimers.on }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Item Block -->
+      <div class="item-block item-block-fault">
+        <div class="item-line">{{ lanes[5].machine }}</div>
+        <div class="item-line">{{ lanes[5].batch.item }}</div>
+        <div class="item-line">{{ lanes[5].batch.code }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+

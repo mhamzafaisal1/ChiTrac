@@ -13,13 +13,16 @@ import { OperatorReportComponent } from './reports/operator-report/operator-repo
 import { ItemReportComponent } from './reports/item-report/item-report.component';
 import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
 import { BlanketBlastertwoEfficiencyScreen } from './efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component';
+import { BlanketBlastersEfficiencyScreenComponent } from './efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
 import { SplEfficiencyScreen } from './efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component';
 import { LplEfficiencyScreen } from './efficiency-screens/lpl-efficiency-screen/lpl-efficiecny-screen.component';
+import { LPLsEfficiencyScreenComponent } from './efficiency-screens/LPLs-efficiency-screen/LPLs-efficiency-screen';
 import { MachineEfficiencyLaneComponent } from './efficiency-screens/efficiecny-screen-machine/machine-efficiecny-lane.component';
 import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
 import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
 import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
+import { SPFsEfficiencyScreenComponent } from './efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen';
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
@@ -52,12 +55,15 @@ export const routes: Routes = [
 	// Production/Efficiency Screens
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },
 	{ path: 'ng/blanket-blaster-two', component: BlanketBlastertwoEfficiencyScreen },
+	{ path: 'ng/blanket-blasters-efficiency-screen', component: BlanketBlastersEfficiencyScreenComponent },
 	{ path: 'ng/spl-efficiency-screen', component: SplEfficiencyScreen },
 	{ path: 'ng/lpl-efficiency-screen', component: LplEfficiencyScreen },
 	{ path: 'ng/lpl-efficiency-screen/:line', component: LplEfficiencyScreen },
+	{ path: 'ng/lpls-efficiency-screen', component: LPLsEfficiencyScreenComponent },
 	{ path: 'ng/machine-efficiency-lane', component: MachineEfficiencyLaneComponent },
 	{ path: 'ng/spl-col-efficiency-screen', component: SplColEfficiencyScreenComponent },
 	{ path: 'ng/spf-col-efficiency-screen', component: SpfColEfficiencyScreenComponent },
+	{ path: 'ng/spfs-efficiency-screen', component: SPFsEfficiencyScreenComponent },
 	
 	// Redirects
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
