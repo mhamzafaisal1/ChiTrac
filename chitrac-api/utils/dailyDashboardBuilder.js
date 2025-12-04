@@ -639,6 +639,7 @@ async function buildPlantwideMetricsByHourFromCache(db, start, end) {
     
     // Aggregate metrics for this hour across all machines
     let totalRuntime = 0, totalWorkSec = 0, totalCreditSec = 0, totalValid = 0, totalMis = 0;
+    let totalPossibleRuntime = 0; // Track total possible runtime within this hour slot
 
     for (const record of machineRecords) {
       const recordStart = new Date(record.timeRange?.start || record.dateObj || `${record.date}T00:00:00.000Z`);
@@ -649,10 +650,14 @@ async function buildPlantwideMetricsByHourFromCache(db, start, end) {
         continue; // No overlap
       }
 
-      // Calculate overlap factor
+      // Calculate overlap factor and overlap duration
       const { overlapMs, factor } = calculateOverlap(recordStart, recordEnd, iv.start, iv.end);
       
       if (factor <= 0 || overlapMs <= 0) continue;
+
+      // Track the actual possible runtime for this machine within this hour slot
+      // This is the overlap duration, not the full hour slot duration
+      totalPossibleRuntime += overlapMs / 1000; // Convert to seconds
 
       // Apply factor to distribute metrics proportionally to this hour
       // The factor represents what portion of the machine's total time range falls in this hour
@@ -677,9 +682,11 @@ async function buildPlantwideMetricsByHourFromCache(db, start, end) {
     // Calculate plantwide metrics from aggregated values
     let availability, efficiency, throughput, oee;
     
-    // Calculate plantwide availability: total runtime / (total active machines * hour duration)
-    const totalPossibleSec = totalActiveMachines * slotSec;
-    availability = totalPossibleSec > 0 ? (totalRuntime / 1000 / totalPossibleSec) * 100 : 0;
+    // Calculate plantwide availability: total runtime / total possible runtime within this hour slot
+    // This makes availability relative to actual runtime, not the hour slot duration
+    // For partial hours, this prevents artificial penalties
+    const totalRuntimeSec = totalRuntime / 1000;
+    availability = totalPossibleRuntime > 0 ? (totalRuntimeSec / totalPossibleRuntime) * 100 : 0;
     
     // Calculate efficiency from aggregated work time and time credit
     efficiency = totalWorkSec > 0 ? (totalCreditSec / totalWorkSec) * 100 : 0;
