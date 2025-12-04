@@ -10,6 +10,8 @@ module.exports = function (server) {
   const config = require('../../modules/config');
 
   router.get('/analytics/machine-live-session-summary', async (req, res) => {
+  const routeStartTime = Date.now();
+  
   try {
     const { serial, date } = req.query;
     if (!serial || !date) {
@@ -17,6 +19,10 @@ module.exports = function (server) {
     }
 
     const serialNum = Number(serial);
+    console.log(`[PERF] [${serialNum}] Route START - machine-live-session-summary`);
+    console.log(`[PERF] [${serialNum}] Fetching ticker...`);
+    const tickerStartTime = Date.now();
+    
     const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
       .findOne(
         { 'machine.id': serialNum },
@@ -30,6 +36,8 @@ module.exports = function (server) {
           }
         }
       );
+    
+    console.log(`[PERF] [${serialNum}] Ticker query completed in ${Date.now() - tickerStartTime}ms`);
 
     // No ticker: Offline - but still return flipperData structure
     if (!ticker) {
@@ -62,13 +70,20 @@ module.exports = function (server) {
     const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
       .filter(op => op && op.id !== -1)
       .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
+    
+    console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${ticker.status?.code ?? 0}`);
 
     // If machine is NOT running, mirror existing route behavior by returning entries with 0% efficiency
     // (we still include operator/machine/batch info for the screen to render cleanly)
     if ((ticker.status?.code ?? 0) !== 1) {
+      console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
+      const notRunningStartTime = Date.now();
+      
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op, idx) => {
+          const batchItemStartTime = Date.now();
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
           const operatorName = op.name?.first && op.name?.surname
             ? `${op.name.first} ${op.name.surname}`
             : (op.name || 'Unknown');
@@ -88,11 +103,15 @@ module.exports = function (server) {
         })
       );
 
+      console.log(`[PERF] [${serialNum}] Non-running path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
       // Back-compat: preserve existing top-level shape/key
       return res.json({ flipperData: performanceData });
     }
 
     // Running: compute performance from operator-sessions over four windows
+    console.log(`[PERF] [${serialNum}] Machine RUNNING - processing ${onMachineOperators.length} operators`);
+    const runningStartTime = Date.now();
+    
     const now = DateTime.now();
     const frames = {
       lastSixMinutes: { start: now.minus({ minutes: 6 }), label: 'Last 6 Mins' },
@@ -103,16 +122,24 @@ module.exports = function (server) {
 
     const performanceData = await Promise.all(
       onMachineOperators.map(async (op, idx) => {
+        const operatorStartTime = Date.now();
+        console.log(`[PERF] [${serialNum}] Starting operator ${op.id} (${idx + 1}/${onMachineOperators.length})`);
+        
         // Run the four timeframe queries in parallel
+        const timeframeQueryStartTime = Date.now();
         const results = await queryOperatorTimeframes(db, serialNum, op.id, frames);
+        console.log(`[PERF] [${serialNum}] Operator ${op.id} timeframe queries completed in ${Date.now() - timeframeQueryStartTime}ms`);
 
         // Debug: Log session counts
-        logger.info(`[Efficiency Debug] Operator ${op.id} (${op.name?.first || op.name}): sessions found - lastSixMinutes=${results.lastSixMinutes.length}, lastFifteenMinutes=${results.lastFifteenMinutes.length}, lastHour=${results.lastHour.length}, today=${results.today.length}`);
+        console.log(`[PERF] [${serialNum}] Operator ${op.id}: sessions - 6min=${results.lastSixMinutes.length}, 15min=${results.lastFifteenMinutes.length}, 1hr=${results.lastHour.length}, today=${results.today.length}`);
 
         // If ANY timeframe came back empty, fetch most recent OPEN session and use it for all frames
         const hasEmpty = Object.values(results).some(arr => arr.length === 0);
 
         if (hasEmpty) {
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} has empty timeframes - fetching open session`);
+          const openSessionStartTime = Date.now();
+          
           // Try both machine.serial and machine.id
           const open = await db.collection(config.operatorSessionCollectionName)
             .findOne(
@@ -126,64 +153,54 @@ module.exports = function (server) {
               },
               { sort: { 'timestamps.start': -1 }, projection: projectSessionForPerf() }
             );
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} open session query completed in ${Date.now() - openSessionStartTime}ms`);
+          
           if (open) {
             for (const k of Object.keys(results)) results[k] = [open];
           }
         }
 
         // Compute efficiency% per timeframe from sessions (truncate overlap at frame start)
+        console.log(`[PERF] [${serialNum}] Operator ${op.id} starting efficiency calculations for 4 timeframes`);
+        const efficiencyCalcStartTime = Date.now();
         const efficiencyObj = {};
+        
         for (const [key, arr] of Object.entries(results)) {
+          const windowStartTime = Date.now();
           const { start, label } = frames[key];
-          // Query counts directly from count collection for this time window
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} processing window: ${key}`);
+          
+          // Extract counts from embedded session counts instead of querying count collection
           const windowStart = new Date(start.toISO());
           const windowEnd = new Date(now.toISO());
           
-          // Try primary format first (production database format)
-          let counts = await db.collection('count')
-            .find({
-              'operator.id': op.id,
-              'machine.serial': serialNum,
-              $or: [
-                { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
-                { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
-              ],
-              misfeed: { $ne: true }
-            })
-            .toArray();
+          const countExtractStartTime = Date.now();
+          const counts = extractCountsFromSessions(arr, windowStart, windowEnd, op.id, serialNum);
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} - extracted ${counts.length} counts from sessions in ${Date.now() - countExtractStartTime}ms`);
           
-          // If no counts found, try alternative machine field
-          if (counts.length === 0) {
-            counts = await db.collection('count')
-              .find({
-                'operator.id': op.id,
-                'machine.id': serialNum,
-                $or: [
-                  { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
-                  { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
-                ],
-                misfeed: { $ne: true }
-              })
-              .toArray();
-          }
-          
+          const sumWindowStartTime = Date.now();
           const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
           const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
-          
-          // Debug logging
-          if (key === 'lastSixMinutes') {
-            logger.info(`[Efficiency Debug] Operator ${op.id}, Window ${key}: sessions=${arr.length}, counts=${counts.length}, runtime=${runtimeSec}s, timeCredit=${totalTimeCreditSec}s, eff=${eff}`);
-          }
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} - sumWindowWithCounts completed in ${Date.now() - sumWindowStartTime}ms (runtime=${runtimeSec}s, timeCredit=${totalTimeCreditSec}s, eff=${Math.round(eff * 100)}%)`);
           
           efficiencyObj[key] = {
             value: Math.round(eff * 100),
             label,
             color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
           };
+          
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} TOTAL time: ${Date.now() - windowStartTime}ms`);
         }
+        
+        console.log(`[PERF] [${serialNum}] Operator ${op.id} efficiency calculations completed in ${Date.now() - efficiencyCalcStartTime}ms`);
 
         // Batch item: concatenate current items if multiple (prefer the most recent session; fallback to union)
+        const batchItemStartTime = Date.now();
         const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
+        console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
+        
+        const operatorTotalTime = Date.now() - operatorStartTime;
+        console.log(`[PERF] [${serialNum}] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
 
         const operatorName = op.name?.first && op.name?.surname
           ? `${op.name.first} ${op.name.surname}`
@@ -205,9 +222,12 @@ module.exports = function (server) {
       })
     );
 
+    console.log(`[PERF] [${serialNum}] Running path completed in ${Date.now() - runningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
+    
     // Back-compat: preserve existing top-level shape/key
     return res.json({ flipperData: performanceData });
   } catch (err) {
+    console.error(`[PERF] [${serialNum || 'unknown'}] ERROR after ${Date.now() - routeStartTime}ms:`, err);
     logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -228,6 +248,7 @@ module.exports = function (server) {
 
 // Query all four time windows in parallel for a single operator
   async function queryOperatorTimeframes(db, serialNum, operatorId, frames) {
+    const queryStartTime = Date.now();
     const coll = db.collection(config.operatorSessionCollectionName);
     const nowJs = new Date();
 
@@ -252,8 +273,8 @@ module.exports = function (server) {
       ]
     });
 
-    // Add timeout wrapper to prevent hanging - increased timeout for production database
-    const queryWithTimeout = (promise, timeoutMs = 15000) => {
+    // Add timeout wrapper to prevent hanging - reduced timeout to fail faster
+    const queryWithTimeout = (promise, timeoutMs = 8000) => {
       return Promise.race([
         promise,
         new Promise((_, reject) =>
@@ -263,13 +284,19 @@ module.exports = function (server) {
     };
 
     try {
+      console.log(`[PERF] [${serialNum}] Operator ${operatorId} - Starting 4 parallel session queries...`);
+      const parallelQueryStartTime = Date.now();
+      
       // Use limit to prevent loading too many sessions (especially for "today" which can have many)
+      // Reduce limits further and add indexes hints for better performance
       const [six, fifteen, hour, today] = await Promise.all([
-        queryWithTimeout(coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(10).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(10).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(20).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': -1 }).limit(50).toArray()) // Most recent first for today
+        queryWithTimeout(coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(5).maxTimeMS(8000).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(5).maxTimeMS(8000).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(10).maxTimeMS(8000).toArray()),
+        queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': -1 }).limit(20).maxTimeMS(8000).toArray()) // Most recent first for today
       ]);
+
+      console.log(`[PERF] [${serialNum}] Operator ${operatorId} - All 4 session queries completed in ${Date.now() - parallelQueryStartTime}ms (results: 6min=${six.length}, 15min=${fifteen.length}, 1hr=${hour.length}, today=${today.length})`);
 
       return {
         lastSixMinutes: six,
@@ -278,6 +305,7 @@ module.exports = function (server) {
         today
       };
     } catch (err) {
+      console.error(`[PERF] [${serialNum}] Operator ${operatorId} - Query error or timeout after ${Date.now() - queryStartTime}ms:`, err.message);
       logger.error('[queryOperatorTimeframes] Query error or timeout:', err);
       // Return empty results on timeout
       return {
@@ -289,8 +317,46 @@ module.exports = function (server) {
     }
   }
 
+// Extract counts from embedded session counts for a given time window
+  function extractCountsFromSessions(sessions, windowStart, windowEnd, operatorId, serialNum) {
+    const counts = [];
+    
+    for (const session of sessions) {
+      if (!session) continue;
+      
+      // Handle both array format and object format for counts
+      let sessionCounts = [];
+      if (Array.isArray(session.counts)) {
+        sessionCounts = session.counts;
+      } else if (session.counts && Array.isArray(session.counts.valid)) {
+        sessionCounts = session.counts.valid;
+      }
+      
+      for (const count of sessionCounts) {
+        if (!count || count.misfeed === true) continue;
+        
+        // Get timestamp from count (support multiple formats)
+        const ts = count.timestamps?.create || count.timestamp;
+        if (!ts) continue;
+        
+        const countTime = new Date(ts);
+        if (countTime < windowStart || countTime > windowEnd) continue;
+        
+        // Verify operator and machine match
+        const countOpId = count.operator?.id;
+        const countMachineSerial = count.machine?.serial || count.machine?.id;
+        
+        if (countOpId === operatorId && countMachineSerial === serialNum) {
+          counts.push(count);
+        }
+      }
+    }
+    
+    return counts;
+  }
+
 // Sum runtime + time credit for a given window across an array of sessions
-// Uses counts queried directly from count collection (not session-embedded counts)
+// Uses counts extracted from session documents (faster than querying count collection)
   function sumWindowWithCounts(sessions, counts, windowStartDT, windowEndDT) {
     const windowStart = new Date(windowStartDT.toISO());
     const windowEnd = new Date(windowEndDT.toISO());
@@ -311,7 +377,7 @@ module.exports = function (server) {
       runtimeSec += (effEnd - effStart) / 1000;
     }
 
-    // Filter counts to only those within the window
+    // Filter counts to only those within the window (already filtered but double-check)
     const inWindowCounts = counts.filter(c => {
       if (!c) return false;
       const ts = c.timestamps?.create || c.timestamp;
@@ -388,6 +454,303 @@ module.exports = function (server) {
   // end of helper functions ----
 
   // end of route ----
+
+  // --- Daily Machine Live Session Summary API (sessions + totals-daily) ---
+
+  router.get('/analytics/daily/machine-live-session-summary', async (req, res) => {
+    const routeStartTime = Date.now();
+    
+    try {
+      const { serial } = req.query;
+      if (!serial) {
+        return res.status(400).json({ error: 'Missing serial' });
+      }
+
+      const serialNum = Number(serial);
+      console.log(`[PERF] [${serialNum}] Route START - daily/machine-live-session-summary`);
+      console.log(`[PERF] [${serialNum}] Fetching ticker...`);
+      const tickerStartTime = Date.now();
+      
+      const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
+        .findOne(
+          { 'machine.id': serialNum },
+          {
+            projection: {
+              timestamp: 1,
+              machine: 1,
+              program: 1,
+              status: 1,
+              operators: 1
+            }
+          }
+        );
+      
+      console.log(`[PERF] [${serialNum}] Ticker query completed in ${Date.now() - tickerStartTime}ms`);
+
+      // No ticker: Offline - but still return flipperData structure
+      if (!ticker) {
+        // Fetch machine configuration to get machine name
+        const machineConfig = await db.collection('machines').findOne(
+          { serial: serialNum },
+          { projection: { name: 1 } }
+        );
+
+        const machineName = machineConfig?.name || `Serial ${serialNum}`;
+
+        // Return a single offline lane entry for full-height display
+        const offlineLanes = [{
+          status: -1,
+          fault: 'Offline',
+          operator: null,
+          operatorId: null,
+          machine: machineName,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: {},
+          batch: { item: '', code: 0 }
+        }];
+
+        return res.json({ flipperData: offlineLanes });
+      }
+
+      // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
+      const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
+        .filter(op => op && op.id !== -1)
+        .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
+      
+      console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${ticker.status?.code ?? 0}`);
+
+      // Get today's date string for totals-daily query
+      const now = DateTime.now();
+      const todayDateStr = now.toFormat('yyyy-MM-dd');
+
+      // If machine is NOT running, mirror existing route behavior by returning entries with 0% efficiency
+      // (we still include operator/machine/batch info for the screen to render cleanly)
+      if ((ticker.status?.code ?? 0) !== 1) {
+        console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
+        const notRunningStartTime = Date.now();
+        
+        const performanceData = await Promise.all(
+          onMachineOperators.map(async (op, idx) => {
+            const batchItemStartTime = Date.now();
+            const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
+            const operatorName = op.name?.first && op.name?.surname
+              ? `${op.name.first} ${op.name.surname}`
+              : (op.name || 'Unknown');
+            return {
+              status: ticker.status?.code ?? 0,
+              fault: ticker.status?.name ?? 'Unknown',
+              operator: operatorName,
+              operatorId: op.id,
+              machine: ticker.machine?.name || `Serial ${serialNum}`,
+              timers: { on: 0, ready: 0 },
+              displayTimers: { on: '', run: '' },
+              efficiency: buildZeroEfficiencyPayload(),
+              oee: {},
+              batch: { item: batchItem, code: 10000001 }
+            };
+          })
+        );
+
+        console.log(`[PERF] [${serialNum}] Non-running path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
+        return res.json({ flipperData: performanceData });
+      }
+
+      // Running: compute performance from operator-sessions for short windows, totals-daily for today
+      console.log(`[PERF] [${serialNum}] Machine RUNNING - processing ${onMachineOperators.length} operators`);
+      const runningStartTime = Date.now();
+      
+      // Define time frames for short windows (today will come from totals-daily)
+      const shortFrames = {
+        lastSixMinutes: { start: now.minus({ minutes: 6 }), label: 'Last 6 Mins' },
+        lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: 'Last 15 Mins' },
+        lastHour: { start: now.minus({ hours: 1 }), label: 'Last Hour' }
+      };
+
+      // Fetch all daily totals for this machine and today in one query
+      const dailyTotalsStartTime = Date.now();
+      const dailyTotalsColl = db.collection('totals-daily');
+      const dailyTotals = await dailyTotalsColl.find({
+        entityType: 'operator-machine',
+        machineSerial: serialNum,
+        date: todayDateStr
+      }).toArray();
+      console.log(`[PERF] [${serialNum}] Daily totals query completed in ${Date.now() - dailyTotalsStartTime}ms (found ${dailyTotals.length} records)`);
+
+      // Create a map for quick lookup: operatorId -> daily total
+      const dailyTotalsMap = new Map();
+      for (const total of dailyTotals) {
+        if (total.operatorId) {
+          dailyTotalsMap.set(total.operatorId, total);
+        }
+      }
+
+      const performanceData = await Promise.all(
+        onMachineOperators.map(async (op, idx) => {
+          const operatorStartTime = Date.now();
+          console.log(`[PERF] [${serialNum}] Starting operator ${op.id} (${idx + 1}/${onMachineOperators.length})`);
+          
+          // Calculate short windows (6 min, 15 min, 1 hour) from operator-sessions
+          const shortFramesWithToday = {
+            ...shortFrames,
+            today: { start: now.startOf('day'), label: 'All Day' }
+          };
+          
+          const timeframeQueryStartTime = Date.now();
+          const results = await queryOperatorTimeframes(db, serialNum, op.id, shortFramesWithToday);
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} timeframe queries completed in ${Date.now() - timeframeQueryStartTime}ms`);
+
+          // If ANY short timeframe came back empty, fetch most recent OPEN session and use it for all frames
+          const hasEmpty = Object.values({
+            lastSixMinutes: results.lastSixMinutes,
+            lastFifteenMinutes: results.lastFifteenMinutes,
+            lastHour: results.lastHour
+          }).some(arr => arr.length === 0);
+
+          if (hasEmpty) {
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} has empty short timeframes - fetching open session`);
+            const openSessionStartTime = Date.now();
+            
+            const open = await db.collection(config.operatorSessionCollectionName)
+              .findOne(
+                {
+                  'operator.id': op.id,
+                  $or: [
+                    { 'machine.serial': serialNum },
+                    { 'machine.id': serialNum }
+                  ],
+                  'timestamps.end': { $exists: false }
+                },
+                { sort: { 'timestamps.start': -1 }, projection: projectSessionForPerf() }
+              );
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} open session query completed in ${Date.now() - openSessionStartTime}ms`);
+            
+            if (open) {
+              results.lastSixMinutes = [open];
+              results.lastFifteenMinutes = [open];
+              results.lastHour = [open];
+            }
+          }
+
+          // Compute efficiency% for short windows from sessions
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} starting efficiency calculations for short windows`);
+          const efficiencyCalcStartTime = Date.now();
+          const efficiencyObj = {};
+          
+          // Process short windows (6 min, 15 min, 1 hour) from sessions
+          for (const [key, arr] of Object.entries({
+            lastSixMinutes: results.lastSixMinutes,
+            lastFifteenMinutes: results.lastFifteenMinutes,
+            lastHour: results.lastHour
+          })) {
+            const windowStartTime = Date.now();
+            const { start, label } = shortFrames[key];
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} processing window: ${key}`);
+            
+            const windowStart = new Date(start.toISO());
+            const windowEnd = new Date(now.toISO());
+            
+            const countExtractStartTime = Date.now();
+            const counts = extractCountsFromSessions(arr, windowStart, windowEnd, op.id, serialNum);
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} - extracted ${counts.length} counts from sessions in ${Date.now() - countExtractStartTime}ms`);
+            
+            const sumWindowStartTime = Date.now();
+            const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
+            const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} - sumWindowWithCounts completed in ${Date.now() - sumWindowStartTime}ms (runtime=${runtimeSec}s, timeCredit=${totalTimeCreditSec}s, eff=${Math.round(eff * 100)}%)`);
+            
+            efficiencyObj[key] = {
+              value: Math.round(eff * 100),
+              label,
+              color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
+            };
+            
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} TOTAL time: ${Date.now() - windowStartTime}ms`);
+          }
+
+          // Get today's efficiency from totals-daily
+          const dailyTotal = dailyTotalsMap.get(op.id);
+          let todayEfficiency = 0;
+          
+          if (dailyTotal && dailyTotal.runtimeMs > 0) {
+            // Calculate efficiency from daily totals (both in milliseconds)
+            const runtimeSec = dailyTotal.runtimeMs / 1000;
+            const timeCreditSec = dailyTotal.totalTimeCreditMs / 1000;
+            todayEfficiency = timeCreditSec / runtimeSec;
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} today efficiency from daily totals: runtime=${runtimeSec}s, timeCredit=${timeCreditSec}s, eff=${Math.round(todayEfficiency * 100)}%`);
+          } else {
+            console.log(`[PERF] [${serialNum}] Operator ${op.id} no daily total found or zero runtime, using 0% for today`);
+          }
+
+          efficiencyObj.today = {
+            value: Math.round(todayEfficiency * 100),
+            label: 'All Day',
+            color: todayEfficiency >= 0.9 ? 'green' : todayEfficiency >= 0.7 ? 'yellow' : 'red'
+          };
+          
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} efficiency calculations completed in ${Date.now() - efficiencyCalcStartTime}ms`);
+
+          // Batch item: concatenate current items if multiple (prefer the most recent session; fallback to union)
+          const batchItemStartTime = Date.now();
+          const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
+          
+          const operatorTotalTime = Date.now() - operatorStartTime;
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
+
+          const operatorName = op.name?.first && op.name?.surname
+            ? `${op.name.first} ${op.name.surname}`
+            : (op.name || 'Unknown');
+
+          return {
+            status: ticker.status?.code ?? 0,
+            fault: ticker.status?.name ?? 'Unknown',
+            operator: operatorName,
+            operatorId: op.id,
+            machine: ticker.machine?.name || `Serial ${serialNum}`,
+            timers: { on: 0, ready: 0 },
+            displayTimers: { on: '', run: '' },
+            efficiency: efficiencyObj,
+            oee: {},
+            batch: { item: batchItem, code: 10000001 }
+          };
+        })
+      );
+
+      console.log(`[PERF] [${serialNum}] Running path completed in ${Date.now() - runningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
+      
+      return res.json({ flipperData: performanceData });
+    } catch (err) {
+      console.error(`[PERF] [${serialNum || 'unknown'}] ERROR after ${Date.now() - routeStartTime}ms:`, err);
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // --- Get SPF Machines API ---
+
+  router.get('/machines/spf', async (req, res) => {
+    try {
+      const machines = await db.collection('machines')
+        .find({
+          $or: [
+            { name: { $regex: /^SPF/i } },
+            { type: 'SPF' }
+          ],
+          active: { $ne: false }
+        })
+        .project({ serial: 1, name: 1, active: 1 })
+        .sort({ name: 1 })
+        .toArray();
+      
+      return res.json(machines);
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // --- Machine-wide Efficiency Screen API (sessions-powered) ---
 
@@ -747,36 +1110,10 @@ module.exports = function (server) {
       const efficiencyObj = {};
       for (const [key, arr] of Object.entries(results)) {
         const { start, label } = frames[key];
-        // Query counts directly from count collection for this time window
+        // Extract counts from embedded session counts instead of querying count collection
         const windowStart = new Date(start.toISO());
         const windowEnd = new Date(now.toISO());
-        // Try primary format first (production database format)
-        let counts = await db.collection('count')
-          .find({
-            'operator.id': operator.id,
-            'machine.serial': serialNum,
-            $or: [
-              { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
-              { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
-            ],
-            misfeed: { $ne: true }
-          })
-          .toArray();
-        
-        // If no counts found, try alternative machine field
-        if (counts.length === 0) {
-          counts = await db.collection('count')
-            .find({
-              'operator.id': operator.id,
-              'machine.id': serialNum,
-              $or: [
-                { 'timestamp': { $gte: windowStart, $lte: windowEnd } },
-                { 'timestamps.create': { $gte: windowStart, $lte: windowEnd } }
-              ],
-              misfeed: { $ne: true }
-            })
-            .toArray();
-        }
+        const counts = extractCountsFromSessions(arr, windowStart, windowEnd, operator.id, serialNum);
         
         const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
         const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;

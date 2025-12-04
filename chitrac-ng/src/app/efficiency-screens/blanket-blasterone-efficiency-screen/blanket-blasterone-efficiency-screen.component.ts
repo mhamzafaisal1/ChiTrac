@@ -21,7 +21,6 @@ import { BlanketBlasterModule } from '../../blanket-blaster/blanket-blaster.modu
   standalone: true
 })
 export class BlanketBlasteroneEfficiencyScreen implements OnDestroy {
-  date: string = new Date().toISOString(); // today
   lanes: any[] = [];
   pollingActive: boolean = false;
   private destroy$ = new Subject<void>();
@@ -34,7 +33,7 @@ export class BlanketBlasteroneEfficiencyScreen implements OnDestroy {
   }
 
   fetchOnce() {
-    this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER, this.date)
+    this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
@@ -53,7 +52,7 @@ export class BlanketBlasteroneEfficiencyScreen implements OnDestroy {
       .pipe(
         takeUntil(this.destroy$),
         switchMap(() =>
-          this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER, this.date)
+          this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER)
         )
       )
       .subscribe({

@@ -21,7 +21,6 @@ import { BlanketBlasterModule } from '../../blanket-blaster/blanket-blaster.modu
   standalone: true
 })
 export class SplEfficiencyScreen implements OnDestroy {
-  date: string = new Date().toISOString(); // today
   lanes: any[] = [];
   pollingActive: boolean = false;
   isLoading: boolean = true; // Start with loading state
@@ -36,7 +35,7 @@ export class SplEfficiencyScreen implements OnDestroy {
 
   fetchOnce() {
     this.isLoading = true;
-    this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER, this.date)
+    this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
@@ -53,14 +52,14 @@ export class SplEfficiencyScreen implements OnDestroy {
   startPolling() {
     this.pollingActive = true;
 
-    console.log(`Starting polling for serial ${this.SERIAL_NUMBER}, date: ${this.date}`);
+    console.log(`Starting polling for serial ${this.SERIAL_NUMBER} (using daily route)`);
 
     timer(0, this.POLL_INTERVAL)
       .pipe(
         takeUntil(this.destroy$),
         exhaustMap(() => {
-          console.log(`Making API call to /api/alpha/analytics/machine-live-session-summary?serial=${this.SERIAL_NUMBER}&date=${new Date(this.date).toISOString().split('T')[0]}`);
-          return this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER, this.date);
+          console.log(`Making API call to /api/alpha/analytics/daily/machine-live-session-summary?serial=${this.SERIAL_NUMBER}`);
+          return this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER);
         })
       )
       .subscribe({
@@ -73,6 +72,7 @@ export class SplEfficiencyScreen implements OnDestroy {
             console.log('First lane efficiency structure:', this.lanes[0].efficiency);
             console.log('First lane efficiency keys:', Object.keys(this.lanes[0].efficiency || {}));
             if (this.lanes[0].efficiency) {
+              console.log('lastSixMinutes:', this.lanes[0].efficiency.lastSixMinutes);
               console.log('lastFifteenMinutes:', this.lanes[0].efficiency.lastFifteenMinutes);
               console.log('lastHour:', this.lanes[0].efficiency.lastHour);
               console.log('today:', this.lanes[0].efficiency.today);

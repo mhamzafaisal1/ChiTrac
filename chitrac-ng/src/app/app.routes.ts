@@ -20,6 +20,9 @@ import { MachineEfficiencyLaneComponent } from './efficiency-screens/efficiecny-
 import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
 import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
 import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
+import { LPLsEfficiencyScreenComponent } from './efficiency-screens/LPLs-efficiency-screen/LPLs-efficiency-screen';
+import { SPFsEfficiencyScreenComponent } from './efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen';
+import { BlanketBlastersEfficiencyScreenComponent } from './efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen';
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
@@ -58,6 +61,9 @@ export const routes: Routes = [
 	{ path: 'ng/machine-efficiency-lane', component: MachineEfficiencyLaneComponent },
 	{ path: 'ng/spl-col-efficiency-screen', component: SplColEfficiencyScreenComponent },
 	{ path: 'ng/spf-col-efficiency-screen', component: SpfColEfficiencyScreenComponent },
+	{ path: 'ng/lpls-efficiency-screen', component: LPLsEfficiencyScreenComponent },
+	{ path: 'ng/spfs-efficiency-screen', component: SPFsEfficiencyScreenComponent },
+	{ path: 'ng/blanket-blasters-efficiency-screen', component: BlanketBlastersEfficiencyScreenComponent },
 	
 	// Redirects
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },

@@ -1,0 +1,359 @@
+:host {
+  display: block;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.screen-container {
+  height: 100%;
+  width: 100%;
+  padding: 0.75rem;
+  box-sizing: border-box;
+  background-color: var(--md-sys-color-background, #1e1e1e);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lanes-wrapper {
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.lane-container {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+// ===== LANE BACKGROUND SECTION (84% height) =====
+.lane-background {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 15px 0;
+  box-sizing: border-box;
+}
+
+.lane-running-bg {
+  background-color: var(--sg-color-blue-gray-light-200, #e8eaf0);
+}
+
+.lane-greyed-bg {
+  background-color: #333;
+}
+
+.lane-stop-bg {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--sg-color-red, #d32f2f),
+    var(--sg-color-red, #d32f2f) 10px,
+    #AA0000 10px,
+    #AA0000 20px
+  );
+}
+
+.lane-fault-bg {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--sg-color-background, #ffffff),
+    var(--sg-color-background, #ffffff) 10px,
+    #ca6510 10px,
+    #ca6510 20px
+  );
+}
+
+.lane-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 15px;
+  min-height: 0;
+}
+
+// ===== OPERATOR BLOCK (10% of lane-inner) =====
+.operator-block {
+  flex: 0 0 auto;
+  height: 10%;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.operator-text {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  text-transform: uppercase;
+  text-align: center;
+  flex-direction: column;
+  padding-top: 1rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  color: var(--sg-color-background, #ffffff);
+  font-weight: 700;
+}
+
+.operator-content {
+  width: 100%;
+  text-align: center;
+}
+
+// Color classes for operator block
+.green {
+  background-color: var(--sg-color-green, #4caf50) !important;
+  color: var(--sg-color-background, #ffffff);
+}
+
+.yellow {
+  background-color: var(--sg-color-yellow, #ffc107) !important;
+  color: var(--sg-color-background, #ffffff);
+  font-weight: bolder;
+}
+
+.red {
+  background-color: var(--sg-color-red, #d32f2f) !important;
+  color: var(--sg-color-background, #ffffff);
+  font-weight: bolder;
+}
+
+.no-operator {
+  background-color: #555 !important;
+}
+
+.stopped {
+  background-color: var(--sg-color-red, #d32f2f) !important;
+}
+
+.fault {
+  background-color: var(--sg-color-yellow, #ffc107) !important;
+  color: var(--sg-color-background, #ffffff);
+}
+
+// ===== DATA BLOCK (90% of lane-inner) =====
+.data-block {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// Running state - Efficiency display
+.efficiency-value {
+  flex: 0 0 30%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.value-text {
+  text-align: center;
+  font-weight: bold;
+  font-size: 4.5rem;
+  line-height: 1;
+  color: var(--sg-color-background, #ffffff);
+}
+
+.bars-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.bars {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.bar-item {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bar-chart {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  display: block;
+}
+
+.bar-fill {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  min-height: 0;
+  transition: height 0.3s ease;
+}
+
+.bar-value {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  font-size: 1.5rem;
+  line-height: 1;
+  font-weight: 600;
+  margin-bottom: 0.25em;
+  color: var(--sg-color-background, #ffffff);
+  pointer-events: none;
+}
+
+.bar-label {
+  flex: 0 0 auto;
+  height: 10%;
+  min-height: 30px;
+  display: flex;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  border: 1px solid var(--sg-color-blue-gray-light-200, #b0bec5);
+  font-size: 1rem;
+  line-height: 1.2;
+  color: white;
+  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
+  padding: 0.25rem;
+}
+
+// Fault/Stop state display
+.fault-display {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.fault-text {
+  display: flex;
+  font-weight: bold;
+  text-align: center;
+  justify-content: center;
+  flex-direction: column;
+  text-transform: uppercase;
+  font-size: 2.5rem;
+  line-height: 1;
+  color: var(--sg-color-background, #ffffff);
+}
+
+.fault-label {
+  text-align: center;
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  color: var(--sg-color-background, #ffffff);
+  margin-top: 0.5rem;
+}
+
+.fault-code {
+  text-align: center;
+  font-size: 1.25rem;
+  color: var(--sg-color-background, #ffffff);
+  margin-top: 0.25rem;
+}
+
+.timer-display {
+  flex: 0 0 auto;
+  height: 10%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timer-text {
+  display: flex;
+  text-align: center;
+  justify-content: center;
+  flex-direction: column;
+  font-size: 1.25rem;
+  color: var(--sg-color-background, #ffffff);
+}
+
+// ===== ITEM BLOCK (Fixed height at bottom) =====
+.item-block {
+  flex: 0 0 auto;
+  height: 16%;
+  min-height: 80px;
+  max-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  text-align: center;
+  border-top: 0.5em solid var(--sg-color-blue-gray-light-200, #b0bec5);
+  border-bottom: 1em solid var(--sg-color-blue-gray-light-300, #90a4ae);
+  margin: 0;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+.item-block-greyed {
+  background-color: #333;
+  border-top-color: #191919;
+  border-bottom-color: #333;
+  color: white;
+}
+
+.item-block-stopped {
+  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
+  color: var(--sg-color-text, #000000);
+}
+
+.item-block-fault {
+  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
+  color: var(--sg-color-text, #000000);
+}
+
+.item-line {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+// Ensure proper color handling
+.data-block.stopped,
+.data-block.fault {
+  background-color: inherit;
+}
