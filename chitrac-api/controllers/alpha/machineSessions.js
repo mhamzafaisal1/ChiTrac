@@ -683,9 +683,17 @@ module.exports = function (server) {
         ]),
       ];
 
-      const [machineItemRecords, operatorMachineRecords, stateTickerData] =
+      const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, stateTickerData] =
         await Promise.all([
           cacheCollection
+            .find({
+              entityType: "machine-item",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          db
+            .collection("hourly-totals")
             .find({
               entityType: "machine-item",
               date: dateStr,
@@ -714,6 +722,7 @@ module.exports = function (server) {
 
       const tickerMap = buildLatestTickerMap(stateTickerData);
       const machineItemsBySerial = groupRecordsBySerial(machineItemRecords);
+      const machineItemHourlyBySerial = groupRecordsBySerial(machineItemHourlyRecords);
       const operatorTotalsBySerial = groupRecordsBySerial(
         operatorMachineRecords
       );
@@ -739,8 +748,9 @@ module.exports = function (server) {
             sessionStart,
             sessionEnd
           );
+          const machineItemHourly = machineItemHourlyBySerial.get(serial) || [];
           const itemHourlyStack = buildItemHourlyStackFromRecords(
-            machineItems,
+            machineItemHourly,
             sessionStart
           );
           const operatorEfficiency = buildOperatorEfficiencyFromRecords(
@@ -2368,56 +2378,67 @@ module.exports = function (server) {
     if (!records.length) {
       return {
         title: "No data",
-        data: { hours: [], operators: {} },
+        data: { hours: [], items: {} },
       };
     }
 
+    // Group records by hour and itemName, summing totalCounts
     const hourMap = new Map();
     const itemNames = new Set();
 
     for (const record of records) {
-      const endTime = record.timeRange?.end
-        ? new Date(record.timeRange.end)
-        : sessionStart;
-      const diff = endTime - sessionStart;
-      const hourIndex = Math.max(0, Math.floor(diff / (60 * 60 * 1000)));
+      // Use the hour field directly from hourly-totals records
+      const hour = typeof record.hour === 'number' ? record.hour : null;
+      if (hour === null || hour < 0 || hour > 23) {
+        continue; // Skip invalid hour records
+      }
+
       const itemName = record.itemName || `Item ${record.itemId ?? "Unknown"}`;
       const count = safeNumber(record.totalCounts);
 
-      if (!hourMap.has(hourIndex)) {
-        hourMap.set(hourIndex, {});
+      if (!hourMap.has(hour)) {
+        hourMap.set(hour, {});
       }
-      const entry = hourMap.get(hourIndex);
+      const entry = hourMap.get(hour);
       entry[itemName] = (entry[itemName] || 0) + count;
       itemNames.add(itemName);
     }
 
-    const maxHour = Math.max(...hourMap.keys());
-    if (!Number.isFinite(maxHour) || maxHour < 0) {
+    if (hourMap.size === 0) {
       return {
         title: "Item Stacked Count Chart",
-        data: { hours: [], operators: {} },
+        data: { hours: [], items: {} },
       };
     }
 
-    const hours = Array.from({ length: maxHour + 1 }, (_, idx) => idx);
-    const operators = {};
+    // Get all hours that have data and find the maximum
+    const hoursWithData = Array.from(hourMap.keys()).sort((a, b) => a - b);
+    const maxHour = Math.max(...hoursWithData);
 
+    // Create array of all hours from 0 to maxHour (inclusive) to match expected format
+    // This ensures hours start from 0 even if data doesn't exist for early hours
+    const allHours = Array.from({ length: maxHour + 1 }, (_, idx) => idx);
+
+    // Initialize items object with arrays filled with zeros
+    const items = {};
     for (const name of itemNames) {
-      operators[name] = Array(maxHour + 1).fill(0);
+      items[name] = Array(allHours.length).fill(0);
     }
 
-    for (const [hourIndex, counts] of hourMap.entries()) {
-      for (const [itemName, total] of Object.entries(counts)) {
-        operators[itemName][hourIndex] = total;
+    // Fill in the actual counts
+    for (const [hour, counts] of hourMap.entries()) {
+      if (hour >= 0 && hour < allHours.length) {
+        for (const [itemName, total] of Object.entries(counts)) {
+          items[itemName][hour] = total;
+        }
       }
     }
 
     return {
       title: "Item Stacked Count Chart",
       data: {
-        hours,
-        operators,
+        hours: allHours,
+        items,
       },
     };
   }
