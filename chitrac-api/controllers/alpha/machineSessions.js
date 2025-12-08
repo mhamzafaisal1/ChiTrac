@@ -683,7 +683,7 @@ module.exports = function (server) {
         ]),
       ];
 
-      const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, stateTickerData] =
+      const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
         await Promise.all([
           cacheCollection
             .find({
@@ -701,6 +701,14 @@ module.exports = function (server) {
             })
             .toArray(),
           cacheCollection
+            .find({
+              entityType: "operator-machine",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          db
+            .collection("hourly-totals")
             .find({
               entityType: "operator-machine",
               date: dateStr,
@@ -726,6 +734,7 @@ module.exports = function (server) {
       const operatorTotalsBySerial = groupRecordsBySerial(
         operatorMachineRecords
       );
+      const operatorMachineHourlyBySerial = groupRecordsBySerial(operatorMachineHourlyRecords);
 
       const results = await Promise.all(
         machineTotals.map(async (record) => {
@@ -753,8 +762,9 @@ module.exports = function (server) {
             machineItemHourly,
             sessionStart
           );
+          const operatorMachineHourly = operatorMachineHourlyBySerial.get(serial) || [];
           const operatorEfficiency = buildOperatorEfficiencyFromRecords(
-            operatorTotalsBySerial.get(serial) || [],
+            operatorMachineHourly,
             sessionStart
           );
           const currentOperators = await buildCurrentOperators(db, serial);
@@ -2448,31 +2458,77 @@ module.exports = function (server) {
       return [];
     }
 
-    const operatorEntries = [];
+    // Group records by hour
+    const hourMap = new Map();
+
     for (const record of records) {
-      const workedMs =
-        safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
+      // Use the hour field directly from hourly-totals records
+      const hour = typeof record.hour === 'number' ? record.hour : null;
+      if (hour === null || hour < 0 || hour > 23) {
+        continue; // Skip invalid hour records
+      }
+
+      const workedMs = safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
       const timeCreditMs = safeNumber(record.totalTimeCreditMs);
-      const ratio =
-        workedMs > 0 ? Math.min(Math.max(timeCreditMs / workedMs, 0), 2) : 0;
-      operatorEntries.push({
-        id: safeNumber(record.operatorId, record.operatorId),
-        name: record.operatorName || "Unknown",
-        efficiency: Math.round(ratio * 10000) / 100,
+      const ratio = workedMs > 0 ? Math.min(Math.max(timeCreditMs / workedMs, 0), 2) : 0;
+      const efficiency = Math.round(ratio * 10000) / 100;
+
+      const operatorId = safeNumber(record.operatorId);
+      const operatorName = record.operatorName || "Unknown";
+
+      if (!hourMap.has(hour)) {
+        hourMap.set(hour, {
+          operators: new Map() // Use Map to deduplicate operators per hour
+        });
+      }
+
+      const hourData = hourMap.get(hour);
+      
+      // Use operator ID as key to avoid duplicates (in case same operator has multiple records for same hour)
+      const operatorKey = `${operatorId}`;
+      if (!hourData.operators.has(operatorKey)) {
+        hourData.operators.set(operatorKey, {
+          id: operatorId,
+          name: operatorName,
+          efficiency: efficiency
+        });
+      } else {
+        // If operator already exists in this hour, average the efficiencies
+        // This handles cases where an operator might have multiple records for the same hour
+        const existing = hourData.operators.get(operatorKey);
+        existing.efficiency = Math.round(((existing.efficiency + efficiency) / 2) * 100) / 100;
+      }
+    }
+
+    if (hourMap.size === 0) {
+      return [];
+    }
+
+    // Convert to array format, sorted by hour
+    const hours = Array.from(hourMap.keys()).sort((a, b) => a - b);
+    const result = [];
+
+    for (const hour of hours) {
+      const hourData = hourMap.get(hour);
+      const operators = Array.from(hourData.operators.values());
+      
+      // Calculate average efficiency for this hour from all operators
+      const avgEfficiency = operators.length > 0
+        ? operators.reduce((sum, op) => sum + op.efficiency, 0) / operators.length
+        : 0;
+
+      // Create hour timestamp (using sessionStart date with the hour)
+      const hourDate = new Date(sessionStart);
+      hourDate.setHours(hour, 0, 0, 0);
+
+      result.push({
+        hour: hourDate.toISOString(),
+        oee: Math.round(avgEfficiency * 100) / 100,
+        operators: operators
       });
     }
 
-    const avgEfficiency =
-      operatorEntries.reduce((sum, entry) => sum + entry.efficiency, 0) /
-      operatorEntries.length;
-
-    return [
-      {
-        hour: sessionStart.toISOString(),
-        oee: Math.round(avgEfficiency * 100) / 100,
-        operators: operatorEntries,
-      },
-    ];
+    return result;
   }
 
   return router;
