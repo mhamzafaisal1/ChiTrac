@@ -2458,6 +2458,10 @@ module.exports = function (server) {
       return [];
     }
 
+    // Import Luxon for timezone-aware date handling
+    const { DateTime } = require("luxon");
+    const { SYSTEM_TIMEZONE } = require("../../utils/time");
+
     // Group records by hour
     const hourMap = new Map();
 
@@ -2517,9 +2521,11 @@ module.exports = function (server) {
         ? operators.reduce((sum, op) => sum + op.efficiency, 0) / operators.length
         : 0;
 
-      // Create hour timestamp (using sessionStart date with the hour)
-      const hourDate = new Date(sessionStart);
-      hourDate.setHours(hour, 0, 0, 0);
+      // ✅ FIX: Create hour timestamp in Chicago timezone (matching the hour field from records)
+      // Convert sessionStart to Chicago timezone, then set the hour in that timezone
+      const hourDate = DateTime.fromJSDate(sessionStart, { zone: SYSTEM_TIMEZONE })
+        .set({ hour: hour, minute: 0, second: 0, millisecond: 0 })
+        .toJSDate();
 
       result.push({
         hour: hourDate.toISOString(),
