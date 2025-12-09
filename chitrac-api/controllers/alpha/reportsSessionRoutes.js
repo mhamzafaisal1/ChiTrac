@@ -6605,48 +6605,56 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
       console.log(`[item-sessions-summary-daily-cache] Query start: ${exactStart.toISOString()}, end: ${exactEnd.toISOString()}`);
 
-      // ---------- Check if we're querying complete days ----------
-      const startOfDayStart = new Date(exactStart);
-      startOfDayStart.setHours(0, 0, 0, 0);
-      
-      const endOfDayEnd = new Date(exactEnd);
-      endOfDayEnd.setHours(23, 59, 59, 999);
-      
-      const isStartOfDay = exactStart.getTime() === startOfDayStart.getTime();
-      const isEndOfDay = exactEnd.getTime() >= endOfDayEnd.getTime();
-      const isSameDay = exactStart.toISOString().split('T')[0] === exactEnd.toISOString().split('T')[0];
-      
+      // ---------- Timezone-aware date handling (same as machine report) ----------
+      const startDt = DateTime.fromJSDate(exactStart, { zone: SYSTEM_TIMEZONE });
+      const endDt = DateTime.fromJSDate(exactEnd, { zone: SYSTEM_TIMEZONE });
+      const nowLocal = DateTime.now().setZone(SYSTEM_TIMEZONE);
+
+      const normalizedStart = startDt.startOf('day');
+      const normalizedEnd = endDt.startOf('day');
+      const todayStart = nowLocal.startOf('day');
+
+      // Check if query includes today
+      const queryIncludesToday = normalizedEnd >= todayStart;
+
+      // Check if this is a partial day query for a past date (not today)
+      // Use timezone-aware comparisons with Luxon DateTime
+      const isStartOfDay = startDt.hour === 0 && startDt.minute === 0 && startDt.second === 0 && startDt.millisecond === 0;
+      const endOfDayEnd = endDt.endOf('day');
+      const isEndOfDay = endDt >= endOfDayEnd.minus({ seconds: 1 }); // Allow 1 second tolerance
+      const isSameDay = normalizedStart.hasSame(normalizedEnd, 'day');
       const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
-      
+      const isPartialPastDay = isPartialDay && !queryIncludesToday;
+
       console.log(`[item-sessions-summary-daily-cache] Time window analysis:`, {
         isStartOfDay,
         isEndOfDay,
         isSameDay,
         isPartialDay,
+        queryIncludesToday,
+        isPartialPastDay,
         startDate: exactStart.toISOString().split('T')[0],
         endDate: exactEnd.toISOString().split('T')[0],
-        startTime: exactStart.toISOString().split('T')[1],
-        endTime: exactEnd.toISOString().split('T')[1]
+        todayDate: todayStart.toISODate()
       });
 
-      // If querying a partial day, MUST use session data for accurate time windowing
-      if (isPartialDay) {
-        console.log(`[item-sessions-summary-daily-cache] ⚠️ PARTIAL DAY DETECTED - Falling back to session-based query for accurate time windowing`);
-        console.log(`[item-sessions-summary-daily-cache] Reason: Cached item records contain cumulative daily totals, not time-windowed data`);
-        console.log(`[item-sessions-summary-daily-cache] Use /analytics/items-summary for partial day queries`);
-        
+      // If querying a partial day from the PAST (not today), use session data for accurate time windowing
+      if (isPartialPastDay) {
+        console.log(`[item-sessions-summary-daily-cache] ⚠️ PARTIAL PAST DAY DETECTED - Falling back to session-based query for accurate time windowing`);
+        console.log(`[item-sessions-summary-daily-cache] Reason: Querying partial day from the past requires session-level precision`);
+
         // Fall back to session-based approach
         const partialDays = [{ start: exactStart, end: exactEnd }];
         const sessionData = await getItemSessionDataForPartialDays(partialDays);
-        
+
         console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions`);
-        
+
         // Process session data
         const resultsMap = new Map();
-        
+
         for (const item of sessionData.items) {
           const itemId = String(item.itemId);
-          
+
           if (!resultsMap.has(itemId)) {
             resultsMap.set(itemId, {
               itemId: item.itemId,
@@ -6656,17 +6664,17 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               workedSec: 0,
             });
           }
-          
+
           const acc = resultsMap.get(itemId);
           acc.count += item.totalCounts || 0;
           acc.workedSec += (item.workedTimeMs || 0) / 1000;
         }
-        
+
         const normalizePPH = (std) => {
           const n = Number(std) || 0;
           return n > 0 && n < 60 ? n * 60 : n;
         };
-        
+
         const results = Array.from(resultsMap.values()).map((entry) => {
           const workedMs = Math.round(entry.workedSec * 1000);
           const hours = workedMs / 3_600_000;
@@ -6683,7 +6691,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             efficiency: Math.round(efficiencyPct * 100) / 100,
           };
         });
-        
+
         console.log(`[item-sessions-summary-daily-cache] Returning ${results.length} items from session-based fallback`);
         return res.json(results);
       }
@@ -6729,22 +6737,27 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         }
         
       } else {
-        // For same-day queries spanning complete days, use cached data
+        // For same-day queries or queries including today, use cached data (same as machine report)
         const cacheCollection = db.collection('totals-daily');
-        
-        // Calculate date range for query
-        const startDate = exactStart.toISOString().split('T')[0];
-        const endDate = exactEnd.toISOString().split('T')[0];
 
+        // Generate date range using normalized dates (same as machine report)
+        const dateStrings = [];
+        let currentDate = normalizedStart;
+        while (currentDate <= normalizedEnd) {
+          dateStrings.push(currentDate.toISODate());
+          currentDate = currentDate.plus({ days: 1 });
+        }
 
-        // Get item daily totals from simulator (with itemStandard already included)
-        const itemQuery = { 
+        console.log(`[item-sessions-summary-daily-cache] Querying cache for dates: ${dateStrings.join(', ')}`);
+
+        // Get item daily totals from simulator (using date strings, same as machine report)
+        const itemQuery = {
           entityType: 'item',
           source: 'simulator', // Only get simulator records
-          dateObj: { 
-            $gte: new Date(startDate + 'T00:00:00.000Z'), 
-            $lte: new Date(endDate + 'T23:59:59.999Z') 
-          }
+          $or: [
+            { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
+            { date: { $in: dateStrings } }
+          ]
         };
 
         itemTotals = await cacheCollection.find(itemQuery).toArray();
