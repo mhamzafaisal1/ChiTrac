@@ -5748,7 +5748,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           
           const counts = Number(cacheItem.totalCounts) || 0;
           const standard = Number(cacheItem.itemStandard) || 0;
-          const workedMs = Number(cacheItem.workedTimeMs) || 0;
+          // Cache records use totalTimeCreditMs instead of workedTimeMs
+          const workedMs = Number(cacheItem.totalTimeCreditMs) || 0;
           
           if (!allItemsMap.has(normalizedName)) {
             allItemsMap.set(normalizedName, {
@@ -5872,7 +5873,15 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             ? item.standardWeightedSum / item.totalCountsForStandard
             : 0;
 
-          const hours = item.workedTimeMs / 3600000;
+          // Fallback: if item has counts but no worked time (totalTimeCreditMs was 0/missing),
+          // calculate worked time proportionally based on operator's total worked time
+          let itemWorkedMs = item.workedTimeMs;
+          if (itemWorkedMs === 0 && item.totalCounts > 0 && operatorData.totalCount > 0 && operatorData.totalWorkedMs > 0) {
+            itemWorkedMs = (item.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs;
+            console.log(`[OPERATOR-CACHE] Operator ${opId}: Item "${item.itemName}" had 0 workedTimeMs but ${item.totalCounts} counts, calculated proportionally: ${itemWorkedMs}ms`);
+          }
+
+          const hours = itemWorkedMs / 3600000;
           const pph = hours > 0 ? item.totalCounts / hours : 0;
           const eff = proratedItemStandard > 0 ? pph / proratedItemStandard : null;
           const weight = operatorData.totalCount > 0 ? item.totalCounts / operatorData.totalCount : 0;
@@ -5884,7 +5893,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             name: item.itemName, // Original casing for display
             standard: Math.round(proratedItemStandard * 100) / 100, // Round to 2 decimals
             countTotal: item.totalCounts,
-            workedTimeFormatted: formatMs(item.workedTimeMs),
+            workedTimeFormatted: formatMs(itemWorkedMs),
             pph: Math.round(pph * 100) / 100,
             efficiency: eff ? Math.round(eff * 10000) / 100 : null,
           };
