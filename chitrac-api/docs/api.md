@@ -8,18 +8,71 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 ## Available Routes
 
 ### alpha
-- [/api/alpha/analytics/daily-dashboard/daily-counts](#apialphaanalyticsdaily-dashboarddaily-counts)
-- [/api/alpha/analytics/daily-dashboard/full](#apialphaanalyticsdaily-dashboardfull)
-- [/api/alpha/analytics/daily-summary-dashboard](#apialphaanalyticsdaily-summary-dashboard)
-- [/api/alpha/analytics/fault-sessions-history](#apialphaanalyticsfault-sessions-history)
-- [/api/alpha/analytics/item-sessions-summary](#apialphaanalyticsitem-sessions-summary)
-- [/api/alpha/analytics/item-stacked-by-hour](#apialphaanalyticsitem-stacked-by-hour)
+
+#### Utility Routes
+- [/api/alpha/timestamp](#apialphatimestamp)
+- [/api/alpha/currentTime/get](#apialphacurrenttimeget)
+- [/api/alpha/ac360/get](#apialphaac360get)
+- [/api/alpha/ac360/lastSession/get](#apialphaac360lastsessionget)
+- [/api/alpha/ac360/post](#apialphaac360post)
+
+#### Legacy Routes
+- [/api/alpha/levelone/all](#apialphaleveloneall)
+- [/api/alpha/production/statistics/machines/all](#apialphaproductionstatisticsmachinesall)
+- [/api/alpha/ticker/all](#apialphatickerall)
+- [/api/alpha/ticker/machines/all](#apialphatickermachinesall)
+- [/api/alpha/counts/all](#apialphacountsall)
+- [/api/alpha/machine/operator/lists](#apialphamachineoperatorlists)
+- [/api/alpha/machine/operator/counts](#apialphamachineoperatorcounts)
+
+#### Run Session Routes
+- [/api/alpha/run-session/state/cycles](#apialpharun-sessionstatecycles)
+- [/api/alpha/run-session/state/operator-cycles](#apialpharun-sessionstateoperator-cycles)
+
+#### Analytics Routes - Machine
+- [/api/alpha/analytics/machine-performance](#apialphaanalyticsmachine-performance)
+- [/api/alpha/analytics/machine-state-totals](#apialphaanalyticsmachine-state-totals)
+- [/api/alpha/analytics/machine-hourly-states](#apialphaanalyticsmachine-hourly-states)
+- [/api/alpha/analytics/machine-item-summary](#apialphaanalyticsmachine-item-summary)
+- [/api/alpha/analytics/machine-item-hourly-item-stack](#apialphaanalyticsmachine-item-hourly-item-stack)
+- [/api/alpha/analytics/machine/operator-efficiency](#apialphaanalyticsmachineoperator-efficiency)
+- [/api/alpha/analytics/machine/operator-efficiency-fromSessions](#apialphaanalyticsmachineoperator-efficiency-fromsessions)
+- [/api/alpha/analytics/machine-sessions-summary](#apialphaanalyticsmachine-sessions-summary)
 - [/api/alpha/analytics/machine-details](#apialphaanalyticsmachine-details)
 - [/api/alpha/analytics/machine-item-sessions-summary](#apialphaanalyticsmachine-item-sessions-summary)
 - [/api/alpha/analytics/machines-summary](#apialphaanalyticsmachines-summary)
+
+#### Analytics Routes - Operator
+- [/api/alpha/analytics/operator-performance](#apialphaanalyticsoperator-performance)
+- [/api/alpha/analytics/operator-item-summary](#apialphaanalyticsoperator-item-summary)
+- [/api/alpha/analytics/operator-countbyitem](#apialphaanalyticsoperator-countbyitem)
+- [/api/alpha/analytics/operator-cycle-pie](#apialphaanalyticsoperator-cycle-pie)
+- [/api/alpha/analytics/operator/daily-efficiency](#apialphaanalyticsoperatordaily-efficiency)
+- [/api/alpha/analytics/operator-fault-history](#apialphaanalyticsoperator-fault-history)
 - [/api/alpha/analytics/operator-details](#apialphaanalyticsoperator-details)
 - [/api/alpha/analytics/operator-item-sessions-summary](#apialphaanalyticsoperator-item-sessions-summary)
 - [/api/alpha/analytics/operator-summary](#apialphaanalyticsoperator-summary)
+- [/api/alpha/analytics/operator-dashboard-agg](#apialphaanalyticsoperator-dashboard-agg)
+- [/api/alpha/analytics/operator-performance-agg](#apialphaanalyticsoperator-performance-agg)
+
+#### Analytics Routes - Item
+- [/api/alpha/analytics/item-summary](#apialphaanalyticsitem-summary)
+- [/api/alpha/analytics/item-dashboard-summary](#apialphaanalyticsitem-dashboard-summary)
+- [/api/alpha/analytics/item-dashboard-summary-agg](#apialphaanalyticsitem-dashboard-summary-agg)
+- [/api/alpha/analytics/item-sessions-summary](#apialphaanalyticsitem-sessions-summary)
+- [/api/alpha/analytics/item-stacked-by-hour](#apialphaanalyticsitem-stacked-by-hour)
+
+#### Analytics Routes - Fault
+- [/api/alpha/analytics/fault-history](#apialphaanalyticsfault-history)
+- [/api/alpha/analytics/fault-sessions-history](#apialphaanalyticsfault-sessions-history)
+
+#### Analytics Routes - Dashboard
+- [/api/alpha/analytics/daily-dashboard/daily-counts](#apialphaanalyticsdaily-dashboarddaily-counts)
+- [/api/alpha/analytics/daily-dashboard/full](#apialphaanalyticsdaily-dashboardfull)
+- [/api/alpha/analytics/daily-summary-dashboard](#apialphaanalyticsdaily-summary-dashboard)
+
+#### Test Routes
+- [/api/alpha/historic-data-test](#apialphahistoric-data-test)
 - [/api/alpha/sample/machineOverview](#apialphasamplemachineoverview)
 
 ### history
@@ -806,6 +859,962 @@ GET /api/alpha/analytics/operator-item-sessions-summary?operatorId=135790&start=
 All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.
 
 ### /api/alpha/sample/machineOverview
+
+---
+
+## Utility Routes
+
+### /api/alpha/timestamp
+
+Returns the server startup timestamp.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Response:**
+```json
+"2025-05-01T12:00:00.000Z"
+```
+
+---
+
+### /api/alpha/currentTime/get
+
+Returns current server time in multiple formats.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Response:**
+```json
+{
+  "currentTime": "2025-05-01-12:00:00.000",
+  "currentLocalTime": "2025-05-01-07:00:00.000",
+  "timezone": "UTC",
+  "timezoneOffset": "+00:00"
+}
+```
+
+---
+
+### /api/alpha/ac360/get
+
+Simple AC360 endpoint test.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Response:**
+```json
+"Hello AC360!"
+```
+
+---
+
+### /api/alpha/ac360/lastSession/get
+
+Returns the last session data for AC360 machine with serial 67421, including duration, counts, and stacks.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Response:**
+```json
+{
+  "duration": "45 minutes",
+  "countTotal": 120,
+  "stackTotal": 5,
+  "counts": [...],
+  "stacks": [...]
+}
+```
+
+---
+
+### /api/alpha/ac360/post
+
+See [api-ac360-post.md](./api-ac360-post.md) for detailed documentation.
+
+---
+
+## Legacy Routes
+
+### /api/alpha/levelone/all
+
+Returns level one data for all active machines, including current status, operators, and session information.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Response:**
+```json
+[
+  {
+    "status": {
+      "code": 1,
+      "name": "Running",
+      "color": "Green"
+    },
+    "machineInfo": {
+      "serial": 67808,
+      "name": "SPF1"
+    },
+    "fault": null,
+    "timeOnTask": 3600,
+    "onTime": 3600,
+    "totalCount": 216,
+    "items": [...],
+    "operators": [...]
+  }
+]
+```
+
+---
+
+### /api/alpha/production/statistics/machines/all
+
+Returns production statistics for all machines since the start of the current day.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Response:** Similar to `/api/alpha/levelone/all` but with statistics calculated from the start of the day.
+
+---
+
+### /api/alpha/ticker/all
+
+Returns all ticker data.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+---
+
+### /api/alpha/ticker/machines/all
+
+Returns machine list from ticker.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+---
+
+### /api/alpha/counts/all
+
+Returns all operator counts.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+---
+
+### /api/alpha/machine/operator/lists
+
+Returns machine and operator lists.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+---
+
+### /api/alpha/machine/operator/counts
+
+Returns counts grouped by machine and operator.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+---
+
+## Run Session Routes
+
+### /api/alpha/run-session/state/cycles
+
+Returns machine-specific count data for cycles within a timestamp range.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | Yes | Machine serial number |
+
+**Response:**
+```json
+[
+  {
+    "start": "2025-05-01T12:00:00.000Z",
+    "end": "2025-05-01T12:30:00.000Z",
+    "duration": 1800000,
+    "counts": [...]
+  }
+]
+```
+
+---
+
+### /api/alpha/run-session/state/operator-cycles
+
+Returns machine-specific operator cycles within a timestamp range.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | Yes | Machine serial number |
+
+**Response:**
+```json
+[
+  {
+    "machine": {
+      "serial": 67808,
+      "name": "SPF1"
+    },
+    "cycles": [
+      {
+        "start": "2025-05-01T12:00:00.000Z",
+        "end": "2025-05-01T12:30:00.000Z",
+        "operators": [...]
+      }
+    ]
+  }
+]
+```
+
+---
+
+## Analytics Routes - Machine
+
+### /api/alpha/analytics/machine-performance
+
+Returns machine performance metrics including runtime, downtime, output, and OEE calculations.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | No | Optional machine serial filter |
+
+**Response:**
+```json
+[
+  {
+    "machine": {
+      "name": "SPF1",
+      "serial": 67808
+    },
+    "currentStatus": {
+      "code": 1,
+      "name": "Running"
+    },
+    "metrics": {
+      "runtime": {
+        "total": 14400000,
+        "formatted": "04:00:00"
+      },
+      "downtime": {
+        "total": 3600000,
+        "formatted": "01:00:00"
+      },
+      "output": {
+        "totalCount": 1200,
+        "misfeedCount": 20
+      },
+      "performance": {
+        "availability": {
+          "value": 0.80,
+          "percentage": "80.00%"
+        },
+        "throughput": {
+          "value": 0.9836,
+          "percentage": "98.36%"
+        },
+        "efficiency": {
+          "value": 0.92,
+          "percentage": "92.00%"
+        },
+        "oee": {
+          "value": 0.7234,
+          "percentage": "72.34%"
+        }
+      }
+    },
+    "timeRange": {
+      "start": "2025-05-01T12:00:00.000Z",
+      "end": "2025-05-01T18:00:00.000Z",
+      "total": "06:00:00"
+    }
+  }
+]
+```
+
+---
+
+### /api/alpha/analytics/machine-state-totals
+
+Returns total time spent in different machine states (running, paused, faulted) for a time window.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | No | Optional machine serial filter |
+
+**Response:**
+```json
+[
+  {
+    "machine": {
+      "name": "SPF1",
+      "serial": 67808
+    },
+    "timeTotals": {
+      "running": {
+        "total": 14400000,
+        "formatted": {
+          "hours": 4,
+          "minutes": 0,
+          "seconds": 0
+        },
+        "cycles": [...]
+      },
+      "paused": {
+        "total": 3600000,
+        "formatted": {
+          "hours": 1,
+          "minutes": 0,
+          "seconds": 0
+        },
+        "cycles": [...]
+      },
+      "faulted": {
+        "total": 1800000,
+        "formatted": {
+          "hours": 0,
+          "minutes": 30,
+          "seconds": 0
+        },
+        "cycles": [...]
+      }
+    },
+    "timeRange": {
+      "start": "2025-05-01T12:00:00.000Z",
+      "end": "2025-05-01T18:00:00.000Z"
+    }
+  }
+]
+```
+
+---
+
+### /api/alpha/analytics/machine-hourly-states
+
+Returns hourly breakdown of machine states (running, paused, faulted) for a time window.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | No | Optional machine serial filter |
+
+**Response:**
+```json
+[
+  {
+    "title": "Machine Activity - May 1",
+    "data": {
+      "hours": [0, 1, 2, ..., 23],
+      "series": {
+        "Running": [3600, 3600, 3600, ...],
+        "Paused": [0, 0, 0, ...],
+        "Faulted": [0, 0, 0, ...]
+      }
+    },
+    "machine": {
+      "name": "SPF1",
+      "serial": 67808
+    }
+  }
+]
+```
+
+---
+
+### /api/alpha/analytics/machine-item-summary
+
+Returns machine item summary with sessions and aggregated metrics.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | No | Optional machine serial filter |
+
+**Response:** See [api-machine-report.md](./api-machine-report.md) for detailed response format.
+
+---
+
+### /api/alpha/analytics/machine-item-hourly-item-stack
+
+Returns hourly item counts stacked by item name for a specific machine.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | Yes | Machine serial number |
+
+**Response:**
+```json
+{
+  "title": "Item Stacked Count Chart for Machine 67808",
+  "data": {
+    "hours": [0, 1, 2, 3],
+    "operators": {
+      "Pool Towel": [120, 135, 98, 110],
+      "Bath Towel": [45, 67, 89, 72]
+    }
+  }
+}
+```
+
+---
+
+### /api/alpha/analytics/machine/operator-efficiency
+
+Returns hourly OEE and operator efficiency data for a specific machine.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | Yes | Machine serial number |
+
+**Response:**
+```json
+{
+  "machine": {
+    "serial": 67808,
+    "name": "SPF1"
+  },
+  "timeRange": {
+    "start": "2025-05-01T12:00:00.000Z",
+    "end": "2025-05-01T18:00:00.000Z",
+    "total": "06:00:00"
+  },
+  "hourlyData": [
+    {
+      "hour": "2025-05-01T12:00:00.000Z",
+      "oee": 72.5,
+      "operators": [
+        {
+          "id": 117811,
+          "name": "Shaun White",
+          "efficiency": 91.2
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### /api/alpha/analytics/machine/operator-efficiency-fromSessions
+
+Returns hourly OEE and operator efficiency data for a specific machine using session-based calculations.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | Yes | Machine serial number |
+
+**Response:** Similar format to `/api/alpha/analytics/machine/operator-efficiency` but calculated from sessions.
+
+---
+
+### /api/alpha/analytics/machine-sessions-summary
+
+Returns machine sessions summary for active machines.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+
+**Response:**
+```json
+{
+  "message": "Machine Sessions Summary",
+  "activeSerials": [67808, 67809],
+  "tickers": [...]
+}
+```
+
+---
+
+## Analytics Routes - Operator
+
+### /api/alpha/analytics/operator-performance
+
+Returns operator performance metrics including runtime, paused time, fault time, output, and efficiency.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| operatorId | Integer | No | Optional operator ID filter |
+
+**Response:**
+```json
+[
+  {
+    "operator": {
+      "id": 117811,
+      "name": "Shaun White"
+    },
+    "currentStatus": {
+      "code": 1,
+      "name": "Running"
+    },
+    "metrics": {
+      "runtime": {
+        "total": 14400000,
+        "formatted": "04:00:00"
+      },
+      "pausedTime": {
+        "total": 1800000,
+        "formatted": "00:30:00"
+      },
+      "faultTime": {
+        "total": 0,
+        "formatted": "00:00:00"
+      },
+      "output": {
+        "totalCount": 1200,
+        "misfeedCount": 20,
+        "validCount": 1180
+      },
+      "performance": {
+        "piecesPerHour": {
+          "value": 300,
+          "formatted": "300"
+        },
+        "efficiency": {
+          "value": 0.92,
+          "percentage": "92.00%"
+        }
+      }
+    },
+    "timeRange": {
+      "start": "2025-05-01T12:00:00.000Z",
+      "end": "2025-05-01T18:00:00.000Z",
+      "total": "06:00:00"
+    }
+  }
+]
+```
+
+---
+
+### /api/alpha/analytics/operator-item-summary
+
+Returns operator item summary with counts, efficiency, and PPH by item.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| operatorId | Integer | No | Optional operator ID filter |
+
+**Response:** See [api-operator-report.md](./api-operator-report.md) for detailed response format.
+
+---
+
+### /api/alpha/analytics/operator-countbyitem
+
+Returns operator counts by item in hourly format for stacked bar charts.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| operatorId | Integer | Yes | Operator ID |
+
+**Response:**
+```json
+{
+  "title": "Operator Counts by item",
+  "data": {
+    "hours": [0, 1, 2, ..., 23],
+    "operators": {
+      "Pool Towel": [120, 135, 98, ...],
+      "Bath Towel": [45, 67, 89, ...]
+    }
+  }
+}
+```
+
+---
+
+### /api/alpha/analytics/operator-cycle-pie
+
+Returns operator cycle breakdown as percentages (Running, Paused, Faulted).
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| operatorId | Integer | Yes | Operator ID |
+
+**Response:**
+```json
+[
+  {
+    "name": "Running",
+    "value": 62
+  },
+  {
+    "name": "Paused",
+    "value": 22
+  },
+  {
+    "name": "Faulted",
+    "value": 16
+  }
+]
+```
+
+---
+
+### /api/alpha/analytics/operator/daily-efficiency
+
+Returns daily efficiency trend for an operator over a time range.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| operatorId | Integer | Yes | Operator ID |
+
+**Response:**
+```json
+{
+  "operator": {
+    "id": 117811,
+    "name": "Shaun White"
+  },
+  "timeRange": {
+    "start": "2025-05-01T00:00:00.000Z",
+    "end": "2025-05-07T23:59:59.999Z",
+    "totalDays": 7
+  },
+  "data": [
+    {
+      "date": "2025-05-01",
+      "efficiency": 78.12
+    },
+    {
+      "date": "2025-05-02",
+      "efficiency": 81.44
+    }
+  ]
+}
+```
+
+---
+
+### /api/alpha/analytics/operator-fault-history
+
+Returns fault history for a specific operator across all machines.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| operatorId | Integer | Yes | Operator ID |
+
+**Response:** Similar format to `/api/alpha/analytics/fault-history` but filtered by operator.
+
+---
+
+### /api/alpha/analytics/operator-dashboard-agg
+
+Returns aggregated operator dashboard data using MongoDB aggregation.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+
+**Response:**
+```json
+[
+  {
+    "operator": {
+      "id": 117811,
+      "name": "Shaun White"
+    },
+    "totalCount": 1200,
+    "validCount": 1180,
+    "misfeedCount": 20,
+    "workedTimeFormatted": "04:00:00",
+    "itemSummary": [...]
+  }
+]
+```
+
+---
+
+### /api/alpha/analytics/operator-performance-agg
+
+Returns operator performance metrics using MongoDB aggregation.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| operatorId | Integer | No | Optional operator ID filter |
+
+**Response:** Similar format to `/api/alpha/analytics/operator-performance` but calculated using aggregation.
+
+---
+
+## Analytics Routes - Item
+
+### /api/alpha/analytics/item-summary
+
+Returns item summary across all machines with counts, PPH, and efficiency.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+
+**Response:** See [api-item-report.md](./api-item-report.md) for detailed response format.
+
+---
+
+### /api/alpha/analytics/item-dashboard-summary
+
+Returns item dashboard summary using bookended states.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+
+**Response:**
+```json
+[
+  {
+    "itemId": 4,
+    "itemName": "Pool Towel",
+    "workedTimeFormatted": "03:45:00",
+    "count": 1240,
+    "pph": 330.67,
+    "standard": 625,
+    "efficiency": 52.91
+  }
+]
+```
+
+---
+
+### /api/alpha/analytics/item-dashboard-summary-agg
+
+Returns item dashboard summary using MongoDB aggregation pipeline.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+
+**Response:** Similar format to `/api/alpha/analytics/item-dashboard-summary` but calculated using aggregation.
+
+---
+
+## Analytics Routes - Fault
+
+### /api/alpha/analytics/fault-history
+
+Returns fault history for a specific machine.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+| serial | Integer | Yes | Machine serial number |
+
+**Response:** Similar format to `/api/alpha/analytics/fault-sessions-history` but uses state-based calculations.
+
+---
+
+## Test Routes
+
+### /api/alpha/historic-data-test
+
+Test route for historic data using state-test collection.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 timestamp | Yes | Window start |
+| end | ISO 8601 timestamp | Yes | Window end |
+
+**Note:** This is a test route and may be removed in production.
+
+---
 
 Returns comprehensive machine overview data including machine info, fault status, operator details, and item counts.
 
