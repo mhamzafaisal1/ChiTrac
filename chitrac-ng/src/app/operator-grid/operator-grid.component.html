@@ -21,4 +21,7 @@
     <button mat-flat-button (click)="openDialog(null)"><mat-icon>add</mat-icon>New Operator</button>
     <button mat-flat-button [disabled]="selectionModel.selected.length == 0" (click)="openDialog(selectionModel.selected[0])"><mat-icon>edit</mat-icon>Edit Operator</button>
     <button mat-flat-button [disabled]="selectionModel.selected.length == 0" (click)="deleteOperator(selectionModel.selected[0])"><mat-icon>delete</mat-icon>Delete Operator</button>
+    <button mat-flat-button [disabled]="!dataSource?.data || dataSource.data.length === 0 || isDownloading" (click)="downloadOperatorsPdf()">
+        <mat-icon>download</mat-icon>{{ isDownloading ? 'Exporting...' : 'Export PDF' }}
+    </button>
 </div>
