@@ -357,9 +357,30 @@ module.exports = function (server) {
           name: "Unknown",
         };
 
+        // ✅ Use buildRange (new format) or fall back to timeRange (legacy format)
+        // buildRange represents the query window used for cache rebuild (todayStart to now)
+        const timeRange = record.buildRange || record.timeRange;
+        
         // Calculate window time (total time in query range)
-        const windowMs =
-          new Date(record.timeRange.end) - new Date(record.timeRange.start);
+        // If neither exists, calculate from start of day to now
+        let windowMs = 0;
+        let rangeStart, rangeEnd;
+        
+        if (timeRange && timeRange.start && timeRange.end) {
+          rangeStart = new Date(timeRange.start);
+          rangeEnd = new Date(timeRange.end);
+          windowMs = rangeEnd - rangeStart;
+        } else {
+          // Fallback: calculate from start of day to now
+          const today = new Date();
+          const chicagoTime = new Date(
+            today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+          );
+          rangeStart = new Date(chicagoTime.setHours(0, 0, 0, 0));
+          rangeEnd = new Date();
+          windowMs = rangeEnd - rangeStart;
+        }
+        
         const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
 
         // Calculate performance metrics
@@ -415,8 +436,8 @@ module.exports = function (server) {
             },
           },
           timeRange: {
-            start: record.timeRange.start,
-            end: record.timeRange.end,
+            start: rangeStart,
+            end: rangeEnd,
           },
         };
       });
