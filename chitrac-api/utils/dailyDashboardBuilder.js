@@ -569,7 +569,7 @@ async function buildPlantwideMetricsByHour(db, start, end) {
   return hourlyMetrics;
 }
 
-// buildPlantwideMetricsByHour from daily totals cache
+// buildPlantwideMetricsByHour from hourly-totals cache
 async function buildPlantwideMetricsByHourFromCache(db, start, end) {
   const wStart = new Date(start);
   const wEnd = new Date(end);
@@ -590,7 +590,7 @@ async function buildPlantwideMetricsByHourFromCache(db, start, end) {
   const totalActiveMachines = await db.collection(config.machineCollectionName)
     .countDocuments({ active: true });
 
-  // Get date strings for the time range
+  // Get date strings and hour ranges for the time range
   const startDateStr = startDT.toFormat('yyyy-LL-dd');
   const endDateStr = endDT.toFormat('yyyy-LL-dd');
   const dateStrs = [];
@@ -601,15 +601,15 @@ async function buildPlantwideMetricsByHourFromCache(db, start, end) {
     currentDate = currentDate.plus({ days: 1 });
   }
 
-  // Query all machine records from totals-daily for the date range
-  const machineRecords = await db.collection('totals-daily')
+  // Query all machine hourly records from hourly-totals for the date range
+  const machineHourlyRecords = await db.collection('hourly-totals')
     .find({
       entityType: 'machine',
       date: { $in: dateStrs }
     })
     .toArray();
 
-  if (machineRecords.length === 0) {
+  if (machineHourlyRecords.length === 0) {
     // Return empty metrics for all hours
     return intervals.map(iv => ({
       hour: iv.hourDT.hour,
@@ -621,95 +621,96 @@ async function buildPlantwideMetricsByHourFromCache(db, start, end) {
   }
 
   const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
-  
-  // Helper to calculate overlap between two time ranges
-  const calculateOverlap = (rangeStart, rangeEnd, hourStart, hourEnd) => {
-    const os = rangeStart > hourStart ? rangeStart : hourStart;
-    const oe = rangeEnd < hourEnd ? rangeEnd : hourEnd;
-    const overlapMs = Math.max(0, oe - os);
-    const rangeMs = rangeEnd - rangeStart;
-    const factor = rangeMs > 0 ? overlapMs / rangeMs : 0;
-    return { overlapMs, factor };
-  };
 
-  const hourlyMetrics = [];
+  // Group records by date-hour combination and aggregate across all machines
+  const hourlyDataMap = new Map();
 
+  // Initialize all intervals (date-hour combinations)
   for (const iv of intervals) {
-    const slotSec = (iv.end - iv.start) / 1000;
-    
-    // Aggregate metrics for this hour across all machines
-    let totalRuntime = 0, totalWorkSec = 0, totalCreditSec = 0, totalValid = 0, totalMis = 0;
-    let totalPossibleRuntime = 0; // Track total possible runtime within this hour slot
+    const dateStr = iv.hourDT.toFormat('yyyy-LL-dd');
+    const hour = iv.hourDT.hour;
+    const key = `${dateStr}-${hour}`;
+    hourlyDataMap.set(key, {
+      hour,
+      totalRuntimeMs: 0,
+      totalWorkedTimeMs: 0,
+      totalTimeCreditMs: 0,
+      totalCounts: 0,
+      totalMisfeeds: 0,
+      machineCount: 0
+    });
+  }
 
-    for (const record of machineRecords) {
-      const recordStart = new Date(record.timeRange?.start || record.dateObj || `${record.date}T00:00:00.000Z`);
-      const recordEnd = new Date(record.timeRange?.end || record.dateObj || `${record.date}T23:59:59.999Z`);
-
-      // Check if this machine's time range overlaps with this hour
-      if (recordEnd <= iv.start || recordStart >= iv.end) {
-        continue; // No overlap
-      }
-
-      // Calculate overlap factor and overlap duration
-      const { overlapMs, factor } = calculateOverlap(recordStart, recordEnd, iv.start, iv.end);
-      
-      if (factor <= 0 || overlapMs <= 0) continue;
-
-      // Track the actual possible runtime for this machine within this hour slot
-      // This is the overlap duration, not the full hour slot duration
-      totalPossibleRuntime += overlapMs / 1000; // Convert to seconds
-
-      // Apply factor to distribute metrics proportionally to this hour
-      // The factor represents what portion of the machine's total time range falls in this hour
-      const runtimeMs = safe(record.runtimeMs || 0);
-      const workedTimeMs = safe(record.workedTimeMs || 0);
-      const timeCreditMs = safe(record.totalTimeCreditMs || 0);
-      const validCount = safe(record.totalCounts || 0);
-      const misfeedCount = safe(record.totalMisfeeds || 0);
-
-      // Distribute metrics proportionally based on overlap
-      // If the hour represents 1/8 of the machine's total time range, we take 1/8 of the metrics
-      totalRuntime += (runtimeMs * factor);
-      totalWorkSec += (workedTimeMs * factor) / 1000; // Convert to seconds
-      totalCreditSec += (timeCreditMs * factor) / 1000; // Convert to seconds
-      totalValid += (validCount * factor);
-      totalMis += (misfeedCount * factor);
+  // Aggregate metrics by date-hour from hourly records
+  for (const record of machineHourlyRecords) {
+    const key = `${record.date}-${record.hour}`;
+    if (!hourlyDataMap.has(key)) {
+      // Skip hours outside the requested range
+      continue;
     }
 
-    // Extract hour in SYSTEM_TIMEZONE
-    const hourInTimezone = iv.hourDT.hour;
+    const hourData = hourlyDataMap.get(key);
+    hourData.totalRuntimeMs += safe(record.runtimeMs || 0);
+    hourData.totalWorkedTimeMs += safe(record.workedTimeMs || 0);
+    hourData.totalTimeCreditMs += safe(record.totalTimeCreditMs || 0);
+    hourData.totalCounts += safe(record.totalCounts || 0);
+    hourData.totalMisfeeds += safe(record.totalMisfeeds || 0);
+    hourData.machineCount += 1;
+  }
 
-    // Calculate plantwide metrics from aggregated values
-    let availability, efficiency, throughput, oee;
-    
-    // Calculate plantwide availability: total runtime / total possible runtime within this hour slot
-    // This makes availability relative to actual runtime, not the hour slot duration
-    // For partial hours, this prevents artificial penalties
-    const totalRuntimeSec = totalRuntime / 1000;
-    availability = totalPossibleRuntime > 0 ? (totalRuntimeSec / totalPossibleRuntime) * 100 : 0;
-    
-    // Calculate efficiency from aggregated work time and time credit
-    efficiency = totalWorkSec > 0 ? (totalCreditSec / totalWorkSec) * 100 : 0;
-    
-    // Calculate throughput from aggregated counts
-    throughput = (totalValid + totalMis) > 0 ? (totalValid / (totalValid + totalMis)) * 100 : 0;
-    
+  // Calculate plantwide metrics for each hour
+  const hourlyMetrics = [];
+  const hourSlotSec = 3600; // 1 hour in seconds
+
+  for (const iv of intervals) {
+    const dateStr = iv.hourDT.toFormat('yyyy-LL-dd');
+    const hour = iv.hourDT.hour;
+    const key = `${dateStr}-${hour}`;
+    const hourData = hourlyDataMap.get(key);
+
+    if (!hourData || hourData.machineCount === 0) {
+      // No data for this hour
+      hourlyMetrics.push({
+        hour,
+        availability: 0,
+        efficiency: 0,
+        throughput: 0,
+        oee: 0
+      });
+      continue;
+    }
+
+    // Calculate plantwide availability: total runtime / (total active machines * hour duration)
+    // This gives us the percentage of machines that were running during this hour
+    const totalPossibleRuntimeMs = totalActiveMachines * hourSlotSec * 1000;
+    const availability = totalPossibleRuntimeMs > 0 
+      ? (hourData.totalRuntimeMs / totalPossibleRuntimeMs) * 100 
+      : 0;
+
+    // Calculate efficiency: total time credit / total worked time
+    const totalWorkedTimeSec = hourData.totalWorkedTimeMs / 1000;
+    const totalTimeCreditSec = hourData.totalTimeCreditMs / 1000;
+    const efficiency = totalWorkedTimeSec > 0 
+      ? (totalTimeCreditSec / totalWorkedTimeSec) * 100 
+      : 0;
+
+    // Calculate throughput: valid counts / total counts
+    const totalOutput = hourData.totalCounts + hourData.totalMisfeeds;
+    const throughput = totalOutput > 0 
+      ? (hourData.totalCounts / totalOutput) * 100 
+      : 0;
+
     // Calculate OEE = Availability * Efficiency * Throughput (all as ratios 0-1)
     const availRatio = availability / 100;
     const effRatio = efficiency / 100;
     const thruRatio = throughput / 100;
-    oee = +( (availRatio * effRatio * thruRatio) * 100 ).toFixed(2);
-    
-    // Round values
-    availability = +(availability.toFixed(2));
-    efficiency = +(efficiency.toFixed(2));
-    throughput = +(throughput.toFixed(2));
+    const oee = +((availRatio * effRatio * thruRatio) * 100).toFixed(2);
 
     hourlyMetrics.push({
-      hour: hourInTimezone,
-      availability,
-      efficiency,
-      throughput,
+      hour,
+      availability: +(availability.toFixed(2)),
+      efficiency: +(efficiency.toFixed(2)),
+      throughput: +(throughput.toFixed(2)),
       oee
     });
   }
