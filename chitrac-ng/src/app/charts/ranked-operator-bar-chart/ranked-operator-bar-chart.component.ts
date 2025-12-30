@@ -167,18 +167,29 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
       );
   }
 
+  private formatOperatorName(name: any): string {
+    // Handle name as object with first and surname properties
+    if (name && typeof name === 'object') {
+      const first = name.first || '';
+      const surname = name.surname || '';
+      return `${first} ${surname}`.trim() || 'Unknown';
+    }
+    // Handle name as string or fallback
+    return String(name ?? 'Unknown');
+  }
+
   private consumeResponse =
     (_: 'once' | 'poll') =>
     (res: any) => {
       let rows: OperatorRow[] = [];
       if (res && res.topOperators && Array.isArray(res.topOperators)) {
         rows = res.topOperators.map((r: any) => ({
-          name: String(r.name ?? r.operator ?? r.id ?? 'Unknown'),
+          name: this.formatOperatorName(r.name ?? r.operator ?? r.id),
           efficiency: Number(r.efficiency ?? r.oee ?? 0)
         }));
       } else if (Array.isArray(res)) {
         rows = res.map((r: any) => ({
-          name: String(r.name ?? r.operator ?? r.id ?? 'Unknown'),
+          name: this.formatOperatorName(r.name ?? r.operator ?? r.id),
           efficiency: Number(r.efficiency ?? r.oee ?? 0)
         }));
       }
