@@ -2499,7 +2499,10 @@ module.exports = function (server) {
       const efficiency = Math.round(ratio * 10000) / 100;
 
       const operatorId = safeNumber(record.operatorId);
-      const operatorName = record.operatorName || "Unknown";
+      // Format operator name from object (first + surname) or use string if already formatted
+      const operatorName = typeof record.operatorName === 'object' && record.operatorName !== null
+        ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
+        : record.operatorName || "Unknown";
 
       if (!hourMap.has(hour)) {
         hourMap.set(hour, {
