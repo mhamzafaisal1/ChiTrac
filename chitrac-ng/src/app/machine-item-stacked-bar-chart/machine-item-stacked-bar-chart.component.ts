@@ -220,10 +220,13 @@ export class MachineItemStackedBarChartComponent implements OnInit, AfterViewIni
       console.log(`MachineItemStackedBarChart: Processing item ${itemKey}:`, itemCounts);
       
       if (Array.isArray(itemCounts) && itemCounts.length === hours.length) {
-        const dataPoints = hours.map((hour: number, hourIndex: number) => ({
-          x: hour,
-          y: itemCounts[hourIndex] || 0
-        }));
+        const dataPoints = hours.map((hour: number, hourIndex: number) => {
+          const yValue = itemCounts[hourIndex];
+          return {
+            x: String(hour), // Convert to string for category axis
+            y: typeof yValue === 'number' ? yValue : Number(yValue) || 0
+          };
+        });
 
         console.log(`MachineItemStackedBarChart: Data points for ${itemKey}:`, dataPoints);
 
@@ -252,7 +255,7 @@ export class MachineItemStackedBarChartComponent implements OnInit, AfterViewIni
       width: this.chartWidth || 600,
       height: this.chartHeight || 400,
       orientation: 'vertical' as const,
-      xType: 'linear' as const,
+      xType: 'category' as const,
       xLabel: 'Hour',
       yLabel: 'Production Count',
       margin: {
