@@ -449,10 +449,15 @@ module.exports = function (server) {
         const opId = record.operatorId;
         
         if (!operatorMap.has(opId)) {
+          // Format operator name from object (first + surname) or use string if already formatted
+          const operatorNameStr = typeof record.operatorName === 'object' && record.operatorName !== null
+            ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
+            : record.operatorName || "Unknown";
+          
           operatorMap.set(opId, {
             operator: {
               id: record.operatorId,
-              name: record.operatorName
+              name: operatorNameStr
             },
             currentStatus: null,
             currentMachine: null,
@@ -1815,9 +1820,14 @@ module.exports = function (server) {
       const operatorId = record.operatorId;
       
       if (!combinedMap.has(operatorId)) {
+        // Format operator name from object (first + surname) or use string if already formatted
+        const operatorNameStr = typeof record.operatorName === 'object' && record.operatorName !== null
+          ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
+          : record.operatorName || "Unknown";
+        
         combinedMap.set(operatorId, {
           operatorId,
-          operatorName: record.operatorName,
+          operatorName: operatorNameStr,
           currentMachine: {
             serial: record.machineSerial,
             name: record.machineName
