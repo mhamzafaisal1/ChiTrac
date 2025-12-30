@@ -391,8 +391,20 @@ module.exports = function (server) {
         const totalOutput = record.totalCounts + record.totalMisfeeds;
         const throughput =
           totalOutput > 0 ? record.totalCounts / totalOutput : 0;
-        const workTimeSec = record.workedTimeMs / 1000;
-        const totalTimeCreditSec = record.totalTimeCreditMs / 1000;
+        
+        // ✅ FIX: If workedTimeMs is 0 but we have totalTimeCreditMs and runtimeMs,
+        // use runtimeMs as fallback (assuming at least 1 active station)
+        // This handles cases where workedTimeMs wasn't properly calculated in cache
+        let workTimeMs = record.workedTimeMs || 0;
+        if (workTimeMs === 0 && record.totalTimeCreditMs > 0 && record.runtimeMs > 0) {
+          workTimeMs = record.runtimeMs; // Fallback to runtimeMs (assumes 1 active station)
+          logger.debug(
+            `[machineSessions] Machine ${record.machineSerial}: workedTimeMs was 0, using runtimeMs ${workTimeMs}ms as fallback`
+          );
+        }
+        
+        const workTimeSec = workTimeMs / 1000;
+        const totalTimeCreditSec = (record.totalTimeCreditMs || 0) / 1000;
         const efficiency =
           workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
         const oee = availability * throughput * efficiency;
