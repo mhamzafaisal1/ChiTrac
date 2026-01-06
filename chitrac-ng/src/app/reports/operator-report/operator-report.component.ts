@@ -121,15 +121,32 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     });
   }
 
+  private normalizeOperatorName(rawName: any, operatorId: number): string {
+    if (!rawName) return `Operator ${operatorId}`;
+    // Handle object format { first, surname }
+    if (typeof rawName === 'object' && rawName !== null && 'first' in rawName) {
+      const nameObj = rawName as { first?: string; surname?: string };
+      const fullName = `${nameObj.first || ''} ${nameObj.surname || ''}`.trim();
+      return fullName || `Operator ${operatorId}`;
+    }
+    // Handle string format
+    if (typeof rawName === 'string') {
+      return rawName.trim() || `Operator ${operatorId}`;
+    }
+    return `Operator ${operatorId}`;
+  }
+
   private processTableData(results: any[]): void {
     const formattedData: any[] = [];
 
     results.forEach((operator: any) => {
       const summary = operator.operatorSummary;
+      const operatorId = operator.operator.id;
+      const operatorName = this.normalizeOperatorName(operator.operator.name, operatorId);
 
       // Add operator-wide summary
       formattedData.push({
-        'Operator': operator.operator.name,
+        'Operator': operatorName,
         'Item': 'TOTAL',
         'Total Time (Runtime)': `${summary.runtimeFormatted.hours}h ${summary.runtimeFormatted.minutes}m`,
         'Total Count': summary.totalCount,
@@ -141,7 +158,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
       // Add item summaries under this operator
       Object.values(summary.itemSummaries).forEach((item: any) => {
         formattedData.push({
-          'Operator': operator.operator.name,
+          'Operator': operatorName,
           'Item': item.name,
           'Total Time (Runtime)': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
           'Total Count': item.countTotal,

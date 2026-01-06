@@ -1186,7 +1186,19 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
 
     // Helper functions
     const validId = id => Number.isInteger(id) && id >= 0;
-    const canonicalName = (name, id) => (name && name.trim()) || `Operator ${id}`;
+    const canonicalName = (name, id) => {
+      if (!name) return `Operator ${id}`;
+      // Handle object format { first, surname }
+      if (typeof name === 'object' && name !== null) {
+        const fullName = `${name.first || ''} ${name.surname || ''}`.trim();
+        return fullName || `Operator ${id}`;
+      }
+      // Handle string format
+      if (typeof name === 'string') {
+        return name.trim() || `Operator ${id}`;
+      }
+      return `Operator ${id}`;
+    };
 
     for (const s of opSessions) {
       const op = s.operator?.id;
@@ -2305,7 +2317,19 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
       // Helper functions for validation
       const validId = id => Number.isInteger(id) && id >= 0;
-      const canonicalName = (name, id) => (name && name.trim()) || `Operator ${id}`;
+      const canonicalName = (name, id) => {
+        if (!name) return `Operator ${id}`;
+        // Handle object format { first, surname }
+        if (typeof name === 'object' && name !== null) {
+          const fullName = `${name.first || ''} ${name.surname || ''}`.trim();
+          return fullName || `Operator ${id}`;
+        }
+        // Handle string format
+        if (typeof name === 'string') {
+          return name.trim() || `Operator ${id}`;
+        }
+        return `Operator ${id}`;
+      };
 
       try {
         // Aggregate operator totals by operator ID

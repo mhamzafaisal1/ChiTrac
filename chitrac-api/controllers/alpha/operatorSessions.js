@@ -1368,19 +1368,61 @@ module.exports = function (server) {
           },
         },
         { $match: { $expr: { $lt: ['$_ovStart', '$_ovEnd'] } } },
+        // Normalize items: handle both items (array) and item (single object) formats
+        // Also ensure totalCountByItem and timeCreditByItem are arrays
+        {
+          $addFields: {
+            _items: {
+              $cond: {
+                if: { $isArray: '$items' },
+                then: '$items',
+                else: {
+                  $cond: {
+                    if: { $ne: ['$item', null] },
+                    then: ['$item'],
+                    else: []
+                  }
+                }
+              }
+            },
+            _totalCountByItem: {
+              $cond: {
+                if: { $isArray: '$totalCountByItem' },
+                then: '$totalCountByItem',
+                else: []
+              }
+            },
+            _timeCreditByItem: {
+              $cond: {
+                if: { $isArray: '$timeCreditByItem' },
+                then: '$timeCreditByItem',
+                else: []
+              }
+            },
+          },
+        },
         // Pair items with per-item arrays for later rollups
         {
           $addFields: {
             _itemsPaired: {
               $map: {
-                input: { $range: [0, { $size: '$items' }] },
+                input: { $range: [0, { $size: '$_items' }] },
                 as: 'i',
                 in: {
-                  id: { $arrayElemAt: ['$items.id', '$$i'] },
-                  name: { $arrayElemAt: ['$items.name', '$$i'] },
-                  standard: { $arrayElemAt: ['$items.standard', '$$i'] },
-                  count: { $arrayElemAt: ['$totalCountByItem', '$$i'] },
-                  tci: { $arrayElemAt: ['$timeCreditByItem', '$$i'] },
+                  $let: {
+                    vars: {
+                      item: { $arrayElemAt: ['$_items', '$$i'] },
+                      count: { $arrayElemAt: ['$_totalCountByItem', '$$i'] },
+                      tci: { $arrayElemAt: ['$_timeCreditByItem', '$$i'] },
+                    },
+                    in: {
+                      id: '$$item.id',
+                      name: '$$item.name',
+                      standard: '$$item.standard',
+                      count: '$$count',
+                      tci: '$$tci',
+                    },
+                  },
                 },
               },
             },
