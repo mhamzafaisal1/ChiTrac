@@ -662,7 +662,7 @@ module.exports = function (server) {
         matchStage.machineSerial = Number(serial);
       }
       
-      // OPTIMIZATION: Streamlined pipeline - removed intermediate sort, combine operations
+      
       const pipeline = [
         {
           $match: matchStage
@@ -701,11 +701,6 @@ module.exports = function (server) {
         }
       ];
       
-      // OPTIMIZATION: Use allowDiskUse for large aggregations
-      // NOTE: For best performance, create these indexes on 'hourly-totals' collection:
-      // 1. { entityType: 1, operatorId: 1, dateObj: 1, machineSerial: 1 }
-      // 2. { entityType: 1, operatorId: 1, date: 1, machineSerial: 1 } (backup for old data)
-      // Run: db.collection('hourly-totals').createIndex({ entityType: 1, operatorId: 1, dateObj: 1, machineSerial: 1 })
       const collection = db.collection('hourly-totals');
       const results = await collection.aggregate(pipeline, { 
         allowDiskUse: true
