@@ -103,6 +103,26 @@
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
+  background-color: #fee;
+  color: #c33;
+  border: 1px solid #fcc;
+}
+
+.message {
+  padding: 12px;
+  margin: 12px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  background-color: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #90caf9;
+}
+
+.dark-mode .message {
+  background-color: rgba(33, 150, 243, 0.2);
+  color: #64b5f6;
+  border: 1px solid rgba(33, 150, 243, 0.4);
 }
 
 @media (max-width: 1100px) {

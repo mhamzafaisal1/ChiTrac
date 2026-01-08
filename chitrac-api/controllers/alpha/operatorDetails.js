@@ -1123,7 +1123,7 @@ module.exports = function (server) {
       const [itemSummary, countByItem, cyclePie, dailyEfficiency] = await Promise.all([
         buildItemSummaryFromCache(db, opId, start, end, serial),
         buildItemHourlyStackFromCacheForOperator(db, opId, start, end, serial),
-        Promise.resolve(null), // Placeholder for commented-out countByItem
+        // Promise.resolve(null), // Placeholder for commented-out countByItem
         buildOperatorCyclePieFromCache(db, opId, start, end, serial),
         buildDailyEfficiencyFromCache(db, opId, operatorName, start, end, serial)
       ]);

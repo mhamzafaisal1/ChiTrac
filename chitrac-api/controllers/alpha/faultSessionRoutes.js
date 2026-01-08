@@ -116,6 +116,7 @@ module.exports = function faultHistoryRoute(server) {
       if (!raw.length) {
         const response = {
           context: { start: startDate, end: endDate, serial, operatorId },
+          message: "No fault sessions found for the specified criteria",
         };
         
         if (includeCycles) response.faultCycles = [];
