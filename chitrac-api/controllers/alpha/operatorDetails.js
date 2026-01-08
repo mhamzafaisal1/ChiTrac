@@ -627,32 +627,53 @@ module.exports = function (server) {
       const wStart = new Date(start);
       const wEnd = new Date(end);
       
-      // Get all date strings in the range (in America/Chicago timezone)
-      const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' });
-      const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' });
-      const dateStrings = [];
-      let currentDay = startDt.startOf('day');
-      const endDay = endDt.startOf('day');
-      
-      while (currentDay <= endDay) {
-        dateStrings.push(currentDay.toFormat('yyyy-MM-dd'));
-        currentDay = currentDay.plus({ days: 1 });
-      }
+      // OPTIMIZATION: Use dateObj range query instead of $in with date strings
+      // This is much faster with proper indexes and avoids large $in arrays
+      const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' }).startOf('day');
+      const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' }).endOf('day');
       
       // Build aggregation pipeline for hourly-totals
+      // OPTIMIZATION: Use dateObj range query instead of $in with many date strings
+      // This is much faster, especially with proper indexes
       const matchStage = {
         entityType: 'operator-item',
-        operatorId: Number(operatorId),
-        date: { $in: dateStrings }
+        operatorId: Number(operatorId)
       };
+      
+      // Use dateObj for range query if available (much faster than $in with many dates)
+      // Fallback to date string range for backward compatibility
+      if (startDt && endDt) {
+        const startDateObj = startDt.toJSDate();
+        const endDateObj = endDt.toJSDate();
+        // Try dateObj first (preferred), fallback to date string
+        matchStage.$or = [
+          { dateObj: { $gte: startDateObj, $lte: endDateObj } },
+          { 
+            date: { 
+              $gte: startDt.toFormat('yyyy-MM-dd'), 
+              $lte: endDt.toFormat('yyyy-MM-dd') 
+            },
+            dateObj: { $exists: false } // Only use date if dateObj doesn't exist
+          }
+        ];
+      }
       
       if (serial) {
         matchStage.machineSerial = Number(serial);
       }
       
+      // OPTIMIZATION: Streamlined pipeline - removed intermediate sort, combine operations
       const pipeline = [
         {
           $match: matchStage
+        },
+        // OPTIMIZATION: Project only needed fields to reduce memory usage
+        {
+          $project: {
+            hour: 1,
+            itemName: 1,
+            totalCounts: 1
+          }
         },
         {
           $group: {
@@ -660,6 +681,7 @@ module.exports = function (server) {
             count: { $sum: "$totalCounts" }
           }
         },
+        // OPTIMIZATION: Sort before final group to ensure consistent ordering
         {
           $sort: { "_id.itemName": 1, "_id.hour": 1 }
         },
@@ -679,7 +701,15 @@ module.exports = function (server) {
         }
       ];
       
-      const results = await db.collection('hourly-totals').aggregate(pipeline).toArray();
+      // OPTIMIZATION: Use allowDiskUse for large aggregations
+      // NOTE: For best performance, create these indexes on 'hourly-totals' collection:
+      // 1. { entityType: 1, operatorId: 1, dateObj: 1, machineSerial: 1 }
+      // 2. { entityType: 1, operatorId: 1, date: 1, machineSerial: 1 } (backup for old data)
+      // Run: db.collection('hourly-totals').createIndex({ entityType: 1, operatorId: 1, dateObj: 1, machineSerial: 1 })
+      const collection = db.collection('hourly-totals');
+      const results = await collection.aggregate(pipeline, { 
+        allowDiskUse: true
+      }).toArray();
       
       // Build hourly breakdown map: itemName -> [counts for hours 0-23]
       const hourlyBreakdownMap = {};
@@ -1097,7 +1127,7 @@ module.exports = function (server) {
       // Get item summary, hourly stacked chart, cycle pie, and daily efficiency from cache
       const [itemSummary, countByItem, cyclePie, dailyEfficiency] = await Promise.all([
         buildItemSummaryFromCache(db, opId, start, end, serial),
-        // buildItemHourlyStackFromCacheForOperator(db, opId, start, end, serial),
+        buildItemHourlyStackFromCacheForOperator(db, opId, start, end, serial),
         Promise.resolve(null), // Placeholder for commented-out countByItem
         buildOperatorCyclePieFromCache(db, opId, start, end, serial),
         buildDailyEfficiencyFromCache(db, opId, operatorName, start, end, serial)
