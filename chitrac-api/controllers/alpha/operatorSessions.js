@@ -1372,6 +1372,39 @@ module.exports = function (server) {
           },
         },
         { $match: { $expr: { $lt: ['$_ovStart', '$_ovEnd'] } } },
+        // Normalize items: handle both items (array) and item (single object) formats
+        // Also ensure totalCountByItem and timeCreditByItem are arrays
+        {
+          $addFields: {
+            _items: {
+              $cond: {
+                if: { $isArray: '$items' },
+                then: '$items',
+                else: {
+                  $cond: {
+                    if: { $ne: ['$item', null] },
+                    then: ['$item'],
+                    else: []
+                  }
+                }
+              }
+            },
+            _totalCountByItem: {
+              $cond: {
+                if: { $isArray: '$totalCountByItem' },
+                then: '$totalCountByItem',
+                else: []
+              }
+            },
+            _timeCreditByItem: {
+              $cond: {
+                if: { $isArray: '$timeCreditByItem' },
+                then: '$timeCreditByItem',
+                else: []
+              }
+            },
+          },
+        },
         // Pair items with per-item arrays for later rollups
         {
           $addFields: {

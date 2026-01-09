@@ -2,7 +2,7 @@
 const express = require("express");
 const { DateTime, Interval } = require("luxon");
 const config = require("../../modules/config");
-const { parseAndValidateQueryParams, formatDuration, getCountCollectionName } = require("../../utils/time");
+const { parseAndValidateQueryParams, formatDuration, getCountCollectionName, getStateCollectionName } = require("../../utils/time");
 const { fetchStatesForOperator, extractFaultCycles, groupStatesByOperatorAndSerial, getCompletedCyclesForOperator } = require("../../utils/state");
 const { buildOperatorCyclePie } = require("../../utils/operatorFunctions");
 
@@ -371,38 +371,35 @@ module.exports = function (server) {
   async function buildDailyEfficiencyByHour(db, operatorId, start, end, serial = null) {
     const osColl = db.collection(config.operatorSessionCollectionName);
     const hours = hourlyWindows(start, end);
+    
+    // Single query instead of one per hour - major performance improvement
+    const filter = {
+      "operator.id": Number(operatorId),
+      "timestamps.start": { $lt: new Date(end) },
+      $or: [
+        { "timestamps.end": { $gt: new Date(start) } },
+        { "timestamps.end": { $exists: false } },
+        { "timestamps.end": null }
+      ],
+      ...(serial ? { "machine.serial": Number(serial) } : {})
+    };
 
-    return Promise.all(hours.map(async ({ start: hStart, end: hEnd }) => {
-      // Build query filter
-      const filter = {
-        "operator.id": Number(operatorId),
-        "timestamps.start": { $lt: hEnd },
-        $or: [
-          { "timestamps.end": { $gt: hStart } },
-          { "timestamps.end": { $exists: false } },
-          { "timestamps.end": null }
-        ]
-      };
+    const allSessions = await osColl.find(filter)
+      .project({
+        _id: 0,
+        timestamps: 1,
+        workTime: 1, runtime: 1,
+        totalTimeCredit: 1,
+        totalCount: 1, misfeedCount: 1
+      })
+      .toArray();
 
-      // Optionally scope to specific machine
-      if (serial) {
-        filter["machine.serial"] = Number(serial);
-      }
-
-      const sessions = await osColl.find(filter)
-        .project({
-          _id: 0,
-          timestamps: 1,
-          workTime: 1, runtime: 1,
-          totalTimeCredit: 1,
-          totalCount: 1, misfeedCount: 1
-        })
-        .toArray();
-
+    // Process sessions by hour in-memory
+    return hours.map(({ start: hStart, end: hEnd }) => {
       // Aggregate metrics for this hour
       let workSec = 0, timeCreditSec = 0, valid = 0, mis = 0;
 
-      for (const s of sessions) {
+      for (const s of allSessions) {
         const { factor } = overlap(s.timestamps?.start, s.timestamps?.end, hStart, hEnd);
         if (factor <= 0) continue;
 
@@ -431,7 +428,7 @@ module.exports = function (server) {
           throughputPct: +(throughputPct).toFixed(2)
         }
       };
-    }));
+    });
   }
 
   // Build operator cycle pie chart from cache (operator-machine records)
@@ -938,64 +935,147 @@ module.exports = function (server) {
         });
       }
 
-      // Get operator name from the latest operator-session
-      const osColl = db.collection(config.operatorSessionCollectionName);
-      const latest = await osColl.find({ "operator.id": opId })
-        .project({ _id: 0, operator: 1 })
-        .sort({ "timestamps.start": -1 })
-        .limit(1)
-        .toArray();
+      // Parallelize initial queries
+      const [latestResult, machineInfoResult] = await Promise.all([
+        db.collection(config.operatorSessionCollectionName)
+          .find({ "operator.id": opId })
+          .project({ _id: 0, operator: 1 })
+          .sort({ "timestamps.start": -1 })
+          .limit(1)
+          .toArray(),
+        serial ? db.collection(config.machineSessionCollectionName)
+          .find({ "machine.id": Number(serial) })
+          .project({ _id: 0, "machine.name": 1 })
+          .sort({ "timestamps.start": -1 })
+          .limit(1)
+          .toArray() : Promise.resolve([])
+      ]);
       
-      const operatorName = latest[0]?.operator?.name || `Operator ${opId}`;
+      // Normalize operator name - handle both object {first, surname} and string formats
+      const rawOperatorName = latestResult[0]?.operator?.name || `Operator ${opId}`;
+      const operatorName = typeof rawOperatorName === 'object' && rawOperatorName !== null
+        ? `${rawOperatorName.first || ''} ${rawOperatorName.surname || ''}`.trim() || `Operator ${opId}`
+        : rawOperatorName;
 
       // Get machine info if serial is provided
       let machineSerial = null;
       let machineName = null;
       if (serial) {
-        const msColl = db.collection(config.machineSessionCollectionName);
-        const machineInfo = await msColl.find({ "machine.id": Number(serial) })
-          .project({ _id: 0, "machine.name": 1 })
-          .sort({ "timestamps.start": -1 })
-          .limit(1)
-          .toArray();
         machineSerial = Number(serial);
-        machineName = machineInfo[0]?.machine?.name || `Machine ${serial}`;
+        machineName = machineInfoResult[0]?.machine?.name || `Machine ${serial}`;
       }
 
-      // Fetch states for the operator in the time window
-    
-      const states = await fetchStatesForOperator(db, opId, new Date(start), new Date(end));
-     
+      // Optimized state fetching - filter by machine in query if serial provided
+      const stateFetchPromise = serial
+        ? (async () => {
+            // Fetch states with machine filter directly in query
+            const stateCollection = getStateCollectionName(new Date(start));
+            const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
+            const collection = collectionExists ? stateCollection : 'state';
+            
+            const query = {
+              "timestamps.create": {
+                $gte: new Date(start),
+                $lte: new Date(end)
+              },
+              'machine.id': serial, // Filter by machine in query
+              'operators.id': opId
+            };
+            
+            const states = await db.collection(collection)
+              .find(query)
+              .sort({ "timestamps.create": 1 })
+              .project({
+                _id: 0,
+                "timestamps.create": 1,
+                timestamp: 1,
+                'machine.id': 1,
+                'machine.serial': 1,
+                'machine.name': 1,
+                'program.mode': 1,
+                'status.code': 1,
+                'status.name': 1,
+                '_tickerDoc.status': 1,
+                operators: 1
+              })
+              .toArray();
+            
+            // Normalize states (same as fetchStatesForOperator)
+            return states.map(state => {
+              if (!state.timestamp && state.timestamps?.create) {
+                state.timestamp = state.timestamps.create;
+              }
+              if (!state.machine?.serial && state.machine?.id) {
+                state.machine = state.machine || {};
+                state.machine.serial = state.machine.id;
+              }
+              if (!state.status && state._tickerDoc?.status) {
+                state.status = state._tickerDoc.status;
+              }
+              return state;
+            });
+          })()
+        : fetchStatesForOperator(db, opId, new Date(start), new Date(end));
 
-            // Build the two main tabs
-      const [itemSummary, dailyEfficiencyByHour] = await Promise.all([
+      // Parallelize all data fetching operations
+      const [
+        rawStates,
+        itemSummary,
+        dailyEfficiencyByHour,
+        counts,
+        dailyEfficiency
+      ] = await Promise.all([
+        stateFetchPromise,
         buildItemSummaryFromItemSessions(db, opId, start, end, serial),
-        buildDailyEfficiencyByHour(db, opId, start, end, serial)
+        buildDailyEfficiencyByHour(db, opId, start, end, serial),
+        (async () => {
+          const countCollection = getCountCollectionName(start);
+          const countQuery = {
+            "operator.id": opId,
+            "timestamps.create": {
+              $gte: new Date(start),
+              $lt: new Date(end)
+            },
+            misfeed: { $ne: true }, // valid counts only
+            ...(serial ? { "machine.id": Number(serial) } : {})
+          };
+          return await db
+            .collection(countCollection)
+            .find(countQuery)
+            .project({
+              _id: 0,
+              "timestamps.create": 1,
+              "item.id": 1,
+              "item.name": 1
+            })
+            .toArray();
+        })(),
+        buildDailyEfficiencyFromOperatorSessions(
+          db, opId, operatorName, start, end, serial, tz
+        )
       ]);
 
-      // Build hourly item breakdown using count collection
-      const countCollection = getCountCollectionName(start);
-      const countQuery = {
-        "operator.id": opId,
-        "timestamps.create": {
-          $gte: new Date(start),
-          $lt: new Date(end)
-        },
-        misfeed: { $ne: true }, // valid counts only
-        ...(serial ? { "machine.id": Number(serial) } : {})
-      };
-     
-      const counts = await db
-        .collection(countCollection)
-        .find(countQuery)
-        .project({
-          _id: 0,
-          "timestamps.create": 1,
-          "item.id": 1,
-          "item.name": 1
-        })
-        .toArray();
-      
+      // States are already filtered by machine if serial was provided
+      let states = rawStates;
+
+      // Ensure states have proper status codes for cycle extraction
+      states = states.map(state => {
+        // Ensure status is properly set
+        if (!state.status && state._tickerDoc?.status) {
+          state.status = state._tickerDoc.status;
+        }
+        // Ensure status.code exists
+        if (!state.status?.code && state._tickerDoc?.status?.code !== undefined) {
+          state.status = state.status || {};
+          state.status.code = state._tickerDoc.status.code;
+        }
+        // Fallback: if no status code, default to 0 (paused)
+        if (!state.status?.code && state.status?.code !== 0) {
+          state.status = state.status || {};
+          state.status.code = 0;
+        }
+        return state;
+      });
 
       // Build hourly breakdown map
       const hourlyBreakdownMap = {};
@@ -1018,11 +1098,6 @@ module.exports = function (server) {
 
       // Build cycle pie chart data
       const cyclePie = buildOperatorCyclePie(states, start, end);
-
-      // replace the entire "Build daily efficiency ..." section with:
-      const dailyEfficiency = await buildDailyEfficiencyFromOperatorSessions(
-        db, opId, operatorName, start, end, serial, tz
-      );
 
       // Build fault history
       const faultHistory = buildOptimizedOperatorFaultHistorySingle(
