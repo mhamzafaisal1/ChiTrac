@@ -431,6 +431,489 @@ module.exports = function (server) {
     });
   }
 
+  // Build operator cycle pie chart from cache (operator-machine records)
+  async function buildOperatorCyclePieFromCache(db, operatorId, start, end, serial = null) {
+    try {
+      const wStart = new Date(start);
+      const wEnd = new Date(end);
+      const windowMs = wEnd - wStart;
+      
+      // Get all date strings in the range (in America/Chicago timezone)
+      const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' });
+      const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' });
+      const dateStrings = [];
+      let currentDay = startDt.startOf('day');
+      const endDay = endDt.startOf('day');
+      
+      while (currentDay <= endDay) {
+        dateStrings.push(currentDay.toFormat('yyyy-MM-dd'));
+        currentDay = currentDay.plus({ days: 1 });
+      }
+      
+      // Query operator-machine cache records
+      const dateObjs = dateStrings.map(str => {
+        const dt = DateTime.fromISO(str, { zone: 'America/Chicago' });
+        return dt.toUTC().startOf('day').toJSDate();
+      });
+      
+      const cacheQuery = {
+        $or: [
+          { dateObj: { $in: dateObjs } },
+          { date: { $in: dateStrings } }
+        ],
+        entityType: 'operator-machine',
+        operatorId: Number(operatorId)
+      };
+      
+      if (serial) {
+        cacheQuery.machineSerial = Number(serial);
+      }
+      
+      const cacheRecords = await db.collection('totals-daily').find(cacheQuery).toArray();
+      
+      // Sum runtimeMs across all records (operator working time)
+      let totalRuntimeMs = 0;
+      for (const record of cacheRecords) {
+        totalRuntimeMs += safe(record.runtimeMs || record.workedTimeMs || 0);
+      }
+      
+      // Calculate paused time (not running = window - runtime)
+      const pausedMs = Math.max(0, windowMs - totalRuntimeMs);
+      
+      // For operators, faulted time is 0 (they don't track machine faults)
+      const faultMs = 0;
+      
+      // Calculate percentages
+      const total = totalRuntimeMs + pausedMs + faultMs || 1; // Avoid division by zero
+      const runTimePct = Math.round((totalRuntimeMs / total) * 100);
+      const pauseTimePct = Math.round((pausedMs / total) * 100);
+      const faultTimePct = Math.round((faultMs / total) * 100);
+      
+      return [
+        {
+          name: "Running",
+          value: runTimePct
+        },
+        {
+          name: "Paused",
+          value: pauseTimePct
+        },
+        {
+          name: "Faulted",
+          value: faultTimePct
+        }
+      ];
+    } catch (error) {
+      logger.error('Error in buildOperatorCyclePieFromCache:', error);
+      // Return empty pie chart on error
+      return [
+        { name: "Running", value: 0 },
+        { name: "Paused", value: 0 },
+        { name: "Faulted", value: 0 }
+      ];
+    }
+  }
+
+  // Build daily efficiency from cache (operator-machine daily records)
+  async function buildDailyEfficiencyFromCache(db, operatorId, operatorName, start, end, serial = null, tz = "America/Chicago") {
+    try {
+      // Enforce 7-day window like the original function
+      const endDt = new Date(end);
+      let startDt = new Date(start);
+      if (endDt - startDt < 7 * 86400000) {
+        startDt = new Date(endDt);
+        startDt.setDate(endDt.getDate() - 6);
+        startDt.setHours(0, 0, 0, 0);
+      }
+
+      // Build day buckets for the 7-day window
+      const buckets = buildDayBuckets(startDt, endDt, tz);
+      // Convert bucket keys to "yyyy-MM-dd" format for cache query (cache uses MM, not LL)
+      const dateStringsForCache = buckets.map(b => {
+        const dt = DateTime.fromISO(b.key, { zone: tz });
+        return dt.toFormat('yyyy-MM-dd');
+      });
+      const dateStrings = buckets.map(b => b.key); // Keep "yyyy-LL-dd" for response
+
+      // Query operator-machine cache records for these dates
+      const dateObjs = dateStringsForCache.map(str => {
+        const dt = DateTime.fromISO(str, { zone: tz });
+        return dt.toUTC().startOf('day').toJSDate();
+      });
+
+      const cacheQuery = {
+        $or: [
+          { dateObj: { $in: dateObjs } },
+          { date: { $in: dateStringsForCache } }
+        ],
+        entityType: 'operator-machine',
+        operatorId: Number(operatorId)
+      };
+
+      if (serial) {
+        cacheQuery.machineSerial = Number(serial);
+      }
+
+      const cacheRecords = await db.collection('totals-daily').find(cacheQuery).toArray();
+
+      // Aggregate by date: sum totalTimeCreditMs and workedTimeMs
+      const dailyTotals = new Map();
+      for (const bucket of buckets) {
+        dailyTotals.set(bucket.key, { totalTimeCreditMs: 0, workedTimeMs: 0 });
+      }
+
+      // Create a map from cache date format (yyyy-MM-dd) to bucket key (yyyy-LL-dd)
+      const cacheDateToBucketKey = new Map();
+      buckets.forEach((bucket, idx) => {
+        cacheDateToBucketKey.set(dateStringsForCache[idx], bucket.key);
+      });
+
+      for (const record of cacheRecords) {
+        // Cache stores dates in "yyyy-MM-dd" format
+        let recordDate = record.date;
+        if (!recordDate && record.dateObj) {
+          recordDate = DateTime.fromJSDate(record.dateObj, { zone: tz }).toFormat('yyyy-MM-dd');
+        }
+        if (!recordDate) continue;
+
+        // Convert cache date to bucket key format
+        const bucketKey = cacheDateToBucketKey.get(recordDate);
+        if (!bucketKey || !dailyTotals.has(bucketKey)) continue;
+
+        const totals = dailyTotals.get(bucketKey);
+        totals.totalTimeCreditMs += safe(record.totalTimeCreditMs || 0);
+        totals.workedTimeMs += safe(record.workedTimeMs || record.runtimeMs || 0);
+      }
+
+      // Calculate efficiency for each day
+      const data = buckets.map(b => {
+        const { totalTimeCreditMs, workedTimeMs } = dailyTotals.get(b.key);
+        const creditSec = totalTimeCreditMs / 1000;
+        const workSec = workedTimeMs / 1000;
+        const eff = workSec > 0 ? (creditSec / workSec) * 100 : 0;
+        return { date: b.key, efficiency: Math.round(eff * 100) / 100 };
+      });
+
+      return {
+        operator: { id: Number(operatorId), name: operatorName },
+        timeRange: { start: startDt.toISOString(), end: endDt.toISOString(), totalDays: data.length },
+        data
+      };
+    } catch (error) {
+      logger.error('Error in buildDailyEfficiencyFromCache:', error);
+      // Return empty structure on error
+      const endDt = new Date(end);
+      let startDt = new Date(start);
+      if (endDt - startDt < 7 * 86400000) {
+        startDt = new Date(endDt);
+        startDt.setDate(endDt.getDate() - 6);
+        startDt.setHours(0, 0, 0, 0);
+      }
+      const buckets = buildDayBuckets(startDt, endDt, tz);
+      return {
+        operator: { id: Number(operatorId), name: operatorName },
+        timeRange: { start: startDt.toISOString(), end: endDt.toISOString(), totalDays: buckets.length },
+        data: buckets.map(b => ({ date: b.key, efficiency: 0 }))
+      };
+    }
+  }
+
+  // Build item hourly stacked chart from cache (operator-item hourly records)
+  async function buildItemHourlyStackFromCacheForOperator(db, operatorId, start, end, serial = null) {
+    try {
+      const wStart = new Date(start);
+      const wEnd = new Date(end);
+      
+      // OPTIMIZATION: Use dateObj range query instead of $in with date strings
+      // This is much faster with proper indexes and avoids large $in arrays
+      const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' }).startOf('day');
+      const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' }).endOf('day');
+      
+      // Build aggregation pipeline for hourly-totals
+      // OPTIMIZATION: Use dateObj range query instead of $in with many date strings
+      // This is much faster, especially with proper indexes
+      const matchStage = {
+        entityType: 'operator-item',
+        operatorId: Number(operatorId)
+      };
+      
+      // Use dateObj for range query if available (much faster than $in with many dates)
+      // Fallback to date string range for backward compatibility
+      if (startDt && endDt) {
+        const startDateObj = startDt.toJSDate();
+        const endDateObj = endDt.toJSDate();
+        // Try dateObj first (preferred), fallback to date string
+        matchStage.$or = [
+          { dateObj: { $gte: startDateObj, $lte: endDateObj } },
+          { 
+            date: { 
+              $gte: startDt.toFormat('yyyy-MM-dd'), 
+              $lte: endDt.toFormat('yyyy-MM-dd') 
+            },
+            dateObj: { $exists: false } // Only use date if dateObj doesn't exist
+          }
+        ];
+      }
+      
+      if (serial) {
+        matchStage.machineSerial = Number(serial);
+      }
+      
+      
+      const pipeline = [
+        {
+          $match: matchStage
+        },
+        // OPTIMIZATION: Project only needed fields to reduce memory usage
+        {
+          $project: {
+            hour: 1,
+            itemName: 1,
+            totalCounts: 1
+          }
+        },
+        {
+          $group: {
+            _id: { hour: "$hour", itemName: "$itemName" },
+            count: { $sum: "$totalCounts" }
+          }
+        },
+        // OPTIMIZATION: Sort before final group to ensure consistent ordering
+        {
+          $sort: { "_id.itemName": 1, "_id.hour": 1 }
+        },
+        {
+          $group: {
+            _id: "$_id.itemName",
+            hourlyCounts: {
+              $push: {
+                hour: "$_id.hour",
+                count: "$count"
+              }
+            }
+          }
+        },
+        {
+          $sort: { "_id": 1 }
+        }
+      ];
+      
+      const collection = db.collection('hourly-totals');
+      const results = await collection.aggregate(pipeline, { 
+        allowDiskUse: true
+      }).toArray();
+      
+      // Build hourly breakdown map: itemName -> [counts for hours 0-23]
+      const hourlyBreakdownMap = {};
+      const hourSet = new Set();
+      
+      for (const result of results) {
+        const itemName = result._id || "Unknown";
+        hourlyBreakdownMap[itemName] = Array(24).fill(0);
+        
+        for (const entry of result.hourlyCounts) {
+          const hour = entry.hour;
+          if (hour >= 0 && hour <= 23) {
+            hourSet.add(hour);
+            hourlyBreakdownMap[itemName][hour] = entry.count;
+          }
+        }
+      }
+      
+      // If no data, return empty structure
+      if (Object.keys(hourlyBreakdownMap).length === 0) {
+        return {
+          title: "Operator Counts by item",
+          data: {
+            hours: Array.from({ length: 24 }, (_, i) => i),
+            operators: {}
+          }
+        };
+      }
+      
+      return {
+        title: "Operator Counts by item",
+        data: {
+          hours: Array.from({ length: 24 }, (_, i) => i),
+          operators: hourlyBreakdownMap
+        }
+      };
+    } catch (error) {
+      logger.error('Error in buildItemHourlyStackFromCacheForOperator:', error);
+      // Return empty structure on error
+      return {
+        title: "Operator Counts by item",
+        data: {
+          hours: Array.from({ length: 24 }, (_, i) => i),
+          operators: {}
+        }
+      };
+    }
+  }
+
+  // Build item summary from cache (operator-item records)
+  async function buildItemSummaryFromCache(db, operatorId, start, end, serial = null) {
+    const wStart = new Date(start);
+    const wEnd = new Date(end);
+    
+    // Get all date strings in the range (in America/Chicago timezone)
+    const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' });
+    const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' });
+    const dateStrings = [];
+    let currentDay = startDt.startOf('day');
+    const endDay = endDt.startOf('day');
+    
+    while (currentDay <= endDay) {
+      dateStrings.push(currentDay.toFormat('yyyy-MM-dd'));
+      currentDay = currentDay.plus({ days: 1 });
+    }
+    
+    const cacheCollection = db.collection('totals-daily');
+    const itemAgg = new Map(); // id -> { name, standard, count, workedMs }
+    let totalValid = 0;
+    let totalWorkedMs = 0;
+    const sessionAgg = new Map(); // key: `${machineSerial}_${itemId}` -> aggregated record
+    
+    // Query cache for all dates in range
+    const dateObjs = dateStrings.map(str => {
+      const dt = DateTime.fromISO(str, { zone: 'America/Chicago' });
+      return dt.toUTC().startOf('day').toJSDate();
+    });
+    
+    const cacheQuery = {
+      $or: [
+        { dateObj: { $in: dateObjs } },
+        { date: { $in: dateStrings } }
+      ],
+      entityType: 'operator-item',
+      operatorId: Number(operatorId)
+    };
+    
+    if (serial) {
+      cacheQuery.machineSerial = Number(serial);
+    }
+    
+    const cacheRecords = await cacheCollection.find(cacheQuery).toArray();
+    
+    // Aggregate cache records by machine-item combination
+    for (const record of cacheRecords) {
+      const itemId = record.itemId;
+      const machineSerial = record.machineSerial ?? null;
+      const aggKey = `${machineSerial}_${itemId}`;
+      
+      // Get or create aggregated session record
+      let aggRec = sessionAgg.get(aggKey);
+      if (!aggRec) {
+        aggRec = {
+          machine: {
+            serial: machineSerial,
+            name: record.machineName ?? null
+          },
+          itemId: itemId,
+          name: record.itemName || "Unknown",
+          standard: Number(record.itemStandard) || 0,
+          countTotal: 0,
+          workedTimeMs: 0,
+          earliestStart: wEnd,
+          latestEnd: wStart
+        };
+        sessionAgg.set(aggKey, aggRec);
+      }
+      
+      // Aggregate values from cache
+      // Note: operator-item cache doesn't have workedTimeMs, so we'll use totalTimeCreditMs as proxy
+      const countInWin = record.totalCounts || 0;
+      const workedMs = record.totalTimeCreditMs || 0; // Using time credit as proxy
+      
+      aggRec.countTotal += countInWin;
+      aggRec.workedTimeMs += workedMs;
+      
+      // Update date range
+      const recordDate = record.date ? new Date(record.date + 'T00:00:00.000Z') : wStart;
+      if (recordDate < aggRec.earliestStart) aggRec.earliestStart = recordDate;
+      if (recordDate > aggRec.latestEnd) aggRec.latestEnd = recordDate;
+      if (!aggRec.standard && Number(record.itemStandard)) aggRec.standard = Number(record.itemStandard);
+      
+      // Aggregate by item (across machines)
+      const rec = itemAgg.get(itemId) || { 
+        name: record.itemName || "Unknown", 
+        standard: Number(record.itemStandard) || 0, 
+        count: 0, 
+        workedMs: 0 
+      };
+      rec.count += countInWin;
+      rec.workedMs += workedMs;
+      if (!rec.standard && Number(record.itemStandard)) rec.standard = Number(record.itemStandard);
+      itemAgg.set(itemId, rec);
+      
+      totalValid += countInWin;
+      totalWorkedMs += workedMs;
+    }
+    
+    // Convert aggregated sessions to sessionRows format
+    const sessionRows = [];
+    for (const aggRec of sessionAgg.values()) {
+      const hours = toHours(aggRec.workedTimeMs);
+      const stdPPH = normalizeStdPPH(aggRec.standard);
+      const pph = hours > 0 ? aggRec.countTotal / hours : 0;
+      const eff = stdPPH > 0 ? pph / stdPPH : 0;
+      
+      sessionRows.push({
+        start: aggRec.earliestStart.toISOString(),
+        end: aggRec.latestEnd.toISOString(),
+        workedTimeMs: aggRec.workedTimeMs,
+        workedTimeFormatted: formatDuration(aggRec.workedTimeMs),
+        machine: aggRec.machine,
+        items: [{
+          itemId: aggRec.itemId,
+          name: aggRec.name,
+          countTotal: aggRec.countTotal,
+          standard: aggRec.standard,
+          pph: Math.round(pph * 100) / 100,
+          efficiency: Math.round(eff * 10000) / 100
+        }]
+      });
+    }
+    
+    const totalHours = toHours(totalWorkedMs);
+    const itemSummaries = {};
+    let proratedStdPPH = 0;
+    
+    for (const [id, r] of itemAgg.entries()) {
+      const stdPPH = normalizeStdPPH(r.standard);
+      const hours = toHours(r.workedMs);
+      const pph = hours > 0 ? r.count / hours : 0;
+      const eff = stdPPH > 0 ? pph / stdPPH : 0;
+      const weight = totalValid > 0 ? r.count / totalValid : 0;
+      proratedStdPPH += weight * stdPPH;
+      
+      itemSummaries[id] = {
+        name: r.name,
+        standard: r.standard,
+        countTotal: r.count,
+        workedTimeFormatted: formatDuration(r.workedMs),
+        pph: Math.round(pph * 100) / 100,
+        efficiency: Math.round(eff * 10000) / 100
+      };
+    }
+    
+    const operatorPPH = totalHours > 0 ? totalValid / totalHours : 0;
+    const operatorEff = proratedStdPPH > 0 ? (operatorPPH / proratedStdPPH) : 0;
+    
+    return {
+      sessions: sessionRows,
+      operatorSummary: {
+        totalCount: totalValid,
+        workedTimeMs: totalWorkedMs,
+        workedTimeFormatted: formatDuration(totalWorkedMs),
+        pph: Math.round(operatorPPH * 100) / 100,
+        proratedStandard: Math.round(proratedStdPPH * 100) / 100,
+        efficiency: Math.round(operatorEff * 10000) / 100,
+        itemSummaries
+      }
+    };
+  }
+
   // --------------------------
   // /operator-details route
   // --------------------------
@@ -657,6 +1140,100 @@ module.exports = function (server) {
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       res.status(500).json({ error: "Failed to fetch operator details" });
+    }
+  });
+
+  // --------------------------
+  // /operator-details-cached route
+  // --------------------------
+  router.get("/analytics/operator-details-cached", async (req, res) => {
+    try {
+      const { start, end, operatorId, serial, tz = "America/Chicago" } = req.query;
+      
+      // Validate required parameters
+      if (!start || !end || !operatorId) {
+        return res.status(400).json({ 
+          error: "start, end, and operatorId are required" 
+        });
+      }
+
+      const opId = Number(operatorId);
+      if (isNaN(opId)) {
+        return res.status(400).json({ 
+          error: "operatorId must be a valid number" 
+        });
+      }
+
+      // Parallelize initial queries
+      const [latestResult, machineInfoResult] = await Promise.all([
+        db.collection(config.operatorSessionCollectionName)
+          .find({ "operator.id": opId })
+          .project({ _id: 0, operator: 1 })
+          .sort({ "timestamps.start": -1 })
+          .limit(1)
+          .toArray(),
+        serial ? db.collection(config.machineSessionCollectionName)
+          .find({ "machine.id": Number(serial) })
+          .project({ _id: 0, "machine.name": 1 })
+          .sort({ "timestamps.start": -1 })
+          .limit(1)
+          .toArray() : Promise.resolve([])
+      ]);
+      
+      // Normalize operator name - handle both object {first, surname} and string formats
+      const rawOperatorName = latestResult[0]?.operator?.name || `Operator ${opId}`;
+      const operatorName = typeof rawOperatorName === 'object' && rawOperatorName !== null
+        ? `${rawOperatorName.first || ''} ${rawOperatorName.surname || ''}`.trim() || `Operator ${opId}`
+        : rawOperatorName;
+
+      // Get machine info if serial is provided
+      let machineSerial = null;
+      let machineName = null;
+      if (serial) {
+        machineSerial = Number(serial);
+        machineName = machineInfoResult[0]?.machine?.name || `Machine ${serial}`;
+      }
+
+      // Get item summary, hourly stacked chart, cycle pie, and daily efficiency from cache
+      const [itemSummary, countByItem, cyclePie, dailyEfficiency] = await Promise.all([
+        buildItemSummaryFromCache(db, opId, start, end, serial),
+        buildItemHourlyStackFromCacheForOperator(db, opId, start, end, serial),
+        // Promise.resolve(null), // Placeholder for commented-out countByItem
+        buildOperatorCyclePieFromCache(db, opId, start, end, serial),
+        buildDailyEfficiencyFromCache(db, opId, operatorName, start, end, serial)
+      ]);
+
+      // Transform itemSummary to match operator-info format
+      const transformedItemSummary = itemSummary.sessions.flatMap(session => {
+        if (!Array.isArray(session.items) || !session.items.length) return [];
+        const mSerial = session.machine?.serial ?? "Unknown";
+        const mName   = session.machine?.name   ?? "Unknown";
+        return session.items.map(item => ({
+          operatorName: operatorName,
+          machineSerial: mSerial,
+          machineName: mName,
+          itemName: item.name || "Unknown",
+          count: item.countTotal || 0,
+          misfeed: 0,
+          standard: item.standard || 0,
+          valid: item.countTotal || 0,
+          pph: item.pph || 0,
+          efficiency: item.efficiency || 0,
+          workedTimeFormatted: session.workedTimeFormatted || formatDuration(0)
+        }));
+      });
+
+      return res.json({
+        itemSummary: transformedItemSummary,
+        countByItem,                         // hourly item breakdown from cache
+        cyclePie,                            // cycle pie chart from cache
+        dailyEfficiency,                     // daily efficiency chart from cache
+        // TODO: Add other cached responses when implemented
+        // faultHistory
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to fetch operator details from cache" });
     }
   });
 

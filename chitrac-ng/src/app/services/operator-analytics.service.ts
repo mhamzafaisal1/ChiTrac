@@ -51,7 +51,7 @@ export class OperatorAnalyticsService {
       .set('end', end)
       .set('operatorId', operatorId.toString());
   
-    return this.http.get('/api/alpha/analytics/operator-details', { params });
+    return this.http.get('/api/alpha/analytics/operator-details-cached', { params });
   }
 
   getOperatorMachineSummary(start: string, end: string, operatorId: number): Observable<any> {

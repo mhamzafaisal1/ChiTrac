@@ -1365,6 +1365,10 @@ module.exports = function (server) {
                 { $ifNull: ['$timestamps.end', endDate] },
               ],
             },
+            // DEBUG: Check what data we have
+            _debugItemsLength: { $size: { $ifNull: ['$items', []] } },
+            _debugTotalCountByItemLength: { $size: { $ifNull: ['$totalCountByItem', []] } },
+            _debugTimeCreditByItemLength: { $size: { $ifNull: ['$timeCreditByItem', []] } },
           },
         },
         { $match: { $expr: { $lt: ['$_ovStart', '$_ovEnd'] } } },
@@ -1406,23 +1410,23 @@ module.exports = function (server) {
           $addFields: {
             _itemsPaired: {
               $map: {
-                input: { $range: [0, { $size: '$_items' }] },
+                input: { $range: [0, { $size: { $ifNull: ['$items', []] } }] },
                 as: 'i',
                 in: {
                   $let: {
                     vars: {
-                      item: { $arrayElemAt: ['$_items', '$$i'] },
-                      count: { $arrayElemAt: ['$_totalCountByItem', '$$i'] },
-                      tci: { $arrayElemAt: ['$_timeCreditByItem', '$$i'] },
+                      item: { $arrayElemAt: ['$items', '$$i'] },
+                      count: { $arrayElemAt: [{ $ifNull: ['$totalCountByItem', []] }, '$$i'] },
+                      tci: { $arrayElemAt: [{ $ifNull: ['$timeCreditByItem', []] }, '$$i'] }
                     },
                     in: {
                       id: '$$item.id',
                       name: '$$item.name',
                       standard: '$$item.standard',
                       count: '$$count',
-                      tci: '$$tci',
-                    },
-                  },
+                      tci: '$$tci'
+                    }
+                  }
                 },
               },
             },
@@ -1496,6 +1500,9 @@ module.exports = function (server) {
       if (!sessionsAgg.length) {
         return res.json({ context: { operatorId, start: startDate, end: endDate }, machines: [] });
       }
+
+      // DEBUG: Log first aggregation result to see data structure
+      logger.info('DEBUG - First session aggregation result:', JSON.stringify(sessionsAgg[0], null, 2));
 
       // 2) For each machine, count fault-sessions that overlap ANY operator-session interval for that machine.
       const results = [];
