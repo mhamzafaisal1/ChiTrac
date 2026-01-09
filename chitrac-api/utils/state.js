@@ -67,13 +67,32 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
       fault: []
     };
   
+    // Return empty cycles if no states provided
+    if (!states || !Array.isArray(states) || states.length === 0) {
+      return cycles;
+    }
+  
     let currentRunningStart = null;
     let currentPauseStart = null;
     let currentFaultStart = null;
   
     for (const state of states) {
-      const code = state.status?.code ?? state._tickerDoc?.status?.code;
+      // Extract status code with multiple fallbacks
+      let code = state.status?.code;
+      if (code === undefined || code === null) {
+        code = state._tickerDoc?.status?.code;
+      }
+      // Default to 0 (paused) if no status code found
+      if (code === undefined || code === null) {
+        code = 0;
+      }
+      
       const timestamp = new Date(state.timestamps?.create || state.timestamp);
+      
+      // Skip invalid timestamps
+      if (isNaN(timestamp.getTime())) {
+        continue;
+      }
   
       // Running cycles only
       if (!mode || mode === 'running') {

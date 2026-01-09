@@ -144,7 +144,18 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
         return;
       }
 
-      this.operatorName = operatorData.dailyEfficiency.operator.name;
+      // Normalize operator name - handle both object {first, surname} and string formats
+      const rawName = operatorData.dailyEfficiency.operator.name;
+      if (rawName && typeof rawName === 'object') {
+        const nameObj = rawName as { first?: string; surname?: string };
+        const fullName = `${nameObj.first || ''} ${nameObj.surname || ''}`.trim();
+        this.operatorName = fullName || `Operator ${this.operatorId}`;
+      } else if (typeof rawName === 'string') {
+        this.operatorName = rawName || `Operator ${this.operatorId}`;
+      } else {
+        this.operatorName = `Operator ${this.operatorId}`;
+      }
+      
       this.chartConfig = this.transformDataToCartesianConfig(operatorData.dailyEfficiency.data, this.operatorName);
     } catch (error) {
       console.error('Error processing dashboard data:', error);
@@ -216,7 +227,18 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
 
     this.oeeService.getOperatorDailyEfficiency(this.startTime, this.endTime, this.operatorId).subscribe({
       next: (response) => {
-        this.operatorName = response.operator.name;
+        // Normalize operator name - handle both object {first, surname} and string formats
+        const rawName = response.operator?.name;
+        if (rawName && typeof rawName === 'object') {
+          const nameObj = rawName as { first?: string; surname?: string };
+          const fullName = `${nameObj.first || ''} ${nameObj.surname || ''}`.trim();
+          this.operatorName = fullName || `Operator ${this.operatorId}`;
+        } else if (typeof rawName === 'string') {
+          this.operatorName = rawName || `Operator ${this.operatorId}`;
+        } else {
+          this.operatorName = `Operator ${this.operatorId}`;
+        }
+        
         this.chartConfig = this.transformDataToCartesianConfig(response.data, this.operatorName);
         this.loading = false;
       },
