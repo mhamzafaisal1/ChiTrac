@@ -22,12 +22,14 @@ import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
 import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-fault-history.component';
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
 import { BaseTableComponent } from "../components/base-table/base-table.component";
+import { MachineAnalyticsService } from '../services/machine-analytics.service';
 
 import { OperatorCountbyitemChartComponent } from "../operator-countbyitem-chart/operator-countbyitem-chart.component";
 import { getStatusDotByCode } from '../../utils/status-utils';
 import { DailyDashboardService } from '../services/daily-dashboard.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { OperatorAnalyticsService } from '../services/operator-analytics.service';
 
 @Component({
     selector: "app-daily-summary-dashboard",
@@ -83,7 +85,9 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private machineAnalyticsService: MachineAnalyticsService,
+    private operatorAnalyticsService: OperatorAnalyticsService
   ) {}
 
   ngOnInit(): void {
@@ -247,7 +251,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.rawOperatorData = arr;
     this.operatorRows = arr.map((o:any)=>({
       Status: getStatusDotByCode(o.currentStatus?.code),
-      'Operator Name': o.operator?.name ?? 'Unknown',
+      'Operator Name': o.operator?.name ? `${o.operator.name.first ?? ''} ${o.operator.name.surname ?? ''}`.trim() : 'Unknown',
       'Worked Time': `${o.metrics?.runtime?.formatted?.hours ?? 0}h ${o.metrics?.runtime?.formatted?.minutes ?? 0}m`,
       'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
       operatorId: o.operator?.id
@@ -347,115 +351,277 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       return;
     }
   
-    const faultSummaries = fullMachineData.faultData?.faultSummaries || [];
-    const faultCycles = fullMachineData.faultData?.faultCycles || [];
-  
-    const carouselTabs = [
-      {
-        label: 'Fault Summaries',
-        component: MachineFaultHistoryComponent,
-        componentInputs: {
-          viewType: 'summary',
-          mode: 'dashboard',
-          preloadedData: faultSummaries,
-          isModal: this.isModal,
-          startTime: this.startTime,
-          endTime: this.endTime,
-          serial: serial.toString()
-        }
-      },
-      {
-        label: 'Fault Cycles',
-        component: MachineFaultHistoryComponent,
-        componentInputs: {
-          viewType: 'cycles',
-          mode: 'dashboard',
-          preloadedData: faultCycles,
-          isModal: this.isModal,
-          startTime: this.startTime,
-          endTime: this.endTime,
-          serial: serial.toString()
-        }
-      },
-      {
-        label: 'Performance Chart',
-        component: OperatorPerformanceChartComponent,
-        componentInputs: {
-          startTime: this.startTime,
-          endTime: this.endTime,
-          machineSerial: serial,
-          chartWidth: this.chartWidth,
-          chartHeight: this.chartHeight,
-          isModal: this.isModal,
-          mode: 'dashboard',
-          preloadedData: {
-            machine: {
-              serial: serial,
-              name: fullMachineData.machine?.name ?? 'Unknown'
+    // Fetch full machine details to get operatorEfficiency data
+    // The cached /machines endpoint returns empty operatorEfficiency arrays
+    const formattedStart = new Date(this.startTime).toISOString();
+    const formattedEnd = new Date(this.endTime).toISOString();
+    
+    this.machineAnalyticsService.getMachineDetails(formattedStart, formattedEnd, serial)
+      .subscribe({
+        next: (machineDetails: any) => {
+          // machineDetails is an array, get the first item
+          const machineData = Array.isArray(machineDetails) ? machineDetails[0] : machineDetails;
+          
+          // Use operatorEfficiency from the detailed API call, fallback to cached data
+          const operatorEfficiency = machineData?.operatorEfficiency ?? fullMachineData.operatorEfficiency ?? [];
+          const faultSummaries = machineData?.faultData?.faultSummaries ?? fullMachineData.faultData?.faultSummaries ?? [];
+          const faultCycles = machineData?.faultData?.faultCycles ?? fullMachineData.faultData?.faultCycles ?? [];
+          
+          const carouselTabs = [
+            {
+              label: 'Fault Summaries',
+              component: MachineFaultHistoryComponent,
+              componentInputs: {
+                viewType: 'summary',
+                mode: 'dashboard',
+                preloadedData: faultSummaries,
+                isModal: this.isModal,
+                startTime: this.startTime,
+                endTime: this.endTime,
+                serial: serial.toString()
+              }
             },
-            timeRange: {
-              start: this.startTime,
-              end: this.endTime
+            {
+              label: 'Fault Cycles',
+              component: MachineFaultHistoryComponent,
+              componentInputs: {
+                viewType: 'cycles',
+                mode: 'dashboard',
+                preloadedData: faultCycles,
+                isModal: this.isModal,
+                startTime: this.startTime,
+                endTime: this.endTime,
+                serial: serial.toString()
+              }
             },
-            hourlyData: fullMachineData.operatorEfficiency ?? []
-          }
-        }
-      }
-    ];
-  
-    const dialogRef = this.dialog.open(ModalWrapperComponent, {
-      width: '95vw',
-      height: '90vh',
-      maxHeight: '90vh',
-      maxWidth: '95vw',
-      panelClass: 'performance-chart-dialog',
-      data: {
-        component: UseCarouselComponent,
-        componentInputs: {
-          tabData: carouselTabs
+            {
+              label: 'Performance Chart',
+              component: OperatorPerformanceChartComponent,
+              componentInputs: {
+                startTime: this.startTime,
+                endTime: this.endTime,
+                machineSerial: serial,
+                chartWidth: this.chartWidth,
+                chartHeight: this.chartHeight,
+                isModal: this.isModal,
+                mode: 'dashboard',
+                preloadedData: {
+                  machine: {
+                    serial: serial,
+                    name: machineData?.machine?.name ?? fullMachineData.machine?.name ?? 'Unknown'
+                  },
+                  timeRange: {
+                    start: this.startTime,
+                    end: this.endTime
+                  },
+                  hourlyData: operatorEfficiency
+                }
+              }
+            }
+          ];
+        
+          const dialogRef = this.dialog.open(ModalWrapperComponent, {
+            width: '95vw',
+            height: '90vh',
+            maxHeight: '90vh',
+            maxWidth: '95vw',
+            panelClass: 'performance-chart-dialog',
+            data: {
+              component: UseCarouselComponent,
+              componentInputs: {
+                tabData: carouselTabs
+              },
+              machineSerial: serial,
+              startTime: this.startTime,
+              endTime: this.endTime
+            }
+          });
+        
+          dialogRef.afterClosed().subscribe(() => {
+            if (this.selectedRow === row) {
+              this.selectedRow = null;
+            }
+          });
         },
-        machineSerial: serial,
-        startTime: this.startTime,
-        endTime: this.endTime
-      }
-    });
-  
-    dialogRef.afterClosed().subscribe(() => {
-      if (this.selectedRow === row) {
-        this.selectedRow = null;
-      }
-    });
+        error: (err) => {
+          console.error('Error fetching machine details:', err);
+          // Fallback to using cached data even if it's empty
+          const faultSummaries = fullMachineData.faultData?.faultSummaries || [];
+          const faultCycles = fullMachineData.faultData?.faultCycles || [];
+          
+          const carouselTabs = [
+            {
+              label: 'Fault Summaries',
+              component: MachineFaultHistoryComponent,
+              componentInputs: {
+                viewType: 'summary',
+                mode: 'dashboard',
+                preloadedData: faultSummaries,
+                isModal: this.isModal,
+                startTime: this.startTime,
+                endTime: this.endTime,
+                serial: serial.toString()
+              }
+            },
+            {
+              label: 'Fault Cycles',
+              component: MachineFaultHistoryComponent,
+              componentInputs: {
+                viewType: 'cycles',
+                mode: 'dashboard',
+                preloadedData: faultCycles,
+                isModal: this.isModal,
+                startTime: this.startTime,
+                endTime: this.endTime,
+                serial: serial.toString()
+              }
+            },
+            {
+              label: 'Performance Chart',
+              component: OperatorPerformanceChartComponent,
+              componentInputs: {
+                startTime: this.startTime,
+                endTime: this.endTime,
+                machineSerial: serial,
+                chartWidth: this.chartWidth,
+                chartHeight: this.chartHeight,
+                isModal: this.isModal,
+                mode: 'dashboard',
+                preloadedData: {
+                  machine: {
+                    serial: serial,
+                    name: fullMachineData.machine?.name ?? 'Unknown'
+                  },
+                  timeRange: {
+                    start: this.startTime,
+                    end: this.endTime
+                  },
+                  hourlyData: fullMachineData.operatorEfficiency ?? []
+                }
+              }
+            }
+          ];
+        
+          const dialogRef = this.dialog.open(ModalWrapperComponent, {
+            width: '95vw',
+            height: '90vh',
+            maxHeight: '90vh',
+            maxWidth: '95vw',
+            panelClass: 'performance-chart-dialog',
+            data: {
+              component: UseCarouselComponent,
+              componentInputs: {
+                tabData: carouselTabs
+              },
+              machineSerial: serial,
+              startTime: this.startTime,
+              endTime: this.endTime
+            }
+          });
+        
+          dialogRef.afterClosed().subscribe(() => {
+            if (this.selectedRow === row) {
+              this.selectedRow = null;
+            }
+          });
+        }
+      });
   }
   
 
   onOperatorClick(row: any): void {
     this.selectedOperator = row;
-    const dialogRef = this.dialog.open(ModalWrapperComponent, {
-      width: '95vw',
-      height: '90vh',
-      maxWidth: '95vw',
-      maxHeight: '90vh',
-      panelClass: 'performance-chart-dialog',
-      data: {
-        component: OperatorCountbyitemChartComponent,
-        componentInputs: {
-          operatorId: row.operatorId,
-          startTime: this.startTime,
-          endTime: this.endTime,
-          chartWidth: this.chartWidth,
-          chartHeight: this.chartHeight,
-          isModal: this.isModal,
-          mode: 'dashboard',
-          dashboardData: this.rawOperatorData
+    
+    const operatorId = row.operatorId;
+    const fullOperatorData = this.rawOperatorData.find((o: any) => o.operator?.id === operatorId);
+    
+    // Fetch full operator details to get countByItem data
+    // The cached /operators endpoint doesn't return countByItem
+    const formattedStart = new Date(this.startTime).toISOString();
+    const formattedEnd = new Date(this.endTime).toISOString();
+    
+    this.operatorAnalyticsService.getOperatorInfo(formattedStart, formattedEnd, operatorId)
+      .subscribe({
+        next: (operatorDetails: any) => {
+          // Format operator name if it's an object
+          let operatorName = 'Unknown';
+          if (fullOperatorData?.operator?.name) {
+            if (typeof fullOperatorData.operator.name === 'string') {
+              operatorName = fullOperatorData.operator.name;
+            } else if (fullOperatorData.operator.name.first || fullOperatorData.operator.name.surname) {
+              operatorName = `${fullOperatorData.operator.name.first || ''} ${fullOperatorData.operator.name.surname || ''}`.trim();
+            }
+          }
+          
+          // Structure the data to match what the component expects
+          // The component expects an array with operator object and countByItem
+          const operatorData = {
+            operator: {
+              id: operatorId,
+              name: operatorName // Use formatted string name
+            },
+            ...fullOperatorData,
+            countByItem: operatorDetails.countByItem || fullOperatorData?.countByItem
+          };
+          
+          const dialogRef = this.dialog.open(ModalWrapperComponent, {
+            width: '95vw',
+            height: '90vh',
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            panelClass: 'performance-chart-dialog',
+            data: {
+              component: OperatorCountbyitemChartComponent,
+              componentInputs: {
+                operatorId: operatorId,
+                startTime: this.startTime,
+                endTime: this.endTime,
+                chartWidth: this.chartWidth,
+                chartHeight: this.chartHeight,
+                isModal: this.isModal,
+                mode: 'dashboard',
+                dashboardData: [operatorData]
+              }
+            }
+          });
+        
+          dialogRef.afterClosed().subscribe(() => {
+            if (this.selectedOperator === row) {
+              this.selectedOperator = null;
+            }
+          });
+        },
+        error: (err) => {
+          console.error('Error fetching operator details:', err);
+          // Fallback to using cached data even if it doesn't have countByItem
+          const dialogRef = this.dialog.open(ModalWrapperComponent, {
+            width: '95vw',
+            height: '90vh',
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            panelClass: 'performance-chart-dialog',
+            data: {
+              component: OperatorCountbyitemChartComponent,
+              componentInputs: {
+                operatorId: operatorId,
+                startTime: this.startTime,
+                endTime: this.endTime,
+                chartWidth: this.chartWidth,
+                chartHeight: this.chartHeight,
+                isModal: this.isModal,
+                mode: 'dashboard',
+                dashboardData: fullOperatorData ? [fullOperatorData] : this.rawOperatorData
+              }
+            }
+          });
+        
+          dialogRef.afterClosed().subscribe(() => {
+            if (this.selectedOperator === row) {
+              this.selectedOperator = null;
+            }
+          });
         }
-      }
-    });
-  
-    dialogRef.afterClosed().subscribe(() => {
-      if (this.selectedOperator === row) {
-        this.selectedOperator = null;
-      }
-    });
+      });
   }
   
   
