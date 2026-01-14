@@ -180,6 +180,8 @@ module.exports = function (server) {
 
             const existing = operatorTickerMap.get(operatorKey);
             if (!existing || existing.timestamp < timestamp) {
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              const statusId = status?.id ?? status?.code ?? null;
               operatorTickerMap.set(operatorKey, {
                 machine: machine.serial
                   ? {
@@ -187,9 +189,9 @@ module.exports = function (server) {
                       name: machine.name || null,
                     }
                   : null,
-                status: typeof status.code !== "undefined" || typeof status.name !== "undefined"
+                status: typeof statusId !== "undefined" && statusId !== null || typeof status.name !== "undefined"
                   ? {
-                      code: status.code ?? null,
+                      code: statusId, // Use 'code' in API response for backward compatibility
                       name: status.name ?? null,
                     }
                   : null,
@@ -419,6 +421,8 @@ module.exports = function (server) {
             if (!existing || existing.timestamp < timestamp) {
               const serial =
                 machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              const statusId = status?.id ?? status?.code ?? null;
               operatorTickerMap.set(operatorKey, {
                 machine:
                   serial !== null && serial !== undefined
@@ -428,10 +432,10 @@ module.exports = function (server) {
                       }
                     : null,
                 status:
-                  typeof status.code !== "undefined" ||
+                  typeof statusId !== "undefined" && statusId !== null ||
                   typeof status.name !== "undefined"
                     ? {
-                        code: status.code ?? null,
+                        code: statusId, // Use 'code' in API response for backward compatibility
                         name: status.name ?? null
                       }
                     : null,
@@ -713,11 +717,13 @@ module.exports = function (server) {
       // Create a map of machine serial to current status
       const machineStatusMap = new Map();
       for (const stateRecord of stateTickerData) {
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusId = stateRecord.status?.id ?? stateRecord.status?.code ?? 0;
         machineStatusMap.set(stateRecord.machine.serial, {
-          code: stateRecord.status.code,
-          name: stateRecord.status.name,
-          softrolColor: stateRecord.status.softrolColor,
-          timestamp: stateRecord.status.timestamp
+          code: statusId, // Use 'code' in API response for backward compatibility
+          name: stateRecord.status?.name ?? "Unknown",
+          softrolColor: stateRecord.status?.softrolColor,
+          timestamp: stateRecord.status?.timestamp
         });
       }
       
@@ -926,6 +932,8 @@ module.exports = function (server) {
           if (!existing || existing.timestamp < timestamp) {
             const serial =
               machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+            // Status schema uses 'id', but legacy code used 'code' - support both
+            const statusId = status?.id ?? status?.code ?? null;
             operatorTickerMap.set(operatorKey, {
               machine:
                 serial !== null && serial !== undefined
@@ -935,10 +943,10 @@ module.exports = function (server) {
                     }
                   : null,
               status:
-                typeof status.code !== "undefined" ||
+                typeof statusId !== "undefined" && statusId !== null ||
                 typeof status.name !== "undefined"
                   ? {
-                      code: status.code ?? null,
+                      code: statusId, // Use 'code' in API response for backward compatibility
                       name: status.name ?? null
                     }
                   : null,
@@ -1156,8 +1164,10 @@ module.exports = function (server) {
                 name: null
               };
               statusSource = mostRecent.endState;
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              const statusId = statusSource?.status?.id ?? statusSource?.status?.code ?? 0;
               currentStatus = {
-                code: statusSource?.status?.code ?? 0,
+                code: statusId, // Use 'code' in API response for backward compatibility
                 name: statusSource?.status?.name ?? "Unknown"
               };
             } else {
@@ -1774,8 +1784,10 @@ module.exports = function (server) {
               serial: null,
               name: null
             };
+            // Status schema uses 'id', but legacy code used 'code' - support both
+            const statusId = mostRecent.endState?.status?.id ?? mostRecent.endState?.status?.code ?? 0;
             currentStatus = {
-              code: mostRecent.endState?.status?.code ?? 0,
+              code: statusId, // Use 'code' in API response for backward compatibility
               name: mostRecent.endState?.status?.name ?? "Unknown"
             };
           } else {
