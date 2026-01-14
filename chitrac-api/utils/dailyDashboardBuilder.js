@@ -15,7 +15,8 @@ const {
   parseAndValidateQueryParams,
   createPaddedTimeRange,
   formatDuration,
-  getHourlyIntervals
+  getHourlyIntervals,
+  SYSTEM_TIMEZONE
 } = require("./time");
 
 const {
@@ -395,13 +396,23 @@ async function buildPlantwideMetricsByHour(db, start, end) {
   const wStart = new Date(start);
   const wEnd = new Date(end);
 
-  // hour slots [start,end) using Luxon (timezone inferred upstream)
+  // hour slots [start,end) using Luxon with SYSTEM_TIMEZONE
+  const startDT = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf("hour");
+  const endDT = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf("hour");
   const intervals = Interval
-    .fromDateTimes(DateTime.fromJSDate(wStart).startOf("hour"), DateTime.fromJSDate(wEnd).endOf("hour"))
+    .fromDateTimes(startDT, endDT)
     .splitBy({ hours: 1 })
-    .map(iv => ({ start: iv.start.toJSDate(), end: iv.end.toJSDate() }));
+    .map(iv => ({ 
+      start: iv.start.toJSDate(), 
+      end: iv.end.toJSDate(),
+      hourDT: iv.start // Keep Luxon DateTime for timezone-aware hour extraction
+    }));
 
-  // machines that ran today (overlapped any session)
+  // Get total number of active machines for plantwide availability calculation
+  const totalActiveMachines = await db.collection(config.machineCollectionName)
+    .countDocuments({ active: true });
+
+  // machines that ran today (overlapped any session) - used for querying data
   // Try both machine.serial and machine.id for backward compatibility
   const serialsFromSerial = await msColl.distinct("machine.serial", {
     "timestamps.start": { $lt: wEnd },
@@ -421,7 +432,7 @@ async function buildPlantwideMetricsByHour(db, start, end) {
     ]
   });
 
-  // Combine and deduplicate
+  // Combine and deduplicate - these are machines with sessions (used for data queries)
   const machineSerials = [...new Set([...serialsFromSerial, ...serialsFromId])].filter(Boolean);
 
   const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
@@ -516,30 +527,196 @@ async function buildPlantwideMetricsByHour(db, start, end) {
       wOee   += r.oee          * r.runtimeSec;
     }
 
-    if (totalRuntime > 0) {
-      const availability = +( (wAvail / totalRuntime) * 100 ).toFixed(2);
-      const efficiency   = +( (wEff   / totalRuntime) * 100 ).toFixed(2);
-      const throughput   = +( (wThru  / totalRuntime) * 100 ).toFixed(2);
-      const oee          = +( (wOee   / totalRuntime) * 100 ).toFixed(2);
+    // Extract hour in SYSTEM_TIMEZONE
+    const hourInTimezone = iv.hourDT.hour; // Use Luxon DateTime to get hour in correct timezone
 
-      // skip all-zero rows
-      if (availability || efficiency || throughput || oee) {
-        hourlyMetrics.push({
-          hour: iv.start.getHours(),
-          availability,
-          efficiency,
-          throughput,
-          oee
-        });
-      }
-    }
+    // Calculate metrics - include all hours, even if no runtime
+    let availability, efficiency, throughput, oee;
+    
+    // Calculate plantwide availability: total runtime / (total active machines * hour duration)
+    // Use totalActiveMachines instead of machineSerials.length to include all active machines,
+    // not just those with sessions in the time range
+    const totalPossibleSec = totalActiveMachines * slotSec;
+    availability = totalPossibleSec > 0 ? (totalRuntime / totalPossibleSec) * 100 : 0;
+    
+    // Calculate efficiency from aggregated work time and time credit
+    efficiency = totalWorkSec > 0 ? (totalCreditSec / totalWorkSec) * 100 : 0;
+    
+    // Calculate throughput from aggregated counts
+    throughput = (totalValid + totalMis) > 0 ? (totalValid / (totalValid + totalMis)) * 100 : 0;
+    
+    // Calculate OEE = Availability * Efficiency * Throughput (all as ratios 0-1)
+    const availRatio = availability / 100;
+    const effRatio = efficiency / 100;
+    const thruRatio = throughput / 100;
+    oee = +( (availRatio * effRatio * thruRatio) * 100 ).toFixed(2);
+    
+    // Round values
+    availability = +(availability.toFixed(2));
+    efficiency = +(efficiency.toFixed(2));
+    throughput = +(throughput.toFixed(2));
+
+    // Include all hours in the range, even if metrics are all zero
+    hourlyMetrics.push({
+      hour: hourInTimezone,
+      availability,
+      efficiency,
+      throughput,
+      oee
+    });
   }
 
   return hourlyMetrics;
 }
 
+// buildPlantwideMetricsByHour from hourly-totals cache
+async function buildPlantwideMetricsByHourFromCache(db, start, end) {
+  const wStart = new Date(start);
+  const wEnd = new Date(end);
 
+  // hour slots [start,end) using Luxon with SYSTEM_TIMEZONE
+  const startDT = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf("hour");
+  const endDT = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf("hour");
+  const intervals = Interval
+    .fromDateTimes(startDT, endDT)
+    .splitBy({ hours: 1 })
+    .map(iv => ({ 
+      start: iv.start.toJSDate(), 
+      end: iv.end.toJSDate(),
+      hourDT: iv.start // Keep Luxon DateTime for timezone-aware hour extraction
+    }));
 
+  // Get total number of active machines for plantwide availability calculation
+  const totalActiveMachines = await db.collection(config.machineCollectionName)
+    .countDocuments({ active: true });
+
+  // Get date strings and hour ranges for the time range
+  const startDateStr = startDT.toFormat('yyyy-LL-dd');
+  const endDateStr = endDT.toFormat('yyyy-LL-dd');
+  const dateStrs = [];
+  let currentDate = startDT.startOf('day');
+  const endDate = endDT.startOf('day');
+  while (currentDate <= endDate) {
+    dateStrs.push(currentDate.toFormat('yyyy-LL-dd'));
+    currentDate = currentDate.plus({ days: 1 });
+  }
+
+  // Query all machine hourly records from hourly-totals for the date range
+  const machineHourlyRecords = await db.collection('hourly-totals')
+    .find({
+      entityType: 'machine',
+      date: { $in: dateStrs }
+    })
+    .toArray();
+
+  if (machineHourlyRecords.length === 0) {
+    // Return empty metrics for all hours
+    return intervals.map(iv => ({
+      hour: iv.hourDT.hour,
+      availability: 0,
+      efficiency: 0,
+      throughput: 0,
+      oee: 0
+    }));
+  }
+
+  const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+
+  // Group records by date-hour combination and aggregate across all machines
+  const hourlyDataMap = new Map();
+
+  // Initialize all intervals (date-hour combinations)
+  for (const iv of intervals) {
+    const dateStr = iv.hourDT.toFormat('yyyy-LL-dd');
+    const hour = iv.hourDT.hour;
+    const key = `${dateStr}-${hour}`;
+    hourlyDataMap.set(key, {
+      hour,
+      totalRuntimeMs: 0,
+      totalWorkedTimeMs: 0,
+      totalTimeCreditMs: 0,
+      totalCounts: 0,
+      totalMisfeeds: 0,
+      machineCount: 0
+    });
+  }
+
+  // Aggregate metrics by date-hour from hourly records
+  for (const record of machineHourlyRecords) {
+    const key = `${record.date}-${record.hour}`;
+    if (!hourlyDataMap.has(key)) {
+      // Skip hours outside the requested range
+      continue;
+    }
+
+    const hourData = hourlyDataMap.get(key);
+    hourData.totalRuntimeMs += safe(record.runtimeMs || 0);
+    hourData.totalWorkedTimeMs += safe(record.workedTimeMs || 0);
+    hourData.totalTimeCreditMs += safe(record.totalTimeCreditMs || 0);
+    hourData.totalCounts += safe(record.totalCounts || 0);
+    hourData.totalMisfeeds += safe(record.totalMisfeeds || 0);
+    hourData.machineCount += 1;
+  }
+
+  // Calculate plantwide metrics for each hour
+  const hourlyMetrics = [];
+  const hourSlotSec = 3600; // 1 hour in seconds
+
+  for (const iv of intervals) {
+    const dateStr = iv.hourDT.toFormat('yyyy-LL-dd');
+    const hour = iv.hourDT.hour;
+    const key = `${dateStr}-${hour}`;
+    const hourData = hourlyDataMap.get(key);
+
+    if (!hourData || hourData.machineCount === 0) {
+      // No data for this hour
+      hourlyMetrics.push({
+        hour,
+        availability: 0,
+        efficiency: 0,
+        throughput: 0,
+        oee: 0
+      });
+      continue;
+    }
+
+    // Calculate plantwide availability: total runtime / (total active machines * hour duration)
+    // This gives us the percentage of machines that were running during this hour
+    const totalPossibleRuntimeMs = totalActiveMachines * hourSlotSec * 1000;
+    const availability = totalPossibleRuntimeMs > 0 
+      ? (hourData.totalRuntimeMs / totalPossibleRuntimeMs) * 100 
+      : 0;
+
+    // Calculate efficiency: total time credit / total worked time
+    const totalWorkedTimeSec = hourData.totalWorkedTimeMs / 1000;
+    const totalTimeCreditSec = hourData.totalTimeCreditMs / 1000;
+    const efficiency = totalWorkedTimeSec > 0 
+      ? (totalTimeCreditSec / totalWorkedTimeSec) * 100 
+      : 0;
+
+    // Calculate throughput: valid counts / total counts
+    const totalOutput = hourData.totalCounts + hourData.totalMisfeeds;
+    const throughput = totalOutput > 0 
+      ? (hourData.totalCounts / totalOutput) * 100 
+      : 0;
+
+    // Calculate OEE = Availability * Efficiency * Throughput (all as ratios 0-1)
+    const availRatio = availability / 100;
+    const effRatio = efficiency / 100;
+    const thruRatio = throughput / 100;
+    const oee = +((availRatio * effRatio * thruRatio) * 100).toFixed(2);
+
+    hourlyMetrics.push({
+      hour,
+      availability: +(availability.toFixed(2)),
+      efficiency: +(efficiency.toFixed(2)),
+      throughput: +(throughput.toFixed(2)),
+      oee
+    });
+  }
+
+  return hourlyMetrics;
+}
 
   async function buildDailyMachineStatus(db, start, end) {
     const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
@@ -628,6 +805,7 @@ module.exports = {
   buildDailyItemHourlyStack,
   buildTopOperatorEfficiency,
   buildPlantwideMetricsByHour,
+  buildPlantwideMetricsByHourFromCache,
   buildDailyMachineStatus,
   buildDailyCountTotals
 };

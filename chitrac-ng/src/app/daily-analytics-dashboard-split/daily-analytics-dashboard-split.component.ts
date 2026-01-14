@@ -30,6 +30,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   isDarkTheme: boolean = false;
   chartWidth: number = 600;
   chartHeight: number = 450;
+  private readonly handleResize = () => this.calculateChartDimensions();
 
   constructor() {}
 
@@ -38,9 +39,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     this.calculateChartDimensions();
     
     // Listen for window resize to recalculate chart dimensions
-    window.addEventListener('resize', () => {
-      this.calculateChartDimensions();
-    });
+    window.addEventListener('resize', this.handleResize);
   }
 
   ngAfterViewInit(): void {
@@ -54,9 +53,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
 
   ngOnDestroy(): void {
     // Clean up event listener
-    window.removeEventListener('resize', () => {
-      this.calculateChartDimensions();
-    });
+    window.removeEventListener('resize', this.handleResize);
   }
 
   detectTheme() {
@@ -64,13 +61,25 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   }
 
   private calculateChartDimensions(): void {
-    // Calculate responsive chart dimensions
-    let tilesPerRow = 3; // Default for large screens
-    
+    // Mobile: use fixed readable height, don't calculate from viewport
     if (window.innerWidth <= 768) {
-      tilesPerRow = 1;
-    } else if (window.innerWidth <= 1200) {
+      this.chartWidth = Math.floor(window.innerWidth * 0.95);
+      this.chartHeight = 350; // Fixed readable height for mobile charts
+      
+      // Update chart components with new dimensions
+      if (this.itemChart) {
+        this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
+      }
+      return;
+    }
+
+    // Calculate responsive chart dimensions for desktop/tablet
+    let tilesPerRow = 3; // Default for large screens
+    let tilesPerColumn = 2; // Default for large screens (2 rows)
+    
+    if (window.innerWidth <= 1200) {
       tilesPerRow = 2;
+      tilesPerColumn = 3; // 3 rows on tablet
     }
 
     // Calculate tile dimensions based on viewport
@@ -78,7 +87,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     const viewportHeight = window.innerHeight;
     
     const tileWidth = viewportWidth / tilesPerRow;
-    const tileHeight = viewportHeight / 2; // 2 rows in the grid
+    const tileHeight = viewportHeight / tilesPerColumn; // Dynamic rows based on layout
 
     // Set chart dimensions with some padding
     this.chartWidth = Math.floor(tileWidth * 0.95); // 95% of tile width

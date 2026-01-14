@@ -17,6 +17,13 @@
   box-sizing: border-box;
   position: relative;
   padding: 0;
+
+  // Mobile: allow vertical scrolling
+  @media (max-width: 768px) {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
 }
 
 .charts-grid {
@@ -41,13 +48,66 @@
     justify-content: center;
   }
 
-  // Remove right border for last column
+  // Remove right border for last column (3 columns layout)
   > app-chart-tile:nth-child(3n) {
     border-right: none;
   }
 
+  // Bottom border for top row (3 columns layout)
   > app-chart-tile:nth-child(-n+3) {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1); // Only bottom of top row gets border
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  }
+}
+
+// Tablet layout: 2 columns x 3 rows
+@media (max-width: 1200px) and (min-width: 769px) {
+  .charts-grid {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+
+    // Remove right border for last column (2 columns layout)
+    > app-chart-tile:nth-child(3n) {
+      border-right: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    > app-chart-tile:nth-child(2n) {
+      border-right: none;
+    }
+
+    // Bottom border for top 2 rows (2 columns layout)
+    > app-chart-tile:nth-child(-n+2) {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    > app-chart-tile:nth-child(n+3):nth-child(-n+4) {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+  }
+}
+
+// Mobile layout: 1 column with auto-height rows (scrollable)
+@media (max-width: 768px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(6, auto);
+    height: auto;
+
+    // Remove all right borders on mobile (single column)
+    > app-chart-tile {
+      border-right: none;
+      height: auto;
+      min-height: 400px; // Fixed readable height for charts
+    }
+
+    // Add bottom border to all tiles except the last one
+    > app-chart-tile:not(:last-child) {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    // Remove the top row border styling override
+    > app-chart-tile:nth-child(-n+3) {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
   }
 }
 

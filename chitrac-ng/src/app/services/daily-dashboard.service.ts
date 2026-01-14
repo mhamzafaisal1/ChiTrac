@@ -102,7 +102,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
 
   getDailyItemHourlyProduction(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get(`${this.apiUrl}/analytics/daily/item-hourly-production`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/hourly/item-hourly-production`, { params });
   }
 
   getDailyTopOperators(start: string, end: string): Observable<any> {
@@ -112,7 +112,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
 
   getDailyPlantwideMetrics(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get(`${this.apiUrl}/analytics/daily/plantwide-metrics`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/daily/plantwide-metrics-cache`, { params });
   }
 
   getDailyCountTotals(start: string, end: string): Observable<any> {

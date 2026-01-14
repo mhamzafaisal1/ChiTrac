@@ -8,11 +8,10 @@ import { Observable } from 'rxjs';
 export class EfficiencyScreensService {
   constructor(private http: HttpClient) { }
 
-  getLiveEfficiencySummary(serial: number, date: string): Observable<any> {
+  getLiveEfficiencySummary(serial: number): Observable<any> {
     const params = new HttpParams()
-      .set('serial', serial.toString())
-      .set('date', new Date(date).toISOString().split('T')[0]);
-    return this.http.get('/api/alpha/analytics/machine-live-session-summary', { params });
+      .set('serial', serial.toString());
+    return this.http.get('/api/alpha/analytics/daily/machine-live-session-summary', { params });
   }
 
   getMachineLiveEfficiencySummary(serial: number): Observable<{ laneData: any }> {
@@ -28,5 +27,9 @@ export class EfficiencyScreensService {
       .set('serial', serial.toString())
       .set('station', station.toString());
     return this.http.get('/api/alpha/analytics/machine-live-session-summary/operator', { params });
+  }
+
+  getSPFMachines(): Observable<any[]> {
+    return this.http.get<any[]>('/api/alpha/machines/spf');
   }
 }

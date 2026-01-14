@@ -2,10 +2,11 @@
 const express = require("express");
 const { DateTime } = require("luxon");
 const config = require("../../modules/config");
-const { formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time"); 
+const { formatDuration, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require("../../utils/time"); 
 const {
   buildDailyItemHourlyStack,
   buildPlantwideMetricsByHour,
+  buildPlantwideMetricsByHourFromCache,
   buildDailyCountTotals,
   buildMachineOEE,
 } = require("../../utils/dailyDashboardBuilder");
@@ -555,6 +556,99 @@ module.exports = function (server) {
     }
   }
 
+  // Fast item hourly production using hourly-totals cache
+  async function buildItemHourlyStackFromCache(db, dayStart, dayEnd) {
+    try {
+      const startDate = new Date(dayStart);
+      const endDate = new Date(dayEnd);
+
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('Invalid date range provided');
+      }
+
+      // Get date string for the query
+      const dateStr = startDate.toISOString().split('T')[0];
+
+      // Query hourly-totals collection for item entity type for today
+      const pipeline = [
+        {
+          $match: {
+            entityType: 'item',
+            date: dateStr
+          }
+        },
+        {
+          $group: {
+            _id: { hour: "$hour", itemName: "$itemName" },
+            count: { $sum: "$totalCounts" }
+          }
+        },
+        {
+          $sort: { "_id.itemName": 1, "_id.hour": 1 }
+        },
+        {
+          $group: {
+            _id: "$_id.itemName",
+            hourlyCounts: {
+              $push: {
+                hour: "$_id.hour",
+                count: "$count"
+              }
+            }
+          }
+        },
+        {
+          $sort: { "_id": 1 }
+        }
+      ];
+
+      const results = await db.collection('hourly-totals').aggregate(pipeline).toArray();
+
+      const hourSet = new Set();
+      const items = {};
+
+      for (const result of results) {
+        const itemName = result._id;
+        items[itemName] = {};
+
+        for (const entry of result.hourlyCounts) {
+          hourSet.add(entry.hour);
+          items[itemName][entry.hour] = entry.count;
+        }
+      }
+
+      const hours = Array.from(hourSet).sort((a, b) => a - b);
+
+      const finalizedItems = {};
+      const sortedItemNames = Object.keys(items).sort();
+      for (const itemName of sortedItemNames) {
+        const hourCounts = items[itemName];
+        finalizedItems[itemName] = hours.map(h => hourCounts[h] || 0);
+      }
+
+      if (hours.length === 0) {
+        return {
+          title: "No data",
+          data: { hours: [], items: {} }
+        };
+      }
+
+      logger.info(`Built item hourly stack from cache for ${hours.length} hours and ${sortedItemNames.length} items`);
+
+      return {
+        title: "Item Counts by Hour (All Machines)",
+        data: {
+          hours,
+          items: finalizedItems
+        }
+      };
+
+    } catch (error) {
+      logger.error('Error in buildItemHourlyStackFromCache:', error);
+      throw error;
+    }
+  }
+
   // ---- INDIVIDUAL ROUTES ----
 
   // Route 1: Machine Status Breakdowns
@@ -634,6 +728,25 @@ module.exports = function (server) {
     }
   });
 
+  // Route 3B: Item Hourly Production Data (Fast - using hourly-totals cache)
+  router.get('/analytics/hourly/item-hourly-production', async (req, res) => {
+    try {
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const itemHourlyStack = await buildItemHourlyStackFromCache(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        itemHourlyStack
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch item hourly production data from cache" });
+    }
+  });
+
   // Route 4: Top Operator Rankings
   router.get('/analytics/daily/top-operators', async (req, res) => {
     try {
@@ -681,9 +794,18 @@ module.exports = function (server) {
   // Route 5: Plant-wide Metrics
   router.get('/analytics/daily/plantwide-metrics', async (req, res) => {
     try {
-      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
-      const dayStart = now.startOf('day').toJSDate();
-      const dayEnd = now.toJSDate();
+      // Parse query parameters, with fallback to today if not provided
+      let dayStart, dayEnd;
+      try {
+        const { start, end } = parseAndValidateQueryParams(req);
+        dayStart = new Date(start);
+        dayEnd = new Date(end);
+      } catch (error) {
+        // If query params are invalid or missing, default to today
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+        dayStart = now.startOf('day').toJSDate();
+        dayEnd = now.toJSDate();
+      }
 
       const plantwideMetrics = await buildPlantwideMetricsByHour(db, dayStart, dayEnd);
 
@@ -695,17 +817,25 @@ module.exports = function (server) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch plant-wide metrics data" });
     }
-  });
+  }); 
 
   // Route 5B: Plant-wide Metrics (Fast - using daily totals cache)
   router.get('/analytics/daily/plantwide-metrics-cache', async (req, res) => {
     try {
-      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
-      const dayStart = now.startOf('day').toJSDate();
-      const dayEnd = now.toJSDate();
+      // Parse query parameters, with fallback to today if not provided
+      let dayStart, dayEnd;
+      try {
+        const { start, end } = parseAndValidateQueryParams(req);
+        dayStart = new Date(start);
+        dayEnd = new Date(end);
+      } catch (error) {
+        // If query params are invalid or missing, default to today
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+        dayStart = now.startOf('day').toJSDate();
+        dayEnd = now.toJSDate();
+      }
 
-      // Note: buildPlantwideMetricsFromDailyTotals doesn't exist yet, using session-based version
-      const plantwideMetrics = await buildPlantwideMetricsByHour(db, dayStart, dayEnd);
+      const plantwideMetrics = await buildPlantwideMetricsByHourFromCache(db, dayStart, dayEnd);
 
       return res.json({
         timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },

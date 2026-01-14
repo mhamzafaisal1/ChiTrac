@@ -19,8 +19,10 @@
     </div>
 
     <div class="error" *ngIf="error">{{ error }}</div>
+    <div class="message" *ngIf="message && !error">{{ message }}</div>
 
     <base-table
+      *ngIf="!message || rows.length > 0"
       [columns]="columns"
       [rows]="rows"
       [selectedRow]="selectedRow"

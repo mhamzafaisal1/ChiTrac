@@ -19,6 +19,10 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { Subscription, timer } from 'rxjs';
 import { startWith, switchMap, share, retry, take } from 'rxjs/operators';
 
+/*** PDF Imports */
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 /*** Model Imports */
 import { OperatorConfig } from '../shared/models/operator.model';
 
@@ -43,6 +47,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
   sub: Subscription;
   page: number = 1;
   paginationSize: number = 10;
+  isDownloading: boolean = false;
 
   displayedColumns: string[] = ['code', 'name', 'active'];
 
@@ -175,6 +180,70 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
 
   handlePageEvent(e: PageEvent) {
     this.page = e.pageIndex;
+  }
+
+  async downloadOperatorsPdf(): Promise<void> {
+    if (!this.dataSource?.data || this.dataSource.data.length === 0) {
+      console.warn('No operators data to export');
+      return;
+    }
+
+    this.isDownloading = true;
+    console.log('Starting PDF export...');
+
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const margin = 24;
+      let y = margin;
+
+      // Title
+      doc.setFontSize(14);
+      doc.text('OPERATOR CONFIGURATION REPORT', margin, y);
+      y += 18;
+
+      // Date
+      doc.setFontSize(10);
+      const exportDate = new Date().toLocaleString();
+      doc.text(`Exported: ${exportDate}`, margin, y);
+      y += 24;
+
+      // Table headers
+      const head = [['Code', 'Name', 'Status']];
+      
+      // Table body - export all operators (not just current page)
+      const body = this.dataSource.data.map(operator => [
+        operator.code?.toString() || 'N/A',
+        this.getOperatorDisplayName(operator),
+        operator.active ? 'Active' : 'Inactive'
+      ]);
+
+      console.log(`Adding table with ${body.length} rows`);
+      
+      // Add table
+      autoTable(doc, {
+        head,
+        body,
+        startY: y,
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 9, cellPadding: 4 },
+        headStyles: { fillColor: [22, 160, 133], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 80 },  // Code column
+          1: { cellWidth: 200 }, // Name column
+          2: { cellWidth: 80 }   // Status column
+        },
+        theme: 'striped'
+      });
+
+      console.log('Saving PDF...');
+      const timestamp = new Date().toISOString().split('T')[0];
+      doc.save(`operator_report_${timestamp}.pdf`);
+      console.log('PDF export completed successfully');
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      this.isDownloading = false;
+    }
   }
 
   ngOnDestroy() {

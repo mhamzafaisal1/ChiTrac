@@ -378,7 +378,8 @@ import {
       let max = 0;
       const stacks = this.groupByStack(cfg.series.filter(s => s.type === 'bar' || s.type === 'area'));
       const stackedMax = stacks.map(group => {
-        if (group.length <= 1 || group.every(s => !s.stack)) return 0;
+        // only ignore groups with NO stack at all (allow single-series stacks)
+        if (group.every(s => !s.stack)) return 0;
         const byX: Record<string, number> = {};
         group.forEach(s => s.data.forEach(p => {
           const key = String(p.x);

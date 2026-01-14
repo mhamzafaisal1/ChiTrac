@@ -22,7 +22,6 @@ import { ActivatedRoute } from '@angular/router';
   standalone: true
 })
 export class LplEfficiencyScreen implements OnDestroy, OnInit {
-  date: string = new Date().toISOString(); // today
   lanes: any[] = [];
   pollingActive: boolean = false;
   private destroy$ = new Subject<void>();
@@ -59,7 +58,7 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
   }
 
   fetchOnce() {
-    this.efficiencyService.getLiveEfficiencySummary(this.currentSerialNumber, this.date)
+    this.efficiencyService.getLiveEfficiencySummary(this.currentSerialNumber)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
@@ -79,7 +78,7 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
       .pipe(
         takeUntil(this.destroy$),
         switchMap(() =>
-          this.efficiencyService.getLiveEfficiencySummary(this.currentSerialNumber, this.date)
+          this.efficiencyService.getLiveEfficiencySummary(this.currentSerialNumber)
         )
       )
       .subscribe({

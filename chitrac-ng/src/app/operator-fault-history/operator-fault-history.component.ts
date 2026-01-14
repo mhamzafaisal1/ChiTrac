@@ -62,6 +62,7 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   liveMode: boolean = false;
   isLoading: boolean = false;
   error: string | null = null;
+  message: string | null = null;
 
   lastFetchedData: any | null = null;
   lastParams: { startTime: string; endTime: string; operatorId: string } | null = null;
@@ -186,6 +187,8 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
                 tap((data: any) => {
                   this.hasFetchedOnce = true;
                   this.lastFetchedData = data;
+                  this.message = data.message || null;
+                  this.error = null;
                   this.updateTable();
                 })
               );
@@ -272,12 +275,16 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
           console.log('Debug: Fault cycles sample:', data.faultCycles?.[0]);
           this.hasFetchedOnce = true;
           this.lastFetchedData = data;
+          // Capture message from API response if present
+          this.message = data.message || null;
+          this.error = null; // Clear any previous errors
           this.updateTable();
           this.isLoading = false;
         },
         error: (error) => {
           console.error('Error fetching operator fault history:', error);
           this.error = 'Failed to fetch fault history. Please try again.';
+          this.message = null; // Clear message on error
           this.rows = [];
           this.columns = [];
           this.isLoading = false;

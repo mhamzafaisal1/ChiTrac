@@ -1,6 +1,7 @@
 const express = require("express");
 
 const { formatDuration } = require("../../utils/time");
+const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -339,10 +340,13 @@ module.exports = function (server) {
       });
 
       // Build statusMap from deduplicated tickers
+      // Note: Status schema uses 'id' but we keep 'code' for API compatibility
       const statusMap = new Map();
       for (const [id, ticker] of latestTickers) {
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusId = ticker.status?.id ?? ticker.status?.code ?? 0;
         statusMap.set(id, {
-          code: ticker.status?.code || 0,
+          code: statusId, // Use 'code' in API response for backward compatibility
           name: ticker.status?.name || "Unknown",
           color: ticker.status?.softrolColor || "None",
         });
@@ -356,9 +360,30 @@ module.exports = function (server) {
           name: "Unknown",
         };
 
+        // ✅ Use buildRange (new format) or fall back to timeRange (legacy format)
+        // buildRange represents the query window used for cache rebuild (todayStart to now)
+        const timeRange = record.buildRange || record.timeRange;
+        
         // Calculate window time (total time in query range)
-        const windowMs =
-          new Date(record.timeRange.end) - new Date(record.timeRange.start);
+        // If neither exists, calculate from start of day to now
+        let windowMs = 0;
+        let rangeStart, rangeEnd;
+        
+        if (timeRange && timeRange.start && timeRange.end) {
+          rangeStart = new Date(timeRange.start);
+          rangeEnd = new Date(timeRange.end);
+          windowMs = rangeEnd - rangeStart;
+        } else {
+          // Fallback: calculate from start of day to now
+          const today = new Date();
+          const chicagoTime = new Date(
+            today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+          );
+          rangeStart = new Date(chicagoTime.setHours(0, 0, 0, 0));
+          rangeEnd = new Date();
+          windowMs = rangeEnd - rangeStart;
+        }
+        
         const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
 
         // Calculate performance metrics
@@ -369,8 +394,20 @@ module.exports = function (server) {
         const totalOutput = record.totalCounts + record.totalMisfeeds;
         const throughput =
           totalOutput > 0 ? record.totalCounts / totalOutput : 0;
-        const workTimeSec = record.workedTimeMs / 1000;
-        const totalTimeCreditSec = record.totalTimeCreditMs / 1000;
+        
+        // ✅ FIX: If workedTimeMs is 0 but we have totalTimeCreditMs and runtimeMs,
+        // use runtimeMs as fallback (assuming at least 1 active station)
+        // This handles cases where workedTimeMs wasn't properly calculated in cache
+        let workTimeMs = record.workedTimeMs || 0;
+        if (workTimeMs === 0 && record.totalTimeCreditMs > 0 && record.runtimeMs > 0) {
+          workTimeMs = record.runtimeMs; // Fallback to runtimeMs (assumes 1 active station)
+          logger.debug(
+            `[machineSessions] Machine ${record.machineSerial}: workedTimeMs was 0, using runtimeMs ${workTimeMs}ms as fallback`
+          );
+        }
+        
+        const workTimeSec = workTimeMs / 1000;
+        const totalTimeCreditSec = (record.totalTimeCreditMs || 0) / 1000;
         const efficiency =
           workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
         const oee = availability * throughput * efficiency;
@@ -414,8 +451,8 @@ module.exports = function (server) {
             },
           },
           timeRange: {
-            start: record.timeRange.start,
-            end: record.timeRange.end,
+            start: rangeStart,
+            end: rangeEnd,
           },
         };
       });
@@ -591,6 +628,7 @@ module.exports = function (server) {
         .toArray();
 
       if (data.length === 0) {
+        console.log("No cached dashboard data found for date: ", dateStr);
         logger.warn(
           `[machineSessions] No cached dashboard data found for date: ${dateStr}, falling back to real-time calculation`
         );
@@ -622,6 +660,187 @@ module.exports = function (server) {
         `[machineSessions] Falling back to real-time calculation due to error`
       );
       return await getMachineDashboardRealTime(req, res);
+    }
+  });
+
+  // ---- /api/alpha/machine-dashboard-daily-cached ----
+  router.get("/analytics/machine-dashboard-daily-cached", async (req, res) => {
+    try {
+      const serialParam =
+        typeof req.query.serial !== "undefined"
+          ? Number.parseInt(req.query.serial, 10)
+          : null;
+      const machineSerialFilter = Number.isFinite(serialParam)
+        ? serialParam
+        : null;
+
+      // Get today's date string in Chicago timezone (same as cache service)
+      const today = new Date();
+      const chicagoTime = new Date(
+        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      );
+      const dateStr = chicagoTime.toISOString().split("T")[0];
+
+      const cacheCollection = db.collection("totals-daily");
+      const machineFilter = {
+        entityType: "machine",
+        date: dateStr,
+      };
+
+      if (machineSerialFilter !== null) {
+        machineFilter.machineSerial = machineSerialFilter;
+      }
+
+      const machineTotals = await cacheCollection.find(machineFilter).toArray();
+
+      if (machineTotals.length === 0) {
+        logger.warn(
+          `[machineSessions] No machine totals found in totals-daily for ${dateStr}`
+        );
+        return res.json([]);
+      }
+
+      const machineSerials = machineTotals
+        .map((record) => Number(record.machineSerial))
+        .filter((serial) => Number.isFinite(serial));
+
+      if (!machineSerials.length) {
+        logger.warn(
+          "[machineSessions] Machine totals missing serial numbers, cannot build response"
+        );
+        return res.json([]);
+      }
+
+      const serialSet = new Set(machineSerials);
+      const tickerSerialFilter = [
+        ...new Set([
+          ...machineSerials,
+          ...machineSerials.map((serial) => String(serial)),
+        ]),
+      ];
+
+      const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
+        await Promise.all([
+          cacheCollection
+            .find({
+              entityType: "machine-item",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          db
+            .collection("hourly-totals")
+            .find({
+              entityType: "machine-item",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          cacheCollection
+            .find({
+              entityType: "operator-machine",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          db
+            .collection("hourly-totals")
+            .find({
+              entityType: "operator-machine",
+              date: dateStr,
+              machineSerial: { $in: machineSerials },
+            })
+            .toArray(),
+          tickerSerialFilter.length
+            ? db
+                .collection(config.stateTickerCollectionName)
+                .find({
+                  $or: [
+                    { "machine.serial": { $in: tickerSerialFilter } },
+                    { "machine.id": { $in: tickerSerialFilter } },
+                  ],
+                })
+                .toArray()
+            : [],
+        ]);
+
+      const tickerMap = buildLatestTickerMap(stateTickerData);
+      const machineItemsBySerial = groupRecordsBySerial(machineItemRecords);
+      const machineItemHourlyBySerial = groupRecordsBySerial(machineItemHourlyRecords);
+      const operatorTotalsBySerial = groupRecordsBySerial(
+        operatorMachineRecords
+      );
+      const operatorMachineHourlyBySerial = groupRecordsBySerial(operatorMachineHourlyRecords);
+
+      const results = await Promise.all(
+        machineTotals.map(async (record) => {
+          const serial = Number(record.machineSerial);
+          if (!Number.isFinite(serial) || !serialSet.has(serial)) {
+            return null;
+          }
+
+          const sessionStart = record.timeRange?.start
+            ? new Date(record.timeRange.start)
+            : new Date(`${dateStr}T00:00:00.000Z`);
+          const sessionEnd = record.timeRange?.end
+            ? new Date(record.timeRange.end)
+            : chicagoTime;
+
+          const performance = buildPerformanceFromMachineRecord(record);
+          const machineItems = machineItemsBySerial.get(serial) || [];
+          const itemSummary = buildItemSummaryFromRecords(
+            machineItems,
+            sessionStart,
+            sessionEnd
+          );
+          const machineItemHourly = machineItemHourlyBySerial.get(serial) || [];
+          const itemHourlyStack = buildItemHourlyStackFromRecords(
+            machineItemHourly,
+            sessionStart
+          );
+          const operatorMachineHourly = operatorMachineHourlyBySerial.get(serial) || [];
+          const operatorEfficiency = buildOperatorEfficiencyFromRecords(
+            operatorMachineHourly,
+            sessionStart
+          );
+          const currentOperators = await buildCurrentOperators(db, serial);
+
+          const latestTicker = tickerMap.get(serial);
+
+          return {
+            machine: {
+              serial,
+              name: record.machineName || `Serial ${serial}`,
+            },
+            currentStatus: latestTicker?.status || {
+              code: 0,
+              name: "Unknown",
+            },
+            performance,
+            itemSummary,
+            itemHourlyStack,
+            faultData: {
+              faultSummaries: [],
+              faultCycles: [],
+            },
+            operatorEfficiency,
+            currentOperators,
+            timestamp: record.lastUpdated || chicagoTime,
+            sessionStart,
+            sessionEnd,
+          };
+        })
+      );
+
+      res.json(results.filter(Boolean));
+    } catch (err) {
+      logger.error(
+        `[machineSessions] Error in machine-dashboard-daily-cached route:`,
+        err
+      );
+      res
+        .status(500)
+        .json({ error: "Failed to fetch machine dashboard daily cache" });
     }
   });
 
@@ -738,7 +957,8 @@ module.exports = function (server) {
           if (!states.length && !counts.valid.length) return null;
 
           const latest = states.at(-1) || {};
-          const statusCode = latest.status?.code || 0;
+          // Status schema uses 'id', but legacy code used 'code' - support both
+          const statusCode = latest.status?.id ?? latest.status?.code ?? 0;
           const statusName = latest.status?.name || "Unknown";
           const machineName = latest.machine?.name || "Unknown";
 
@@ -1181,9 +1401,11 @@ module.exports = function (server) {
       const ts = new Date(ticker.timestamp || 0).getTime();
       const existing = statusMap.get(serial);
       if (!existing || ts > existing.timestamp) {
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusId = ticker.status?.id ?? ticker.status?.code ?? 0;
         statusMap.set(serial, {
           status: {
-            code: ticker.status?.code ?? 0,
+            code: statusId, // Use 'code' in API response for backward compatibility
             name: ticker.status?.name ?? "Unknown",
           },
           timestamp: ts,
@@ -1762,7 +1984,8 @@ module.exports = function (server) {
           logger.info(`[machineSessions] Machine ${machineSerial}: session from ${sessionStart} to ${sessionEnd}, ${states.length} states`);
 
           const latest = states.at(-1) || {};
-          const statusCode = latest.status?.code || 0;
+          // Status schema uses 'id', but legacy code used 'code' - support both
+          const statusCode = latest.status?.id ?? latest.status?.code ?? 0;
           const statusName = latest.status?.name || "Unknown";
           const machineName = latest.machine?.name || "Unknown";
 
@@ -1958,7 +2181,8 @@ module.exports = function (server) {
         name: machine?.name ?? "Unknown",
       },
       currentStatus: {
-        code: status?.code ?? 0,
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        code: status?.id ?? status?.code ?? 0,
         name: status?.name ?? "Unknown",
       },
       metrics: {
@@ -1998,6 +2222,364 @@ module.exports = function (server) {
         end: queryEnd,
       },
     };
+  }
+
+  function safeNumber(value, fallback = 0) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  }
+
+  function groupRecordsBySerial(records) {
+    const map = new Map();
+    for (const record of records || []) {
+      const serial = safeNumber(record.machineSerial, null);
+      if (serial === null) continue;
+      if (!map.has(serial)) {
+        map.set(serial, []);
+      }
+      map.get(serial).push(record);
+    }
+    return map;
+  }
+
+  function buildLatestTickerMap(stateTickerData) {
+    const tickerMap = new Map();
+    for (const record of stateTickerData || []) {
+      const candidates = [
+        record.machine?.serial,
+        record.machine?.id,
+        record.machine?.serialNumber,
+      ];
+      const ts =
+        new Date(
+          record.status?.timestamp ||
+            record.timestamp ||
+            record.timestamps?.update ||
+            record.timestamps?.active ||
+            record.timestamps?.create ||
+            0
+        ).getTime() || 0;
+
+      for (const candidate of candidates) {
+        const serial = safeNumber(candidate, null);
+        if (serial === null) continue;
+
+        const existing = tickerMap.get(serial);
+        if (!existing || ts > existing.timestamp) {
+          tickerMap.set(serial, {
+            status: {
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              code: record.status?.id ?? record.status?.code ?? 0,
+              name: record.status?.name || "Unknown",
+            },
+            timestamp: ts,
+          });
+        }
+      }
+    }
+    return tickerMap;
+  }
+
+  function buildPerformanceFromMachineRecord(record) {
+    const runtimeMs = safeNumber(record.runtimeMs);
+    const pausedMs = safeNumber(record.pausedTimeMs);
+    const faultMs = safeNumber(record.faultTimeMs);
+    const downtimeMs = pausedMs + faultMs;
+    const workedTimeMs = safeNumber(record.workedTimeMs);
+    const timeCreditMs = safeNumber(record.totalTimeCreditMs);
+    const totalCounts = safeNumber(record.totalCounts);
+    const totalMisfeeds = safeNumber(record.totalMisfeeds);
+    const totalOutput = totalCounts + totalMisfeeds;
+
+    const windowMs =
+      record.timeRange?.start && record.timeRange?.end
+        ? Math.max(
+            0,
+            new Date(record.timeRange.end) - new Date(record.timeRange.start)
+          )
+        : runtimeMs + downtimeMs;
+
+    const availability =
+      windowMs > 0 ? Math.min(Math.max(runtimeMs / windowMs, 0), 1) : 0;
+    const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
+    const efficiency =
+      workedTimeMs > 0 ? Math.min(Math.max(timeCreditMs / workedTimeMs, 0), 1) : 0;
+    const oee = availability * throughput * efficiency;
+
+    return {
+      runtime: {
+        total: runtimeMs,
+        formatted: formatDuration(runtimeMs),
+      },
+      downtime: {
+        total: downtimeMs,
+        formatted: formatDuration(downtimeMs),
+      },
+      output: {
+        totalCount: totalCounts,
+        misfeedCount: totalMisfeeds,
+      },
+      performance: {
+        availability: {
+          value: availability,
+          percentage: (availability * 100).toFixed(2) + "%",
+        },
+        throughput: {
+          value: throughput,
+          percentage: (throughput * 100).toFixed(2) + "%",
+        },
+        efficiency: {
+          value: efficiency,
+          percentage: (efficiency * 100).toFixed(2) + "%",
+        },
+        oee: {
+          value: oee,
+          percentage: (oee * 100).toFixed(2) + "%",
+        },
+      },
+    };
+  }
+
+  function buildItemSummaryFromRecords(records, sessionStart, sessionEnd) {
+    if (!records.length) {
+      return {
+        sessions: [],
+        machineSummary: {
+          totalCount: 0,
+          workedTimeMs: 0,
+          workedTimeFormatted: formatDuration(0),
+          pph: 0,
+          proratedStandard: 0,
+          efficiency: 0,
+          itemSummaries: {},
+        },
+      };
+    }
+
+    let totalWorkedMs = 0;
+    let totalCounts = 0;
+    const sessionItems = [];
+    const itemSummaries = {};
+
+    for (const record of records) {
+      const counts = safeNumber(record.totalCounts);
+      const workedMs =
+        safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
+      const standard = safeNumber(record.itemStandard);
+      const hours = workedMs / 3600000 || 0;
+      const pph = hours > 0 ? counts / hours : 0;
+      const efficiency = standard > 0 ? pph / standard : 0;
+      const itemId = record.itemId ?? record.itemName ?? "unknown";
+      const itemKey = String(itemId);
+      const itemName = record.itemName || `Item ${itemKey}`;
+
+      totalWorkedMs += workedMs;
+      totalCounts += counts;
+
+      sessionItems.push({
+        itemId: record.itemId,
+        name: itemName,
+        countTotal: counts,
+        standard,
+        pph: Math.round(pph * 100) / 100,
+        efficiency: Math.round(efficiency * 10000) / 100,
+      });
+
+      itemSummaries[itemKey] = {
+        name: itemName,
+        standard,
+        countTotal: counts,
+        workedTimeFormatted: formatDuration(workedMs),
+        pph: Math.round(pph * 100) / 100,
+        efficiency: Math.round(efficiency * 10000) / 100,
+      };
+    }
+
+    const totalHours = totalWorkedMs / 3600000 || 0;
+    const machinePph = totalHours > 0 ? totalCounts / totalHours : 0;
+    const proratedStandard = sessionItems.reduce((acc, item) => {
+      const weight = totalCounts > 0 ? item.countTotal / totalCounts : 0;
+      return acc + weight * (item.standard || 0);
+    }, 0);
+    const machineEfficiency =
+      proratedStandard > 0 ? machinePph / proratedStandard : 0;
+
+    return {
+      sessions: [
+        {
+          start: sessionStart.toISOString(),
+          end: sessionEnd.toISOString(),
+          workedTimeMs: totalWorkedMs,
+          workedTimeFormatted: formatDuration(totalWorkedMs),
+          items: sessionItems,
+        },
+      ],
+      machineSummary: {
+        totalCount: totalCounts,
+        workedTimeMs: totalWorkedMs,
+        workedTimeFormatted: formatDuration(totalWorkedMs),
+        pph: Math.round(machinePph * 100) / 100,
+        proratedStandard: Math.round(proratedStandard * 100) / 100,
+        efficiency: Math.round(machineEfficiency * 10000) / 100,
+        itemSummaries,
+      },
+    };
+  }
+
+  function buildItemHourlyStackFromRecords(records, sessionStart) {
+    if (!records.length) {
+      return {
+        title: "No data",
+        data: { hours: [], items: {} },
+      };
+    }
+
+    // Group records by hour and itemName, summing totalCounts
+    const hourMap = new Map();
+    const itemNames = new Set();
+
+    for (const record of records) {
+      // Use the hour field directly from hourly-totals records
+      const hour = typeof record.hour === 'number' ? record.hour : null;
+      if (hour === null || hour < 0 || hour > 23) {
+        continue; // Skip invalid hour records
+      }
+
+      const itemName = record.itemName || `Item ${record.itemId ?? "Unknown"}`;
+      const count = safeNumber(record.totalCounts);
+
+      if (!hourMap.has(hour)) {
+        hourMap.set(hour, {});
+      }
+      const entry = hourMap.get(hour);
+      entry[itemName] = (entry[itemName] || 0) + count;
+      itemNames.add(itemName);
+    }
+
+    if (hourMap.size === 0) {
+      return {
+        title: "Item Stacked Count Chart",
+        data: { hours: [], items: {} },
+      };
+    }
+
+    // Get all hours that have data and find the maximum
+    const hoursWithData = Array.from(hourMap.keys()).sort((a, b) => a - b);
+    const maxHour = Math.max(...hoursWithData);
+
+    // Create array of all hours from 0 to maxHour (inclusive) to match expected format
+    // This ensures hours start from 0 even if data doesn't exist for early hours
+    const allHours = Array.from({ length: maxHour + 1 }, (_, idx) => idx);
+
+    // Initialize items object with arrays filled with zeros
+    const items = {};
+    for (const name of itemNames) {
+      items[name] = Array(allHours.length).fill(0);
+    }
+
+    // Fill in the actual counts
+    for (const [hour, counts] of hourMap.entries()) {
+      if (hour >= 0 && hour < allHours.length) {
+        for (const [itemName, total] of Object.entries(counts)) {
+          items[itemName][hour] = total;
+        }
+      }
+    }
+
+    return {
+      title: "Item Stacked Count Chart",
+      data: {
+        hours: allHours,
+        items,
+      },
+    };
+  }
+
+  function buildOperatorEfficiencyFromRecords(records, sessionStart) {
+    if (!records.length) {
+      return [];
+    }
+
+    // Import Luxon for timezone-aware date handling
+    const { DateTime } = require("luxon");
+    const { SYSTEM_TIMEZONE } = require("../../utils/time");
+
+    // Group records by hour
+    const hourMap = new Map();
+
+    for (const record of records) {
+      // Use the hour field directly from hourly-totals records
+      const hour = typeof record.hour === 'number' ? record.hour : null;
+      if (hour === null || hour < 0 || hour > 23) {
+        continue; // Skip invalid hour records
+      }
+
+      const workedMs = safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
+      const timeCreditMs = safeNumber(record.totalTimeCreditMs);
+      const ratio = workedMs > 0 ? Math.min(Math.max(timeCreditMs / workedMs, 0), 2) : 0;
+      const efficiency = Math.round(ratio * 10000) / 100;
+
+      const operatorId = safeNumber(record.operatorId);
+      // Format operator name from object (first + surname) or use string if already formatted
+      const operatorName = typeof record.operatorName === 'object' && record.operatorName !== null
+        ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
+        : record.operatorName || "Unknown";
+
+      if (!hourMap.has(hour)) {
+        hourMap.set(hour, {
+          operators: new Map() // Use Map to deduplicate operators per hour
+        });
+      }
+
+      const hourData = hourMap.get(hour);
+      
+      // Use operator ID as key to avoid duplicates (in case same operator has multiple records for same hour)
+      const operatorKey = `${operatorId}`;
+      if (!hourData.operators.has(operatorKey)) {
+        hourData.operators.set(operatorKey, {
+          id: operatorId,
+          name: operatorName,
+          efficiency: efficiency
+        });
+      } else {
+        // If operator already exists in this hour, average the efficiencies
+        // This handles cases where an operator might have multiple records for the same hour
+        const existing = hourData.operators.get(operatorKey);
+        existing.efficiency = Math.round(((existing.efficiency + efficiency) / 2) * 100) / 100;
+      }
+    }
+
+    if (hourMap.size === 0) {
+      return [];
+    }
+
+    // Convert to array format, sorted by hour
+    const hours = Array.from(hourMap.keys()).sort((a, b) => a - b);
+    const result = [];
+
+    for (const hour of hours) {
+      const hourData = hourMap.get(hour);
+      const operators = Array.from(hourData.operators.values());
+      
+      // Calculate average efficiency for this hour from all operators
+      const avgEfficiency = operators.length > 0
+        ? operators.reduce((sum, op) => sum + op.efficiency, 0) / operators.length
+        : 0;
+
+      // ✅ FIX: Create hour timestamp in Chicago timezone (matching the hour field from records)
+      // Convert sessionStart to Chicago timezone, then set the hour in that timezone
+      const hourDate = DateTime.fromJSDate(sessionStart, { zone: SYSTEM_TIMEZONE })
+        .set({ hour: hour, minute: 0, second: 0, millisecond: 0 })
+        .toJSDate();
+
+      result.push({
+        hour: hourDate.toISOString(),
+        oee: Math.round(avgEfficiency * 100) / 100,
+        operators: operators
+      });
+    }
+
+    return result;
   }
 
   return router;

@@ -1,5 +1,15 @@
 <div class="custom-container">
-    <div class="lane-wrapper">
+    <!-- Loading Overlay for initial load -->
+    <div class="loading-overlay" *ngIf="isLoading">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">
+          Loading data...
+        </div>
+      </div>
+    </div>
+
+    <div class="lane-wrapper" [class.loading]="isLoading">
         <div *ngFor="let lane of lanes; trackBy: ident" class="lane-card">
             <ng-container *ngIf="lane.status === 1">
                 <ct-lane-running *ngIf="lane.operator != null" [lane]="lane"></ct-lane-running>

@@ -67,13 +67,32 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
       fault: []
     };
   
+    // Return empty cycles if no states provided
+    if (!states || !Array.isArray(states) || states.length === 0) {
+      return cycles;
+    }
+  
     let currentRunningStart = null;
     let currentPauseStart = null;
     let currentFaultStart = null;
   
     for (const state of states) {
-      const code = state.status?.code ?? state._tickerDoc?.status?.code;
+      // Extract status code with multiple fallbacks
+      let code = state.status?.code;
+      if (code === undefined || code === null) {
+        code = state._tickerDoc?.status?.code;
+      }
+      // Default to 0 (paused) if no status code found
+      if (code === undefined || code === null) {
+        code = 0;
+      }
+      
       const timestamp = new Date(state.timestamps?.create || state.timestamp);
+      
+      // Skip invalid timestamps
+      if (isNaN(timestamp.getTime())) {
+        continue;
+      }
   
       // Running cycles only
       if (!mode || mode === 'running') {
@@ -354,23 +373,35 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
 }
 
 async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, paddedEnd) {
+  // Build query to handle both document formats (old and new)
   const query = {
-    "timestamps.create": {
-      $gte: new Date(paddedStart),
-      $lte: new Date(paddedEnd)
-    },
-    'machine.id': { $exists: true }
+    $and: [
+      {
+        $or: [
+          { timestamp: { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } },
+          { "timestamps.create": { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } }
+        ]
+      },
+      {
+        $or: [
+          { 'machine.serial': { $exists: true } },
+          { 'machine.id': { $exists: true } }
+        ]
+      }
+    ]
   };
 
   if (operatorId) {
-    query['operators.id'] = operatorId;
+    query.$and.push({
+      'operators.id': operatorId
+    });
   }
 
   // Debug: Querying state collection
 
   const states = await db.collection('state')
     .find(query)
-    .sort({ "timestamps.create": 1 })
+    .sort({ "timestamps.create": 1, timestamp: 1 })
     .project({
       _id:0,
       "timestamps.create": 1,
@@ -537,30 +568,31 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
 
   function groupStatesByMachineAndStation(states) {
     const grouped = new Map();
-  
+
     for (const state of states) {
       const operators = state.operators;
       const machineSerial = state.machine?.serial;
-  
+
       if (!Array.isArray(operators) || !machineSerial) continue;
-  
-      // Extract essential state data
-      const essentialState = {
-        timestamp: state.timestamp,
-        status: state.status,
-        machine: state.machine,
-        program: state.program,
-        operators: state.operators
-      };
-  
+
       for (const operator of operators) {
-        if (!operator) continue;
-  
+        // Skip invalid operators (null, undefined, or id === -1)
+        if (!operator || typeof operator.id !== 'number' || operator.id === -1) continue;
+
         const station = typeof operator.station === 'number' ? operator.station : 1;
         const key = `${machineSerial}-${station}`;
-  
+
+        // Extract essential state data with ONLY the operator for THIS station
+        const essentialState = {
+          timestamp: state.timestamp,
+          status: state.status,
+          machine: state.machine,
+          program: state.program,
+          operators: [operator] // Only include the operator for this specific station
+        };
+
         let group = grouped.get(key);
-  
+
         if (!group) {
           group = {
             machineSerial,
@@ -569,11 +601,11 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
           };
           grouped.set(key, group);
         }
-  
+
         group.states.push(essentialState);
       }
     }
-  
+
     return Object.fromEntries(grouped);
   }
   

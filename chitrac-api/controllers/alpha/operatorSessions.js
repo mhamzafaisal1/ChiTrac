@@ -129,34 +129,34 @@ module.exports = function (server) {
   router.get("/analytics/operators-summary-cached", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
-      
+
       // Get today's date string in Chicago timezone (same as cache service)
       const today = new Date();
       const chicagoTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Chicago"}));
       const dateStr = chicagoTime.toISOString().split('T')[0];
-      
+
       logger.info(`[operatorSessions] Fetching cached operators summary for date: ${dateStr}`);
-      
-      // Query the operator-cache-today collection directly
-      const data = await db.collection('operator-cache-today')
-        .find({ 
-          date: dateStr,
-          _id: { $ne: 'metadata' }
+
+      // Query totals-daily collection for operator-machine records
+      const data = await db.collection('totals-daily')
+        .find({
+          entityType: 'operator-machine',
+          date: dateStr
         })
         .toArray();
-      
+
       if (data.length === 0) {
         logger.warn(`[operatorSessions] No cached data found for date: ${dateStr}, falling back to real-time calculation`);
         // Fallback to real-time calculation
         return await getOperatorsSummaryRealTime(req, res);
       }
-      
+
       // Get current machine statuses from stateTicker collection
       const stateTickerData = await db.collection('stateTicker')
         .find({})
         .toArray();
-      
-      // Create a map of operator ID to their latest ticker context
+
+      // Create a map of operator ID to their latest ticker context (machine + status)
       const operatorTickerMap = new Map();
       for (const stateRecord of stateTickerData) {
         const machine = stateRecord.machine || {};
@@ -180,6 +180,8 @@ module.exports = function (server) {
 
             const existing = operatorTickerMap.get(operatorKey);
             if (!existing || existing.timestamp < timestamp) {
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              const statusId = status?.id ?? status?.code ?? null;
               operatorTickerMap.set(operatorKey, {
                 machine: machine.serial
                   ? {
@@ -187,9 +189,9 @@ module.exports = function (server) {
                       name: machine.name || null,
                     }
                   : null,
-                status: typeof status.code !== "undefined" || typeof status.name !== "undefined"
+                status: typeof statusId !== "undefined" && statusId !== null || typeof status.name !== "undefined"
                   ? {
-                      code: status.code ?? null,
+                      code: statusId, // Use 'code' in API response for backward compatibility
                       name: status.name ?? null,
                     }
                   : null,
@@ -199,17 +201,20 @@ module.exports = function (server) {
           }
         }
       }
-      
+
       // Group by operator ID and aggregate metrics across machines
       const operatorMap = new Map();
-      
+
       for (const record of data) {
-        const operatorId = record.operator.id;
-        
+        const operatorId = record.operatorId;
+
         if (!operatorMap.has(operatorId)) {
           operatorMap.set(operatorId, {
-            operator: record.operator,
-            currentStatus: { code: 1, name: "Running" }, // Default status
+            operator: {
+              id: operatorId,
+              name: record.operatorName || `Operator ${operatorId}`
+            },
+            currentStatus: { code: 0, name: "Offline" }, // Default status
             currentMachine: null,
             metrics: {
               runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
@@ -222,70 +227,70 @@ module.exports = function (server) {
                 oee: { value: 0, percentage: "0.00" }
               }
             },
-            timeRange: record.timeRange,
-            machines: []
+            timeRange: record.timeRange || {
+              start: new Date(`${dateStr}T06:00:00.000Z`),
+              end: chicagoTime
+            },
+            machines: [],
+            totalTimeCreditMs: 0,
+            totalWorkedMs: 0
           });
         }
-        
+
         const operatorData = operatorMap.get(operatorId);
-        
+
         // Add machine info
         operatorData.machines.push({
-          serial: record.machine.serial,
-          name: record.machine.name
+          serial: record.machineSerial,
+          name: record.machineName
         });
-        
-        // Set current machine to the most recent one (last in the list)
-        operatorData.currentMachine = {
-          serial: record.machine.serial,
-          name: record.machine.name
-        };
-        
-        // Get current status from stateTicker for this machine
-        const currentMachineStatus = machineStatusMap.get(record.machine.serial);
-        if (currentMachineStatus) {
-          operatorData.currentStatus = {
-            code: currentMachineStatus.code,
-            name: currentMachineStatus.name
-          };
+
+        // Aggregate metrics (convert ms to total)
+        operatorData.metrics.runtime.total += (record.runtimeMs || 0);
+        operatorData.metrics.downtime.total += (record.pausedTimeMs || 0);
+        operatorData.metrics.output.totalCount += (record.totalCounts || 0);
+        operatorData.metrics.output.misfeedCount += (record.totalMisfeeds || 0);
+        operatorData.totalTimeCreditMs += (record.totalTimeCreditMs || 0);
+        operatorData.totalWorkedMs += (record.workedTimeMs || 0);
+
+        // Update time range to use the latest
+        if (record.timeRange?.end) {
+          const recordEnd = new Date(record.timeRange.end);
+          const currentEnd = new Date(operatorData.timeRange.end);
+          if (recordEnd > currentEnd) {
+            operatorData.timeRange.end = recordEnd;
+          }
         }
-        
-        // Aggregate metrics
-        operatorData.metrics.runtime.total += record.metrics.runtime.total;
-        operatorData.metrics.downtime.total += record.metrics.downtime.total;
-        operatorData.metrics.output.totalCount += record.metrics.output.totalCount;
-        operatorData.metrics.output.misfeedCount += record.metrics.output.misfeedCount;
       }
-      
+
       // Calculate aggregated performance metrics for each operator
       const results = Array.from(operatorMap.values()).map(operatorData => {
         const { runtime, downtime, output } = operatorData.metrics;
-        
-        // Calculate aggregated performance metrics
-        const totalMs = operatorData.timeRange.end - operatorData.timeRange.start;
-        const availability = totalMs > 0 ? runtime.total / totalMs : 0;
-        const throughput = (output.totalCount + output.misfeedCount) > 0 ? 
-          output.totalCount / (output.totalCount + output.misfeedCount) : 0;
-        
-        // For efficiency, we'll use a weighted average based on runtime
-        let totalWeightedEfficiency = 0;
-        let totalWeight = 0;
-        
-        for (const record of data) {
-          if (record.operator.id === operatorData.operator.id) {
-            const weight = record.metrics.runtime.total;
-            totalWeightedEfficiency += record.metrics.performance.efficiency.value * weight;
-            totalWeight += weight;
-          }
+
+        // Get current status and machine from stateTicker
+        const tickerInfo = operatorTickerMap.get(operatorData.operator.id);
+        if (tickerInfo) {
+          operatorData.currentMachine = tickerInfo.machine;
+          operatorData.currentStatus = tickerInfo.status || { code: 0, name: "Offline" };
         }
-        
-        const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
+
+        // Calculate aggregated performance metrics
+        const totalMs = new Date(operatorData.timeRange.end).getTime() -
+                       new Date(operatorData.timeRange.start).getTime();
+        const availability = totalMs > 0 ? runtime.total / totalMs : 0;
+        const throughput = (output.totalCount + output.misfeedCount) > 0 ?
+          output.totalCount / (output.totalCount + output.misfeedCount) : 0;
+
+        // Efficiency = time credit / worked time
+        const efficiency = operatorData.totalWorkedMs > 0 ?
+          (operatorData.totalTimeCreditMs / operatorData.totalWorkedMs) : 0;
+
         const oee = availability * throughput * efficiency;
-        
-        // Update formatted runtime
+
+        // Update formatted runtime and downtime
         operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
         operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
-        
+
         // Update performance metrics
         operatorData.metrics.performance = {
           availability: {
@@ -305,26 +310,28 @@ module.exports = function (server) {
             percentage: (oee * 100).toFixed(2)
           }
         };
-        
-        // Remove machines array from final output
+
+        // Remove temporary fields from final output
         delete operatorData.machines;
-        
+        delete operatorData.totalTimeCreditMs;
+        delete operatorData.totalWorkedMs;
+
         return operatorData;
       });
-      
+
       logger.info(`[operatorSessions] Retrieved ${results.length} cached operator records for date: ${dateStr}`);
       res.json(results);
-      
+
     } catch (err) {
       logger.error(`[operatorSessions] Error in cached operators-summary route:`, err);
-      
+
       // Check if it's a validation error
       if (err.message.includes('Start and end dates are required') ||
         err.message.includes('Invalid date format') ||
         err.message.includes('Start date must be before end date')) {
         return res.status(400).json({ error: err.message });
       }
-      
+
       // Fallback to real-time calculation on any error
       logger.info(`[operatorSessions] Falling back to real-time calculation due to error`);
       return await getOperatorsSummaryRealTime(req, res);
@@ -334,7 +341,8 @@ module.exports = function (server) {
   // ---- /api/alpha/analytics/operators-summary-daily-cached ----
   router.get("/analytics/operators-summary-daily-cached", async (req, res) => {
     try {
-      const { start, end, operatorId } = parseAndValidateQueryParams(req);
+      const { start, end } = parseAndValidateQueryParams(req);
+      const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
       
       // Get today's date string in Chicago timezone
       const today = new Date();
@@ -350,8 +358,8 @@ module.exports = function (server) {
       };
       
       // Add operator filter if specified
-      if (operatorId) {
-        filter.operatorId = parseInt(operatorId);
+      if (operatorId && !Number.isNaN(operatorId)) {
+        filter.operatorId = operatorId;
       }
       
       // Query the totals-daily collection
@@ -373,42 +381,12 @@ module.exports = function (server) {
             .filter(serial => serial !== null && serial !== undefined)
         )
       ];
-      const tickerSerialFilter = [
-        ...new Set([
-          ...machineSerials,
-          ...machineSerials.map(serial => serial.toString())
-        ])
-      ];
       
       // Get current machine statuses from stateTicker collection
-      // Build stateTicker query - support serial stored in different fields/types
-      const tickerQuery =
-        tickerSerialFilter.length > 0
-          ? {
-              $or: [
-                { "machine.serial": { $in: tickerSerialFilter } },
-                { "machine.id": { $in: tickerSerialFilter } },
-                {
-                  "machine.serial": {
-                    $in: tickerSerialFilter
-                      .map(Number)
-                      .filter(n => !Number.isNaN(n))
-                  }
-                },
-                {
-                  "machine.id": {
-                    $in: tickerSerialFilter
-                      .map(Number)
-                      .filter(n => !Number.isNaN(n))
-                  }
-                }
-              ]
-            }
-          : {};
-
-      // Get current machine statuses from stateTicker collection
+      // Use same approach as operators-summary-cached: get all stateTicker records
+      // This avoids complex query issues and is more reliable across environments
       const stateTickerData = await db.collection("stateTicker")
-        .find(tickerQuery)
+        .find({})
         .toArray();
 
       // Build a map of latest ticker context per operator
@@ -443,6 +421,8 @@ module.exports = function (server) {
             if (!existing || existing.timestamp < timestamp) {
               const serial =
                 machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              const statusId = status?.id ?? status?.code ?? null;
               operatorTickerMap.set(operatorKey, {
                 machine:
                   serial !== null && serial !== undefined
@@ -452,10 +432,10 @@ module.exports = function (server) {
                       }
                     : null,
                 status:
-                  typeof status.code !== "undefined" ||
+                  typeof statusId !== "undefined" && statusId !== null ||
                   typeof status.name !== "undefined"
                     ? {
-                        code: status.code ?? null,
+                        code: statusId, // Use 'code' in API response for backward compatibility
                         name: status.name ?? null
                       }
                     : null,
@@ -473,10 +453,15 @@ module.exports = function (server) {
         const opId = record.operatorId;
         
         if (!operatorMap.has(opId)) {
+          // Format operator name from object (first + surname) or use string if already formatted
+          const operatorNameStr = typeof record.operatorName === 'object' && record.operatorName !== null
+            ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
+            : record.operatorName || "Unknown";
+          
           operatorMap.set(opId, {
             operator: {
               id: record.operatorId,
-              name: record.operatorName
+              name: operatorNameStr
             },
             currentStatus: null,
             currentMachine: null,
@@ -516,7 +501,7 @@ module.exports = function (server) {
         }
         
         // Aggregate metrics
-        const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
+        const downtimeMs = (record.pausedTimeMs || 0) + (record.faultTimeMs || 0);
         operatorData.metrics.runtime.total += record.runtimeMs;
         operatorData.metrics.downtime.total += downtimeMs;
         operatorData.metrics.output.totalCount += record.totalCounts;
@@ -537,8 +522,25 @@ module.exports = function (server) {
       const results = Array.from(operatorMap.values()).map(operatorData => {
         const { runtime, downtime, output } = operatorData.metrics;
         
-        // Calculate window time from timeRange
-        const windowMs = new Date(operatorData.timeRange.end) - new Date(operatorData.timeRange.start);
+        // Calculate window time from timeRange with fallback
+        let windowMs = 0;
+        if (operatorData.timeRange && operatorData.timeRange.start && operatorData.timeRange.end) {
+          try {
+            const startDate = new Date(operatorData.timeRange.start);
+            const endDate = new Date(operatorData.timeRange.end);
+            if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && endDate > startDate) {
+              windowMs = endDate.getTime() - startDate.getTime();
+            }
+          } catch (e) {
+            logger.warn(`[operatorSessions] Invalid timeRange for operator ${operatorData.operator.id}:`, e);
+          }
+        }
+        
+        // Fallback to default time range if windowMs is invalid
+        if (windowMs <= 0) {
+          const defaultStart = new Date(`${dateStr}T06:00:00.000Z`);
+          windowMs = Math.max(0, chicagoTime.getTime() - defaultStart.getTime());
+        }
         
         // Calculate aggregated performance metrics
         const availability = windowMs > 0 ? runtime.total / windowMs : 0;
@@ -584,12 +586,29 @@ module.exports = function (server) {
         // Clean up temporary data
         delete operatorData.machines;
         delete operatorData.efficiencyData;
-        
+
         return operatorData;
       });
-      
-      logger.info(`[operatorSessions] Retrieved ${results.length} daily cached operator records for date: ${dateStr}`);
-      res.json(results);
+
+      // ✅ FIX: Filter out "phantom operators" - operators who worked earlier but are no longer assigned
+      // Only show operators who meet ALL of these criteria:
+      // 1. Have actual runtime (> 0), AND
+      // 2. Have actual production (totalCount > 0), AND
+      // 3. Either currently assigned to a machine OR worked for at least 1 hour
+      const MIN_RUNTIME_TO_SHOW_MS = 3600000; // 1 hour
+      const filteredResults = results.filter(operatorData => {
+        const hasRuntime = operatorData.metrics.runtime.total > 0;
+        const hasProduction = operatorData.metrics.output.totalCount > 0;
+        const hasCurrentMachine = operatorData.currentMachine !== null;
+        const hasSignificantRuntime = operatorData.metrics.runtime.total >= MIN_RUNTIME_TO_SHOW_MS;
+
+        // Must have actual work (runtime AND production)
+        // AND either currently assigned OR significant history
+        return hasRuntime && hasProduction && (hasCurrentMachine || hasSignificantRuntime);
+      });
+
+      logger.info(`[operatorSessions] Retrieved ${results.length} daily cached operator records (${filteredResults.length} after filtering phantoms) for date: ${dateStr}`);
+      res.json(filteredResults);
       
     } catch (err) {
       logger.error(`[operatorSessions] Error in daily cached operators-summary route:`, err);
@@ -698,11 +717,13 @@ module.exports = function (server) {
       // Create a map of machine serial to current status
       const machineStatusMap = new Map();
       for (const stateRecord of stateTickerData) {
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusId = stateRecord.status?.id ?? stateRecord.status?.code ?? 0;
         machineStatusMap.set(stateRecord.machine.serial, {
-          code: stateRecord.status.code,
-          name: stateRecord.status.name,
-          softrolColor: stateRecord.status.softrolColor,
-          timestamp: stateRecord.status.timestamp
+          code: statusId, // Use 'code' in API response for backward compatibility
+          name: stateRecord.status?.name ?? "Unknown",
+          softrolColor: stateRecord.status?.softrolColor,
+          timestamp: stateRecord.status?.timestamp
         });
       }
       
@@ -911,6 +932,8 @@ module.exports = function (server) {
           if (!existing || existing.timestamp < timestamp) {
             const serial =
               machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+            // Status schema uses 'id', but legacy code used 'code' - support both
+            const statusId = status?.id ?? status?.code ?? null;
             operatorTickerMap.set(operatorKey, {
               machine:
                 serial !== null && serial !== undefined
@@ -920,10 +943,10 @@ module.exports = function (server) {
                     }
                   : null,
               status:
-                typeof status.code !== "undefined" ||
+                typeof statusId !== "undefined" && statusId !== null ||
                 typeof status.name !== "undefined"
                   ? {
-                      code: status.code ?? null,
+                      code: statusId, // Use 'code' in API response for backward compatibility
                       name: status.name ?? null
                     }
                   : null,
@@ -1141,8 +1164,10 @@ module.exports = function (server) {
                 name: null
               };
               statusSource = mostRecent.endState;
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              const statusId = statusSource?.status?.id ?? statusSource?.status?.code ?? 0;
               currentStatus = {
-                code: statusSource?.status?.code ?? 0,
+                code: statusId, // Use 'code' in API response for backward compatibility
                 name: statusSource?.status?.name ?? "Unknown"
               };
             } else {
@@ -1350,22 +1375,68 @@ module.exports = function (server) {
                 { $ifNull: ['$timestamps.end', endDate] },
               ],
             },
+            // DEBUG: Check what data we have
+            _debugItemsLength: { $size: { $ifNull: ['$items', []] } },
+            _debugTotalCountByItemLength: { $size: { $ifNull: ['$totalCountByItem', []] } },
+            _debugTimeCreditByItemLength: { $size: { $ifNull: ['$timeCreditByItem', []] } },
           },
         },
         { $match: { $expr: { $lt: ['$_ovStart', '$_ovEnd'] } } },
+        // Normalize items: handle both items (array) and item (single object) formats
+        // Also ensure totalCountByItem and timeCreditByItem are arrays
+        {
+          $addFields: {
+            _items: {
+              $cond: {
+                if: { $isArray: '$items' },
+                then: '$items',
+                else: {
+                  $cond: {
+                    if: { $ne: ['$item', null] },
+                    then: ['$item'],
+                    else: []
+                  }
+                }
+              }
+            },
+            _totalCountByItem: {
+              $cond: {
+                if: { $isArray: '$totalCountByItem' },
+                then: '$totalCountByItem',
+                else: []
+              }
+            },
+            _timeCreditByItem: {
+              $cond: {
+                if: { $isArray: '$timeCreditByItem' },
+                then: '$timeCreditByItem',
+                else: []
+              }
+            },
+          },
+        },
         // Pair items with per-item arrays for later rollups
         {
           $addFields: {
             _itemsPaired: {
               $map: {
-                input: { $range: [0, { $size: '$items' }] },
+                input: { $range: [0, { $size: { $ifNull: ['$items', []] } }] },
                 as: 'i',
                 in: {
-                  id: { $arrayElemAt: ['$items.id', '$$i'] },
-                  name: { $arrayElemAt: ['$items.name', '$$i'] },
-                  standard: { $arrayElemAt: ['$items.standard', '$$i'] },
-                  count: { $arrayElemAt: ['$totalCountByItem', '$$i'] },
-                  tci: { $arrayElemAt: ['$timeCreditByItem', '$$i'] },
+                  $let: {
+                    vars: {
+                      item: { $arrayElemAt: ['$items', '$$i'] },
+                      count: { $arrayElemAt: [{ $ifNull: ['$totalCountByItem', []] }, '$$i'] },
+                      tci: { $arrayElemAt: [{ $ifNull: ['$timeCreditByItem', []] }, '$$i'] }
+                    },
+                    in: {
+                      id: '$$item.id',
+                      name: '$$item.name',
+                      standard: '$$item.standard',
+                      count: '$$count',
+                      tci: '$$tci'
+                    }
+                  }
                 },
               },
             },
@@ -1439,6 +1510,9 @@ module.exports = function (server) {
       if (!sessionsAgg.length) {
         return res.json({ context: { operatorId, start: startDate, end: endDate }, machines: [] });
       }
+
+      // DEBUG: Log first aggregation result to see data structure
+      logger.info('DEBUG - First session aggregation result:', JSON.stringify(sessionsAgg[0], null, 2));
 
       // 2) For each machine, count fault-sessions that overlap ANY operator-session interval for that machine.
       const results = [];
@@ -1710,8 +1784,10 @@ module.exports = function (server) {
               serial: null,
               name: null
             };
+            // Status schema uses 'id', but legacy code used 'code' - support both
+            const statusId = mostRecent.endState?.status?.id ?? mostRecent.endState?.status?.code ?? 0;
             currentStatus = {
-              code: mostRecent.endState?.status?.code ?? 0,
+              code: statusId, // Use 'code' in API response for backward compatibility
               name: mostRecent.endState?.status?.name ?? "Unknown"
             };
           } else {
@@ -1805,9 +1881,14 @@ module.exports = function (server) {
       const operatorId = record.operatorId;
       
       if (!combinedMap.has(operatorId)) {
+        // Format operator name from object (first + surname) or use string if already formatted
+        const operatorNameStr = typeof record.operatorName === 'object' && record.operatorName !== null
+          ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
+          : record.operatorName || "Unknown";
+        
         combinedMap.set(operatorId, {
           operatorId,
-          operatorName: record.operatorName,
+          operatorName: operatorNameStr,
           currentMachine: {
             serial: record.machineSerial,
             name: record.machineName

@@ -45,6 +45,7 @@ export interface FaultHistoryResponse {
   };
   faultCycles?: FaultCycle[];
   faultSummaries?: FaultSummary[];
+  message?: string;
 }
 
 // New type for the include parameter

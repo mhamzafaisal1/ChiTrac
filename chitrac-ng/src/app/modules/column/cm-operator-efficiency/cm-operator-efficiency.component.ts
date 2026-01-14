@@ -59,7 +59,7 @@ export class CmOperatorEfficiencyComponent implements OnInit, OnDestroy, OnChang
     // Choose API based on available inputs
     const apiCall = this.station > 0 
       ? this.efficiencyService.getOperatorEfficiency(this.machineSerial, this.station)
-      : this.efficiencyService.getLiveEfficiencySummary(this.machineSerial, new Date().toISOString());
+      : this.efficiencyService.getLiveEfficiencySummary(this.machineSerial);
     
     this.pollSub = timer(0, this.POLL_INTERVAL)
       .pipe(switchMap(() => apiCall))

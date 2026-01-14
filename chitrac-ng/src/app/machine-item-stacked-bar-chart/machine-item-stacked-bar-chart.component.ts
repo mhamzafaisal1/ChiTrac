@@ -190,49 +190,56 @@ export class MachineItemStackedBarChartComponent implements OnInit, AfterViewIni
       marginLeft: this.marginLeft
     });
     
-    // The data structure is: { title: string, data: { hours: [], operators: {} } }
+    // The data structure is: { title: string, data: { hours: [], items: {} } }
+    // Support both "items" (new format) and "operators" (legacy format) for backward compatibility
     if (!data || !data.data) {
       console.log('MachineItemStackedBarChart: Missing data property');
       return null;
     }
 
-    const { hours, operators, machineNames } = data.data;
+    const { hours, items, operators, machineNames } = data.data;
     
-    console.log('MachineItemStackedBarChart: Extracted data:', { hours, operators, machineNames });
+    // Use items if available, otherwise fall back to operators for backward compatibility
+    const itemData = items || operators;
     
-    if (!hours || !operators || !Array.isArray(hours)) {
-      console.log('MachineItemStackedBarChart: Invalid hours or operators data');
+    console.log('MachineItemStackedBarChart: Extracted data:', { hours, items, operators, machineNames });
+    
+    if (!hours || !itemData || !Array.isArray(hours)) {
+      console.log('MachineItemStackedBarChart: Invalid hours or items data');
       return null;
     }
 
-    // Create series for each operator/item
+    // Create series for each item
     const series: XYSeries[] = [];
-    const operatorKeys = Object.keys(operators);
+    const itemKeys = Object.keys(itemData);
     
-    console.log('MachineItemStackedBarChart: Operator keys:', operatorKeys);
+    console.log('MachineItemStackedBarChart: Item keys:', itemKeys);
     
-    operatorKeys.forEach((operatorKey, index) => {
-      const operatorData = operators[operatorKey];
-      console.log(`MachineItemStackedBarChart: Processing operator ${operatorKey}:`, operatorData);
+    itemKeys.forEach((itemKey, index) => {
+      const itemCounts = itemData[itemKey];
+      console.log(`MachineItemStackedBarChart: Processing item ${itemKey}:`, itemCounts);
       
-      if (Array.isArray(operatorData) && operatorData.length === hours.length) {
-        const dataPoints = hours.map((hour: number, hourIndex: number) => ({
-          x: hour,
-          y: operatorData[hourIndex] || 0
-        }));
+      if (Array.isArray(itemCounts) && itemCounts.length === hours.length) {
+        const dataPoints = hours.map((hour: number, hourIndex: number) => {
+          const yValue = itemCounts[hourIndex];
+          return {
+            x: String(hour), // Convert to string for category axis
+            y: typeof yValue === 'number' ? yValue : Number(yValue) || 0
+          };
+        });
 
-        console.log(`MachineItemStackedBarChart: Data points for ${operatorKey}:`, dataPoints);
+        console.log(`MachineItemStackedBarChart: Data points for ${itemKey}:`, dataPoints);
 
         series.push({
-          id: operatorKey,
-          title: operatorKey,
+          id: itemKey,
+          title: itemKey,
           type: 'bar',
           data: dataPoints,
           stack: 'itemStack', // Stack all series together
           color: this.getColorForSeries(index)
         });
       } else {
-        console.log(`MachineItemStackedBarChart: Skipping ${operatorKey} - invalid data length`);
+        console.log(`MachineItemStackedBarChart: Skipping ${itemKey} - invalid data length`);
       }
     });
     
@@ -248,7 +255,7 @@ export class MachineItemStackedBarChartComponent implements OnInit, AfterViewIni
       width: this.chartWidth || 600,
       height: this.chartHeight || 400,
       orientation: 'vertical' as const,
-      xType: 'linear' as const,
+      xType: 'category' as const,
       xLabel: 'Hour',
       yLabel: 'Production Count',
       margin: {
