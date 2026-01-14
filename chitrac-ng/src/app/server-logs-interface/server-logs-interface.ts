@@ -28,7 +28,6 @@ import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-tim
   templateUrl: './server-logs-interface.html',
   styleUrls: ['./server-logs-interface.scss']
 })
-
 export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';

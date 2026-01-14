@@ -24,8 +24,6 @@ import { LPLsEfficiencyScreenComponent } from './efficiency-screens/LPLs-efficie
 import { SPFsEfficiencyScreenComponent } from './efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen';
 import { BlanketBlastersEfficiencyScreenComponent } from './efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen';
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
-import { TokenManagementComponent } from './token-management/token-management.component';
-import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 
 export const routes: Routes = [
 	// Settings pages
@@ -43,7 +41,9 @@ export const routes: Routes = [
 	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent },
 	{ path: 'ng/operatorAnalytics', component: OperatorAnalyticsDashboardComponent },
 	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent },
-	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent },
+	{ path: 'ng/test', component: TestComponent },
+	{ path: 'ng/error-modal-demo', component: ErrorModalDemoComponent },
+	{ path: 'ng/daily-analytics', component: DailyAnalyticsDashboardComponent },
 	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent },
 	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
 	
