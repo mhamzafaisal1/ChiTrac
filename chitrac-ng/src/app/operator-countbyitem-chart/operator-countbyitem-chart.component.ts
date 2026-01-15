@@ -134,8 +134,18 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
         return;
       }
 
+      // Format operator name if it's an object
+      let operatorName: string = String(this.operatorId);
+      if (operatorData.operator?.name) {
+        if (typeof operatorData.operator.name === 'string') {
+          operatorName = operatorData.operator.name;
+        } else if (operatorData.operator.name.first || operatorData.operator.name.surname) {
+          operatorName = `${operatorData.operator.name.first || ''} ${operatorData.operator.name.surname || ''}`.trim();
+        }
+      }
+      
       // Transform the data to cartesian chart format
-      this.chartConfig = this.transformDataToCartesianConfig(countByItemData, operatorData.operator?.name || this.operatorId);
+      this.chartConfig = this.transformDataToCartesianConfig(countByItemData, operatorName);
     } catch (error) {
       console.error('Error processing dashboard data:', error);
       this.error = 'Failed to process dashboard data';

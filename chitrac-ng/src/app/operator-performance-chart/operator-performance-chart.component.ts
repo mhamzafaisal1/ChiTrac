@@ -37,10 +37,9 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
   @Input() showLegend: boolean = true;
   @Input() legendPosition: 'top' | 'right' = 'right';
   @Input() legendWidthPx: number = 120;
-
-  startTime = '';
-  endTime = '';
-  machineSerial = '';
+  @Input() startTime: string = '';
+  @Input() endTime: string = '';
+  @Input() machineSerial: string = '';
   chartConfig: CartesianChartConfig | null = null;
   loading = false;
   error: string | null = null;
@@ -89,7 +88,8 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
     }
 
     // Re-render chart if preloaded data or mode changes
-    if ((changes['preloadedData'] || changes['mode']) && this.mode === 'dashboard' && this.preloadedData) {
+    if ((changes['preloadedData'] || changes['mode'] || changes['startTime'] || changes['endTime']) && 
+        this.mode === 'dashboard' && this.preloadedData) {
       this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
     }
   }
@@ -199,8 +199,6 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       });
       index++;
     });
-
-    console.log("Generated series:", series); // Debug: confirm unique colors
 
     return {
       title: `Operator Performance - ${data.machine?.name || 'Machine'}`,

@@ -340,10 +340,13 @@ module.exports = function (server) {
       });
 
       // Build statusMap from deduplicated tickers
+      // Note: Status schema uses 'id' but we keep 'code' for API compatibility
       const statusMap = new Map();
       for (const [id, ticker] of latestTickers) {
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusId = ticker.status?.id ?? ticker.status?.code ?? 0;
         statusMap.set(id, {
-          code: ticker.status?.code || 0,
+          code: statusId, // Use 'code' in API response for backward compatibility
           name: ticker.status?.name || "Unknown",
           color: ticker.status?.softrolColor || "None",
         });
@@ -954,7 +957,8 @@ module.exports = function (server) {
           if (!states.length && !counts.valid.length) return null;
 
           const latest = states.at(-1) || {};
-          const statusCode = latest.status?.code || 0;
+          // Status schema uses 'id', but legacy code used 'code' - support both
+          const statusCode = latest.status?.id ?? latest.status?.code ?? 0;
           const statusName = latest.status?.name || "Unknown";
           const machineName = latest.machine?.name || "Unknown";
 
@@ -1397,9 +1401,11 @@ module.exports = function (server) {
       const ts = new Date(ticker.timestamp || 0).getTime();
       const existing = statusMap.get(serial);
       if (!existing || ts > existing.timestamp) {
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusId = ticker.status?.id ?? ticker.status?.code ?? 0;
         statusMap.set(serial, {
           status: {
-            code: ticker.status?.code ?? 0,
+            code: statusId, // Use 'code' in API response for backward compatibility
             name: ticker.status?.name ?? "Unknown",
           },
           timestamp: ts,
@@ -1978,7 +1984,8 @@ module.exports = function (server) {
           logger.info(`[machineSessions] Machine ${machineSerial}: session from ${sessionStart} to ${sessionEnd}, ${states.length} states`);
 
           const latest = states.at(-1) || {};
-          const statusCode = latest.status?.code || 0;
+          // Status schema uses 'id', but legacy code used 'code' - support both
+          const statusCode = latest.status?.id ?? latest.status?.code ?? 0;
           const statusName = latest.status?.name || "Unknown";
           const machineName = latest.machine?.name || "Unknown";
 
@@ -2174,7 +2181,8 @@ module.exports = function (server) {
         name: machine?.name ?? "Unknown",
       },
       currentStatus: {
-        code: status?.code ?? 0,
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        code: status?.id ?? status?.code ?? 0,
         name: status?.name ?? "Unknown",
       },
       metrics: {
@@ -2260,7 +2268,8 @@ module.exports = function (server) {
         if (!existing || ts > existing.timestamp) {
           tickerMap.set(serial, {
             status: {
-              code: record.status?.code ?? 0,
+              // Status schema uses 'id', but legacy code used 'code' - support both
+              code: record.status?.id ?? record.status?.code ?? 0,
               name: record.status?.name || "Unknown",
             },
             timestamp: ts,
