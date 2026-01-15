@@ -71,11 +71,13 @@ module.exports = function (server) {
       .filter(op => op && op.id !== -1)
       .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
     
-    console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${ticker.status?.code ?? 0}`);
+    // Status schema uses 'id', but legacy code used 'code' - support both
+    const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
+    console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${statusCode}`);
 
     // If machine is NOT running, mirror existing route behavior by returning entries with 0% efficiency
     // (we still include operator/machine/batch info for the screen to render cleanly)
-    if ((ticker.status?.code ?? 0) !== 1) {
+    if (statusCode !== 1) {
       console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
       const notRunningStartTime = Date.now();
       
@@ -206,8 +208,10 @@ module.exports = function (server) {
           ? `${op.name.first} ${op.name.surname}`
           : (op.name || 'Unknown');
 
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
         return {
-          status: ticker.status?.code ?? 0,
+          status: statusCodeForResponse, // Use 'code' in API response for backward compatibility
           fault: ticker.status?.name ?? 'Unknown',
           operator: operatorName,
           operatorId: op.id,
@@ -519,7 +523,9 @@ module.exports = function (server) {
         .filter(op => op && op.id !== -1)
         .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
       
-      console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${ticker.status?.code ?? 0}`);
+      // Status schema uses 'id', but legacy code used 'code' - support both
+      const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
+      console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${statusCode}`);
 
       // Get today's date string for totals-daily query
       const now = DateTime.now();
@@ -527,7 +533,7 @@ module.exports = function (server) {
 
       // If machine is NOT running, mirror existing route behavior by returning entries with 0% efficiency
       // (we still include operator/machine/batch info for the screen to render cleanly)
-      if ((ticker.status?.code ?? 0) !== 1) {
+      if (statusCode !== 1) {
         console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
         const notRunningStartTime = Date.now();
         
@@ -540,7 +546,7 @@ module.exports = function (server) {
               ? `${op.name.first} ${op.name.surname}`
               : (op.name || 'Unknown');
             return {
-              status: ticker.status?.code ?? 0,
+              status: statusCode, // Use 'code' in API response for backward compatibility
               fault: ticker.status?.name ?? 'Unknown',
               operator: operatorName,
               operatorId: op.id,
@@ -704,8 +710,10 @@ module.exports = function (server) {
             ? `${op.name.first} ${op.name.surname}`
             : (op.name || 'Unknown');
 
+          // Status schema uses 'id', but legacy code used 'code' - support both
+          const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
           return {
-            status: ticker.status?.code ?? 0,
+            status: statusCodeForResponse, // Use 'code' in API response for backward compatibility
             fault: ticker.status?.name ?? 'Unknown',
             operator: operatorName,
             operatorId: op.id,
@@ -788,8 +796,10 @@ module.exports = function (server) {
 
       let efficiency = zeroEff();
 
+      // Status schema uses 'id', but legacy code used 'code' - support both
+      const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
       // If not running, mirror operator route: return zeros but keep status fields
-      if ((ticker.status?.code ?? 0) === 1) {
+      if (statusCode === 1) {
         // Running: compute from machine-sessions
         const results = await queryMachineTimeframes(db, serialNum, frames);
 
@@ -814,9 +824,11 @@ module.exports = function (server) {
         efficiency = effObj;
       }
 
+      // Status schema uses 'id', but legacy code used 'code' - support both
+      const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
       return res.json({
         laneData: {
-          status: ticker.status ?? { code: 0, name: 'Unknown' },
+          status: { code: statusCodeForResponse, name: ticker.status?.name ?? 'Unknown' },
           fault: ticker.status?.name ?? 'Unknown',
           machine: { serial: serialNum, name: ticker.machine?.name || `Serial ${serialNum}` },
           efficiency,                 // { lastSixMinutes, lastFifteenMinutes, lastHour, today }
@@ -997,10 +1009,12 @@ module.exports = function (server) {
 
       // No operator at station (or blocked station)
       if (!hasOperator) {
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
         // If not running: zeros like legacy behavior
-        if ((ticker.status?.code ?? 0) !== 1) {
+        if (statusCode !== 1) {
           return res.json({
-            status: ticker.status?.code ?? 0,
+            status: statusCode, // Use 'code' in API response for backward compatibility
             fault: ticker.status?.name ?? 'Unknown',
             operator: null,
             machine: ticker.machine?.name || `Serial ${serialNum}`,
@@ -1041,8 +1055,10 @@ module.exports = function (server) {
           effObj[key] = { value: eff, label, color: eff >= 90 ? 'green' : eff >= 70 ? 'yellow' : 'red' };
         }
 
+        // Status schema uses 'id', but legacy code used 'code' - support both
+        const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
         return res.json({
-          status: ticker.status?.code ?? 0,
+          status: statusCodeForResponse, // Use 'code' in API response for backward compatibility
           fault: ticker.status?.name ?? 'Unknown',
           operator: null,
           machine: ticker.machine?.name || `Serial ${serialNum}`,
@@ -1054,14 +1070,16 @@ module.exports = function (server) {
         });
       }
 
+      // Status schema uses 'id', but legacy code used 'code' - support both
+      const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
       // If machine is NOT running, return zero efficiency but keep operator info
-      if ((ticker.status?.code ?? 0) !== 1) {
+      if (statusCode !== 1) {
         const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
         const operatorName = operator.name?.first && operator.name?.surname
           ? `${operator.name.first} ${operator.name.surname}`
           : (operator.name || 'Unknown');
         return res.json({
-          status: ticker.status?.code ?? 0,
+          status: statusCode, // Use 'code' in API response for backward compatibility
           fault: ticker.status?.name ?? 'Unknown',
           operator: operatorName,
           operatorId: operator.id,
@@ -1131,8 +1149,10 @@ module.exports = function (server) {
         ? `${operator.name.first} ${operator.name.surname}`
         : (operator.name || 'Unknown');
 
+      // Status schema uses 'id', but legacy code used 'code' - support both
+      const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
       return res.json({
-        status: ticker.status?.code ?? 0,
+        status: statusCodeForResponse, // Use 'code' in API response for backward compatibility
         fault: ticker.status?.name ?? 'Unknown',
         operator: operatorName,
         operatorId: operator.id,
