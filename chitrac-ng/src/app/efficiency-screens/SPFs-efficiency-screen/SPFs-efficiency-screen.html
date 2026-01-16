@@ -11,7 +11,7 @@
               </div>
             </div>
             <div class="data-block">
-              <div class="efficiency-value" [style.background-color]="lane.efficiency?.lastSixMinutes?.color">
+              <div class="efficiency-value" [ngClass]="{'red': lane.efficiency.lastSixMinutes.color == 'red', 'green': lane.efficiency.lastSixMinutes.color == 'green', 'yellow': lane.efficiency.lastSixMinutes.color == 'yellow'}">
                 <div class="value-text">{{ (lane.efficiency?.lastSixMinutes?.value || 0) | number: '1.0-0' }}%</div>
               </div>
               <div class="bars-container">
@@ -19,21 +19,21 @@
                   <div class="bar-item" style="margin: 10px 5px 0 0;">
                     <div class="bar-chart">
                       <div class="bar-value">{{ (lane.efficiency?.lastFifteenMinutes?.value || 0) | number: '1.0-0' }}%</div>
-                      <div class="bar-fill" [style.height.%]="lane.efficiency?.lastFifteenMinutes?.value || 0" [style.background-color]="lane.efficiency?.lastFifteenMinutes?.color"></div>
+                      <div class="bar-fill" [style.height.%]="lane.efficiency?.lastFifteenMinutes?.value || 0"  [ngClass]="{'red': lane.efficiency.lastFifteenMinutes.color == 'red', 'green': lane.efficiency.lastFifteenMinutes.color == 'green', 'yellow': lane.efficiency.lastFifteenMinutes.color == 'yellow'}"></div>
                     </div>
                     <div class="bar-label">{{ lane.efficiency?.lastFifteenMinutes?.label }}</div>
                   </div>
                   <div class="bar-item" style="margin: 10px 2px 0 2px;">
                     <div class="bar-chart">
                       <div class="bar-value">{{ (lane.efficiency?.lastHour?.value || 0) | number: '1.0-0' }}%</div>
-                      <div class="bar-fill" [style.height.%]="lane.efficiency?.lastHour?.value || 0" [style.background-color]="lane.efficiency?.lastHour?.color"></div>
+                      <div class="bar-fill" [style.height.%]="lane.efficiency?.lastHour?.value || 0" [ngClass]="{'red': lane.efficiency.lastHour.color == 'red', 'green': lane.efficiency.lastHour.color == 'green', 'yellow': lane.efficiency.lastHour.color == 'yellow'}"></div>
                     </div>
                     <div class="bar-label">{{ lane.efficiency?.lastHour?.label }}</div>
                   </div>
                   <div class="bar-item" style="margin: 10px 0 0 5px;">
                     <div class="bar-chart">
                       <div class="bar-value">{{ (lane.efficiency?.today?.value || 0) | number: '1.0-0' }}%</div>
-                      <div class="bar-fill" [style.height.%]="lane.efficiency?.today?.value || 0" [style.background-color]="lane.efficiency?.today?.color"></div>
+                      <div class="bar-fill" [style.height.%]="lane.efficiency?.today?.value || 0" [ngClass]="{'red': lane.efficiency.today.color == 'red', 'green': lane.efficiency.today.color == 'green', 'yellow': lane.efficiency.today.color == 'yellow'}"></div>
                     </div>
                     <div class="bar-label">{{ lane.efficiency?.today?.label }}</div>
                   </div>
