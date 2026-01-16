@@ -5,7 +5,7 @@
       <ng-container *ngIf="lane.status === 1">
         <div class="lane-background" [ngClass]="lane.operator ? 'lane-running-bg' : 'lane-greyed-bg'">
           <div class="lane-inner">
-            <div class="operator-block" [ngClass]="{'no-operator': !lane.operator}" [style.background-color]="lane.efficiency?.lastSixMinutes?.color">
+            <div class="operator-block" [ngClass]="{'no-operator': !lane.operator, 'red': lane.efficiency.lastSixMinutes.color == 'red', 'green': lane.efficiency.lastSixMinutes.color == 'green', 'yellow': lane.efficiency.lastSixMinutes.color == 'yellow'}">
               <div class="operator-text">
                 <div class="operator-content">{{ lane.operator || 'NO OPERATOR' }}</div>
               </div>
