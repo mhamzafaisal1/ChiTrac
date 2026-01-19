@@ -22,7 +22,7 @@ function constructor(server) {
     res.json(startupDT);
   });
 
-  router.get("/currentTime/get", async (req, res, next) => {
+  router.get("/currentTime", async (req, res, next) => {
     const currentDT = DateTime.now();
     const formatString = "yyyy-LL-dd-TT.SSS";
     const responseJSON = {
@@ -34,7 +34,7 @@ function constructor(server) {
     res.json(responseJSON);
   });
 
-  router.post("/versa/post", async (req, res, next) => {
+  router.post("/versa", async (req, res, next) => {
     const currentDateTime = new Date();
     let bodyJSON = Object.assign({}, req.body);
     if (bodyJSON.timestamp) {
