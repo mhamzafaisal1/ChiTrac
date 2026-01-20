@@ -204,12 +204,18 @@ module.exports = function (server) {
       }
 
       // Transform cache records to OEE format using the same calculation logic
+      // as machines-summary-daily-cached (buildRange/timeRange + fallback, workedTimeMs fallback)
       const rows = cacheRecords.map((record) => {
-        // Calculate window time (total time in query range)
-        const windowMs =
-          new Date(record.timeRange.end) - new Date(record.timeRange.start);
+        // Window: use buildRange (new) or timeRange (legacy), else dayStart→dayEnd
+        const timeRange = record.buildRange || record.timeRange;
+        let windowMs = 0;
+        if (timeRange && timeRange.start && timeRange.end) {
+          windowMs = new Date(timeRange.end) - new Date(timeRange.start);
+        } else {
+          windowMs = dayEnd - dayStart;
+        }
 
-        // Calculate performance metrics (same logic as machines-summary-daily-cached)
+        // Availability
         const availability =
           windowMs > 0
             ? Math.min(Math.max(record.runtimeMs / windowMs, 0), 1)
@@ -217,8 +223,14 @@ module.exports = function (server) {
         const totalOutput = record.totalCounts + record.totalMisfeeds;
         const throughput =
           totalOutput > 0 ? record.totalCounts / totalOutput : 0;
-        const workTimeSec = record.workedTimeMs / 1000;
-        const totalTimeCreditSec = record.totalTimeCreditMs / 1000;
+
+        // Work time: if workedTimeMs is 0 but we have output and runtime, use runtimeMs as fallback
+        let workTimeMs = record.workedTimeMs || 0;
+        if (workTimeMs === 0 && record.totalTimeCreditMs > 0 && record.runtimeMs > 0) {
+          workTimeMs = record.runtimeMs;
+        }
+        const workTimeSec = workTimeMs / 1000;
+        const totalTimeCreditSec = (record.totalTimeCreditMs || 0) / 1000;
         const efficiency =
           workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
         const oee = availability * throughput * efficiency;
