@@ -25,7 +25,7 @@ import { BaseTableComponent } from "../components/base-table/base-table.componen
 import { MachineAnalyticsService } from '../services/machine-analytics.service';
 
 import { OperatorCountbyitemChartComponent } from "../operator-countbyitem-chart/operator-countbyitem-chart.component";
-import { getStatusDotByCode } from '../../utils/status-utils';
+import { getStatusDot } from '../../utils/status-utils';
 import { DailyDashboardService } from '../services/daily-dashboard.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
@@ -238,7 +238,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const arr = Array.isArray(data) ? data : (data?.machineResults ?? []);
     this.rawMachineData = arr;
     this.machineRows = arr.map((m:any)=>({
-      Status: getStatusDotByCode(m.currentStatus?.code),
+      Status: getStatusDot(m.currentStatus),
       'Machine Name': m.machine?.name ?? 'Unknown',
       'OEE': this.formatPercentage(m.performance?.oee?.percentage ?? 0),
       'Total Count': m.performance?.output?.totalCount ?? 0,
@@ -250,7 +250,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const arr = Array.isArray(data) ? data : (data?.operatorResults ?? []);
     this.rawOperatorData = arr;
     this.operatorRows = arr.map((o:any)=>({
-      Status: getStatusDotByCode(o.currentStatus?.code),
+      Status: getStatusDot(o.currentStatus),
       'Operator Name': o.operator?.name ? `${o.operator.name.first ?? ''} ${o.operator.name.surname ?? ''}`.trim() : 'Unknown',
       'Worked Time': `${o.metrics?.runtime?.formatted?.hours ?? 0}h ${o.metrics?.runtime?.formatted?.minutes ?? 0}m`,
       'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
