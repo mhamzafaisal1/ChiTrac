@@ -41,7 +41,7 @@ export class MachineEfficiencyLaneComponent implements OnDestroy {
   }
 
   fetchOnce() {
-    this.efficiencyService.getMachineLiveEfficiencySummary(this.SERIAL_NUMBER)
+    this.efficiencyService.getLiveEfficiencySummary(this.SERIAL_NUMBER)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
