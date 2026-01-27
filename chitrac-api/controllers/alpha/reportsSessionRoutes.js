@@ -4744,6 +4744,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       const exactEnd = isTodaySinceMidnight 
         ? nowLocal.toUTC().toJSDate() 
         : endDt.toUTC().toJSDate();
+      
+      // Calculate query window once for reuse throughout the route
+      const queryWindowMs = exactEnd.getTime() - exactStart.getTime();
 
       // ---------- helpers (local to route) ----------
       const topNSlicesPerBar = 10;
@@ -5008,13 +5011,20 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           aggregated.workedTimeMs += itemTotal.workedTimeMs || 0;
         }
         
-        // ========== FIX: Cap each item's workedTimeMs to machine runtimeMs ==========
+        // ========== FIX: Cap each item's workedTimeMs appropriately ==========
         // Prevents individual items from showing more time than the machine actually ran
         // This handles cases where item runtimes are inflated due to overlapping sessions
+        // For multi-day queries, use the maximum of machine runtime OR expected runtime based on days
+        // This handles cases where cache only has partial data (e.g., only one day when querying 4 days)
         const machineRuntimeMs = machineData.runtimeMs;
+        const expectedRuntimeMs = machineData.daysActive * 86400000; // Expected: daysActive * 24h
+        // Use the larger of: actual machine runtime, expected runtime (but cap at query window)
+        const effectiveMachineRuntimeMs = Math.max(machineRuntimeMs, expectedRuntimeMs);
+        const maxAllowedRuntimeMs = Math.min(effectiveMachineRuntimeMs, queryWindowMs);
+        
         for (const aggregatedItem of aggregatedItems.values()) {
-          if (aggregatedItem.workedTimeMs > machineRuntimeMs) {
-            aggregatedItem.workedTimeMs = machineRuntimeMs;
+          if (aggregatedItem.workedTimeMs > maxAllowedRuntimeMs) {
+            aggregatedItem.workedTimeMs = maxAllowedRuntimeMs;
           }
         }
         
@@ -5076,7 +5086,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         const machineEff = proratedStandard > 0 ? machinePph / proratedStandard : 0;
         
         // Final validation: cap to query window
-        const queryWindowMs = exactEnd.getTime() - exactStart.getTime();
         let validatedRuntimeMs = machineData.runtimeMs;
         let validatedWorkedMs = machineData.workedTimeMs;
         
