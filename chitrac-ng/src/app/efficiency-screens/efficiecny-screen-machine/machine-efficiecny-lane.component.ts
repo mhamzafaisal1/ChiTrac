@@ -45,21 +45,9 @@ export class MachineEfficiencyLaneComponent implements OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
-          const ld = res?.laneData || {};
-          // Map to existing lane shape; leave missing fields empty
-          const lane = {
-            status: ld?.status?.code ?? 0,
-            fault: ld?.fault ?? '',
-            operator: null as string | null,
-            operatorId: null as number | null,
-            machine: ld?.machine?.name ?? `Serial ${ld?.machine?.serial ?? this.SERIAL_NUMBER}`,
-            timers: ld?.timers ?? { on: 0, ready: 0 },
-            displayTimers: ld?.displayTimers ?? { on: '', run: '' },
-            efficiency: ld?.efficiency ?? {},
-            oee: ld?.oee ?? {},
-            batch: { item: '', code: '' }
-          };
-          this.lanes = [lane];
+          // Handle flipperData format (array) like operator route
+          const flipperData = res?.flipperData || [];
+          this.lanes = flipperData.length > 0 ? flipperData : [];
         },
         error: (err) => { console.error('Fetch error:', err); }
       });
@@ -74,20 +62,9 @@ export class MachineEfficiencyLaneComponent implements OnDestroy {
       )
       .subscribe({
         next: (res) => {
-          const ld = res?.laneData || {};
-          const lane = {
-            status: ld?.status?.code ?? 0,
-            fault: ld?.fault ?? '',
-            operator: null as string | null,
-            operatorId: null as number | null,
-            machine: ld?.machine?.name ?? `Serial ${ld?.machine?.serial ?? this.SERIAL_NUMBER}`,
-            timers: ld?.timers ?? { on: 0, ready: 0 },
-            displayTimers: ld?.displayTimers ?? { on: '', run: '' },
-            efficiency: ld?.efficiency ?? {},
-            oee: ld?.oee ?? {},
-            batch: { item: '', code: '' }
-          };
-          this.lanes = [lane];
+          // Handle flipperData format (array) like operator route
+          const flipperData = res?.flipperData || [];
+          this.lanes = flipperData.length > 0 ? flipperData : [];
         },
         error: (err) => { console.error('Polling error:', err); }
       });

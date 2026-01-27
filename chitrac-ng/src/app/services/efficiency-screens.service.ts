@@ -14,9 +14,9 @@ export class EfficiencyScreensService {
     return this.http.get('/api/alpha/analytics/daily/machine-live-session-summary', { params });
   }
 
-  getMachineLiveEfficiencySummary(serial: number): Observable<{ laneData: any }> {
+  getMachineLiveEfficiencySummary(serial: number): Observable<{ flipperData: any[] }> {
     const params = new HttpParams().set('serial', String(serial));
-    return this.http.get<{ laneData: any }>(
+    return this.http.get<{ flipperData: any[] }>(
       '/api/alpha/analytics/machine-live-session-summary/machine',
       { params }
     );
