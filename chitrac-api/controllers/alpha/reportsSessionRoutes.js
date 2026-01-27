@@ -5008,6 +5008,16 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           aggregated.workedTimeMs += itemTotal.workedTimeMs || 0;
         }
         
+        // ========== FIX: Cap each item's workedTimeMs to machine runtimeMs ==========
+        // Prevents individual items from showing more time than the machine actually ran
+        // This handles cases where item runtimes are inflated due to overlapping sessions
+        const machineRuntimeMs = machineData.runtimeMs;
+        for (const aggregatedItem of aggregatedItems.values()) {
+          if (aggregatedItem.workedTimeMs > machineRuntimeMs) {
+            aggregatedItem.workedTimeMs = machineRuntimeMs;
+          }
+        }
+        
         // Calculate item summaries from aggregated data
         let proratedStandard = 0;
         const itemSummaries = {};
