@@ -359,6 +359,42 @@ module.exports = function (server) {
     return counts;
   }
 
+// Get valid and misfeed counts in window for OEE throughput (operator-sessions).
+// Handles session.counts as array (each c may have c.misfeed) or { valid: [], misfeed: [] }.
+  function getValidAndMisfeedCountsInWindow(sessions, windowStart, windowEnd, operatorId, serialNum) {
+    let validCount = 0;
+    let misfeedCount = 0;
+
+    const inWindow = (c) => {
+      if (!c) return false;
+      const ts = c.timestamps?.create || c.timestamp;
+      if (!ts) return false;
+      const t = new Date(ts);
+      if (t < windowStart || t > windowEnd) return false;
+      const countOpId = c.operator?.id;
+      const countMachineSerial = c.machine?.serial ?? c.machine?.id;
+      if (countOpId != null && countOpId != operatorId) return false;
+      if (countMachineSerial != null && countMachineSerial != serialNum) return false;
+      return true;
+    };
+
+    for (const session of sessions) {
+      if (!session) continue;
+      if (Array.isArray(session.counts)) {
+        for (const c of session.counts) {
+          if (!inWindow(c)) continue;
+          if (c.misfeed === true) misfeedCount++; else validCount++;
+        }
+      } else if (session.counts && typeof session.counts === 'object') {
+        const v = session.counts.valid || [];
+        const m = session.counts.misfeed || [];
+        for (const c of v) { if (inWindow(c)) validCount++; }
+        for (const c of m) { if (inWindow(c)) misfeedCount++; }
+      }
+    }
+    return { validCount, misfeedCount };
+  }
+
 // Sum runtime + time credit for a given window across an array of sessions
 // Uses counts extracted from session documents (faster than querying count collection)
   function sumWindowWithCounts(sessions, counts, windowStartDT, windowEndDT) {
@@ -511,7 +547,7 @@ module.exports = function (server) {
           timers: { on: 0, ready: 0 },
           displayTimers: { on: '', run: '' },
           efficiency: buildZeroEfficiencyPayload(),
-          oee: {},
+          oee: buildZeroEfficiencyPayload(),
           batch: { item: '', code: 0 }
         }];
 
@@ -554,7 +590,7 @@ module.exports = function (server) {
               timers: { on: 0, ready: 0 },
               displayTimers: { on: '', run: '' },
               efficiency: buildZeroEfficiencyPayload(),
-              oee: {},
+              oee: buildZeroEfficiencyPayload(),
               batch: { item: batchItem, code: 10000001 }
             };
           })
@@ -640,10 +676,11 @@ module.exports = function (server) {
             }
           }
 
-          // Compute efficiency% for short windows from sessions
-          console.log(`[PERF] [${serialNum}] Operator ${op.id} starting efficiency calculations for short windows`);
+          // Compute efficiency% and OEE for short windows from sessions
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} starting efficiency and OEE calculations for short windows`);
           const efficiencyCalcStartTime = Date.now();
           const efficiencyObj = {};
+          const oeeObj = {};
           
           // Process short windows (6 min, 15 min, 1 hour) from sessions
           for (const [key, arr] of Object.entries({
@@ -672,20 +709,40 @@ module.exports = function (server) {
               label,
               color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
             };
+
+            // OEE = availability * efficiency * throughput
+            const { validCount, misfeedCount } = getValidAndMisfeedCountsInWindow(arr, windowStart, windowEnd, op.id, serialNum);
+            const windowSec = (now.toMillis() - start.toMillis()) / 1000;
+            const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+            const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+            const throughput = (validCount + misfeedCount) > 0 ? validCount / (validCount + misfeedCount) : 0;
+            const oeeVal = availability * efficiencyRatio * throughput;
+            const oeePct = Math.round(oeeVal * 100);
+            oeeObj[key] = { value: oeePct, label, color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'yellow' : 'red' };
             
             console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} TOTAL time: ${Date.now() - windowStartTime}ms`);
           }
 
-          // Get today's efficiency from totals-daily
+          // Get today's efficiency and OEE from totals-daily
           const dailyTotal = dailyTotalsMap.get(op.id);
           let todayEfficiency = 0;
+          let todayOee = 0;
           
           if (dailyTotal && dailyTotal.runtimeMs > 0) {
             // Calculate efficiency from daily totals (both in milliseconds)
             const runtimeSec = dailyTotal.runtimeMs / 1000;
-            const timeCreditSec = dailyTotal.totalTimeCreditMs / 1000;
+            const timeCreditSec = (dailyTotal.totalTimeCreditMs || 0) / 1000;
             todayEfficiency = timeCreditSec / runtimeSec;
             console.log(`[PERF] [${serialNum}] Operator ${op.id} today efficiency from daily totals: runtime=${runtimeSec}s, timeCredit=${timeCreditSec}s, eff=${Math.round(todayEfficiency * 100)}%`);
+
+            // OEE for today: availability * efficiency * throughput
+            const windowMs = now.toMillis() - now.startOf('day').toMillis();
+            const availability = windowMs > 0 ? (dailyTotal.runtimeMs / windowMs) : 0;
+            const efficiencyRatio = todayEfficiency;
+            const totalCounts = dailyTotal.totalCounts || 0;
+            const totalMisfeeds = dailyTotal.totalMisfeeds || 0;
+            const throughput = (totalCounts + totalMisfeeds) > 0 ? totalCounts / (totalCounts + totalMisfeeds) : 0;
+            todayOee = availability * efficiencyRatio * throughput;
           } else {
             console.log(`[PERF] [${serialNum}] Operator ${op.id} no daily total found or zero runtime, using 0% for today`);
           }
@@ -695,8 +752,13 @@ module.exports = function (server) {
             label: 'All Day',
             color: todayEfficiency >= 0.9 ? 'green' : todayEfficiency >= 0.7 ? 'yellow' : 'red'
           };
+          oeeObj.today = {
+            value: Math.round(todayOee * 100),
+            label: 'All Day',
+            color: todayOee >= 0.9 ? 'green' : todayOee >= 0.7 ? 'yellow' : 'red'
+          };
           
-          console.log(`[PERF] [${serialNum}] Operator ${op.id} efficiency calculations completed in ${Date.now() - efficiencyCalcStartTime}ms`);
+          console.log(`[PERF] [${serialNum}] Operator ${op.id} efficiency and OEE calculations completed in ${Date.now() - efficiencyCalcStartTime}ms`);
 
           // Batch item: concatenate current items if multiple (prefer the most recent session; fallback to union)
           const batchItemStartTime = Date.now();
@@ -721,7 +783,7 @@ module.exports = function (server) {
             timers: { on: 0, ready: 0 },
             displayTimers: { on: '', run: '' },
             efficiency: efficiencyObj,
-            oee: {},
+            oee: oeeObj,
             batch: { item: batchItem, code: 10000001 }
           };
         })
@@ -781,7 +843,8 @@ module.exports = function (server) {
           laneData: {
             status: { code: -1, name: 'Offline' },
             machine: { serial: serialNum },
-            efficiency: zeroEff()
+            efficiency: zeroEff(),
+            oee: zeroEff()
           }
         });
       }
@@ -795,6 +858,7 @@ module.exports = function (server) {
       };
 
       let efficiency = zeroEff();
+      let oee = zeroEff();
 
       // Status schema uses 'id', but legacy code used 'code' - support both
       const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
@@ -815,13 +879,25 @@ module.exports = function (server) {
         }
 
         const effObj = {};
+        const oeeObj = {};
         for (const [key, sessions] of Object.entries(results)) {
           const { start, label } = frames[key];
-          const { runtimeSec, timeCreditSec } = sumWindowMachine(sessions, start, now);
+          const { runtimeSec, timeCreditSec, validCount, misfeedCount } = sumWindowMachine(sessions, start, now);
+
           const eff = runtimeSec > 0 ? Math.round((timeCreditSec / runtimeSec) * 100) : 0;
           effObj[key] = { value: eff, label, color: eff >= 90 ? 'green' : eff >= 70 ? 'yellow' : 'red' };
+
+          // OEE = availability * efficiency * throughput
+          const windowSec = (now.toMillis() - start.toMillis()) / 1000;
+          const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+          const efficiencyRatio = runtimeSec > 0 ? timeCreditSec / runtimeSec : 0;
+          const throughput = (validCount + misfeedCount) > 0 ? validCount / (validCount + misfeedCount) : 0;
+          const oeeVal = availability * efficiencyRatio * throughput;
+          const oeePct = Math.round(oeeVal * 100);
+          oeeObj[key] = { value: oeePct, label, color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'yellow' : 'red' };
         }
         efficiency = effObj;
+        oee = oeeObj;
       }
 
       // Status schema uses 'id', but legacy code used 'code' - support both
@@ -832,7 +908,7 @@ module.exports = function (server) {
           fault: ticker.status?.name ?? 'Unknown',
           machine: { serial: serialNum, name: ticker.machine?.name || `Serial ${serialNum}` },
           efficiency,                 // { lastSixMinutes, lastFifteenMinutes, lastHour, today }
-          oee: {},                    // kept for shape-compat
+          oee,                       // { lastSixMinutes, lastFifteenMinutes, lastHour, today }
           timers: { on: 0, ready: 0 }, // placeholders for UI parity
           displayTimers: { on: '', run: '' }
         }
@@ -889,6 +965,8 @@ module.exports = function (server) {
 
     let runtimeSec = 0;
     let timeCreditSec = 0;
+    let validCount = 0;
+    let misfeedCount = 0;
 
     for (const s of sessions) {
       const sStart = new Date(s.timestamps.start);
@@ -901,29 +979,45 @@ module.exports = function (server) {
       // Machine runtime in window. Machine-sessions are non-overlapping, so no double count.
       runtimeSec += (effEnd - effStart) / 1000;
 
-      // Time credit from in-window counts
-      // Handle both old format (counts as array) and new format (counts.valid array)
+      // Handle both old format (counts as array) and new format (counts.valid / counts.misfeed)
       let allCounts = [];
       if (Array.isArray(s.counts)) {
         allCounts = s.counts;
-      } else if (s.counts && Array.isArray(s.counts.valid)) {
-        allCounts = s.counts.valid;
       } else if (s.counts && typeof s.counts === 'object') {
-        allCounts = s.counts.valid || [];
+        const v = s.counts.valid || [];
+        const mRaw = s.counts.misfeed || [];
+        const m = mRaw.map(c => (c && typeof c === 'object' ? { ...c, misfeed: true } : null)).filter(Boolean);
+        allCounts = [...v, ...m];
       }
-      
-      const inWindowCounts = allCounts.filter(c => {
+
+      // In-window valid counts (for time credit and throughput)
+      const inWindowValid = allCounts.filter(c => {
         if (!c) return false;
-        // Handle both timestamp formats: c.timestamp or c.timestamps.create
         const ts = c.timestamp || c.timestamps?.create;
         if (!ts) return false;
         const t = new Date(ts);
         return t >= effStart && t <= effEnd && !c.misfeed;
       });
-      timeCreditSec += calcTimeCredit(inWindowCounts);
+      timeCreditSec += calcTimeCredit(inWindowValid);
+      validCount += inWindowValid.length;
+
+      // In-window misfeed counts (for throughput)
+      const inWindowMisfeed = allCounts.filter(c => {
+        if (!c) return false;
+        const ts = c.timestamp || c.timestamps?.create;
+        if (!ts) return false;
+        const t = new Date(ts);
+        return t >= effStart && t <= effEnd && !!c.misfeed;
+      });
+      misfeedCount += inWindowMisfeed.length;
     }
 
-    return { runtimeSec: Math.round(runtimeSec), timeCreditSec: round2(timeCreditSec) };
+    return {
+      runtimeSec: Math.round(runtimeSec),
+      timeCreditSec: round2(timeCreditSec),
+      validCount,
+      misfeedCount
+    };
   }
 
   function calcTimeCredit(counts) {

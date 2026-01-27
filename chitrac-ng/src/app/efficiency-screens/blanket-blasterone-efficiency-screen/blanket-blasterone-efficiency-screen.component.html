@@ -9,5 +9,8 @@
             <ct-lane-fault *ngIf="lane.status > 1" [lane]="lane"></ct-lane-fault>
             <ct-lane-stop *ngIf="lane.status === 0 || lane.status === -1" [lane]="lane"></ct-lane-stop>
         </div>
+        <div class="lane-card" *ngIf="lanes.length > 0 && lanes[0]">
+            <ct-lane-oee [lane]="lanes[0]"></ct-lane-oee>
+        </div>
     </div>
 </div>
