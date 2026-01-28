@@ -6994,7 +6994,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         }
       }
 
-      // Aggregate machine-items: First deduplicate by (serial, itemId, date), then sum across dates
+      // Aggregate machine-items: First deduplicate by (serial, itemId, date), then sum across dates 
       const itemByDateMap = new Map(); // key: `${serial}-${itemId}-${date}`
       for (const record of machineItemRecords) {
         const dateKey = record.date || 'unknown';
