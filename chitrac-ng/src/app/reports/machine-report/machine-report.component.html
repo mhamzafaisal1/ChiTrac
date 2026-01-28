@@ -18,6 +18,15 @@
       [(value)]="endTime"
     ></app-date-time-picker>
 
+    <div class="report-mode-toggle">
+      <span class="toggle-label" style="margin-right: 12px;">Detailed</span>
+      <mat-slide-toggle 
+        [(ngModel)]="showSummaryOnly"
+        color="primary">
+      </mat-slide-toggle>
+      <span class="toggle-label" style="margin-left: 12px;">Summary</span>
+    </div>
+
     <div class="button-group">
       <button
         mat-flat-button
