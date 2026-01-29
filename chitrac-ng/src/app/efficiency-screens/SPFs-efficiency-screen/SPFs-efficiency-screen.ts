@@ -83,11 +83,12 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             
             // Each SPF machine should have one operator, so take the first lane from flipperData
             if (flipperData.length > 0) {
-              // Use the first (and likely only) operator from the response
-              this.lanes.push(flipperData[0]);
+              // Use the first (and likely only) operator from the response; attach serial for sorting
+              this.lanes.push({ ...flipperData[0], serial });
             } else {
               // If no data, create an offline/empty lane entry
               this.lanes.push({
+                serial,
                 status: -1,
                 fault: 'Offline',
                 operator: null,
@@ -107,12 +108,8 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             }
           });
 
-          // Sort lanes by machine name to maintain consistent order
-          this.lanes.sort((a, b) => {
-            const nameA = a.machine || '';
-            const nameB = b.machine || '';
-            return nameA.localeCompare(nameB);
-          });
+          // Sort lanes by serial so order is consistent (offline machines stay in place by serial)
+          this.lanes.sort((a, b) => (a.serial ?? 0) - (b.serial ?? 0));
 
           console.log(`Fetched data for ${this.lanes.length} SPF machines`);
           this.isLoading = false;
@@ -164,10 +161,11 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             const flipperData = response?.flipperData || [];
             
             if (flipperData.length > 0) {
-              this.lanes.push(flipperData[0]);
+              this.lanes.push({ ...flipperData[0], serial });
             } else {
               // Create offline/empty lane entry
               this.lanes.push({
+                serial,
                 status: -1,
                 fault: 'Offline',
                 operator: null,
@@ -187,12 +185,8 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             }
           });
 
-          // Sort lanes by machine name
-          this.lanes.sort((a, b) => {
-            const nameA = a.machine || '';
-            const nameB = b.machine || '';
-            return nameA.localeCompare(nameB);
-          });
+          // Sort lanes by serial so order is consistent (offline machines stay in place by serial)
+          this.lanes.sort((a, b) => (a.serial ?? 0) - (b.serial ?? 0));
 
           console.log(`Updated ${this.lanes.length} SPF lanes`);
           this.isLoading = false;
