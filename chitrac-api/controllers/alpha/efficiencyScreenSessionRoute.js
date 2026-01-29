@@ -793,6 +793,8 @@ module.exports = function (server) {
       
       return res.json({ flipperData: performanceData });
     } catch (err) {
+      const { serial } = req.query;
+      const serialNum = Number(serial);
       console.error(`[PERF] [${serialNum || 'unknown'}] ERROR after ${Date.now() - routeStartTime}ms:`, err);
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       return res.status(500).json({ error: 'Internal server error' });
