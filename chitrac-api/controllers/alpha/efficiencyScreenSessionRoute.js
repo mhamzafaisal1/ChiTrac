@@ -277,27 +277,15 @@ module.exports = function (server) {
       ]
     });
 
-    // Add timeout wrapper to prevent hanging - reduced timeout to fail faster
-    const queryWithTimeout = (promise, timeoutMs = 8000) => {
-      return Promise.race([
-        promise,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Query timeout')), timeoutMs)
-        )
-      ]);
-    };
-
     try {
-      console.log(`[PERF] [${serialNum}] Operator ${operatorId} - Starting 4 parallel session queries...`);
+      console.log(`[PERF] [${serialNum}] Operator ${operatorId} - Starting 4 parallel session queries (no limit/timeout)...`);
       const parallelQueryStartTime = Date.now();
-      
-      // Use limit to prevent loading too many sessions (especially for "today" which can have many)
-      // Reduce limits further and add indexes hints for better performance
+
       const [six, fifteen, hour, today] = await Promise.all([
-        queryWithTimeout(coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(5).maxTimeMS(8000).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(5).maxTimeMS(8000).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(10).maxTimeMS(8000).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': -1 }).limit(20).maxTimeMS(8000).toArray()) // Most recent first for today
+        coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+        coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+        coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+        coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': -1 }).toArray()
       ]);
 
       console.log(`[PERF] [${serialNum}] Operator ${operatorId} - All 4 session queries completed in ${Date.now() - parallelQueryStartTime}ms (results: 6min=${six.length}, 15min=${fifteen.length}, 1hr=${hour.length}, today=${today.length})`);
@@ -309,8 +297,8 @@ module.exports = function (server) {
         today
       };
     } catch (err) {
-      console.error(`[PERF] [${serialNum}] Operator ${operatorId} - Query error or timeout after ${Date.now() - queryStartTime}ms:`, err.message);
-      logger.error('[queryOperatorTimeframes] Query error or timeout:', err);
+      console.error(`[PERF] [${serialNum}] Operator ${operatorId} - Query error after ${Date.now() - queryStartTime}ms:`, err.message);
+      logger.error('[queryOperatorTimeframes] Query error:', err);
       // Return empty results on timeout
       return {
         lastSixMinutes: [],

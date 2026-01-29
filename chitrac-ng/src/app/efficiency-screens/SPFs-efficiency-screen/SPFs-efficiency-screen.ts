@@ -1,8 +1,8 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule, NgFor, NgIf } from '@angular/common';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
-import { Subject, timer, forkJoin, of } from 'rxjs';
-import { takeUntil, exhaustMap, catchError } from 'rxjs/operators';
+import { Subject, timer, of, from } from 'rxjs';
+import { takeUntil, exhaustMap, catchError, concatMap, map, toArray } from 'rxjs/operators';
 
 @Component({
   selector: 'app-spfs-efficiency-screen',
@@ -58,27 +58,34 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   }
 
   fetchAllSPFData() {
-    // Create parallel requests for all 6 SPF machines
-    const requests = this.SPF_SERIALS.map(serial =>
-      this.efficiencyService.getLiveEfficiencySummary(serial)
-        .pipe(
-          catchError(err => {
-            console.error(`Error fetching data for serial ${serial}:`, err);
-            // Return empty flipperData on error
-            return of({ flipperData: [] });
-          })
-        )
-    );
-
-    forkJoin(requests)
-      .pipe(takeUntil(this.destroy$))
+    // Sequential: call one machine, when done call the next (avoids overloading backend)
+    from(this.SPF_SERIALS)
+      .pipe(
+        takeUntil(this.destroy$),
+        concatMap(serial =>
+          this.efficiencyService.getLiveEfficiencySummary(serial).pipe(
+            catchError(err => {
+              console.error(`Error fetching data for serial ${serial}:`, err);
+              return of({ flipperData: [] });
+            }),
+            map(response => ({ serial, response }))
+          )
+        ),
+        toArray()
+      )
       .subscribe({
+<<<<<<< Updated upstream
         next: (responses) => {
           // Combine all responses into a single lanes array
           this.lanes = [];
           
           responses.forEach((response, index) => {
             const serial = this.SPF_SERIALS[index];
+=======
+        next: (orderedResults) => {
+          this.lanes = this.SPF_SERIALS.map((serial, index) => {
+            const { response } = orderedResults[index];
+>>>>>>> Stashed changes
             const flipperData = response?.flipperData || [];
             
             // Each SPF machine should have one operator, so take the first lane from flipperData
@@ -113,8 +120,7 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             const nameB = b.machine || '';
             return nameA.localeCompare(nameB);
           });
-
-          console.log(`Fetched data for ${this.lanes.length} SPF machines`);
+          console.log(`Fetched data for ${this.lanes.length} SPF machines (sequential)`);
           this.isLoading = false;
         },
         error: (err) => {
@@ -132,28 +138,27 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
       .pipe(
         takeUntil(this.destroy$),
         exhaustMap(() => {
-          console.log(`Making API calls for ${this.SPF_SERIALS.length} SPF machines`);
-          
-          // Create parallel requests for all 6 SPF machines
-          const requests = this.SPF_SERIALS.map(serial =>
-            this.efficiencyService.getLiveEfficiencySummary(serial)
-              .pipe(
+          console.log(`Making sequential API calls for ${this.SPF_SERIALS.length} SPF machines`);
+          return from(this.SPF_SERIALS).pipe(
+            concatMap(serial =>
+              this.efficiencyService.getLiveEfficiencySummary(serial).pipe(
                 catchError(err => {
                   console.error(`Error fetching data for serial ${serial}:`, err);
                   return of({ flipperData: [] });
-                })
+                }),
+                map(response => ({ serial, response }))
               )
-          );
-
-          return forkJoin(requests).pipe(
+            ),
+            toArray(),
             catchError(err => {
-              console.error('Error in forkJoin:', err);
+              console.error('Error in sequential fetch:', err);
               return of([]);
             })
           );
         })
       )
       .subscribe({
+<<<<<<< Updated upstream
         next: (responses: any[]) => {
           // Combine all responses into a single lanes array
           // Wait for all 6 calls to complete before showing lanes
@@ -161,6 +166,34 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
           
           responses.forEach((response, index) => {
             const serial = this.SPF_SERIALS[index];
+=======
+        next: (orderedResults: { serial: number; response: any }[]) => {
+          if (orderedResults.length === 0) {
+            this.lanes = this.SPF_SERIALS.map(serial => ({
+              serial,
+              status: -1,
+              fault: 'Offline',
+              operator: null as string | null,
+              operatorId: null as number | null,
+              machine: `Serial ${serial}`,
+              timers: { on: 0, ready: 0 },
+              displayTimers: { on: '', run: '' },
+              efficiency: {
+                lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
+                lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
+                lastHour: { value: 0, label: 'Last Hour', color: 'red' },
+                today: { value: 0, label: 'All Day', color: 'red' }
+              },
+              oee: {},
+              batch: { item: '', code: 0 }
+            }));
+            this.isLoading = false;
+            return;
+          }
+          this.lanes = this.SPF_SERIALS.map((serial, index) => {
+            const item = orderedResults[index];
+            const response = item?.response;
+>>>>>>> Stashed changes
             const flipperData = response?.flipperData || [];
             
             if (flipperData.length > 0) {
@@ -193,7 +226,6 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             const nameB = b.machine || '';
             return nameA.localeCompare(nameB);
           });
-
           console.log(`Updated ${this.lanes.length} SPF lanes`);
           this.isLoading = false;
         },
