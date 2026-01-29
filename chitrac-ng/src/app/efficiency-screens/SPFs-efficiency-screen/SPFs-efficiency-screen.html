@@ -44,6 +44,7 @@
         </div>
         <div class="item-block" [ngClass]="{'item-block-greyed': !lane.operator}">
           <div class="item-line">{{ lane.machine }}</div>
+          <div class="item-line item-line-serial" *ngIf="lane.serial != null">Serial {{ lane.serial }}</div>
           <div class="item-line">{{ lane.batch?.item }}</div>
           <div class="item-line">{{ lane.batch?.code }}</div>
         </div>
@@ -71,6 +72,7 @@
         </div>
         <div class="item-block item-block-stopped">
           <div class="item-line">{{ lane.machine }}</div>
+          <div class="item-line item-line-serial" *ngIf="lane.serial != null">Serial {{ lane.serial }}</div>
           <div class="item-line">{{ lane.batch?.item }}</div>
           <div class="item-line">{{ lane.batch?.code }}</div>
         </div>
@@ -100,6 +102,7 @@
         </div>
         <div class="item-block item-block-fault">
           <div class="item-line">{{ lane.machine }}</div>
+          <div class="item-line item-line-serial" *ngIf="lane.serial != null">Serial {{ lane.serial }}</div>
           <div class="item-line">{{ lane.batch?.item }}</div>
           <div class="item-line">{{ lane.batch?.code }}</div>
         </div>

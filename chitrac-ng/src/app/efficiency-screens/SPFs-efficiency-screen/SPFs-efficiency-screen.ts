@@ -74,42 +74,32 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (responses) => {
-          // Combine all responses into a single lanes array
-          this.lanes = [];
-          
-          responses.forEach((response, index) => {
-            const serial = this.SPF_SERIALS[index];
+          // Build one lane per SPF_SERIALS entry in exact array order (index i → SPF_SERIALS[i])
+          this.lanes = this.SPF_SERIALS.map((serial, index) => {
+            const response = responses[index];
             const flipperData = response?.flipperData || [];
-            
-            // Each SPF machine should have one operator, so take the first lane from flipperData
             if (flipperData.length > 0) {
-              // Use the first (and likely only) operator from the response; attach serial for sorting
-              this.lanes.push({ ...flipperData[0], serial });
-            } else {
-              // If no data, create an offline/empty lane entry
-              this.lanes.push({
-                serial,
-                status: -1,
-                fault: 'Offline',
-                operator: null,
-                operatorId: null,
-                machine: `Serial ${serial}`,
-                timers: { on: 0, ready: 0 },
-                displayTimers: { on: '', run: '' },
-                efficiency: {
-                  lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
-                  lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
-                  lastHour: { value: 0, label: 'Last Hour', color: 'red' },
-                  today: { value: 0, label: 'All Day', color: 'red' }
-                },
-                oee: {},
-                batch: { item: '', code: 0 }
-              });
+              return { ...flipperData[0], serial };
             }
+            return {
+              serial,
+              status: -1,
+              fault: 'Offline',
+              operator: null,
+              operatorId: null,
+              machine: `Serial ${serial}`,
+              timers: { on: 0, ready: 0 },
+              displayTimers: { on: '', run: '' },
+              efficiency: {
+                lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
+                lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
+                lastHour: { value: 0, label: 'Last Hour', color: 'red' },
+                today: { value: 0, label: 'All Day', color: 'red' }
+              },
+              oee: {},
+              batch: { item: '', code: 0 }
+            };
           });
-
-          // Sort lanes by serial so order is consistent (offline machines stay in place by serial)
-          this.lanes.sort((a, b) => (a.serial ?? 0) - (b.serial ?? 0));
 
           console.log(`Fetched data for ${this.lanes.length} SPF machines`);
           this.isLoading = false;
@@ -152,41 +142,32 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (responses: any[]) => {
-          // Combine all responses into a single lanes array
-          // Wait for all 6 calls to complete before showing lanes
-          this.lanes = [];
-          
-          responses.forEach((response, index) => {
-            const serial = this.SPF_SERIALS[index];
+          // Build one lane per SPF_SERIALS entry in exact array order (index i → SPF_SERIALS[i])
+          this.lanes = this.SPF_SERIALS.map((serial, index) => {
+            const response = responses[index];
             const flipperData = response?.flipperData || [];
-            
             if (flipperData.length > 0) {
-              this.lanes.push({ ...flipperData[0], serial });
-            } else {
-              // Create offline/empty lane entry
-              this.lanes.push({
-                serial,
-                status: -1,
-                fault: 'Offline',
-                operator: null,
-                operatorId: null,
-                machine: `Serial ${serial}`,
-                timers: { on: 0, ready: 0 },
-                displayTimers: { on: '', run: '' },
-                efficiency: {
-                  lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
-                  lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
-                  lastHour: { value: 0, label: 'Last Hour', color: 'red' },
-                  today: { value: 0, label: 'All Day', color: 'red' }
-                },
-                oee: {},
-                batch: { item: '', code: 0 }
-              });
+              return { ...flipperData[0], serial };
             }
+            return {
+              serial,
+              status: -1,
+              fault: 'Offline',
+              operator: null,
+              operatorId: null,
+              machine: `Serial ${serial}`,
+              timers: { on: 0, ready: 0 },
+              displayTimers: { on: '', run: '' },
+              efficiency: {
+                lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
+                lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
+                lastHour: { value: 0, label: 'Last Hour', color: 'red' },
+                today: { value: 0, label: 'All Day', color: 'red' }
+              },
+              oee: {},
+              batch: { item: '', code: 0 }
+            };
           });
-
-          // Sort lanes by serial so order is consistent (offline machines stay in place by serial)
-          this.lanes.sort((a, b) => (a.serial ?? 0) - (b.serial ?? 0));
 
           console.log(`Updated ${this.lanes.length} SPF lanes`);
           this.isLoading = false;

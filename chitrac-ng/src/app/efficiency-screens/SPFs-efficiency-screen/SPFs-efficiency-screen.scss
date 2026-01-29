@@ -357,6 +357,11 @@
   text-overflow: ellipsis;
 }
 
+.item-line-serial {
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+
 // Ensure proper color handling
 .data-block.stopped,
 .data-block.fault {
