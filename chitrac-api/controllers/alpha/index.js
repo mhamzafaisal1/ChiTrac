@@ -253,7 +253,7 @@ function constructor(server) {
   });
 
   router.post("/ac360/post", async (req, res, next) => {
-    //try {
+    try {
     const currentDateTime = new Date(); //Timestamp of when request was started
     const now = new Date();
     let bodyJSON = Object.assign({}, req.body); //Deepcopy bodyJSON for mutable use
@@ -693,10 +693,10 @@ function constructor(server) {
     } else {
       res.json("No body received");
     }
-    /*} catch (error) {
+    } catch (error) {
       logger.error(error);
       res.json("No body received");
-    }*/
+    }
   });
 
   router.get("/levelone/all", async (req, res, next) => {
