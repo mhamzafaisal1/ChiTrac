@@ -23,7 +23,6 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   constructor(private efficiencyService: EfficiencyScreensService) {}
 
   ngOnInit() {
-    // Start polling immediately with hardcoded serials
     this.startPolling();
   }
 

@@ -50,21 +50,15 @@
 }
 
 .lane-running-bg {
-  background-color: var(--sg-color-blue-gray-light-200, #e8eaf0);
+  background-color: #28323C;
 }
 
 .lane-greyed-bg {
-  background-color: #333;
+  background-color: #838D99;
 }
 
 .lane-stop-bg {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--sg-color-red, #d32f2f),
-    var(--sg-color-red, #d32f2f) 8px,
-    #AA0000 8px,
-    #AA0000 16px
-  );
+  background-color: #46505A;
 }
 
 .lane-fault-bg {
@@ -72,8 +66,8 @@
     135deg,
     var(--sg-color-background, #ffffff),
     var(--sg-color-background, #ffffff) 8px,
-    #ca6510 8px,
-    #ca6510 16px
+    #F1310A 8px,
+    #F1310A 16px
   );
 }
 
@@ -120,20 +114,20 @@
   white-space: nowrap;
 }
 
-// Color classes for operator block
+// Color classes for operator block and bars
 .green {
-  background-color: var(--sg-color-green, #4caf50) !important;
+  background-color: #39B276 !important;
   color: var(--sg-color-background, #ffffff);
 }
 
 .yellow {
-  background-color: var(--sg-color-yellow, #ffc107) !important;
+  background-color: #FFCE0A !important;
   color: var(--sg-color-background, #ffffff);
   font-weight: bolder;
 }
 
 .red {
-  background-color: var(--sg-color-red, #d32f2f) !important;
+  background-color: #FB950B !important;
   color: var(--sg-color-background, #ffffff);
   font-weight: bolder;
 }
@@ -143,12 +137,45 @@
 }
 
 .stopped {
-  background-color: var(--sg-color-red, #d32f2f) !important;
+  background-color: #46505A !important;
 }
 
 .fault {
-  background-color: var(--sg-color-yellow, #ffc107) !important;
+  background-color: #F1310A !important;
   color: var(--sg-color-background, #ffffff);
+}
+
+// Offline/stopped and fault lanes only: text color
+.operator-block.stopped .operator-text,
+.operator-block.stopped .operator-content {
+  color: #E0E9F3 !important;
+}
+
+.operator-block.fault .operator-text,
+.operator-block.fault .operator-content {
+  color: #E0E9F3 !important;
+}
+
+.data-block.stopped .fault-text,
+.data-block.stopped .timer-text {
+  color: #E0E9F3 !important;
+}
+
+.data-block.fault .fault-text,
+.data-block.fault .fault-label,
+.data-block.fault .fault-code,
+.data-block.fault .timer-text {
+  color: #E0E9F3 !important;
+}
+
+.item-block-stopped,
+.item-block-stopped .item-line {
+  color: #E0E9F3 !important;
+}
+
+.item-block-fault,
+.item-block-fault .item-line {
+  color: #E0E9F3 !important;
 }
 
 // ===== DATA BLOCK =====
@@ -334,13 +361,23 @@
   color: white;
 }
 
+// Running lane: item block matches lane background
+.item-block-running,
+.item-block-running.item-block-greyed {
+  background-color: #28323C;
+  border: none;
+  border-top: 1px solid #1e1e1e;
+}
+
 .item-block-stopped {
-  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
+  background-color: #28323C;
+  border: 1px solid #46505A !important;
   color: var(--sg-color-text, #000000);
 }
 
 .item-block-fault {
-  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
+  background-color: #28323C;
+  border: 1px solid #46505A !important;
   color: var(--sg-color-text, #000000);
 }
 
