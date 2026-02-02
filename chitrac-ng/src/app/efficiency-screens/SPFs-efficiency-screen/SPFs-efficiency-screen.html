@@ -42,10 +42,10 @@
             </div>
           </div>
         </div>
-        <div class="item-block" [ngClass]="{'item-block-greyed': !lane.operator}">
+        <div class="item-block item-block-running" [ngClass]="{'item-block-greyed': !lane.operator}">
           <div class="item-line">{{ lane.machine }}</div>
-          <div class="item-line">{{ lane.batch?.item }}</div>
-          <div class="item-line">{{ lane.batch?.code }}</div>
+          <!--<div class="item-line">{{ lane.batch?.item }}</div>
+          <div class="item-line">{{ lane.batch?.code }}</div>-->
         </div>
       </ng-container>
 
@@ -71,8 +71,8 @@
         </div>
         <div class="item-block item-block-stopped">
           <div class="item-line">{{ lane.machine }}</div>
-          <div class="item-line">{{ lane.batch?.item }}</div>
-          <div class="item-line">{{ lane.batch?.code }}</div>
+          <!--<div class="item-line">{{ lane.batch?.item }}</div>
+          <div class="item-line">{{ lane.batch?.code }}</div>-->
         </div>
       </ng-container>
 
@@ -100,18 +100,19 @@
         </div>
         <div class="item-block item-block-fault">
           <div class="item-line">{{ lane.machine }}</div>
-          <div class="item-line">{{ lane.batch?.item }}</div>
-          <div class="item-line">{{ lane.batch?.code }}</div>
+          <!--<div class="item-line">{{ lane.batch?.item }}</div>
+          <div class="item-line">{{ lane.batch?.code }}</div>-->
         </div>
       </ng-container>
+      <app-efficiency-screen-lane [lane]="lane" [mode]="getLaneMode(lane)"></app-efficiency-screen-lane>
     </div>
   </div>
-  
+
   <!-- Loading state -->
   <div class="loading-container" *ngIf="isLoading">
     <div class="loading-text">Loading SPF machines...</div>
   </div>
-  
+
   <!-- No data state -->
   <div class="no-data-container" *ngIf="!isLoading && lanes.length === 0">
     <div class="no-data-text">No SPF machines found</div>

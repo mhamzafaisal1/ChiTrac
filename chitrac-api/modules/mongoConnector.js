@@ -27,13 +27,13 @@ function constructor(config) {
 		
 		// Insert credentials into the connection string with authSource
 		// Format: mongodb://username:password@host:port/database?authSource=admin
-		authUrl = `mongodb://${encodedUsername}:${encodedPassword}@${urlWithoutScheme}?directConnection=true&authSource=admin`;
-		//authUrl = `mongodb://${urlWithoutScheme}?directConnection=true`;
+		//authUrl = `mongodb://${encodedUsername}:${encodedPassword}@${urlWithoutScheme}?directConnection=true&authSource=admin`;
+		authUrl = `mongodb://${urlWithoutScheme}?directConnection=true`;
 		console.log('MongoDB connection string:', authUrl.replace(/:[^:@]+@/, ':****@')); // Log without password
 	} else {
 		// If format is unexpected, just append credentials before @
-		authUrl = url.replace('mongodb://', `mongodb://${encodedUsername}:${encodedPassword}@`);
-		//authUrl = `mongodb://${urlWithoutScheme}?directConnection=true`;
+		//authUrl = url.replace('mongodb://', `mongodb://${encodedUsername}:${encodedPassword}@`);
+		authUrl = `mongodb://${urlWithoutScheme}?directConnection=true`;
 		// Add authSource if URL doesn't already have query params
 		if (!authUrl.includes('?')) {
 			authUrl += `?authSource=${authSource}`;

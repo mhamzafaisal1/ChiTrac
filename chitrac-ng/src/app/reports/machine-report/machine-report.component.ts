@@ -6,6 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -26,6 +27,7 @@ import { getStatusDotByCode } from '../../../utils/status-utils';
         MatInputModule,
         MatButtonModule,
         MatIconModule,
+        MatSlideToggleModule,
         BaseTableComponent,
         DateTimePickerComponent
     ],
@@ -42,9 +44,13 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isLoading: boolean = false;
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
+  showSummaryOnly: boolean = false;
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
+    if (this.showSummaryOnly) {
+      return this.rows.filter(row => row['Item'] === 'Total');
+    }
     return this.rows;
   }
 
