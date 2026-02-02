@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule, NgFor, NgIf } from '@angular/common';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
+import { EfficiencyScreenLaneComponent, type EfficiencyScreenLaneMode } from '../efficiency-screen-lane/efficiency-screen-lane.component';
 import { Subject, timer, forkJoin, of } from 'rxjs';
 import { takeUntil, exhaustMap, catchError } from 'rxjs/operators';
 
@@ -9,7 +10,7 @@ import { takeUntil, exhaustMap, catchError } from 'rxjs/operators';
   templateUrl: './SPFs-efficiency-screen.html',
   styleUrls: ['./SPFs-efficiency-screen.scss'],
   standalone: true,
-  imports: [CommonModule, NgFor, NgIf]
+  imports: [CommonModule, NgFor, NgIf, EfficiencyScreenLaneComponent]
 })
 export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   lanes: any[] = [];
@@ -185,6 +186,13 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
 
   ident(index: number, lane: any): number {
     return index;
+  }
+
+  /** Lane mode for shared efficiency-screen-lane: operator, fault, or offline. */
+  getLaneMode(lane: any): EfficiencyScreenLaneMode {
+    if (lane?.status === 1) return 'operator';
+    if (lane?.status > 1) return 'fault';
+    return 'offline';
   }
 }
 

@@ -104,14 +104,15 @@
           <div class="item-line">{{ lane.batch?.code }}</div>-->
         </div>
       </ng-container>
+      <app-efficiency-screen-lane [lane]="lane" [mode]="getLaneMode(lane)"></app-efficiency-screen-lane>
     </div>
   </div>
-  
+
   <!-- Loading state -->
   <div class="loading-container" *ngIf="isLoading">
     <div class="loading-text">Loading SPF machines...</div>
   </div>
-  
+
   <!-- No data state -->
   <div class="no-data-container" *ngIf="!isLoading && lanes.length === 0">
     <div class="no-data-text">No SPF machines found</div>
