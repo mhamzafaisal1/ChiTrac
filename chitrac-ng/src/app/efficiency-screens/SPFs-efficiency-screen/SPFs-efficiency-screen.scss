@@ -54,17 +54,11 @@
 }
 
 .lane-greyed-bg {
-  background-color: #333;
+  background-color: #838D99;
 }
 
 .lane-stop-bg {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--sg-color-red),
-    var(--sg-color-red) 8px,
-    #AA0000 8px,
-    #AA0000 16px
-  );
+  background-color: #46505A;
 }
 
 .lane-fault-bg {
@@ -72,8 +66,8 @@
     135deg,
     var(--sg-color-background),
     var(--sg-color-background) 8px,
-    #ca6510 8px,
-    #ca6510 16px
+    var(--sg-color-red) 8px,
+    var(--sg-color-red) 16px
   );
 }
 
@@ -120,7 +114,7 @@
   white-space: nowrap;
 }
 
-// Color classes for operator block
+// Color classes for operator block and bars
 .green {
   background-color: var(--sg-color-green) !important;
   color: var(--sg-color-background);
@@ -138,17 +132,56 @@
   font-weight: bolder;
 }
 
+.orange {
+  background-color: #FB950B !important;
+  color: var(--sg-color-background, #ffffff);
+  font-weight: bolder;
+}
+
 .no-operator {
   background-color: #555 !important;
 }
 
 .stopped {
-  background-color: var(--sg-color-red) !important;
+  background-color: var(--sg-color-blue-gray-medium-300) !important;
 }
 
 .fault {
-  background-color: var(--sg-color-yellow) !important;
+  background-color: var(--sg-color-red) !important;
   color: var(--sg-color-background);
+}
+
+// Offline/stopped and fault lanes only: text color
+.operator-block.stopped .operator-text,
+.operator-block.stopped .operator-content {
+  color: #E0E9F3 !important;
+}
+
+.operator-block.fault .operator-text,
+.operator-block.fault .operator-content {
+  color: #E0E9F3 !important;
+}
+
+.data-block.stopped .fault-text,
+.data-block.stopped .timer-text {
+  color: #E0E9F3 !important;
+}
+
+.data-block.fault .fault-text,
+.data-block.fault .fault-label,
+.data-block.fault .fault-code,
+.data-block.fault .timer-text {
+  color: #E0E9F3 !important;
+}
+
+.item-block-stopped,
+.item-block-stopped .item-line {
+  color: #E0E9F3 !important;
+}
+
+.item-block-fault,
+.item-block-fault .item-line {
+  color: #E0E9F3 !important;
 }
 
 // ===== DATA BLOCK =====
@@ -335,14 +368,24 @@
   color: white;
 }
 
+// Running lane: item block matches lane background
+.item-block-running,
+.item-block-running.item-block-greyed {
+  background-color: #28323C;
+  border: none;
+  border-top: 1px solid #1e1e1e;
+}
+
 .item-block-stopped {
   background-color: var(--sg-color-blue-gray-light-200);
-  color: var(--sg-color-text);
+  border: 1px solid var(--sg-color-blue-gray-medium-300) !important;
+  color: var(--sg-color-black);
 }
 
 .item-block-fault {
   background-color: var(--sg-color-blue-gray-light-200);
-  color: var(--sg-color-text);
+  border: 1px solid var(--sg-color-blue-gray-medium-300) !important;
+  color: var(--sg-color-black);
 }
 
 .item-line {
