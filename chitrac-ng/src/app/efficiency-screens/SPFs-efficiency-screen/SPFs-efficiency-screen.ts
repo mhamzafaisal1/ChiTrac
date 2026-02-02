@@ -18,7 +18,7 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private readonly POLL_INTERVAL = 6000;
   // Hardcoded SPF machine serials
-  private readonly SPF_SERIALS = [90001, 90002, 90003, 90004, 90005, 90006];
+  private readonly SPF_SERIALS = [67808, 67806, 67807, 67805, 67804, 67803];
 
   constructor(private efficiencyService: EfficiencyScreensService) {}
 

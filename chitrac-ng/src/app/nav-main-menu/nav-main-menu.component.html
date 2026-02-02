@@ -1,4 +1,4 @@
-<mat-sidenav-container class="sidenav-container">
+<mat-sidenav-container class="sidenav-container" style="overflow: hidden !important;">
   <mat-sidenav #drawer class="sidenav" fixedInViewport [attr.role]="(isHandset$ | async) ? 'dialog' : 'navigation'"
     [mode]="(isHandset$ | async) ? 'over' : 'side'"
     [opened]="((isHandset$ | async) === false && shownMenu != '') || shownMenu != ''" (closedStart)="closeMenu()">
@@ -149,7 +149,7 @@
     </mat-nav-list>
   </mat-sidenav>
 
-  <mat-sidenav-content>
+  <mat-sidenav-content style="overflow: hidden !important;">
     <mat-toolbar>
       <!-- Left: menu toggle and title -->
       <div class="menu-button" [ngClass]="{'menu-shown' : shownMenu != ''}" style="height: 100%; width:64px;">
