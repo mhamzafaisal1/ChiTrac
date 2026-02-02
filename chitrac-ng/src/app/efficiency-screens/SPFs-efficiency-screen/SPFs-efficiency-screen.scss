@@ -1,6 +1,6 @@
 :host {
   display: block;
-  height: 100vh;
+  height: 95vh;
   width: 100%;
   overflow: hidden;
   box-sizing: border-box;
@@ -11,7 +11,7 @@
   width: 100%;
   padding: 0.5rem;
   box-sizing: border-box;
-  background-color: var(--md-sys-color-background, #1e1e1e);
+  background-color: var(--md-sys-color-background);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -50,7 +50,7 @@
 }
 
 .lane-running-bg {
-  background-color: var(--sg-color-blue-gray-light-200, #e8eaf0);
+  background-color: var(--sg-color-blue-gray-light-200);
 }
 
 .lane-greyed-bg {
@@ -60,8 +60,8 @@
 .lane-stop-bg {
   background: repeating-linear-gradient(
     135deg,
-    var(--sg-color-red, #d32f2f),
-    var(--sg-color-red, #d32f2f) 8px,
+    var(--sg-color-red),
+    var(--sg-color-red) 8px,
     #AA0000 8px,
     #AA0000 16px
   );
@@ -70,8 +70,8 @@
 .lane-fault-bg {
   background: repeating-linear-gradient(
     135deg,
-    var(--sg-color-background, #ffffff),
-    var(--sg-color-background, #ffffff) 8px,
+    var(--sg-color-background),
+    var(--sg-color-background) 8px,
     #ca6510 8px,
     #ca6510 16px
   );
@@ -108,7 +108,7 @@
   padding-top: 0.5rem;
   font-size: 1.2rem;
   line-height: 1.1;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-background);
   font-weight: 700;
 }
 
@@ -122,19 +122,19 @@
 
 // Color classes for operator block
 .green {
-  background-color: var(--sg-color-green, #4caf50) !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-green) !important;
+  color: var(--sg-color-background);
 }
 
 .yellow {
-  background-color: var(--sg-color-yellow, #ffc107) !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-yellow) !important;
+  color: var(--sg-color-background);
   font-weight: bolder;
 }
 
 .red {
-  background-color: var(--sg-color-red, #d32f2f) !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-red) !important;
+  color: var(--sg-color-background);
   font-weight: bolder;
 }
 
@@ -143,12 +143,12 @@
 }
 
 .stopped {
-  background-color: var(--sg-color-red, #d32f2f) !important;
+  background-color: var(--sg-color-red) !important;
 }
 
 .fault {
-  background-color: var(--sg-color-yellow, #ffc107) !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-yellow) !important;
+  color: var(--sg-color-background);
 }
 
 // ===== DATA BLOCK =====
@@ -175,7 +175,7 @@
   font-weight: bold;
   font-size: 3rem;
   line-height: 1;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-background);
 }
 
 .bars-container {
@@ -232,7 +232,7 @@
   line-height: 1;
   font-weight: 600;
   margin-bottom: 0.15em;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-background);
   pointer-events: none;
 }
 
@@ -245,11 +245,11 @@
   justify-content: center;
   align-items: center;
   flex-direction: column;
-  border: 1px solid var(--sg-color-blue-gray-light-200, #b0bec5);
+  border: 1px solid var(--sg-color-blue-gray-light-200);
   font-size: 1rem;
   line-height: 1.1;
   color: white;
-  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
+  background-color: var(--sg-color-blue-gray-light-200);
   padding: 0.15rem;
 }
 
@@ -272,21 +272,21 @@
   text-transform: uppercase;
   font-size: 1.8rem;
   line-height: 1;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-background);
 }
 
 .fault-label {
   text-align: center;
   font-size: 1rem;
   text-transform: uppercase;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-background);
   margin-top: 0.3rem;
 }
 
 .fault-code {
   text-align: center;
   font-size: 0.9rem;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-background);
   margin-top: 0.2rem;
 }
 
@@ -305,7 +305,7 @@
   justify-content: center;
   flex-direction: column;
   font-size: 0.9rem;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-background);
 }
 
 // ===== ITEM BLOCK =====
@@ -320,8 +320,9 @@
   justify-content: center;
   font-size: 0.95rem;
   text-align: center;
-  border-top: 0.4em solid var(--sg-color-blue-gray-light-200, #b0bec5);
-  border-bottom: 0.8em solid var(--sg-color-blue-gray-light-300, #90a4ae);
+  background-color: var(--sg-color-blue-gray-light-200);
+  border-top: 0.4em solid var(--sg-color-blue-gray-light-200);
+  border-bottom: 0.8em solid var(--sg-color-blue-gray-light-300);
   margin: 0;
   padding: 0.3rem;
   box-sizing: border-box;
@@ -335,13 +336,13 @@
 }
 
 .item-block-stopped {
-  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
-  color: var(--sg-color-text, #000000);
+  background-color: var(--sg-color-blue-gray-light-200);
+  color: var(--sg-color-text);
 }
 
 .item-block-fault {
-  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
-  color: var(--sg-color-text, #000000);
+  background-color: var(--sg-color-blue-gray-light-200);
+  color: var(--sg-color-text);
 }
 
 .item-line {
@@ -355,6 +356,11 @@
   min-height: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.item-line-serial {
+  font-size: 0.85em;
+  opacity: 0.9;
 }
 
 // Ensure proper color handling
