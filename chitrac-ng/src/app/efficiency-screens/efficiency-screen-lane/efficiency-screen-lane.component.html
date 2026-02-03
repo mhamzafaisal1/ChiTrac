@@ -63,8 +63,6 @@
     </div>
     <div class="item-block item-block-running" [ngClass]="{'item-block-greyed': isNoOperator}">
       <div class="item-line">{{ lane?.machine }}</div>
-      <div class="item-line">{{ lane?.batch?.item }}</div>
-      <div class="item-line">{{ lane?.batch?.code }}</div>
     </div>
   </ng-container>
 
@@ -130,8 +128,6 @@
     </div>
     <div class="item-block item-block-running">
       <div class="item-line">{{ lane?.machine }}</div>
-      <div class="item-line">{{ lane?.batch?.item }}</div>
-      <div class="item-line">{{ lane?.batch?.code }}</div>
     </div>
   </ng-container>
 
@@ -157,8 +153,6 @@
     </div>
     <div class="item-block item-block-stopped">
       <div class="item-line">{{ lane?.machine }}</div>
-      <div class="item-line">{{ lane?.batch?.item }}</div>
-      <div class="item-line">{{ lane?.batch?.code }}</div>
     </div>
   </ng-container>
 
@@ -186,8 +180,6 @@
     </div>
     <div class="item-block item-block-fault">
       <div class="item-line">{{ lane?.machine }}</div>
-      <div class="item-line">{{ lane?.batch?.item }}</div>
-      <div class="item-line">{{ lane?.batch?.code }}</div>
     </div>
   </ng-container>
 </div>
