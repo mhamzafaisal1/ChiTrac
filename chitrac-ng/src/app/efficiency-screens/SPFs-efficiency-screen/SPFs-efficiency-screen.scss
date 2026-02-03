@@ -9,7 +9,7 @@
 .screen-container {
   height: 100%;
   width: 100%;
-  padding: 0.5rem;
+  padding: 20px;
   box-sizing: border-box;
   background-color: var(--md-sys-color-background);
   display: flex;
@@ -20,7 +20,7 @@
 .lanes-wrapper {
   display: flex;
   flex-direction: row;
-  gap: 0.5rem;
+  gap: 20px;
   height: 100%;
   width: 100%;
   overflow: hidden;
