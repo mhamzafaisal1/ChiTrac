@@ -5,13 +5,10 @@
   
   .lane-background {
     height: 84%;
-    background-color: #333; // default; override per state
   }
   
   .lane-inner {
-    height: 100%;
-    padding-top: 15px;
-    padding-bottom: 15px;
+    padding: 10px;
   }
   
   .lane-operator {

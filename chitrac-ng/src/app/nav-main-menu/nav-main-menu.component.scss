@@ -6,16 +6,17 @@
 
 .sidenav-container {
   height: 100%;
+  
 }
 
 .sidenav-content {
   // margin: 1em;
-  min-height: 93.25%;
-  // overflow: hidden;
+  min-height: 92%;
+  
   // overflow-y: hidden;
   display: flex;
   flex-direction: column;
-  background-color: var(--sg-color-blue-gray-light-100);
+  background-color: var(--sg-color-blue-gray-light-300);
 }
 
 .sidenav-container .mat-toolbar {

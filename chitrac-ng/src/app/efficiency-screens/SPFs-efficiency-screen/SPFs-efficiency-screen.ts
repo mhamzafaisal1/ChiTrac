@@ -1,15 +1,16 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule, NgFor, NgIf } from '@angular/common';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
-import { Subject, timer, of, from } from 'rxjs';
-import { takeUntil, exhaustMap, catchError, concatMap, map, toArray } from 'rxjs/operators';
+import { EfficiencyScreenLaneComponent, type EfficiencyScreenLaneMode } from '../efficiency-screen-lane/efficiency-screen-lane.component';
+import { Subject, timer, forkJoin, of } from 'rxjs';
+import { takeUntil, exhaustMap, catchError } from 'rxjs/operators';
 
 @Component({
   selector: 'app-spfs-efficiency-screen',
   templateUrl: './SPFs-efficiency-screen.html',
   styleUrls: ['./SPFs-efficiency-screen.scss'],
   standalone: true,
-  imports: [CommonModule, NgFor, NgIf]
+  imports: [CommonModule, NgFor, NgIf, EfficiencyScreenLaneComponent]
 })
 export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   lanes: any[] = [];
@@ -18,12 +19,12 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private readonly POLL_INTERVAL = 6000;
   // Hardcoded SPF machine serials
+  //private readonly SPF_SERIALS = [67808, 67806, 67807, 67805, 67804, 67803];
   private readonly SPF_SERIALS = [90001, 90002, 90003, 90004, 90005, 90006];
 
   constructor(private efficiencyService: EfficiencyScreensService) {}
 
   ngOnInit() {
-    // Start polling immediately with hardcoded serials
     this.startPolling();
   }
 
@@ -76,49 +77,31 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
       .subscribe({
 <<<<<<< Updated upstream
         next: (responses) => {
-          // Combine all responses into a single lanes array
-          this.lanes = [];
-          
-          responses.forEach((response, index) => {
-            const serial = this.SPF_SERIALS[index];
-=======
-        next: (orderedResults) => {
+          // Build one lane per SPF_SERIALS entry in exact array order (index i → SPF_SERIALS[i])
           this.lanes = this.SPF_SERIALS.map((serial, index) => {
-            const { response } = orderedResults[index];
->>>>>>> Stashed changes
+            const response = responses[index];
             const flipperData = response?.flipperData || [];
-            
-            // Each SPF machine should have one operator, so take the first lane from flipperData
             if (flipperData.length > 0) {
-              // Use the first (and likely only) operator from the response
-              this.lanes.push(flipperData[0]);
-            } else {
-              // If no data, create an offline/empty lane entry
-              this.lanes.push({
-                status: -1,
-                fault: 'Offline',
-                operator: null,
-                operatorId: null,
-                machine: `Serial ${serial}`,
-                timers: { on: 0, ready: 0 },
-                displayTimers: { on: '', run: '' },
-                efficiency: {
-                  lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
-                  lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
-                  lastHour: { value: 0, label: 'Last Hour', color: 'red' },
-                  today: { value: 0, label: 'All Day', color: 'red' }
-                },
-                oee: {},
-                batch: { item: '', code: 0 }
-              });
+              return { ...flipperData[0], serial };
             }
-          });
-
-          // Sort lanes by machine name to maintain consistent order
-          this.lanes.sort((a, b) => {
-            const nameA = a.machine || '';
-            const nameB = b.machine || '';
-            return nameA.localeCompare(nameB);
+            return {
+              serial,
+              status: -1,
+              fault: 'Offline',
+              operator: null,
+              operatorId: null,
+              machine: `Serial ${serial}`,
+              timers: { on: 0, ready: 0 },
+              displayTimers: { on: '', run: '' },
+              efficiency: {
+                lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
+                lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
+                lastHour: { value: 0, label: 'Last Hour', color: 'red' },
+                today: { value: 0, label: 'All Day', color: 'red' }
+              },
+              oee: {},
+              batch: { item: '', code: 0 }
+            };
           });
           console.log(`Fetched data for ${this.lanes.length} SPF machines (sequential)`);
           this.isLoading = false;
@@ -160,21 +143,19 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
       .subscribe({
 <<<<<<< Updated upstream
         next: (responses: any[]) => {
-          // Combine all responses into a single lanes array
-          // Wait for all 6 calls to complete before showing lanes
-          this.lanes = [];
-          
-          responses.forEach((response, index) => {
-            const serial = this.SPF_SERIALS[index];
-=======
-        next: (orderedResults: { serial: number; response: any }[]) => {
-          if (orderedResults.length === 0) {
-            this.lanes = this.SPF_SERIALS.map(serial => ({
+          // Build one lane per SPF_SERIALS entry in exact array order (index i → SPF_SERIALS[i])
+          this.lanes = this.SPF_SERIALS.map((serial, index) => {
+            const response = responses[index];
+            const flipperData = response?.flipperData || [];
+            if (flipperData.length > 0) {
+              return { ...flipperData[0], serial };
+            }
+            return {
               serial,
               status: -1,
               fault: 'Offline',
-              operator: null as string | null,
-              operatorId: null as number | null,
+              operator: null,
+              operatorId: null,
               machine: `Serial ${serial}`,
               timers: { on: 0, ready: 0 },
               displayTimers: { on: '', run: '' },
@@ -186,45 +167,7 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
               },
               oee: {},
               batch: { item: '', code: 0 }
-            }));
-            this.isLoading = false;
-            return;
-          }
-          this.lanes = this.SPF_SERIALS.map((serial, index) => {
-            const item = orderedResults[index];
-            const response = item?.response;
->>>>>>> Stashed changes
-            const flipperData = response?.flipperData || [];
-            
-            if (flipperData.length > 0) {
-              this.lanes.push(flipperData[0]);
-            } else {
-              // Create offline/empty lane entry
-              this.lanes.push({
-                status: -1,
-                fault: 'Offline',
-                operator: null,
-                operatorId: null,
-                machine: `Serial ${serial}`,
-                timers: { on: 0, ready: 0 },
-                displayTimers: { on: '', run: '' },
-                efficiency: {
-                  lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
-                  lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
-                  lastHour: { value: 0, label: 'Last Hour', color: 'red' },
-                  today: { value: 0, label: 'All Day', color: 'red' }
-                },
-                oee: {},
-                batch: { item: '', code: 0 }
-              });
-            }
-          });
-
-          // Sort lanes by machine name
-          this.lanes.sort((a, b) => {
-            const nameA = a.machine || '';
-            const nameB = b.machine || '';
-            return nameA.localeCompare(nameB);
+            };
           });
           console.log(`Updated ${this.lanes.length} SPF lanes`);
           this.isLoading = false;
@@ -243,6 +186,13 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
 
   ident(index: number, lane: any): number {
     return index;
+  }
+
+  /** Lane mode for shared efficiency-screen-lane: operator, fault, or offline. */
+  getLaneMode(lane: any): EfficiencyScreenLaneMode {
+    if (lane?.status === 1) return 'operator';
+    if (lane?.status > 1) return 'fault';
+    return 'offline';
   }
 }
 
