@@ -80,7 +80,14 @@ module.exports = function (server) {
     if (statusCode !== 1) {
       console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
       const notRunningStartTime = Date.now();
-      
+
+      // Elapsed time in current (non-running) state for Elapsed Time section of the lane
+      const stateSince = ticker.timestamp ? new Date(ticker.timestamp) : null;
+      const elapsedInStateSec = stateSince
+        ? Math.max(0, Math.floor((Date.now() - stateSince.getTime()) / 1000))
+        : 0;
+      const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op, idx) => {
           const batchItemStartTime = Date.now();
@@ -95,8 +102,8 @@ module.exports = function (server) {
             operator: operatorName,
             operatorId: op.id,
             machine: ticker.machine?.name || `Serial ${serialNum}`,
-            timers: { on: 0, ready: 0 },
-            displayTimers: { on: '', run: '' },
+            timers: { on: elapsedInStateSec, ready: 0 },
+            displayTimers: { on: elapsedDisplay, run: elapsedDisplay },
             efficiency: buildZeroEfficiencyPayload(),
             // keep the field to match the existing response shape; values not required in the new flow
             oee: {},
@@ -188,7 +195,7 @@ module.exports = function (server) {
           efficiencyObj[key] = {
             value: Math.round(eff * 100),
             label,
-            color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
+            color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'orange' : 'yellow'
           };
           
           console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} TOTAL time: ${Date.now() - windowStartTime}ms`);
@@ -457,11 +464,24 @@ module.exports = function (server) {
 // Build a zeroed efficiency map (for non-running statuses)
   function buildZeroEfficiencyPayload() {
     return {
-      lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
-      lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
-      lastHour: { value: 0, label: 'Last Hour', color: 'red' },
-      today: { value: 0, label: 'All Day', color: 'red' }
+      lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'yellow' },
+      lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'yellow' },
+      lastHour: { value: 0, label: 'Last Hour', color: 'yellow' },
+      today: { value: 0, label: 'All Day', color: 'yellow' }
     };
+  }
+
+// Format seconds as "Xh Ym Zs" for Elapsed Time display (non-running state)
+  function formatElapsedDisplay(totalSec) {
+    if (totalSec <= 0) return '0s';
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const parts = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ');
   }
 
 // ---- time-credit helpers (same math used elsewhere) ----
@@ -707,7 +727,7 @@ module.exports = function (server) {
   //           efficiencyObj[key] = {
   //             value: Math.round(eff * 100),
   //             label,
-  //             color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
+  //             color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'orange' : 'yellow'
   //           };
 
   //           // OEE = availability * efficiency * throughput
@@ -718,7 +738,7 @@ module.exports = function (server) {
   //           const throughput = (validCount + misfeedCount) > 0 ? validCount / (validCount + misfeedCount) : 0;
   //           const oeeVal = availability * efficiencyRatio * throughput;
   //           const oeePct = Math.round(oeeVal * 100);
-  //           oeeObj[key] = { value: oeePct, label, color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'yellow' : 'red' };
+  //           oeeObj[key] = { value: oeePct, label, color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'orange' : 'yellow' };
             
   //           console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} TOTAL time: ${Date.now() - windowStartTime}ms`);
   //         }
@@ -750,12 +770,12 @@ module.exports = function (server) {
   //         efficiencyObj.today = {
   //           value: Math.round(todayEfficiency * 100),
   //           label: 'All Day',
-  //           color: todayEfficiency >= 0.9 ? 'green' : todayEfficiency >= 0.7 ? 'yellow' : 'red'
+  //           color: todayEfficiency >= 0.9 ? 'green' : todayEfficiency >= 0.7 ? 'orange' : 'yellow'
   //         };
   //         oeeObj.today = {
   //           value: Math.round(todayOee * 100),
   //           label: 'All Day',
-  //           color: todayOee >= 0.9 ? 'green' : todayOee >= 0.7 ? 'yellow' : 'red'
+  //           color: todayOee >= 0.9 ? 'green' : todayOee >= 0.7 ? 'orange' : 'yellow'
   //         };
           
   //         console.log(`[PERF] [${serialNum}] Operator ${op.id} efficiency and OEE calculations completed in ${Date.now() - efficiencyCalcStartTime}ms`);
@@ -864,6 +884,14 @@ module.exports = function (server) {
       if (statusCode !== 1) {
         console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
         const notRunningStartTime = Date.now();
+
+        // Elapsed time in current (non-running) state for Elapsed Time section of the lane
+        const stateSince = ticker.timestamp ? new Date(ticker.timestamp) : null;
+        const elapsedInStateSec = stateSince
+          ? Math.max(0, Math.floor((Date.now() - stateSince.getTime()) / 1000))
+          : 0;
+        const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -876,8 +904,8 @@ module.exports = function (server) {
               operator: operatorName,
               operatorId: op.id,
               machine: ticker.machine?.name || `Serial ${serialNum}`,
-              timers: { on: 0, ready: 0 },
-              displayTimers: { on: '', run: '' },
+              timers: { on: elapsedInStateSec, ready: 0 },
+              displayTimers: { on: elapsedDisplay, run: elapsedDisplay },
               efficiency: buildZeroEfficiencyPayload(),
               oee: buildZeroEfficiencyPayload(),
               batch: { item: batchItem, code: 10000001 }
@@ -979,7 +1007,7 @@ module.exports = function (server) {
             efficiencyObj[key] = {
               value: Math.round(eff * 100),
               label,
-              color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
+              color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'orange' : 'yellow'
             };
 
             const { validCount, misfeedCount } = getValidAndMisfeedCountsInWindow(arr, windowStart, windowEnd, op.id, serialNum);
@@ -991,7 +1019,7 @@ module.exports = function (server) {
             oeeObj[key] = {
               value: Math.round(oeeVal * 100),
               label,
-              color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'yellow' : 'red'
+              color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'orange' : 'yellow'
             };
           }
 
@@ -1264,7 +1292,7 @@ module.exports = function (server) {
             efficiencyObj[key] = {
               value: Math.round(eff * 100),
               label,
-              color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
+              color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'orange' : 'yellow'
             };
 
             // OEE = availability * efficiency * throughput
@@ -1275,7 +1303,7 @@ module.exports = function (server) {
             const throughput = (validCount + misfeedCount) > 0 ? validCount / (validCount + misfeedCount) : 0;
             const oeeVal = availability * efficiencyRatio * throughput;
             const oeePct = Math.round(oeeVal * 100);
-            oeeObj[key] = { value: oeePct, label, color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'yellow' : 'red' };
+            oeeObj[key] = { value: oeePct, label, color: oeeVal >= 0.9 ? 'green' : oeeVal >= 0.7 ? 'orange' : 'yellow' };
             
             console.log(`[PERF] [${serialNum}] Operator ${op.id} window ${key} TOTAL time: ${Date.now() - windowStartTime}ms`);
           }
@@ -1307,12 +1335,12 @@ module.exports = function (server) {
           efficiencyObj.today = {
             value: Math.round(todayEfficiency * 100),
             label: 'All Day',
-            color: todayEfficiency >= 0.9 ? 'green' : todayEfficiency >= 0.7 ? 'yellow' : 'red'
+            color: todayEfficiency >= 0.9 ? 'green' : todayEfficiency >= 0.7 ? 'orange' : 'yellow'
           };
           oeeObj.today = {
             value: Math.round(todayOee * 100),
             label: 'All Day',
-            color: todayOee >= 0.9 ? 'green' : todayOee >= 0.7 ? 'yellow' : 'red'
+            color: todayOee >= 0.9 ? 'green' : todayOee >= 0.7 ? 'orange' : 'yellow'
           };
           
           console.log(`[PERF] [${serialNum}] Operator ${op.id} efficiency and OEE calculations completed in ${Date.now() - efficiencyCalcStartTime}ms`);
@@ -1488,10 +1516,10 @@ module.exports = function (server) {
 
   function zeroEff() {
     return {
-      lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'red' },
-      lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'red' },
-      lastHour: { value: 0, label: 'Last Hour', color: 'red' },
-      today: { value: 0, label: 'All Day', color: 'red' }
+      lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'yellow' },
+      lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'yellow' },
+      lastHour: { value: 0, label: 'Last Hour', color: 'yellow' },
+      today: { value: 0, label: 'All Day', color: 'yellow' }
     };
   }
 
@@ -1601,7 +1629,7 @@ module.exports = function (server) {
           const { start, label } = frames[key];
           const { runtimeSec, timeCreditSec } = sumWindowMachine(arr, start, now);
           const eff = runtimeSec > 0 ? Math.round((timeCreditSec / runtimeSec) * 100) : 0;
-          effObj[key] = { value: eff, label, color: eff >= 90 ? 'green' : eff >= 70 ? 'yellow' : 'red' };
+          effObj[key] = { value: eff, label, color: eff >= 90 ? 'green' : eff >= 70 ? 'orange' : 'yellow' };
         }
 
         // Status schema uses 'id', but legacy code used 'code' - support both
@@ -1687,7 +1715,7 @@ module.exports = function (server) {
         efficiencyObj[key] = {
           value: Math.round(eff * 100),
           label,
-          color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'yellow' : 'red'
+          color: eff >= 0.9 ? 'green' : eff >= 0.7 ? 'orange' : 'yellow'
         };
       }
 
