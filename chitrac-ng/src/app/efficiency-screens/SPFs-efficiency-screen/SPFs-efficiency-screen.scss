@@ -1,6 +1,6 @@
 :host {
   display: block;
-  height: 95vh;
+  height: 94vh;
   width: 100%;
   overflow: hidden;
   box-sizing: border-box;
@@ -9,7 +9,7 @@
 .screen-container {
   height: 100%;
   width: 100%;
-  padding: 0.5rem;
+  padding: 20px;
   box-sizing: border-box;
   background-color: var(--md-sys-color-background);
   display: flex;
@@ -20,7 +20,7 @@
 .lanes-wrapper {
   display: flex;
   flex-direction: row;
-  gap: 0.5rem;
+  gap: 20px;
   height: 100%;
   width: 100%;
   overflow: hidden;
@@ -325,7 +325,7 @@
 
 .timer-display {
   flex: 0 0 auto;
-  height: 10%;
+  height: 6%;
   min-height: 35px;
   display: flex;
   align-items: center;
@@ -371,7 +371,7 @@
 // Running lane: item block matches lane background
 .item-block-running,
 .item-block-running.item-block-greyed {
-  background-color: #28323C;
+  background-color: var(--sg-color-blue-gray-light-200);
   border: none;
   border-top: 1px solid #1e1e1e;
 }
