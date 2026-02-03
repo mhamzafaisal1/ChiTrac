@@ -371,7 +371,7 @@
 // Running lane: item block matches lane background
 .item-block-running,
 .item-block-running.item-block-greyed {
-  background-color: #28323C;
+  background-color: var(--sg-color-blue-gray-light-200);
   border: none;
   border-top: 1px solid #1e1e1e;
 }
