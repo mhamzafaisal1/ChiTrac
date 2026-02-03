@@ -38,10 +38,12 @@
 }
 
 .lane-stop-bg {
-  background-color: var(--sg-color-blue-gray-medium-200);
+  background-color: var(--sg-color-blue-gray-light-200);
 
   .lane-inner {
     background-color: var(--sg-color-blue-gray-medium-300);
+    padding:0 !important;
+    margin:10px !important;
   }
 }
 
