@@ -79,8 +79,9 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
           this.lanes = this.SPF_SERIALS.map((serial, index) => {
             const response = responses[index];
             const flipperData = response?.flipperData || [];
+            const latestFaultStart = response?.latestFaultStart ?? null;
             if (flipperData.length > 0) {
-              return { ...flipperData[0], serial };
+              return { ...flipperData[0], serial, latestFaultStart };
             }
             return {
               serial,
@@ -98,7 +99,8 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
                 today: { value: 0, label: 'All Day', color: 'red' }
               },
               oee: {},
-              batch: { item: '', code: 0 }
+              batch: { item: '', code: 0 },
+              latestFaultStart
             };
           });
 
@@ -147,8 +149,9 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
           this.lanes = this.SPF_SERIALS.map((serial, index) => {
             const response = responses[index];
             const flipperData = response?.flipperData || [];
+            const latestFaultStart = response?.latestFaultStart ?? null;
             if (flipperData.length > 0) {
-              return { ...flipperData[0], serial };
+              return { ...flipperData[0], serial, latestFaultStart };
             }
             return {
               serial,
@@ -166,7 +169,8 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
                 today: { value: 0, label: 'All Day', color: 'red' }
               },
               oee: {},
-              batch: { item: '', code: 0 }
+              batch: { item: '', code: 0 },
+              latestFaultStart
             };
           });
 
