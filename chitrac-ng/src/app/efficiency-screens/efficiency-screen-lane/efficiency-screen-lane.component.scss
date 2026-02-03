@@ -266,14 +266,14 @@
   text-transform: uppercase;
   font-size: 1.8rem;
   line-height: 1;
-  color: var(--sg-color-black);
+  color: var(--sg-color-text);
 }
 
 .fault-label {
   text-align: center;
   font-size: 1rem;
   text-transform: uppercase;
-  color: var(--sg-color-black);
+  color: var(--sg-color-text);
   margin-top: 0.3rem;
 }
 
@@ -299,7 +299,7 @@
   justify-content: center;
   flex-direction: column;
   font-size: 0.9rem;
-  color: var(--sg-color-black);
+  color: var(--sg-color-text);
 }
 
 // ===== ITEM BLOCK =====
