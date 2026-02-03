@@ -6,7 +6,7 @@ export type EfficiencyScreenLaneMode = 'operator' | 'oee' | 'fault' | 'offline';
 export interface EfficiencySlot {
   value: number;
   label: string;
-  color: 'green' | 'yellow' | 'red';
+  color: 'green' | 'orange' | 'yellow';
 }
 
 @Component({
@@ -21,11 +21,11 @@ export class EfficiencyScreenLaneComponent {
   @Input() mode: EfficiencyScreenLaneMode = 'operator';
 
   /** Derive color from efficiency value (frontend-controlled: ≥90 green, 70-89 yellow, <70 red). */
-  getColor(value: number | undefined | null): 'green' | 'yellow' | 'red' {
+  getColor(value: number | undefined | null): 'green' | 'orange' | 'yellow' {
     const v = value ?? 0;
     if (v >= 90) return 'green';
-    if (v >= 70) return 'yellow';
-    return 'red';
+    if (v >= 70) return 'orange';
+    return 'yellow';
   }
 
   /** Get efficiency or OEE data with frontend-derived colors for operator/oee modes. */
