@@ -80,19 +80,33 @@ module.exports = function (server) {
     if (statusCode !== 1) {
       console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
       const notRunningStartTime = Date.now();
-
-      // Elapsed time in current (non-running) state for Elapsed Time section of the lane
-      const stateSince = ticker.timestamp ? new Date(ticker.timestamp) : null;
-      const elapsedInStateSec = stateSince
-        ? Math.max(0, Math.floor((Date.now() - stateSince.getTime()) / 1000))
-        : 0;
-      const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+      const coll = db.collection(config.operatorSessionCollectionName);
+      const machineFilter = { $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }] };
 
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op, idx) => {
-          const batchItemStartTime = Date.now();
-          const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
-          console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
+          // Elapsed from session start (machines may not emit ticker when paused/faulted)
+          const session =
+            (await coll.findOne(
+              { 'operator.id': op.id, ...machineFilter, 'timestamps.end': { $exists: false } },
+              { sort: { 'timestamps.start': -1 }, projection: { timestamps: 1, items: 1 } }
+            )) ||
+            (await coll.findOne(
+              { 'operator.id': op.id, ...machineFilter },
+              { sort: { 'timestamps.start': -1 }, projection: { timestamps: 1, items: 1 } }
+            ));
+          const sessionStart = session?.timestamps?.start;
+          const startDate = sessionStart ? (sessionStart instanceof Date ? sessionStart : new Date(sessionStart)) : null;
+          const elapsedInStateSec = startDate
+            ? Math.max(0, Math.floor((Date.now() - startDate.getTime()) / 1000))
+            : 0;
+          const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+
+          const batchItem = (session?.items || [])
+            .map(it => it?.name)
+            .filter(Boolean);
+          const batchItemStr = [...new Set(batchItem)].join(' + ');
+
           const operatorName = op.name?.first && op.name?.surname
             ? `${op.name.first} ${op.name.surname}`
             : (op.name || 'Unknown');
@@ -107,7 +121,7 @@ module.exports = function (server) {
             efficiency: buildZeroEfficiencyPayload(),
             // keep the field to match the existing response shape; values not required in the new flow
             oee: {},
-            batch: { item: batchItem, code: 10000001 }
+            batch: { item: batchItemStr, code: 10000001 }
           };
         })
       );
@@ -884,17 +898,33 @@ module.exports = function (server) {
       if (statusCode !== 1) {
         console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
         const notRunningStartTime = Date.now();
-
-        // Elapsed time in current (non-running) state for Elapsed Time section of the lane
-        const stateSince = ticker.timestamp ? new Date(ticker.timestamp) : null;
-        const elapsedInStateSec = stateSince
-          ? Math.max(0, Math.floor((Date.now() - stateSince.getTime()) / 1000))
-          : 0;
-        const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+        const coll = db.collection(config.operatorSessionCollectionName);
+        const machineFilter = { $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }] };
 
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
-            const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
+            // Elapsed from session start (machines may not emit ticker when paused/faulted)
+            const session =
+              (await coll.findOne(
+                { 'operator.id': op.id, ...machineFilter, 'timestamps.end': { $exists: false } },
+                { sort: { 'timestamps.start': -1 }, projection: { timestamps: 1, items: 1 } }
+              )) ||
+              (await coll.findOne(
+                { 'operator.id': op.id, ...machineFilter },
+                { sort: { 'timestamps.start': -1 }, projection: { timestamps: 1, items: 1 } }
+              ));
+            const sessionStart = session?.timestamps?.start;
+            const startDate = sessionStart ? (sessionStart instanceof Date ? sessionStart : new Date(sessionStart)) : null;
+            const elapsedInStateSec = startDate
+              ? Math.max(0, Math.floor((Date.now() - startDate.getTime()) / 1000))
+              : 0;
+            const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+
+            const batchItem = (session?.items || [])
+              .map(it => it?.name)
+              .filter(Boolean);
+            const batchItemStr = [...new Set(batchItem)].join(' + ');
+
             const operatorName = op.name?.first && op.name?.surname
               ? `${op.name.first} ${op.name.surname}`
               : (op.name || 'Unknown');
@@ -908,7 +938,7 @@ module.exports = function (server) {
               displayTimers: { on: elapsedDisplay, run: elapsedDisplay },
               efficiency: buildZeroEfficiencyPayload(),
               oee: buildZeroEfficiencyPayload(),
-              batch: { item: batchItem, code: 10000001 }
+              batch: { item: batchItemStr, code: 10000001 }
             };
           })
         );
