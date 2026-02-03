@@ -24,8 +24,8 @@ export class EfficiencyScreenLaneComponent {
   getColor(value: number | undefined | null): 'green' | 'orange' | 'yellow' {
     const v = value ?? 0;
     if (v >= 90) return 'green';
-    if (v >= 70) return 'orange';
-    return 'yellow';
+    if (v >= 70) return 'yellow';
+    return 'orange';
   }
 
   /** Get efficiency or OEE data with frontend-derived colors for operator/oee modes. */
