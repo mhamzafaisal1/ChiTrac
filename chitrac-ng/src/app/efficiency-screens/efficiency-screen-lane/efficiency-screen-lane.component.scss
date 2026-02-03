@@ -29,7 +29,7 @@
 }
 
 .lane-running-bg {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
 }
 
 
@@ -38,7 +38,7 @@
 }
 
 .lane-stop-bg {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
 
   .lane-inner {
     background-color: var(--sg-color-blue-gray-medium-300);
@@ -263,11 +263,10 @@
   justify-content: center;
   align-items: center;
   flex-direction: column;
-  border: 1px solid var(--sg-color-blue-gray-light-200);
   font-size: 1rem;
   line-height: 1.1;
   color: var(--sg-color-text);
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
   padding: 0.15rem;
 }
 
@@ -353,16 +352,16 @@
 
 .item-block-running,
 .item-block-running.item-block-greyed {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
 }
 
 .item-block-stopped {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
   color: var(--sg-color-black);
 }
 
 .item-block-fault {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
   color: var(--sg-color-black);
 }
 
