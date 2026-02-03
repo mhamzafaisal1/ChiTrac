@@ -335,6 +335,7 @@
   font-size: 0.95rem;
   text-align: center;
   margin: 0;
+  margin-top:20px;
   padding: 0.3rem;
   box-sizing: border-box;
 }
@@ -347,7 +348,6 @@
 .item-block-running,
 .item-block-running.item-block-greyed {
   background-color: var(--sg-color-blue-gray-light-200);
-  margin-top:20px;
 }
 
 .item-block-stopped {
