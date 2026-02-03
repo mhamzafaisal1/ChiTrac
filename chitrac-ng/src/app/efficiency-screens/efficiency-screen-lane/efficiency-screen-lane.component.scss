@@ -28,22 +28,26 @@
   box-sizing: border-box;
 }
 
+.lane-running-bg {
+  background-color: var(--sg-color-blue-gray-light-200);
+}
+
 
 .lane-greyed-bg {
-  background-color: #838D99;
+  background-color: var(--sg-color-blue-gray-medium-100);
 }
 
 .lane-stop-bg {
-  background-color: #46505A;
+  background-color: var(--sg-color-blue-gray-medium-300);
 }
 
 .lane-fault-bg {
   background: repeating-linear-gradient(
     135deg,
-    var(--sg-color-background, #ffffff),
-    var(--sg-color-background, #ffffff) 8px,
-    #F1310A 8px,
-    #F1310A 16px
+    var(--sg-color-black),
+    var(--sg-color-black) 8px,
+    var(--sg-color-red) 8px,
+    var(--sg-color-red) 16px
   );
 }
 
@@ -78,7 +82,7 @@
   padding-top: 0.5rem;
   font-size: 1.2rem;
   line-height: 1.1;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-black);
   font-weight: 700;
 }
 
@@ -92,66 +96,72 @@
 
 // Color classes for operator block and bars
 .green {
-  background-color: #39B276 !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-green) !important;
+  color: var(--sg-color-black);
 }
 
 .yellow {
-  background-color: #FFCE0A !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-yellow) !important;
+  color: var(--sg-color-black);
+  font-weight: bolder;
+}
+
+.orange {
+  background-color: var(--sg-color-orange) !important;
+  color: var(--sg-color-black);
   font-weight: bolder;
 }
 
 .red {
-  background-color: #FB950B !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-red) !important;
+  color: var(--sg-color-black);
   font-weight: bolder;
 }
 
 .no-operator {
-  background-color: #555 !important;
+  background-color: var(--sg-color-medium-gray-neutral) !important;
 }
 
 .stopped {
-  background-color: #46505A !important;
+  background-color: var(--sg-color-blue-gray-medium-300) !important;
 }
 
 .fault {
-  background-color: #F1310A !important;
-  color: var(--sg-color-background, #ffffff);
+  background-color: var(--sg-color-red) !important;
+  color: var(--sg-color-black);
 }
 
 // Offline/stopped and fault lanes only: text color
 .operator-block.stopped .operator-text,
 .operator-block.stopped .operator-content {
-  color: #E0E9F3 !important;
+  color: var(--sg-color-white) !important;
 }
 
 .operator-block.fault .operator-text,
 .operator-block.fault .operator-content {
-  color: #E0E9F3 !important;
+  color: var(--sg-color-white) !important;
 }
 
 .data-block.stopped .fault-text,
 .data-block.stopped .timer-text {
-  color: #E0E9F3 !important;
+  color: var(--sg-color-white) !important;
 }
 
 .data-block.fault .fault-text,
 .data-block.fault .fault-label,
 .data-block.fault .fault-code,
 .data-block.fault .timer-text {
-  color: #E0E9F3 !important;
+  color: var(--sg-color-white) !important;
 }
 
 .item-block-stopped,
 .item-block-stopped .item-line {
-  color: #E0E9F3 !important;
+  color: var(--sg-color-white) !important;
 }
 
 .item-block-fault,
 .item-block-fault .item-line {
-  color: #E0E9F3 !important;
+  color: var(--sg-color-white) !important;
 }
 
 // ===== DATA BLOCK =====
@@ -177,7 +187,7 @@
   font-weight: bold;
   font-size: 3rem;
   line-height: 1;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-black);
 }
 
 .bars-container {
@@ -234,7 +244,7 @@
   line-height: 1;
   font-weight: 600;
   margin-bottom: 0.15em;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-black);
   pointer-events: none;
 }
 
@@ -247,11 +257,11 @@
   justify-content: center;
   align-items: center;
   flex-direction: column;
-  border: 1px solid var(--sg-color-blue-gray-light-200, #b0bec5);
+  border: 1px solid var(--sg-color-blue-gray-light-200);
   font-size: 1rem;
   line-height: 1.1;
   color: white;
-  background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
+  background-color: var(--sg-color-blue-gray-light-200);
   padding: 0.15rem;
 }
 
@@ -274,21 +284,21 @@
   text-transform: uppercase;
   font-size: 1.8rem;
   line-height: 1;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-black);
 }
 
 .fault-label {
   text-align: center;
   font-size: 1rem;
   text-transform: uppercase;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-black);
   margin-top: 0.3rem;
 }
 
 .fault-code {
   text-align: center;
   font-size: 0.9rem;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-black);
   margin-top: 0.2rem;
 }
 
@@ -307,7 +317,7 @@
   justify-content: center;
   flex-direction: column;
   font-size: 0.9rem;
-  color: var(--sg-color-background, #ffffff);
+  color: var(--sg-color-black);
 }
 
 // ===== ITEM BLOCK =====
