@@ -29,7 +29,7 @@
 }
 
 .lane-running-bg {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
 }
 
 
@@ -38,7 +38,7 @@
 }
 
 .lane-stop-bg {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
 
   .lane-inner {
     background-color: var(--sg-color-blue-gray-medium-300);
@@ -88,7 +88,7 @@
   padding-top: 0.5rem;
   font-size: 1.2rem;
   line-height: 1.1;
-  color: var(--sg-color-black);
+  color: var(--sg-color-text);
   font-weight: 700;
 }
 
@@ -137,37 +137,14 @@
   color: var(--sg-color-black);
 }
 
-// Offline/stopped and fault lanes only: text color
-.operator-block.stopped .operator-text,
-.operator-block.stopped .operator-content {
-  color: var(--sg-color-white) !important;
-}
-
-.operator-block.fault .operator-text,
-.operator-block.fault .operator-content {
-  color: var(--sg-color-white) !important;
-}
-
-.data-block.stopped .fault-text,
-.data-block.stopped .timer-text {
-  color: var(--sg-color-white) !important;
-}
-
-.data-block.fault .fault-text,
-.data-block.fault .fault-label,
-.data-block.fault .fault-code,
-.data-block.fault .timer-text {
-  color: var(--sg-color-white) !important;
-}
-
 .item-block-stopped,
 .item-block-stopped .item-line {
-  color: var(--sg-color-white) !important;
+  color: var(--sg-color-text) !important;
 }
 
 .item-block-fault,
 .item-block-fault .item-line {
-  color: var(--sg-color-white) !important;
+  color: var(--sg-color-text) !important;
 }
 
 // ===== DATA BLOCK =====
@@ -263,11 +240,10 @@
   justify-content: center;
   align-items: center;
   flex-direction: column;
-  border: 1px solid var(--sg-color-blue-gray-light-200);
   font-size: 1rem;
   line-height: 1.1;
-  color: white;
-  background-color: var(--sg-color-blue-gray-light-200);
+  color: var(--sg-color-text);
+  background-color: var(--theme-efficiency-lane-background-color);
   padding: 0.15rem;
 }
 
@@ -348,21 +324,21 @@
 
 .item-block-greyed {
   background-color: var(--sg-color-blue-gray-light-250);
-  color: var(--sg-color-white);
+  color: var(--sg-color-text);
 }
 
 .item-block-running,
 .item-block-running.item-block-greyed {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
 }
 
 .item-block-stopped {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
   color: var(--sg-color-black);
 }
 
 .item-block-fault {
-  background-color: var(--sg-color-blue-gray-light-200);
+  background-color: var(--theme-efficiency-lane-background-color);
   color: var(--sg-color-black);
 }
 
