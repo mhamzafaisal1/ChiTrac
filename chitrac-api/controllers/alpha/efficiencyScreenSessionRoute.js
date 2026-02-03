@@ -80,7 +80,14 @@ module.exports = function (server) {
     if (statusCode !== 1) {
       console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
       const notRunningStartTime = Date.now();
-      
+
+      // Elapsed time in current (non-running) state for Elapsed Time section of the lane
+      const stateSince = ticker.timestamp ? new Date(ticker.timestamp) : null;
+      const elapsedInStateSec = stateSince
+        ? Math.max(0, Math.floor((Date.now() - stateSince.getTime()) / 1000))
+        : 0;
+      const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op, idx) => {
           const batchItemStartTime = Date.now();
@@ -95,8 +102,8 @@ module.exports = function (server) {
             operator: operatorName,
             operatorId: op.id,
             machine: ticker.machine?.name || `Serial ${serialNum}`,
-            timers: { on: 0, ready: 0 },
-            displayTimers: { on: '', run: '' },
+            timers: { on: elapsedInStateSec, ready: 0 },
+            displayTimers: { on: elapsedDisplay, run: elapsedDisplay },
             efficiency: buildZeroEfficiencyPayload(),
             // keep the field to match the existing response shape; values not required in the new flow
             oee: {},
@@ -462,6 +469,19 @@ module.exports = function (server) {
       lastHour: { value: 0, label: 'Last Hour', color: 'red' },
       today: { value: 0, label: 'All Day', color: 'red' }
     };
+  }
+
+// Format seconds as "Xh Ym Zs" for Elapsed Time display (non-running state)
+  function formatElapsedDisplay(totalSec) {
+    if (totalSec <= 0) return '0s';
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const parts = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ');
   }
 
 // ---- time-credit helpers (same math used elsewhere) ----
