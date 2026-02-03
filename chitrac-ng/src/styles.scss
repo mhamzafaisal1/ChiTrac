@@ -136,6 +136,7 @@ body.dark-theme {
   --theme-color-text: var(--sg-color-white);
 
   --theme-efficiency-lane-background-color: var(--sg-color-blue-gray-light-200);
+  --theme-background: var(--sg-color-blue-gray-light-300);
 
 
   /* Direct theme color overrides*/
@@ -208,7 +209,9 @@ body.dark-theme {
   --theme-color-table-header: var(--sg-color-blue-gray-medium-500);
   --theme-color-text: var(--sg-color-black);
 
-  --theme-efficiency-lane-background-color: var(--sg-color-blue-gray-medium-500);
+  --theme-efficiency-lane-background-color: var(--sg-color-blue-gray-light-300);
+  --theme-background: var(--sg-color-blue-gray-medium-200);
+
 
   --sg-border-radius: 4px;
 
