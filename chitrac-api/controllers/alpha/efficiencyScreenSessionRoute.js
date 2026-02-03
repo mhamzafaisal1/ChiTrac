@@ -884,6 +884,14 @@ module.exports = function (server) {
       if (statusCode !== 1) {
         console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
         const notRunningStartTime = Date.now();
+
+        // Elapsed time in current (non-running) state for Elapsed Time section of the lane
+        const stateSince = ticker.timestamp ? new Date(ticker.timestamp) : null;
+        const elapsedInStateSec = stateSince
+          ? Math.max(0, Math.floor((Date.now() - stateSince.getTime()) / 1000))
+          : 0;
+        const elapsedDisplay = formatElapsedDisplay(elapsedInStateSec);
+
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -896,8 +904,8 @@ module.exports = function (server) {
               operator: operatorName,
               operatorId: op.id,
               machine: ticker.machine?.name || `Serial ${serialNum}`,
-              timers: { on: 0, ready: 0 },
-              displayTimers: { on: '', run: '' },
+              timers: { on: elapsedInStateSec, ready: 0 },
+              displayTimers: { on: elapsedDisplay, run: elapsedDisplay },
               efficiency: buildZeroEfficiencyPayload(),
               oee: buildZeroEfficiencyPayload(),
               batch: { item: batchItem, code: 10000001 }
