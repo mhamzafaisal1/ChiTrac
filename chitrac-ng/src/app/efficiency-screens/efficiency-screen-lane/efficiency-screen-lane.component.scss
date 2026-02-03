@@ -137,37 +137,14 @@
   color: var(--sg-color-black);
 }
 
-// Offline/stopped and fault lanes only: text color
-.operator-block.stopped .operator-text,
-.operator-block.stopped .operator-content {
-  color: var(--sg-color-white) !important;
-}
-
-.operator-block.fault .operator-text,
-.operator-block.fault .operator-content {
-  color: var(--sg-color-white) !important;
-}
-
-.data-block.stopped .fault-text,
-.data-block.stopped .timer-text {
-  color: var(--sg-color-white) !important;
-}
-
-.data-block.fault .fault-text,
-.data-block.fault .fault-label,
-.data-block.fault .fault-code,
-.data-block.fault .timer-text {
-  color: var(--sg-color-white) !important;
-}
-
 .item-block-stopped,
 .item-block-stopped .item-line {
-  color: var(--sg-color-white) !important;
+  color: var(--sg-color-text) !important;
 }
 
 .item-block-fault,
 .item-block-fault .item-line {
-  color: var(--sg-color-white) !important;
+  color: var(--sg-color-text) !important;
 }
 
 // ===== DATA BLOCK =====
@@ -347,7 +324,7 @@
 
 .item-block-greyed {
   background-color: var(--sg-color-blue-gray-light-250);
-  color: var(--sg-color-white);
+  color: var(--sg-color-text);
 }
 
 .item-block-running,
