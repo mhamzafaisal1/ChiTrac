@@ -340,29 +340,24 @@
 }
 
 .item-block-greyed {
-  background-color: #333;
-  border-top-color: #191919;
-  border-bottom-color: #333;
-  color: white;
+  background-color: var(--sg-color-blue-gray-light-250);
+  color: var(--sg-color-white);
 }
 
 .item-block-running,
 .item-block-running.item-block-greyed {
-  background-color: #28323C;
-  border: none;
-  border-top: 1px solid #1e1e1e;
+  background-color: var(--sg-color-blue-gray-light-200);
+  margin-top:20px;
 }
 
 .item-block-stopped {
-  background-color: #28323C;
-  border: 2px solid #1e1e1e !important;
-  color: var(--sg-color-text, #000000);
+  background-color: var(--sg-color-blue-gray-light-200);
+  color: var(--sg-color-black);
 }
 
 .item-block-fault {
-  background-color: #28323C;
-  border: 2px solid #1e1e1e !important;
-  color: var(--sg-color-text, #000000);
+  background-color: var(--sg-color-blue-gray-light-200);
+  color: var(--sg-color-black);
 }
 
 .item-line {
