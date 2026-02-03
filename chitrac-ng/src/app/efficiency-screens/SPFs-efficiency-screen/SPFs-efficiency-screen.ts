@@ -59,21 +59,23 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   }
 
   fetchAllSPFData() {
-    // Create parallel requests for all 6 SPF machines
-    const requests = this.SPF_SERIALS.map(serial =>
-      this.efficiencyService.getLiveEfficiencySummary(serial)
-        .pipe(
-          catchError(err => {
-            console.error(`Error fetching data for serial ${serial}:`, err);
-            // Return empty flipperData on error
-            return of({ flipperData: [] });
-          })
-        )
-    );
-
-    forkJoin(requests)
-      .pipe(takeUntil(this.destroy$))
+    // Sequential: call one machine, when done call the next (avoids overloading backend)
+    from(this.SPF_SERIALS)
+      .pipe(
+        takeUntil(this.destroy$),
+        concatMap(serial =>
+          this.efficiencyService.getLiveEfficiencySummary(serial).pipe(
+            catchError(err => {
+              console.error(`Error fetching data for serial ${serial}:`, err);
+              return of({ flipperData: [] });
+            }),
+            map(response => ({ serial, response }))
+          )
+        ),
+        toArray()
+      )
       .subscribe({
+<<<<<<< Updated upstream
         next: (responses) => {
           // Build one lane per SPF_SERIALS entry in exact array order (index i → SPF_SERIALS[i])
           this.lanes = this.SPF_SERIALS.map((serial, index) => {
@@ -101,8 +103,7 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
               batch: { item: '', code: 0 }
             };
           });
-
-          console.log(`Fetched data for ${this.lanes.length} SPF machines`);
+          console.log(`Fetched data for ${this.lanes.length} SPF machines (sequential)`);
           this.isLoading = false;
         },
         error: (err) => {
@@ -120,28 +121,27 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
       .pipe(
         takeUntil(this.destroy$),
         exhaustMap(() => {
-          console.log(`Making API calls for ${this.SPF_SERIALS.length} SPF machines`);
-          
-          // Create parallel requests for all 6 SPF machines
-          const requests = this.SPF_SERIALS.map(serial =>
-            this.efficiencyService.getLiveEfficiencySummary(serial)
-              .pipe(
+          console.log(`Making sequential API calls for ${this.SPF_SERIALS.length} SPF machines`);
+          return from(this.SPF_SERIALS).pipe(
+            concatMap(serial =>
+              this.efficiencyService.getLiveEfficiencySummary(serial).pipe(
                 catchError(err => {
                   console.error(`Error fetching data for serial ${serial}:`, err);
                   return of({ flipperData: [] });
-                })
+                }),
+                map(response => ({ serial, response }))
               )
-          );
-
-          return forkJoin(requests).pipe(
+            ),
+            toArray(),
             catchError(err => {
-              console.error('Error in forkJoin:', err);
+              console.error('Error in sequential fetch:', err);
               return of([]);
             })
           );
         })
       )
       .subscribe({
+<<<<<<< Updated upstream
         next: (responses: any[]) => {
           // Build one lane per SPF_SERIALS entry in exact array order (index i → SPF_SERIALS[i])
           this.lanes = this.SPF_SERIALS.map((serial, index) => {
@@ -169,7 +169,6 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
               batch: { item: '', code: 0 }
             };
           });
-
           console.log(`Updated ${this.lanes.length} SPF lanes`);
           this.isLoading = false;
         },
