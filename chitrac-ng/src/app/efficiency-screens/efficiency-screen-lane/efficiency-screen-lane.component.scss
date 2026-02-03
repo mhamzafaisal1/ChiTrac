@@ -38,17 +38,21 @@
 }
 
 .lane-stop-bg {
-  background-color: var(--sg-color-blue-gray-medium-300);
+  background-color: var(--sg-color-blue-gray-medium-200);
+
+  .lane-inner {
+    background-color: var(--sg-color-blue-gray-medium-300);
+  }
 }
 
+
+
 .lane-fault-bg {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--sg-color-black),
-    var(--sg-color-black) 10px,
-    var(--sg-color-red) 10px,
-    var(--sg-color-red) 20px
-  );
+  background: repeating-linear-gradient(135deg,
+      var(--sg-color-black),
+      var(--sg-color-black) 10px,
+      var(--sg-color-red) 10px,
+      var(--sg-color-red) 20px);
 }
 
 .lane-inner {
@@ -335,7 +339,7 @@
   font-size: 0.95rem;
   text-align: center;
   margin: 0;
-  margin-top:20px;
+  margin-top: 20px;
   padding: 0.3rem;
   box-sizing: border-box;
 }
