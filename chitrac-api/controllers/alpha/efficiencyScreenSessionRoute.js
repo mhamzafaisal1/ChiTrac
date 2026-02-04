@@ -836,8 +836,8 @@ module.exports = function (server) {
       console.log(`[PERF] [${serialNum}] Route START - daily/machine-live-session-summary-sessions (sessions-only)`);
       const tickerStartTime = Date.now();
 
-      const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
-        .findOne(
+      const [ticker, latestFault] = await Promise.all([
+        db.collection(config.stateTickerCollectionName || 'stateTicker').findOne(
           { 'machine.id': serialNum },
           {
             projection: {
@@ -848,9 +848,20 @@ module.exports = function (server) {
               operators: 1
             }
           }
-        );
+        ),
+        db.collection(config.faultSessionCollectionName || 'fault-session').findOne(
+          { $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }] },
+          { sort: { 'timestamps.start': -1 }, projection: { 'timestamps.start': 1 } }
+        )
+      ]);
 
       console.log(`[PERF] [${serialNum}] Ticker query completed in ${Date.now() - tickerStartTime}ms`);
+
+      const latestFaultStart = latestFault?.timestamps?.start
+        ? (latestFault.timestamps.start instanceof Date
+          ? latestFault.timestamps.start.toISOString()
+          : latestFault.timestamps.start)
+        : null;
 
       if (!ticker) {
         const machineConfig = await db.collection('machines').findOne(
@@ -870,7 +881,7 @@ module.exports = function (server) {
           oee: buildZeroEfficiencyPayload(),
           batch: { item: '', code: 0 }
         }];
-        return res.json({ flipperData: offlineLanes });
+        return res.json({ flipperData: offlineLanes, latestFaultStart });
       }
 
       const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
@@ -931,7 +942,7 @@ module.exports = function (server) {
           })
         );
         console.log(`[PERF] [${serialNum}] Non-running path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
-        return res.json({ flipperData: performanceData });
+        return res.json({ flipperData: performanceData, latestFaultStart });
       }
 
       // Running: all windows from operator-sessions only; today uses all sessions for the day (no limit)
@@ -1065,7 +1076,7 @@ module.exports = function (server) {
       );
 
       console.log(`[PERF] [${serialNum}] Running path (sessions-only) completed in ${Date.now() - runningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
-      return res.json({ flipperData: performanceData });
+      return res.json({ flipperData: performanceData, latestFaultStart });
     } catch (err) {
       const serialLabel = req.query.serial != null ? req.query.serial : 'unknown';
       console.error(`[PERF] [${serialLabel}] ERROR daily/machine-live-session-summary-sessions after ${Date.now() - routeStartTime}ms:`, err);

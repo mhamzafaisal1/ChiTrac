@@ -146,7 +146,7 @@
             <div class="fault-text">{{ lane?.fault }}</div>
           </div>
           <div class="timer-display">
-            <div class="timer-text">ELAPSED TIME: {{ lane?.displayTimers?.on }}</div>
+            <div class="timer-text">ELAPSED TIME: {{ getElapsedDisplay() }}</div>
           </div>
         </div>
       </div>
@@ -172,7 +172,7 @@
             <div class="fault-code">CODE: {{ lane?.status }}</div>
           </div>
           <div class="timer-display">
-            <div class="timer-text">ELAPSED TIME: {{ lane?.displayTimers?.on }}</div>
+            <div class="timer-text">ELAPSED TIME: {{ getElapsedDisplay() }}</div>
           </div>
         </div>
       </div>
