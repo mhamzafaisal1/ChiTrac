@@ -50,7 +50,6 @@
     background-color: var(--sg-color-yellow);
     padding:0 !important;
     margin:20px !important;
-    color: var(--sg-color-black);
   }
   
 }
@@ -138,7 +137,7 @@
 
 .stopped {
   background-color: var(--sg-color-yellow) !important;
-  color: var(--sg-color-white);
+  color: var(--sg-color-black);
 }
 
 .fault {
