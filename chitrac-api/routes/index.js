@@ -10,6 +10,7 @@ function init(app, server) {
     const statusRoutes = require('../controllers/status')(server);
     const softrolRoutes = require('../controllers/softrol')(server);
     const alphaRoutes = require('../controllers/alpha')(server);
+    const bikoRoutes = require('../controllers/biko')(server);
     const authRoutes = require('../controllers/auth')(server);
     const passportRoutes = require('../controllers/passport')(server);
     const historyRoutes = require('../controllers/history')(server);
@@ -243,6 +244,7 @@ function init(app, server) {
     });
 
     app.use('/api/alpha', alphaRoutes);
+    app.use('/api/biko', bikoRoutes);
     app.use('/api/auth', authRoutes);
     app.use('/api/passport', passportRoutes);
 

@@ -115,30 +115,41 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   private processTableData(results: any[]): void {
     const formattedData: any[] = [];
 
+    if (!results || !Array.isArray(results)) {
+      this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+      this.rows = [];
+      return;
+    }
+
     results.forEach((machine: any) => {
       const summary = machine.machineSummary;
+      if (!summary) return;
 
-      // Convert itemSummaries to array and ensure "Total" is first
-      const items = Object.values(summary.itemSummaries || {});
+      const itemSummaries = summary.itemSummaries;
+      const items = itemSummaries != null ? Object.values(itemSummaries) : [];
+
       const totalItem = items.find((item: any) => item.name === 'Total');
       const otherItems = items.filter((item: any) => item.name !== 'Total');
       const sortedItems = totalItem ? [totalItem, ...otherItems] : items;
 
-      // Add item summaries with Total first
       sortedItems.forEach((item: any) => {
+        const wt = item.workedTimeFormatted;
+        const hours = wt != null && typeof wt.hours === 'number' ? wt.hours : 0;
+        const minutes = wt != null && typeof wt.minutes === 'number' ? wt.minutes : 0;
+
         formattedData.push({
-          'Machine': machine.machine.name,
-          'Item': item.name,
-          'Total Time (Runtime)': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
-          'Total Count': item.countTotal,
-          'PPH': item.pph,
-          'Standard': item.standard ? Number(item.standard).toFixed(2) : 'N/A',
-          'Efficiency': item.efficiency !== null ? `${item.efficiency}%` : 'N/A'
+          'Machine': machine.machine?.name ?? '',
+          'Item': item.name ?? '',
+          'Total Time (Runtime)': `${hours}h ${minutes}m`,
+          'Total Count': item.countTotal ?? 0,
+          'PPH': item.pph ?? 0,
+          'Standard': item.standard != null ? Number(item.standard).toFixed(2) : '',
+          'Efficiency': item.efficiency != null ? `${item.efficiency}%` : ''
         });
       });
     });
 
-    this.columns = Object.keys(formattedData[0]);
+    this.columns = formattedData.length ? Object.keys(formattedData[0]) : ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
   }
 

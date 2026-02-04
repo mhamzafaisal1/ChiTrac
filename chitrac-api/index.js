@@ -33,9 +33,11 @@ if (config.mongoLog.url.startsWith('mongodb://')) {
 	
 	if (slashIndex === -1) {
 		// No database in URL
+        //loggerConnectionString = `mongodb://${urlWithoutScheme}?directConnection=true`;
 		loggerConnectionString = `mongodb://${encodedLogUsername}:${encodedLogPassword}@${urlWithoutScheme}/${config.mongoLog.db || 'chitrac-logging'}?authSource=${logAuthSource}`;
 	} else {
 		// Database specified in URL
+        //loggerConnectionString = `mongodb://${urlWithoutScheme}?directConnection=true`;
 		loggerConnectionString = `mongodb://${encodedLogUsername}:${encodedLogPassword}@${urlWithoutScheme}?authSource=${logAuthSource}`;
 	}
 } else {

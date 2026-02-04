@@ -6923,6 +6923,228 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     return Array.from(itemMap.values());
   }
 
+  // Simple machine report using only cache data
+  router.get("/analytics/machine-report-cache", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      // Generate date range (full days)
+      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day');
+      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day');
+
+      const dateStrings = [];
+      let currentDate = startDt;
+      while (currentDate <= endDt) {
+        dateStrings.push(currentDate.toISODate());
+        currentDate = currentDate.plus({ days: 1 });
+      }
+
+      const cacheCollection = db.collection('totals-daily');
+
+      // Query cache for machine and machine-item records
+      const cacheQuery = {
+        $or: [
+          { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
+          { date: { $in: dateStrings } }
+        ],
+        entityType: { $in: ['machine', 'machine-item'] }
+      };
+      if (serial) cacheQuery.machineSerial = parseInt(serial);
+
+      const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
+
+      let machineRecords;
+      let machineItemRecords;
+
+      if (cacheDocs.length > 0) {
+        // Split by entity type when cache data is available
+        machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
+        machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
+      } else {
+        // If cache is missing for the requested range, fall back to live session data
+        const partialDay = {
+          start,
+          end,
+        };
+
+        const sessionData = await getSessionDataForPartialDays([partialDay], serial);
+        machineRecords = sessionData.machines || [];
+        machineItemRecords = sessionData.machineItems || [];
+
+        // If there is still no data, return an empty result set
+        if (!machineRecords.length && !machineItemRecords.length) {
+          return res.json({
+            timeRange: {
+              start: start.toISOString(),
+              end: end.toISOString(),
+            },
+            results: [],
+          });
+        }
+      }
+
+      // Aggregate machines by serial across all dates
+      const machineMap = new Map();
+      for (const record of machineRecords) {
+        const serial = record.machineSerial;
+        if (machineMap.has(serial)) {
+          const existing = machineMap.get(serial);
+          existing.runtimeMs += record.runtimeMs || 0;
+          existing.workedTimeMs += record.workedTimeMs || 0;
+          existing.totalCounts += record.totalCounts || 0;
+        } else {
+          machineMap.set(serial, {
+            machineSerial: serial,
+            machineName: record.machineName,
+            runtimeMs: record.runtimeMs || 0,
+            workedTimeMs: record.workedTimeMs || 0,
+            totalCounts: record.totalCounts || 0,
+          });
+        }
+      }
+
+      // Aggregate machine-items: First deduplicate by (serial, itemId, date), then sum across dates 
+      const itemByDateMap = new Map(); // key: `${serial}-${itemId}-${date}`
+      for (const record of machineItemRecords) {
+        const dateKey = record.date || 'unknown';
+        const key = `${record.machineSerial}-${record.itemId}-${dateKey}`;
+
+        if (itemByDateMap.has(key)) {
+          // Duplicate for same (serial, itemId, date) - take max to avoid double-counting
+          const existing = itemByDateMap.get(key);
+          existing.totalCounts = Math.max(existing.totalCounts, record.totalCounts || 0);
+          existing.workedTimeMs = Math.max(existing.workedTimeMs, record.workedTimeMs || 0);
+          existing.runtimeMs = Math.max(existing.runtimeMs, record.runtimeMs || 0);
+        } else {
+          itemByDateMap.set(key, {
+            machineSerial: record.machineSerial,
+            itemId: record.itemId,
+            itemName: record.itemName,
+            itemStandard: record.itemStandard,
+            totalCounts: record.totalCounts || 0,
+            workedTimeMs: record.workedTimeMs || 0,
+            runtimeMs: record.runtimeMs || 0,
+          });
+        }
+      }
+
+      // Sum across dates by (serial, itemId)
+      const itemMap = new Map(); // key: `${serial}-${itemId}`
+      for (const record of itemByDateMap.values()) {
+        const key = `${record.machineSerial}-${record.itemId}`;
+        if (itemMap.has(key)) {
+          const existing = itemMap.get(key);
+          existing.totalCounts += record.totalCounts;
+          existing.workedTimeMs += record.workedTimeMs;
+          existing.runtimeMs += record.runtimeMs;
+        } else {
+          itemMap.set(key, {
+            machineSerial: record.machineSerial,
+            itemId: record.itemId,
+            itemName: record.itemName,
+            itemStandard: record.itemStandard,
+            totalCounts: record.totalCounts,
+            workedTimeMs: record.workedTimeMs,
+            runtimeMs: record.runtimeMs,
+          });
+        }
+      }
+
+      // Build results
+      const results = [];
+
+      for (const [serial, machineData] of machineMap) {
+        // Get all items for this machine
+        const machineItems = Array.from(itemMap.values()).filter(item => item.machineSerial === serial);
+
+        // Skip items with zero counts
+        const itemsWithCounts = machineItems.filter(item => item.totalCounts > 0);
+
+        // Calculate total counts across all items first
+        let itemTotalCounts = 0;
+        for (const item of itemsWithCounts) {
+          itemTotalCounts += item.totalCounts;
+        }
+
+        // Calculate individual item summaries with proportional runtime allocation
+        const itemSummaries = {};
+        let proratedStandard = 0;
+
+        for (const item of itemsWithCounts) {
+          // ✅ FIX: Allocate machine runtime proportionally based on counts
+          // This fixes the issue where multi-lane machines (SPF) show inflated item runtimes
+          // Example: If machine ran 10h and item produced 25% of total counts, item gets 2.5h
+          const itemRuntimeProportion = itemTotalCounts > 0 ? item.totalCounts / itemTotalCounts : 0;
+          const itemAllocatedRuntimeMs = machineData.runtimeMs * itemRuntimeProportion;
+
+          // Calculate item metrics using allocated runtime
+          const itemHours = itemAllocatedRuntimeMs / 3600000;
+          const itemPph = itemHours > 0 ? item.totalCounts / itemHours : 0;
+          const itemEfficiency = (item.itemStandard || 0) > 0 ? (itemPph / item.itemStandard) * 100 : 0;
+
+          itemSummaries[item.itemId] = {
+            name: item.itemName,
+            standard: item.itemStandard || 0,
+            countTotal: item.totalCounts,
+            workedTimeFormatted: formatDuration(itemAllocatedRuntimeMs),
+            pph: Math.round(itemPph * 100) / 100,
+            efficiency: Math.round(itemEfficiency * 100) / 100,
+          };
+
+          // Calculate weighted standard for machine total
+          proratedStandard += itemRuntimeProportion * (item.itemStandard || 0);
+        }
+
+        // Calculate machine Total row using machine's runtimeMs (not workedTimeMs)
+        const machineRuntimeHours = machineData.runtimeMs / 3600000;
+        const machinePph = machineRuntimeHours > 0 ? itemTotalCounts / machineRuntimeHours : 0;
+        const machineEfficiency = proratedStandard > 0 ? (machinePph / proratedStandard) * 100 : 0;
+
+        // Build itemSummaries with Total row first
+        const itemSummariesWithTotal = {
+          'Total': {
+            name: 'Total',
+            standard: Math.round(proratedStandard * 100) / 100,
+            countTotal: itemTotalCounts,
+            workedTimeFormatted: formatDuration(machineData.runtimeMs),
+            pph: Math.round(machinePph * 100) / 100,
+            efficiency: Math.round(machineEfficiency * 100) / 100,
+          },
+          ...itemSummaries
+        };
+
+        results.push({
+          machine: {
+            name: machineData.machineName,
+            serial: machineData.machineSerial
+          },
+          machineSummary: {
+            totalCount: itemTotalCounts,
+            workedTimeMs: machineData.workedTimeMs,
+            workedTimeFormatted: formatDuration(machineData.workedTimeMs),
+            runtimeMs: machineData.runtimeMs,
+            runtimeFormatted: formatDuration(machineData.runtimeMs),
+            pph: Math.round(machinePph * 100) / 100,
+            proratedStandard: Math.round(proratedStandard * 100) / 100,
+            efficiency: Math.round(machineEfficiency * 100) / 100,
+            itemSummaries: itemSummariesWithTotal,
+          },
+        });
+      }
+
+      res.json({
+        timeRange: {
+          start: startDt.toUTC().toJSDate().toISOString(),
+          end: endDt.plus({ days: 1 }).toUTC().toJSDate().toISOString()
+        },
+        results,
+      });
+    } catch (error) {
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate machine report from cache" });
+    }
+  });
+
   return router;
 };
 
