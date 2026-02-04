@@ -94,7 +94,7 @@
   padding-top: 0.5rem;
   font-size: 1.2rem;
   line-height: 1.1;
-  color: var(--theme-color-text);
+  color: var(--theme-color-on-ryo);
   font-weight: 700;
 }
 
@@ -136,12 +136,12 @@
 
 .stopped {
   background-color: var(--sg-color-yellow) !important;
-  color: var(--sg-color-black);
+  color: var(--sg-color-white);
 }
 
 .fault {
   background-color: var(--sg-color-red) !important;
-  color: var(--theme-color-text);
+  color: var(--sg-color-white);
 }
 
 .item-block-stopped,
@@ -249,7 +249,7 @@
   flex-direction: column;
   font-size: 1rem;
   line-height: 1.1;
-  color: var(--theme-color-text);
+  color: var(--theme-color-on-ryo);
   background-color: var(--theme-efficiency-lane-background-color);
   padding: 0.15rem;
 }
@@ -273,21 +273,21 @@
   text-transform: uppercase;
   font-size: 1.8rem;
   line-height: 1;
-  color: var(--theme-color-text);
+  color: var(--theme-color-white);
 }
 
 .fault-label {
   text-align: center;
   font-size: 1rem;
   text-transform: uppercase;
-  color: var(--theme-color-text);
+  color: var(--theme-color-white);
   margin-top: 0.3rem;
 }
 
 .fault-code {
   text-align: center;
   font-size: 0.9rem;
-  color: var(--theme-color-text);
+  color: var(--theme-color-white);
   margin-top: 0.2rem;
 }
 
@@ -306,7 +306,7 @@
   justify-content: center;
   flex-direction: column;
   font-size: 0.9rem;
-  color: var(--theme-color-text);
+  color: var(--theme-color-white);
 }
 
 // ===== ITEM BLOCK =====
