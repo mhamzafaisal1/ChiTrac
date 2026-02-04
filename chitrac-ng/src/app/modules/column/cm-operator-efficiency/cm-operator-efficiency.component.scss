@@ -215,20 +215,20 @@
   text-transform: uppercase;
   font-size: 2.5rem;
   line-height: 1;
-  color: var(--sg-color-text);
+  color: var(--theme-color-text);
 }
 
 .fault-label {
   text-align: center;
   font-size: 1.5rem;
   text-transform: uppercase;
-  color: var(--sg-color-text);
+  color: var(--theme-color-text);
 }
 
 .fault-code {
   text-align: center;
   font-size: 1.25rem;
-  color: var(--sg-color-text);
+  color: var(--theme-color-text);
 }
 
 // Timer Display
@@ -246,7 +246,7 @@
   flex-direction: column;
   height: 100%;
   font-size: 1.25rem;
-  color: var(--sg-color-text);
+  color: var(--theme-color-text);
 }
 
 // Item Block

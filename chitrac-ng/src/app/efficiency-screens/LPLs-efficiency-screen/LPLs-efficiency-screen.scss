@@ -333,12 +333,12 @@
 
 .item-block-stopped {
   background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
-  color: var(--sg-color-text, #000000);
+  color: var(--theme-color-text, #000000);
 }
 
 .item-block-fault {
   background-color: var(--sg-color-blue-gray-light-200, #b0bec5);
-  color: var(--sg-color-text, #000000);
+  color: var(--theme-color-text, #000000);
 }
 
 .item-line {
