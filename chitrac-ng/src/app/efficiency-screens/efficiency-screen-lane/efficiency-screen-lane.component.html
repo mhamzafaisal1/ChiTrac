@@ -142,6 +142,7 @@
         </div>
         <div class="data-block stopped">
           <div class="fault-display">
+            <div class="fault-text" *ngIf="lane?.fault == 'Timeout'">Paused</div>
             <div class="fault-text">{{ lane?.fault }}</div>
           </div>
           <div class="timer-display">

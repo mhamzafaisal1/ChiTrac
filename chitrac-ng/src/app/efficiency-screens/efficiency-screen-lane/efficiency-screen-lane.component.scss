@@ -135,12 +135,13 @@
 }
 
 .stopped {
-  background-color: var(--sg-color-blue-gray-medium-300) !important;
+  background-color: var(--sg-color-yellow) !important;
+  color: var(--sg-color-black);
 }
 
 .fault {
   background-color: var(--sg-color-red) !important;
-  color: var(--sg-color-black);
+  color: var(--sg-color-text);
 }
 
 .item-block-stopped,
