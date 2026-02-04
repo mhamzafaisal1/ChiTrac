@@ -51,6 +51,7 @@
     padding:0 !important;
     margin:20px !important;
   }
+  
 }
 
 
@@ -142,6 +143,10 @@
 .fault {
   background-color: var(--sg-color-red) !important;
   color: var(--sg-color-white);
+
+  .operator-text {
+    color: var(--sg-color-white) !important;
+  }
 }
 
 .item-block-stopped,
@@ -249,7 +254,7 @@
   flex-direction: column;
   font-size: 1rem;
   line-height: 1.1;
-  color: var(--theme-color-on-ryo);
+  color: var(--theme-color-text);
   background-color: var(--theme-efficiency-lane-background-color);
   padding: 0.15rem;
 }
