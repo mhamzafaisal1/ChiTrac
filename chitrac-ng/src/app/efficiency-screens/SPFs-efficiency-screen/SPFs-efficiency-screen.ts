@@ -19,8 +19,8 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private readonly POLL_INTERVAL = 6000;
   // Hardcoded SPF machine serials
-  //private readonly SPF_SERIALS = [67808, 67806, 67807, 67805, 67804, 67803];
-  private readonly SPF_SERIALS = [90001, 90002, 90003, 90004, 90005, 90006];
+  private readonly SPF_SERIALS = [67808, 67806, 67807, 67805, 67804, 67803];
+  //private readonly SPF_SERIALS = [90001, 90002, 90003, 90004, 90005, 90006];
 
   constructor(private efficiencyService: EfficiencyScreensService) {}
 
@@ -79,8 +79,10 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
           this.lanes = this.SPF_SERIALS.map((serial, index) => {
             const response = responses[index];
             const flipperData = response?.flipperData || [];
+            const latestFaultStart = response?.latestFaultStart ?? null;
+            const latestPausedStart = response?.latestPausedStart ?? null;
             if (flipperData.length > 0) {
-              return { ...flipperData[0], serial };
+              return { ...flipperData[0], serial, latestFaultStart, latestPausedStart };
             }
             return {
               serial,
@@ -98,7 +100,9 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
                 today: { value: 0, label: 'All Day', color: 'red' }
               },
               oee: {},
-              batch: { item: '', code: 0 }
+              batch: { item: '', code: 0 },
+              latestFaultStart,
+              latestPausedStart
             };
           });
 
@@ -147,8 +151,10 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
           this.lanes = this.SPF_SERIALS.map((serial, index) => {
             const response = responses[index];
             const flipperData = response?.flipperData || [];
+            const latestFaultStart = response?.latestFaultStart ?? null;
+            const latestPausedStart = response?.latestPausedStart ?? null;
             if (flipperData.length > 0) {
-              return { ...flipperData[0], serial };
+              return { ...flipperData[0], serial, latestFaultStart, latestPausedStart };
             }
             return {
               serial,
@@ -166,7 +172,9 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
                 today: { value: 0, label: 'All Day', color: 'red' }
               },
               oee: {},
-              batch: { item: '', code: 0 }
+              batch: { item: '', code: 0 },
+              latestFaultStart,
+              latestPausedStart
             };
           });
 
