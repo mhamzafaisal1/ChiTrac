@@ -133,17 +133,17 @@
 
   <!-- Offline / stopped (status 0 or -1) -->
   <ng-container *ngSwitchCase="'offline'">
-    <div class="lane-background lane-stop-bg">
-      <div class="lane-inner">
-        <div class="operator-block stopped">
+    <div class="lane-background"  [ngClass] = "{'lane-offline-bg': (lane?.fault != 'System_Paused'), 'lane-stop-bg': (lane?.fault == 'System_Paused')}">
+      <div class="lane-inner" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
+        <div class="operator-block">
           <div class="operator-text">
             <div class="operator-content">{{ lane?.operator || 'NO OPERATOR' }}</div>
           </div>
         </div>
-        <div class="data-block stopped">
+        <div class="data-block" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
           <div class="fault-display">
-            <div class="fault-text" *ngIf="lane?.fault == 'Timeout'">Paused</div>
-            <div class="fault-text" *ngIf="lane?.fault != 'Timeout'">{{ lane?.fault }}</div>
+            <div class="fault-text" *ngIf="lane?.fault == 'System_Paused'">Paused</div>
+            <div class="fault-text" *ngIf="lane?.fault != 'System_Paused'">{{ lane?.fault }}</div>
           </div>
           <div class="timer-display">
             <div class="timer-text">ELAPSED TIME: {{ getElapsedDisplay() }}</div>

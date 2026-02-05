@@ -54,6 +54,24 @@
   
 }
 
+.lane-offline-bg {
+  //background-color: var(--theme-efficiency-lane-background-color);
+
+  background: repeating-linear-gradient(135deg,
+      var(--sg-color-black),
+      var(--sg-color-black) 10px,
+      var(--sg-color-blue-gray-light-100) 10px,
+      var(--sg-color-blue-gray-light-100) 20px);
+
+  .lane-inner {
+    background-color: var(--sg-color-blue-gray-light-100) !important;
+    color: var(--sg-color-black);
+    padding:0 !important;
+    margin:20px !important;
+  }
+  
+}
+
 
 
 .lane-fault-bg {
@@ -133,6 +151,11 @@
 
 .no-operator {
   background-color: var(--sg-color-medium-gray-neutral) !important;
+}
+
+.offline {
+  background-color: var(--sg-color-blue-gray-light-100) !important;
+  color: var(--sg-color-black);
 }
 
 .stopped {
