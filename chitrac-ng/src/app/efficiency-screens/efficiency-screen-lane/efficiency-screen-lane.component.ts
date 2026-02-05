@@ -22,7 +22,7 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   @Input() lane: any;
   @Input() mode: EfficiencyScreenLaneMode = 'operator';
 
-  /** Elapsed time display string, updated every second when in fault/offline with latestFaultStart */
+  /** Elapsed time display string, updated every second when in fault (latestFaultStart) or paused (latestPausedStart) */
   elapsedDisplay = '';
   private destroy$ = new Subject<void>();
   private timerSub: Subscription | null = null;
@@ -68,20 +68,27 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
     }
   }
 
+  /** Show ticking elapsed when faulted (use latestFaultStart) or paused/offline (use latestPausedStart or latestFaultStart). */
   private shouldShowDynamicElapsed(): boolean {
-    return (this.mode === 'fault' || this.mode === 'offline') && !!this.lane?.latestFaultStart;
+    if (this.mode === 'fault') return !!this.lane?.latestFaultStart;
+    if (this.mode === 'offline') return !!(this.lane?.latestPausedStart || this.lane?.latestFaultStart);
+    return false;
   }
 
   private updateElapsedDisplay(): void {
-    if (this.shouldShowDynamicElapsed()) {
-      this.elapsedDisplay = this.formatElapsedFromFaultStart(this.lane.latestFaultStart);
+    if (this.mode === 'fault' && this.lane?.latestFaultStart) {
+      this.elapsedDisplay = this.formatElapsedFromStart(this.lane.latestFaultStart);
+    } else if (this.mode === 'offline' && this.lane?.latestPausedStart) {
+      this.elapsedDisplay = this.formatElapsedFromStart(this.lane.latestPausedStart);
+    } else if (this.mode === 'offline' && this.lane?.latestFaultStart) {
+      this.elapsedDisplay = this.formatElapsedFromStart(this.lane.latestFaultStart);
     } else {
       this.elapsedDisplay = this.lane?.displayTimers?.on ?? '';
     }
   }
 
-  /** Format elapsed seconds as "Xh Ym Zs" from fault start to now */
-  private formatElapsedFromFaultStart(isoOrDate: string | Date): string {
+  /** Format elapsed seconds as "Xh Ym Zs" from given start to now */
+  private formatElapsedFromStart(isoOrDate: string | Date): string {
     const start = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
     if (!start || isNaN(start.getTime())) return '0s';
     const totalSec = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
