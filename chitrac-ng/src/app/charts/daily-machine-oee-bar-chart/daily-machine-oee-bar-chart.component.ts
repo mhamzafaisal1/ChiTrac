@@ -193,28 +193,29 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     };
 
   private formatChartData(data: Array<{name: string, oee: number}>): CartesianChartConfig {
-    // Convert machine OEE data to cartesian chart format with color-coded bars
+    // Convert machine OEE data to cartesian chart format with color-coded horizontal bars
     const series: XYSeries[] = data.map((machine, index) => ({
       id: `machine-${index}`,
       title: machine.name,
       type: 'bar',
-      data: [{ x: machine.name, y: machine.oee }],
-      color: this.getOeeColor(machine.oee) // Color based on OEE percentage
+      data: [{ x: machine.name, y: machine.oee }],  // names on Y-axis, OEE on X-axis (horizontal bars)
+      color: this.getOeeColor(machine.oee),  // Color based on OEE percentage
+      options: { barPadding: 0.2 }
     }));
 
     return {
       title: 'Ranked OEE% by Machine',
       width: this.chartWidth,
       height: this.chartHeight,
-      orientation: 'vertical',
-      xType: 'category',
-      xLabel: 'Machine',
-      yLabel: 'OEE (%)',
+      orientation: 'horizontal',  // horizontal bars: machines on Y, OEE % on X
+      xType: 'linear',  // OEE values are numeric (X-axis = bar length)
+      xLabel: 'OEE (%)',
+      yLabel: 'Machine',
       margin: {
         top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
         bottom: Math.max(this.marginBottom || 50, 80),
-        left: this.marginLeft || 50
+        left: Math.max(this.marginLeft || 50, 120)  // space for machine names
       },
       legend: {
         show: false,  // No legend needed for individual machine bars
