@@ -108,7 +108,7 @@
     text-transform: uppercase; /* text-uppercase */
     font-size: 2.5rem; /* fs-1 equivalent */
     line-height: 1;
-    color: var(--sg-color-background);
+    color: var(--theme-color-text);
   }
 
   /* Fault Label - matches Bootstrap text-center, fs-4, text-uppercase */
@@ -116,14 +116,14 @@
     text-align: center; /* text-center */
     font-size: 1.5rem; /* fs-4 equivalent */
     text-transform: uppercase; /* text-uppercase */
-    color: var(--sg-color-background);
+    color: var(--theme-color-text);
   }
 
   /* Fault Code - matches Bootstrap text-center, fs-5 */
   .fault-code {
     text-align: center; /* text-center */
     font-size: 1.25rem; /* fs-5 equivalent */
-    color: var(--sg-color-background);
+    color: var(--theme-color-text);
   }
 
   /* Timer Display - matches Bootstrap col-12, fs-5 */
@@ -140,7 +140,7 @@
     flex-direction: column; /* flex-column */
     height: 100%; /* h-100 */
     font-size: 1.25rem; /* fs-5 equivalent */
-    color: var(--sg-color-background);
+    color: var(--theme-color-text);
   }
 
   /* Item Block - matches Bootstrap row, w-100, fs-5 */

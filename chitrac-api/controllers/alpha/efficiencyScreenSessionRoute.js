@@ -298,27 +298,15 @@ module.exports = function (server) {
       ]
     });
 
-    // Add timeout wrapper to prevent hanging - reduced timeout to fail faster
-    const queryWithTimeout = (promise, timeoutMs = 8000) => {
-      return Promise.race([
-        promise,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Query timeout')), timeoutMs)
-        )
-      ]);
-    };
-
     try {
-      console.log(`[PERF] [${serialNum}] Operator ${operatorId} - Starting 4 parallel session queries...`);
+      console.log(`[PERF] [${serialNum}] Operator ${operatorId} - Starting 4 parallel session queries (no limit/timeout)...`);
       const parallelQueryStartTime = Date.now();
-      
-      // Use limit to prevent loading too many sessions (especially for "today" which can have many)
-      // Reduce limits further and add indexes hints for better performance
+
       const [six, fifteen, hour, today] = await Promise.all([
-        queryWithTimeout(coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(5).maxTimeMS(8000).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(5).maxTimeMS(8000).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).limit(10).maxTimeMS(8000).toArray()),
-        queryWithTimeout(coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': -1 }).limit(20).maxTimeMS(8000).toArray()) // Most recent first for today
+        coll.find(buildFilter(frames.lastSixMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+        coll.find(buildFilter(frames.lastFifteenMinutes.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+        coll.find(buildFilter(frames.lastHour.start), projectSessionForPerf()).sort({ 'timestamps.start': 1 }).toArray(),
+        coll.find(buildFilter(frames.today.start), projectSessionForPerf()).sort({ 'timestamps.start': -1 }).toArray()
       ]);
 
       console.log(`[PERF] [${serialNum}] Operator ${operatorId} - All 4 session queries completed in ${Date.now() - parallelQueryStartTime}ms (results: 6min=${six.length}, 15min=${fifteen.length}, 1hr=${hour.length}, today=${today.length})`);
@@ -330,8 +318,8 @@ module.exports = function (server) {
         today
       };
     } catch (err) {
-      console.error(`[PERF] [${serialNum}] Operator ${operatorId} - Query error or timeout after ${Date.now() - queryStartTime}ms:`, err.message);
-      logger.error('[queryOperatorTimeframes] Query error or timeout:', err);
+      console.error(`[PERF] [${serialNum}] Operator ${operatorId} - Query error after ${Date.now() - queryStartTime}ms:`, err.message);
+      logger.error('[queryOperatorTimeframes] Query error:', err);
       // Return empty results on timeout
       return {
         lastSixMinutes: [],
@@ -848,8 +836,8 @@ module.exports = function (server) {
       console.log(`[PERF] [${serialNum}] Route START - daily/machine-live-session-summary-sessions (sessions-only)`);
       const tickerStartTime = Date.now();
 
-      const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
-        .findOne(
+      const [ticker, latestFault] = await Promise.all([
+        db.collection(config.stateTickerCollectionName || 'stateTicker').findOne(
           { 'machine.id': serialNum },
           {
             projection: {
@@ -860,9 +848,20 @@ module.exports = function (server) {
               operators: 1
             }
           }
-        );
+        ),
+        db.collection(config.faultSessionCollectionName || 'fault-session').findOne(
+          { $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }] },
+          { sort: { 'timestamps.start': -1 }, projection: { 'timestamps.start': 1 } }
+        )
+      ]);
 
       console.log(`[PERF] [${serialNum}] Ticker query completed in ${Date.now() - tickerStartTime}ms`);
+
+      const latestFaultStart = latestFault?.timestamps?.start
+        ? (latestFault.timestamps.start instanceof Date
+          ? latestFault.timestamps.start.toISOString()
+          : latestFault.timestamps.start)
+        : null;
 
       if (!ticker) {
         const machineConfig = await db.collection('machines').findOne(
@@ -882,7 +881,7 @@ module.exports = function (server) {
           oee: buildZeroEfficiencyPayload(),
           batch: { item: '', code: 0 }
         }];
-        return res.json({ flipperData: offlineLanes });
+        return res.json({ flipperData: offlineLanes, latestFaultStart });
       }
 
       const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
@@ -943,7 +942,7 @@ module.exports = function (server) {
           })
         );
         console.log(`[PERF] [${serialNum}] Non-running path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
-        return res.json({ flipperData: performanceData });
+        return res.json({ flipperData: performanceData, latestFaultStart });
       }
 
       // Running: all windows from operator-sessions only; today uses all sessions for the day (no limit)
@@ -1077,7 +1076,7 @@ module.exports = function (server) {
       );
 
       console.log(`[PERF] [${serialNum}] Running path (sessions-only) completed in ${Date.now() - runningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
-      return res.json({ flipperData: performanceData });
+      return res.json({ flipperData: performanceData, latestFaultStart });
     } catch (err) {
       const serialLabel = req.query.serial != null ? req.query.serial : 'unknown';
       console.error(`[PERF] [${serialLabel}] ERROR daily/machine-live-session-summary-sessions after ${Date.now() - routeStartTime}ms:`, err);
