@@ -73,6 +73,7 @@ const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
 const {
   getBookendedStatesAndTimeRange,
 } = require("../../utils/bookendingBuilder");
+const { recalculateAc360HourlyTotals } = require("../../utils/ac360HourlyCache");
 
 module.exports = function (server) {
   return constructor(server);
@@ -507,6 +508,12 @@ function constructor(server) {
         }
         const insertNewSession = await db.collection('operator-session').insertOne(newSession);
       }
+
+      // Rebuild hourly-totals cache for this machine after session updates
+      const ac360MachineName = "SPF" + (machine.name || "").slice(-1);
+      recalculateAc360HourlyTotals(db, machine.serial, ac360MachineName).catch((err) =>
+        logger.error("AC360 hourly cache recalc failed (status):", err)
+      );
     } else if (storeJSON.item) {
       collection = db.collection("ac360-count");
 
@@ -681,6 +688,11 @@ function constructor(server) {
         }
       }
 
+      // Rebuild hourly-totals cache for this machine after count/misfeed session updates
+      const ac360MachineName = "SPF" + (machine.name || "").slice(-1);
+      recalculateAc360HourlyTotals(db, machine.serial, ac360MachineName).catch((err) =>
+        logger.error("AC360 hourly cache recalc failed (item):", err)
+      );
     } else if (storeJSON.stack) {
       collection = db.collection("ac360-stack");
     }
