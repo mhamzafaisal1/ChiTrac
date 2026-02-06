@@ -1,17 +1,13 @@
-<div class="custom-container">
-    <div class="lane-wrapper">
-        <div *ngFor="let lane of lanes; trackBy: ident" class="lane-card">
-            <ng-container *ngIf="lane.status === 1">
-                <ct-lane-running *ngIf="lane.operator != null" [lane]="lane"></ct-lane-running>
-                <ct-lane-running-greyed *ngIf="lane.operator === null" [lane]="lane"></ct-lane-running-greyed>
-            </ng-container>
-            
-            <ct-lane-fault *ngIf="lane.status > 1" [lane]="lane"></ct-lane-fault>
-            <ct-lane-stop *ngIf="lane.status === 0 || lane.status === -1" [lane]="lane"></ct-lane-stop>
-        </div>
-        <div class="lane-card" *ngIf="lanes.length > 0 && lanes[0]">
-            <ct-lane-oee [lane]="lanes[0]"></ct-lane-oee>
-        </div>
+<div class="screen-container">
+  <div class="lanes-wrapper" *ngIf="lanes.length > 0">
+    <div class="lane-container" *ngFor="let lane of lanes; trackBy: ident">
+      <app-efficiency-screen-lane [lane]="lane" [mode]="getLaneMode(lane)"></app-efficiency-screen-lane>
     </div>
+    <div class="lane-container" *ngIf="lanes.length > 0">
+      <app-efficiency-screen-lane [lane]="lanes[0]" mode="oee"></app-efficiency-screen-lane>
+    </div>
+  </div>
+  <div class="no-data-container" *ngIf="lanes.length === 0">
+    <div class="no-data-text">No LPL data</div>
+  </div>
 </div>
-  
