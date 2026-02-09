@@ -1,12 +1,15 @@
 /**
- * AC360 hourly-totals cache: build and upsert from machine-session and operator-session (DB).
- * Mirrors machine-simulator cache logic so hourly-totals collection stays consistent.
+ * AC360 hourly and daily totals cache: build and upsert from machine-session and operator-session (DB).
+ * Mirrors machine-simulator cache logic so hourly-totals and daily-totals collections stay consistent.
+ *
+ * Daily totals are derived by querying and summing hourly totals (experimental approach to test performance).
  */
 
 const { DateTime } = require('luxon');
 
 const SYSTEM_TIMEZONE = 'America/Chicago';
 const HOURLY_TOTALS_COLLECTION = 'hourly-totals';
+const DAILY_TOTALS_COLLECTION = 'totals-daily';
 
 function overlap(sStart, sEnd, wStart, wEnd) {
   const ss = new Date(sStart);
@@ -192,7 +195,161 @@ async function upsertHourlyTotalsToCache(db, hourlyTotals, collectionName = HOUR
 }
 
 /**
- * Load today's machine and operator sessions from DB and rebuild hourly totals for this machine.
+ * Build daily totals by querying and summing hourly totals from the hourly-totals collection.
+ * This is an experimental approach to test performance vs building from sessions directly.
+ *
+ * @param {Object} db - MongoDB database instance
+ * @param {number|string} machineSerial - Machine serial
+ * @param {string} machineName - Display name (e.g. "SPF1")
+ * @param {string} dateStr - Date string in 'yyyy-MM-dd' format
+ */
+async function buildDailyTotalsFromHourly(db, machineSerial, machineName, dateStr) {
+  try {
+    const hourlyTotalsColl = db.collection(HOURLY_TOTALS_COLLECTION);
+
+    // Query all machine hourly totals for today
+    const machineHourlyTotals = await hourlyTotalsColl
+      .find({
+        entityType: 'machine',
+        machineSerial: machineSerial,
+        date: dateStr,
+      })
+      .toArray();
+
+    // Query all operator-machine hourly totals for today
+    const operatorHourlyTotals = await hourlyTotalsColl
+      .find({
+        entityType: 'operator-machine',
+        machineSerial: machineSerial,
+        date: dateStr,
+      })
+      .toArray();
+
+    const dailyTotals = [];
+    const dateObj = DateTime.fromISO(dateStr, { zone: SYSTEM_TIMEZONE }).toUTC().startOf('day').toJSDate();
+
+    // Sum machine hourly totals into daily total
+    if (machineHourlyTotals.length > 0) {
+      const machineDailyTotal = {
+        _id: `machine-${machineSerial}-${dateStr}`,
+        entityType: 'machine',
+        machineSerial,
+        machineName,
+        date: dateStr,
+        dateObj,
+        runtimeMs: 0,
+        faultTimeMs: 0,
+        workedTimeMs: 0,
+        pausedTimeMs: 0,
+        totalFaults: 0,
+        totalCounts: 0,
+        totalMisfeeds: 0,
+        totalTimeCreditMs: 0,
+        hourlyBreakdown: [],
+        lastUpdated: DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate(),
+        version: '1.0.0',
+      };
+
+      for (const hourly of machineHourlyTotals) {
+        machineDailyTotal.runtimeMs += safe(hourly.runtimeMs);
+        machineDailyTotal.faultTimeMs += safe(hourly.faultTimeMs);
+        machineDailyTotal.workedTimeMs += safe(hourly.workedTimeMs);
+        machineDailyTotal.pausedTimeMs += safe(hourly.pausedTimeMs);
+        machineDailyTotal.totalFaults += safe(hourly.totalFaults);
+        machineDailyTotal.totalCounts += safe(hourly.totalCounts);
+        machineDailyTotal.totalMisfeeds += safe(hourly.totalMisfeeds);
+        machineDailyTotal.totalTimeCreditMs += safe(hourly.totalTimeCreditMs);
+        machineDailyTotal.hourlyBreakdown.push({
+          hour: hourly.hour,
+          runtimeMs: hourly.runtimeMs,
+          totalCounts: hourly.totalCounts,
+        });
+      }
+
+      // Sort hourly breakdown by hour
+      machineDailyTotal.hourlyBreakdown.sort((a, b) => a.hour - b.hour);
+      dailyTotals.push(machineDailyTotal);
+    }
+
+    // Group operator hourly totals by operatorId and sum into daily totals
+    const operatorMap = new Map();
+    for (const hourly of operatorHourlyTotals) {
+      const opId = hourly.operatorId;
+      if (!operatorMap.has(opId)) {
+        operatorMap.set(opId, {
+          _id: `operator-machine-${opId}-${machineSerial}-${dateStr}`,
+          entityType: 'operator-machine',
+          operatorId: opId,
+          operatorName: hourly.operatorName,
+          machineSerial,
+          machineName,
+          date: dateStr,
+          dateObj,
+          runtimeMs: 0,
+          faultTimeMs: 0,
+          workedTimeMs: 0,
+          pausedTimeMs: 0,
+          totalFaults: 0,
+          totalCounts: 0,
+          totalMisfeeds: 0,
+          totalTimeCreditMs: 0,
+          hourlyBreakdown: [],
+          lastUpdated: DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate(),
+          version: '1.0.0',
+        });
+      }
+
+      const opDaily = operatorMap.get(opId);
+      opDaily.runtimeMs += safe(hourly.runtimeMs);
+      opDaily.faultTimeMs += safe(hourly.faultTimeMs);
+      opDaily.workedTimeMs += safe(hourly.workedTimeMs);
+      opDaily.pausedTimeMs += safe(hourly.pausedTimeMs);
+      opDaily.totalFaults += safe(hourly.totalFaults);
+      opDaily.totalCounts += safe(hourly.totalCounts);
+      opDaily.totalMisfeeds += safe(hourly.totalMisfeeds);
+      opDaily.totalTimeCreditMs += safe(hourly.totalTimeCreditMs);
+      opDaily.hourlyBreakdown.push({
+        hour: hourly.hour,
+        runtimeMs: hourly.runtimeMs,
+        totalCounts: hourly.totalCounts,
+      });
+    }
+
+    for (const opDaily of operatorMap.values()) {
+      // Sort hourly breakdown by hour
+      opDaily.hourlyBreakdown.sort((a, b) => a.hour - b.hour);
+      dailyTotals.push(opDaily);
+    }
+
+    return dailyTotals;
+  } catch (err) {
+    console.error(`Error building AC360 daily totals from hourly for machine ${machineSerial}:`, err);
+    return [];
+  }
+}
+
+/**
+ * Upsert daily total records into the cache collection (idempotent $set).
+ */
+async function upsertDailyTotalsToCache(db, dailyTotals, collectionName = DAILY_TOTALS_COLLECTION) {
+  if (!dailyTotals || dailyTotals.length === 0) return { upsertedCount: 0, modifiedCount: 0 };
+
+  const coll = db.collection(collectionName);
+  const ops = dailyTotals.map((total) => ({
+    updateOne: {
+      filter: { _id: total._id },
+      update: { $set: total },
+      upsert: true,
+    },
+  }));
+
+  const result = await coll.bulkWrite(ops, { ordered: false });
+  return { upsertedCount: result.upsertedCount, modifiedCount: result.modifiedCount };
+}
+
+/**
+ * Load today's machine and operator sessions from DB, rebuild hourly totals,
+ * then query hourly totals and sum into daily totals.
  * Call after any ac360/post update to machine-session or operator-session.
  *
  * @param {Object} db - MongoDB database instance
@@ -270,15 +427,25 @@ async function recalculateAc360HourlyTotals(db, machineSerial, machineName) {
       hourCount++;
     }
 
-    if (hourlyTotals.length === 0) return { success: true, recordsUpdated: 0 };
+    if (hourlyTotals.length === 0) return { success: true, hourlyRecordsUpdated: 0, dailyRecordsUpdated: 0 };
 
-    const result = await upsertHourlyTotalsToCache(db, hourlyTotals);
+    // Step 1: Upsert hourly totals
+    const hourlyResult = await upsertHourlyTotalsToCache(db, hourlyTotals);
+
+    // Step 2: Build daily totals by querying and summing hourly totals
+    const dateStr = DateTime.now().setZone(SYSTEM_TIMEZONE).toFormat('yyyy-MM-dd');
+    const dailyTotals = await buildDailyTotalsFromHourly(db, machineSerial, machineName, dateStr);
+
+    // Step 3: Upsert daily totals
+    const dailyResult = await upsertDailyTotalsToCache(db, dailyTotals);
+
     return {
       success: true,
-      recordsUpdated: result.upsertedCount + result.modifiedCount,
+      hourlyRecordsUpdated: hourlyResult.upsertedCount + hourlyResult.modifiedCount,
+      dailyRecordsUpdated: dailyResult.upsertedCount + dailyResult.modifiedCount,
     };
   } catch (err) {
-    console.error(`Error recalculating AC360 hourly totals for machine ${machineSerial}:`, err);
+    console.error(`Error recalculating AC360 hourly/daily totals for machine ${machineSerial}:`, err);
     return { success: false, error: err.message };
   }
 }
@@ -289,5 +456,7 @@ module.exports = {
   buildMachineHourlyTotal,
   buildOperatorMachineHourlyTotal,
   upsertHourlyTotalsToCache,
+  buildDailyTotalsFromHourly,
+  upsertDailyTotalsToCache,
   recalculateAc360HourlyTotals,
 };
