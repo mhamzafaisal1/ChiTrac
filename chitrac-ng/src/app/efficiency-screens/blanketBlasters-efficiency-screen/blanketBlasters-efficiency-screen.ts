@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule, NgFor, NgIf } from '@angular/common';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
+import { EfficiencyScreenLaneComponent, type EfficiencyScreenLaneMode } from '../efficiency-screen-lane/efficiency-screen-lane.component';
 import { Subject, timer, forkJoin, of } from 'rxjs';
 import { takeUntil, exhaustMap, catchError } from 'rxjs/operators';
 
@@ -9,7 +10,7 @@ import { takeUntil, exhaustMap, catchError } from 'rxjs/operators';
   templateUrl: './blanketBlasters-efficiency-screen.html',
   styleUrls: ['./blanketBlasters-efficiency-screen.scss'],
   standalone: true,
-  imports: [CommonModule, NgFor, NgIf]
+  imports: [CommonModule, NgFor, NgIf, EfficiencyScreenLaneComponent]
 })
 export class BlanketBlastersEfficiencyScreenComponent implements OnInit, OnDestroy {
   lanes: any[] = [];
@@ -52,19 +53,14 @@ export class BlanketBlastersEfficiencyScreenComponent implements OnInit, OnDestr
           // Combine all operators from both machines into a single lanes array
           this.lanes = [];
           
-          responses.forEach((response, index) => {
+          responses.forEach((response) => {
             const flipperData = response?.flipperData || [];
-            
-            // Each Blanket Blaster machine has 2 operators, so add all operators from flipperData
-            // The API will return the proper structure (including offline entries if needed)
+            const latestFaultStart = response?.latestFaultStart ?? null;
             if (flipperData.length > 0) {
-              // Add all operators from this machine
-              this.lanes.push(...flipperData);
+              this.lanes.push(...flipperData.map((item: any) => ({ ...item, latestFaultStart })));
             }
-            // If no data, don't create hardcoded entries - let the API handle offline cases
           });
 
-          // Sort lanes by machine name, then by operator name to maintain consistent order
           this.lanes.sort((a, b) => {
             const machineA = a.machine || '';
             const machineB = b.machine || '';
@@ -121,19 +117,14 @@ export class BlanketBlastersEfficiencyScreenComponent implements OnInit, OnDestr
           // Wait for all calls to complete before showing lanes
           this.lanes = [];
           
-          responses.forEach((response, index) => {
+          responses.forEach((response) => {
             const flipperData = response?.flipperData || [];
-            
-            // Each Blanket Blaster machine has 2 operators, so add all operators from flipperData
-            // The API will return the proper structure (including offline entries if needed)
+            const latestFaultStart = response?.latestFaultStart ?? null;
             if (flipperData.length > 0) {
-              // Add all operators from this machine
-              this.lanes.push(...flipperData);
+              this.lanes.push(...flipperData.map((item: any) => ({ ...item, latestFaultStart })));
             }
-            // If no data, don't create hardcoded entries - let the API handle offline cases
           });
 
-          // Sort lanes by machine name, then by operator name
           this.lanes.sort((a, b) => {
             const machineA = a.machine || '';
             const machineB = b.machine || '';
@@ -162,5 +153,12 @@ export class BlanketBlastersEfficiencyScreenComponent implements OnInit, OnDestr
 
   ident(index: number, lane: any): number {
     return index;
+  }
+
+  /** Lane mode for shared efficiency-screen-lane: operator, fault, or offline. */
+  getLaneMode(lane: any): EfficiencyScreenLaneMode {
+    if (lane?.status === 1) return 'operator';
+    if (lane?.status > 1) return 'fault';
+    return 'offline';
   }
 }

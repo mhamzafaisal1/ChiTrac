@@ -1,24 +1,15 @@
-<div class="custom-container">
-    <!-- Loading Overlay for initial load -->
-    <div class="loading-overlay" *ngIf="isLoading">
-      <div class="loading-content">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">
-          Loading data...
-        </div>
-      </div>
+<div class="screen-container">
+  <div class="lanes-wrapper" *ngIf="!isLoading && lanes.length > 0">
+    <div class="lane-container" *ngFor="let lane of lanes; trackBy: ident">
+      <app-efficiency-screen-lane [lane]="lane" [mode]="getLaneMode(lane)"></app-efficiency-screen-lane>
     </div>
+  </div>
 
-    <div class="lane-wrapper" [class.loading]="isLoading">
-        <div *ngFor="let lane of lanes; trackBy: ident" class="lane-card">
-            <ng-container *ngIf="lane.status === 1">
-                <ct-lane-running *ngIf="lane.operator != null" [lane]="lane"></ct-lane-running>
-                <ct-lane-running-greyed *ngIf="lane.operator === null" [lane]="lane"></ct-lane-running-greyed>
-            </ng-container>
-            
-            <ct-lane-fault *ngIf="lane.status > 1" [lane]="lane"></ct-lane-fault>
-            <ct-lane-stop *ngIf="lane.status === 0 || lane.status === -1" [lane]="lane"></ct-lane-stop>
-        </div>
-    </div>
+  <div class="loading-container" *ngIf="isLoading">
+    <div class="loading-text">Loading SPL machine...</div>
+  </div>
+
+  <div class="no-data-container" *ngIf="!isLoading && lanes.length === 0">
+    <div class="no-data-text">No SPL machine found</div>
+  </div>
 </div>
-  

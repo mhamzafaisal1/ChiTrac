@@ -80,8 +80,9 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             const response = responses[index];
             const flipperData = response?.flipperData || [];
             const latestFaultStart = response?.latestFaultStart ?? null;
+            const latestPausedStart = response?.latestPausedStart ?? null;
             if (flipperData.length > 0) {
-              return { ...flipperData[0], serial, latestFaultStart };
+              return { ...flipperData[0], serial, latestFaultStart, latestPausedStart };
             }
             return {
               serial,
@@ -100,7 +101,8 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
               },
               oee: {},
               batch: { item: '', code: 0 },
-              latestFaultStart
+              latestFaultStart,
+              latestPausedStart
             };
           });
 
@@ -150,8 +152,9 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
             const response = responses[index];
             const flipperData = response?.flipperData || [];
             const latestFaultStart = response?.latestFaultStart ?? null;
+            const latestPausedStart = response?.latestPausedStart ?? null;
             if (flipperData.length > 0) {
-              return { ...flipperData[0], serial, latestFaultStart };
+              return { ...flipperData[0], serial, latestFaultStart, latestPausedStart };
             }
             return {
               serial,
@@ -170,7 +173,8 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
               },
               oee: {},
               batch: { item: '', code: 0 },
-              latestFaultStart
+              latestFaultStart,
+              latestPausedStart
             };
           });
 

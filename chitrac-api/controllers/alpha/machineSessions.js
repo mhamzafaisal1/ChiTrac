@@ -484,6 +484,218 @@ module.exports = function (server) {
     }
   });
 
+  // ---- /api/alpha/analytics/machine-group-summary-daily-cached ----
+  // Aggregates totals-daily machine records by department (hard-coded 4 groups).
+  // Returns one entry per department with summed runtime, downtime, counts and derived OEE metrics.
+  const MACHINE_GROUP_DEPARTMENTS = [
+    "Small Piece Folder",
+    "Large Piece Ironer",
+    "Blanket Blaster",
+    "Small Piece Ironer",
+  ];
+
+  router.get("/analytics/machines-group-summary-daily-cached", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      // Use requested start date (in Chicago) for totals-daily query so ?start=2026-02-04... returns that day
+      const dateStr = start.toLocaleDateString("en-CA", {
+        timeZone: "America/Chicago",
+      });
+
+      logger.info(
+        `[machineSessions] machine-group-summary: query params start=${req.query.start} end=${req.query.end} serial=${req.query.serial || "none"}`
+      );
+      logger.info(
+        `[machineSessions] machine-group-summary: parsed start=${start?.toISOString?.()} end=${end?.toISOString?.()} dateStr=${dateStr}`
+      );
+
+      const filter = {
+        entityType: "machine",
+        date: dateStr,
+      };
+      if (serial) {
+        filter.machineSerial = parseInt(serial);
+      }
+
+      logger.info(
+        `[machineSessions] machine-group-summary: querying totals-daily with filter ${JSON.stringify(filter)}`
+      );
+
+      const cacheRecords = await db
+        .collection("totals-daily")
+        .find(filter)
+        .toArray();
+
+      logger.info(
+        `[machineSessions] machine-group-summary: totals-daily returned ${cacheRecords.length} record(s) for date=${dateStr}`
+      );
+
+      if (cacheRecords.length === 0) {
+        // Debug: see what dates/entityTypes exist in totals-daily
+        const anyByDate = await db
+          .collection("totals-daily")
+          .countDocuments({ date: dateStr });
+        const sampleDocs = await db
+          .collection("totals-daily")
+          .find({})
+          .limit(3)
+          .project({ date: 1, entityType: 1, machineSerial: 1, "machine.groups.department": 1 })
+          .toArray();
+        logger.warn(
+          `[machineSessions] No daily cached data for date: ${dateStr}, returning empty array. ` +
+            `totals-daily count for date "${dateStr}": ${anyByDate}. ` +
+            `Sample docs in collection: ${JSON.stringify(sampleDocs)}`
+        );
+        return res.json([]);
+      }
+
+      // Log first record shape to verify machine.groups.department
+      const first = cacheRecords[0];
+      logger.info(
+        `[machineSessions] machine-group-summary: first record date=${first.date} entityType=${first.entityType} machineSerial=${first.machineSerial} machine.groups.department=${first.machine?.groups?.department ?? "missing"}`
+      );
+
+      // Window: use requested start/end for availability calculation
+      const rangeStart = new Date(start);
+      const rangeEnd = new Date(end);
+      const windowMs = rangeEnd - rangeStart;
+
+      // Group records by department (only known departments; skip others)
+      const byDept = new Map();
+      for (const name of MACHINE_GROUP_DEPARTMENTS) {
+        byDept.set(name, []);
+      }
+      let skippedNoDept = 0;
+      let skippedUnknownDept = 0;
+      for (const record of cacheRecords) {
+        const dept = record.machine?.groups?.department;
+        if (!dept) {
+          skippedNoDept++;
+          continue;
+        }
+        if (!byDept.has(dept)) {
+          skippedUnknownDept++;
+          logger.info(
+            `[machineSessions] machine-group-summary: record machineSerial=${record.machineSerial} has unknown department "${dept}"`
+          );
+          continue;
+        }
+        byDept.get(dept).push(record);
+      }
+      logger.info(
+        `[machineSessions] machine-group-summary: grouped by dept. ` +
+          `Counts: ${[...byDept.entries()].map(([n, r]) => `${n}=${r.length}`).join(", ")}. ` +
+          `Skipped (no department): ${skippedNoDept}, skipped (unknown department): ${skippedUnknownDept}`
+      );
+
+      const data = [];
+      for (const departmentName of MACHINE_GROUP_DEPARTMENTS) {
+        const records = byDept.get(departmentName);
+        if (!records || records.length === 0) continue;
+
+        let sumRuntimeMs = 0;
+        let sumPausedMs = 0;
+        let sumFaultMs = 0;
+        let sumTotalCounts = 0;
+        let sumTotalMisfeeds = 0;
+        let sumTotalTimeCreditMs = 0;
+        let sumWorkedTimeMs = 0;
+
+        for (const record of records) {
+          sumRuntimeMs += record.runtimeMs || 0;
+          sumPausedMs += record.pausedTimeMs || 0;
+          sumFaultMs += record.faultTimeMs || 0;
+          sumTotalCounts += record.totalCounts || 0;
+          sumTotalMisfeeds += record.totalMisfeeds || 0;
+          sumTotalTimeCreditMs += record.totalTimeCreditMs || 0;
+          let workMs = record.workedTimeMs || 0;
+          if (workMs === 0 && (record.totalTimeCreditMs || 0) > 0 && (record.runtimeMs || 0) > 0) {
+            workMs = record.runtimeMs;
+          }
+          sumWorkedTimeMs += workMs;
+        }
+
+        const downtimeMs = sumPausedMs + sumFaultMs;
+        const availability =
+          windowMs > 0
+            ? Math.min(Math.max(sumRuntimeMs / windowMs, 0), 1)
+            : 0;
+        const totalOutput = sumTotalCounts + sumTotalMisfeeds;
+        const throughput = totalOutput > 0 ? sumTotalCounts / totalOutput : 0;
+        const workTimeSec = sumWorkedTimeMs / 1000;
+        const totalTimeCreditSec = sumTotalTimeCreditMs / 1000;
+        const efficiency = workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
+        const oee = availability * throughput * efficiency;
+
+        data.push({
+          machine: {
+            name: departmentName,
+          },
+          metrics: {
+            runtime: {
+              total: sumRuntimeMs,
+              formatted: formatDuration(sumRuntimeMs),
+            },
+            downtime: {
+              total: downtimeMs,
+              formatted: formatDuration(downtimeMs),
+            },
+            output: {
+              totalCount: sumTotalCounts,
+              misfeedCount: sumTotalMisfeeds,
+            },
+            performance: {
+              availability: {
+                value: availability,
+                percentage: (availability * 100).toFixed(2),
+              },
+              throughput: {
+                value: throughput,
+                percentage: (throughput * 100).toFixed(2),
+              },
+              efficiency: {
+                value: efficiency,
+                percentage: (efficiency * 100).toFixed(2),
+              },
+              oee: {
+                value: oee,
+                percentage: (oee * 100).toFixed(2),
+              },
+            },
+          },
+          timeRange: {
+            start: rangeStart,
+            end: rangeEnd,
+          },
+        });
+      }
+
+      if (data.length === 0 && cacheRecords.length > 0) {
+        logger.warn(
+          `[machineSessions] machine-group-summary: had ${cacheRecords.length} cache record(s) but 0 department groups (all skipped or no matching department)`
+        );
+      }
+      logger.info(
+        `[machineSessions] Retrieved ${data.length} department group(s) for date: ${dateStr}`
+      );
+      res.json(data);
+    } catch (err) {
+      logger.error(
+        `[machineSessions] Error in machine-group-summary-daily-cached route:`,
+        err
+      );
+      if (
+        err.message.includes("Start and end dates are required") ||
+        err.message.includes("Invalid date format") ||
+        err.message.includes("Start date must be before end date")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ---- /api/alpha/analytics/machines-summary (real-time calculation) ----
   router.get("/analytics/machines-summary", async (req, res) => {
     return await getMachinesSummaryRealTime(req, res);

@@ -29,6 +29,7 @@ module.exports = {
   operatorSessionCollectionName: 'operator-session',
   itemSessionCollectionName: 'item-session',
   faultSessionCollectionName: 'fault-session',
+  pausedSessionCollectionName: 'paused-session',
 
   jwtSecret: process.env.JWT_SECRET,
   logLevel: process.env.LOG_LEVEL || 'info',

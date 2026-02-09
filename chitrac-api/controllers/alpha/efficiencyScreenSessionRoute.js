@@ -881,7 +881,7 @@ module.exports = function (server) {
           oee: buildZeroEfficiencyPayload(),
           batch: { item: '', code: 0 }
         }];
-        return res.json({ flipperData: offlineLanes, latestFaultStart });
+        return res.json({ flipperData: offlineLanes, latestFaultStart, latestPausedStart: null });
       }
 
       const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
@@ -899,6 +899,19 @@ module.exports = function (server) {
         const notRunningStartTime = Date.now();
         const coll = db.collection(config.operatorSessionCollectionName);
         const machineFilter = { $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }] };
+
+        // When paused (status 0), get current open paused session start for frontend to show "how long paused"
+        let latestPausedStart = null;
+        if (statusCode === 0 && config.pausedSessionCollectionName) {
+          const openPaused = await db.collection(config.pausedSessionCollectionName).findOne(
+            { ...machineFilter, 'timestamps.end': { $exists: false } },
+            { projection: { 'timestamps.start': 1 } }
+          );
+          const pausedStart = openPaused?.timestamps?.start;
+          latestPausedStart = pausedStart
+            ? (pausedStart instanceof Date ? pausedStart.toISOString() : pausedStart)
+            : null;
+        }
 
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
@@ -942,7 +955,7 @@ module.exports = function (server) {
           })
         );
         console.log(`[PERF] [${serialNum}] Non-running path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
-        return res.json({ flipperData: performanceData, latestFaultStart });
+        return res.json({ flipperData: performanceData, latestFaultStart, latestPausedStart });
       }
 
       // Running: all windows from operator-sessions only; today uses all sessions for the day (no limit)
