@@ -1,25 +1,17 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
+import { EfficiencyScreenLaneComponent, type EfficiencyScreenLaneMode } from '../efficiency-screen-lane/efficiency-screen-lane.component';
 import { Subject, timer } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
-import { FormsModule } from '@angular/forms';
-import { NgIf, NgFor } from '@angular/common';
-import { MatButtonModule } from '@angular/material/button';
-import { BlanketBlasterModule } from '../../blanket-blaster/blanket-blaster.module';
 import { ActivatedRoute } from '@angular/router';
 
 @Component({
   selector: 'app-lpl-efficiency-screen',
   templateUrl: './lpl-efficiecny-screen.component.html',
   styleUrls: ['./lpl-efficiecny-screen.component.scss'],
-  imports: [
-    FormsModule,
-    NgIf,
-    NgFor,
-    MatButtonModule,
-    BlanketBlasterModule
-  ],
-  standalone: true
+  standalone: true,
+  imports: [CommonModule, EfficiencyScreenLaneComponent]
 })
 export class LplEfficiencyScreen implements OnDestroy, OnInit {
   lanes: any[] = [];
@@ -62,8 +54,9 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
-          this.lanes = res?.flipperData || [];
-          // this.logOeeData();
+          const latestFaultStart = res?.latestFaultStart ?? null;
+          const data = res?.flipperData || [];
+          this.lanes = data.map((item: any) => ({ ...item, latestFaultStart }));
         },
         error: (err) => {
           console.error('Fetch error:', err);
@@ -83,30 +76,15 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
       )
       .subscribe({
         next: (res) => {
-          this.lanes = res?.flipperData || [];
-          // this.logOeeData();
+          const latestFaultStart = res?.latestFaultStart ?? null;
+          const data = res?.flipperData || [];
+          this.lanes = data.map((item: any) => ({ ...item, latestFaultStart }));
         },
         error: (err) => {
           console.error('Polling error:', err);
         }
       });
   }
-
-  // private logOeeData() {
-  //   // Log OEE data for debugging
-  //   this.lanes.forEach((lane, index) => {
-  //     if (lane.oee) {
-  //       console.log(`Lane ${index + 1} OEE Data:`, {
-  //         operator: lane.operator,
-  //         machine: lane.machine,
-  //         lastSixMinutes: lane.oee.lastSixMinutes,
-  //         lastFifteenMinutes: lane.oee.lastFifteenMinutes,
-  //         lastHour: lane.oee.lastHour,
-  //         today: lane.oee.today
-  //       });
-  //     }
-  //   });
-  // }
 
   ngOnDestroy() {
     this.destroy$.next();
@@ -115,5 +93,11 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
 
   ident(index: number, lane: any): number {
     return index;
+  }
+
+  getLaneMode(lane: any): EfficiencyScreenLaneMode {
+    if (lane?.status === 1) return 'operator';
+    if (lane?.status > 1) return 'fault';
+    return 'offline';
   }
 }
