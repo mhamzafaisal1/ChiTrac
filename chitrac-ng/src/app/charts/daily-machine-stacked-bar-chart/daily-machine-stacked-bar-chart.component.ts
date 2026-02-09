@@ -250,14 +250,15 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
       xLabel: 'Machine',
       yLabel: 'Hours',
       margin: {
-        top: Math.max(this.marginTop || 50, 60), // Ensure enough space for legend
-        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)), // Space for right legend
-        bottom: this.marginBottom || 50,
-        left: this.marginLeft || 50
+        top: Math.max(this.marginTop || 50, 60),
+        right: Math.max(this.marginRight || 30, 30),
+        bottom: Math.max(this.marginBottom || 50, 80), // extra space below "Machine" label
+        left: Math.max(this.marginLeft || 50, 58)
       },
+      xLabelOffsetFromAxis: 60, // balanced space between x-axis and "Machine" label
       legend: {
         show: this.showLegend !== false,
-        position: this.legendPosition || 'right' // Now supports both 'top' and 'right'
+        position: 'top'  // horizontal under the title
       },
       series: series
     };

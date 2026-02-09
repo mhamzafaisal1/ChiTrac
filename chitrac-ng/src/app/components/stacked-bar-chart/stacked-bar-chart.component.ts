@@ -161,6 +161,32 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
     return `${hour - 12}pm`;
   }
 
+  /** Split text into lines that fit within maxWidthPx (approx 7px per char at 12px font). */
+  private wrapLegendText(text: string, maxWidthPx: number): string[] {
+    const maxCharsPerLine = Math.max(1, Math.floor(maxWidthPx / 7));
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+    let current = "";
+    for (const w of words) {
+      const next = current ? current + " " + w : w;
+      if (next.length <= maxCharsPerLine) {
+        current = next;
+      } else {
+        if (current) lines.push(current);
+        if (w.length > maxCharsPerLine) {
+          for (let i = 0; i < w.length; i += maxCharsPerLine) {
+            lines.push(w.slice(i, i + maxCharsPerLine));
+          }
+          current = "";
+        } else {
+          current = w;
+        }
+      }
+    }
+    if (current) lines.push(current);
+    return lines.length ? lines : [text];
+  }
+
   private createChart(): void {
     if (!this.data) return;
 
@@ -180,16 +206,19 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
     // Gap between chart and legend
     const chartLegendGap = - 65; // Adjust this value to change the gap size
 
+    // Ensure enough bottom margin for rotated x-axis labels so they are not cut off
+    const effectiveMarginBottom = Math.max(this.marginBottom, 56);
     const topLegendHeight = legendTop ? Math.ceil(keys.length / 5) * 16 + 8 : 0;
 
-    // ⬅️ Plot area is EXACTLY as before (no width deducted for right legend)
+    // ⬅️ Plot area (extra bottom margin gives room for x-axis tick labels)
     const width  = this.chartWidth  - this.marginLeft - this.marginRight + chartLegendGap;
-    const height = this.chartHeight - this.marginTop  - this.marginBottom - topLegendHeight;
+    const height = this.chartHeight - this.marginTop  - effectiveMarginBottom - topLegendHeight;
 
     const svg = host.append("svg")
       .attr("width", this.chartWidth)
       .attr("height", this.chartHeight)
       .style("font-size", "0.875rem")
+      .style("overflow", "visible")
       .attr("shape-rendering", "crispEdges");
 
     // Title (same as before)
@@ -217,15 +246,25 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
       });
     }
 
-    // ✅ Right legend (NEW) — uses the empty space to the right, does NOT shrink the plot
+    // ✅ Right legend — word wrap item names to fit within legend width
     if (legendRight) {
+      const legendTextWidthPx = Math.max(60, this.legendWidthPx - 24);
+      const lineHeight = 14;
+      const itemGap = 4;
+      const legendY0 = Math.max(0, (this.chartHeight / 2) - 50);
       const x0 = this.chartWidth - this.marginRight - this.legendWidthPx - chartLegendGap;
-      const y0 = (this.chartHeight / 2) - 50;
-      const lg = svg.append("g").attr("transform", `translate(${x0},${y0})`);
-      keys.forEach((key, i) => {
-        const g = lg.append("g").attr("transform", `translate(0,${i * 16})`);
-        g.append("rect").attr("width", 10).attr("height", 10).attr("fill", color(key));
-        g.append("text").attr("x", 14).attr("y", 9).style("fill", textColor).style("font-size", "12px").text(key);
+      const lg = svg.append("g").attr("transform", `translate(${x0},${legendY0})`);
+      let innerY = 0;
+      keys.forEach((key) => {
+        const lines = this.wrapLegendText(key, legendTextWidthPx);
+        const itemHeight = Math.max(10, lines.length * lineHeight) + itemGap;
+        const g = lg.append("g").attr("transform", `translate(0,${innerY})`);
+        g.append("rect").attr("width", 10).attr("height", 10).attr("y", 0).attr("fill", color(key));
+        const textEl = g.append("text").attr("x", 14).attr("y", 9).style("fill", textColor).style("font-size", "12px");
+        lines.forEach((line, j) => {
+          textEl.append("tspan").attr("x", 14).attr("dy", j === 0 ? 0 : lineHeight).text(line);
+        });
+        innerY += itemHeight;
       });
     }
 
@@ -279,15 +318,18 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
         return `M${x0},${yT}h${bw}v${h}h${-bw}Z`;
       });
 
-    // Axes (same tick angles/sizes)
+    // Axes: x-axis with rotated labels and padding so they are not cut off
     chart.append("g")
       .attr("transform", `translate(0,${height})`)
+      .attr("class", "x-axis")
       .call(d3.axisBottom(x) as any)
       .selectAll("text")
       .attr("transform", "rotate(-45)")
       .style("text-anchor", "end")
       .style("fill", textColor)
-      .style("font-size", "14px");
+      .style("font-size", "14px")
+      .attr("dx", "-0.5em")
+      .attr("dy", "0.35em");
 
     chart.append("g")
       .call(d3.axisLeft(y) as any)
