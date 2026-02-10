@@ -14,6 +14,7 @@ interface MachineStatus {
   runningMs: number;
   pausedMs: number;
   faultedMs: number;
+  offlineMs: number;
 }
 
 @Component({
@@ -187,7 +188,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
           name:     m.name ?? m.machineName ?? `Machine ${m.serial ?? 'Unknown'}`,
           runningMs:m.runningMs ?? m.running ?? 0,
           pausedMs: m.pausedMs  ?? m.paused  ?? 0,
-          faultedMs:m.faultedMs ?? m.faulted ?? 0
+          faultedMs:m.faultedMs ?? m.faulted ?? 0,
+          offlineMs: m.offlineMs ?? 0
         }));
       } else if (Array.isArray(res)) {
         rows = res.map((m: any) => ({
@@ -195,7 +197,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
           name:     m.name ?? m.machineName ?? `Machine ${m.serial ?? 'Unknown'}`,
           runningMs:m.runningMs ?? m.running ?? 0,
           pausedMs: m.pausedMs  ?? m.paused  ?? 0,
-          faultedMs:m.faultedMs ?? m.faulted ?? 0
+          faultedMs:m.faultedMs ?? m.faulted ?? 0,
+          offlineMs: m.offlineMs ?? 0
         }));
       }
 
@@ -213,13 +216,13 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     const toHours = (ms: number) => ms / 3_600_000;
     
     
-    // Convert machine data to cartesian chart format
+    // Convert machine data to cartesian chart format (Offline = remainder, grey)
     const series: XYSeries[] = [
       {
         id: 'running',
         title: 'Running',
         type: 'bar',
-        stack: 'status', // This groups them for stacking
+        stack: 'status',
         data: data.map(d => ({ x: d.name, y: toHours(d.runningMs) })),
         color: '#66bb6a'
       },
@@ -227,7 +230,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         id: 'paused',
         title: 'Paused',
         type: 'bar',
-        stack: 'status', // Same stack group for stacking
+        stack: 'status',
         data: data.map(d => ({ x: d.name, y: toHours(d.pausedMs) })),
         color: '#ffca28'
       },
@@ -235,9 +238,17 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         id: 'faulted',
         title: 'Faulted',
         type: 'bar',
-        stack: 'status', // Same stack group for stacking
+        stack: 'status',
         data: data.map(d => ({ x: d.name, y: toHours(d.faultedMs) })),
         color: '#ef5350'
+      },
+      {
+        id: 'offline',
+        title: 'Offline',
+        type: 'bar',
+        stack: 'status',
+        data: data.map(d => ({ x: d.name, y: toHours(d.offlineMs ?? 0) })),
+        color: 'var(--sg-color-blue-gray-medium-100)' // theme-aware grey
       }
     ];
 
