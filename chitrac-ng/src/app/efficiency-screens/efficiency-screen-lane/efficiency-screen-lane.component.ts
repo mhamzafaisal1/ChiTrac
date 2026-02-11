@@ -155,4 +155,14 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   get isNoOperator(): boolean {
     return this.mode === 'operator' && !this.lane?.operator;
   }
+
+  /**
+   * Fault string for display: if it contains at least one underscore,
+   * replace all underscores with spaces; otherwise return as-is.
+   */
+  getFaultDisplayText(): string {
+    const fault = this.lane?.fault;
+    if (fault == null || fault === '') return fault ?? '';
+    return typeof fault === 'string' && fault.includes('_') ? fault.replace(/_/g, ' ') : String(fault);
+  }
 }

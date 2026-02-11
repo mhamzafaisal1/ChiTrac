@@ -5,9 +5,9 @@
       <div class="lane-inner">
         <div class="operator-block" [ngClass]="{
           'no-operator': isNoOperator,
-          'yellow': getSlots().lastSixMinutes.color === 'yellow',
+          'yellow': getSlots().lastSixMinutes.color === 'red',
           'green': getSlots().lastSixMinutes.color === 'green',
-          'orange': getSlots().lastSixMinutes.color === 'orange'
+          'orange': getSlots().lastSixMinutes.color === 'yellow'
         }">
           <div class="operator-text">
             <div class="operator-content">{{ getHeaderLabel() }}</div>
@@ -15,9 +15,9 @@
         </div>
         <div class="data-block">
           <div class="efficiency-value" [ngClass]="{
-            'yellow': getSlots().lastSixMinutes.color === 'yellow',
+            'yellow': getSlots().lastSixMinutes.color === 'red',
             'green': getSlots().lastSixMinutes.color === 'green',
-            'orange': getSlots().lastSixMinutes.color === 'orange'
+            'orange': getSlots().lastSixMinutes.color === 'yellow'
           }">
             <div class="value-text">{{ getSlots().lastSixMinutes.value | number: '1.0-0' }}%</div>
           </div>
@@ -27,9 +27,9 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastFifteenMinutes.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastFifteenMinutes.value" [ngClass]="{
-                    'yellow': getSlots().lastFifteenMinutes.color === 'yellow',
+                    'yellow': getSlots().lastFifteenMinutes.color === 'red',
                     'green': getSlots().lastFifteenMinutes.color === 'green',
-                    'orange': getSlots().lastFifteenMinutes.color === 'orange'
+                    'orange': getSlots().lastFifteenMinutes.color === 'yellow'
                   }"></div>
                 </div>
                 <div class="bar-label">{{ getSlots().lastFifteenMinutes.label }}</div>
@@ -38,9 +38,9 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastHour.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastHour.value" [ngClass]="{
-                    'yellow': getSlots().lastHour.color === 'yellow',
+                    'yellow': getSlots().lastHour.color === 'red',
                     'green': getSlots().lastHour.color === 'green',
-                    'orange': getSlots().lastHour.color === 'orange'
+                    'orange': getSlots().lastHour.color === 'yellow'
                   }"></div>
                 </div>
                 <div class="bar-label">{{ getSlots().lastHour.label }}</div>
@@ -49,9 +49,9 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().today.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().today.value" [ngClass]="{
-                    'yellow': getSlots().today.color === 'yellow',
+                    'yellow': getSlots().today.color === 'red',
                     'green': getSlots().today.color === 'green',
-                    'orange': getSlots().today.color === 'orange'
+                    'orange': getSlots().today.color === 'yellow'
                   }"></div>
                 </div>
                 <div class="bar-label">{{ getSlots().today.label }}</div>
@@ -70,9 +70,9 @@
     <div class="lane-background lane-running-bg">
       <div class="lane-inner">
         <div class="operator-block" [ngClass]="{
-          'yellow': getSlots().lastSixMinutes.color === 'yellow',
+          'yellow': getSlots().lastSixMinutes.color === 'red',
           'green': getSlots().lastSixMinutes.color === 'green',
-          'orange': getSlots().lastSixMinutes.color === 'orange'
+          'orange': getSlots().lastSixMinutes.color === 'yellow'
         }">
           <div class="operator-text">
             <div class="operator-content">{{ getHeaderLabel() }}</div>
@@ -80,9 +80,9 @@
         </div>
         <div class="data-block">
           <div class="efficiency-value" [ngClass]="{
-            'yellow': getSlots().lastSixMinutes.color === 'yellow',
+            'yellow': getSlots().lastSixMinutes.color === 'red',
             'green': getSlots().lastSixMinutes.color === 'green',
-            'orange': getSlots().lastSixMinutes.color === 'orange'
+            'orange': getSlots().lastSixMinutes.color === 'yellow'
           }">
             <div class="value-text">{{ getSlots().lastSixMinutes.value | number: '1.0-0' }}%</div>
           </div>
@@ -92,9 +92,9 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastFifteenMinutes.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastFifteenMinutes.value" [ngClass]="{
-                    'yellow': getSlots().lastFifteenMinutes.color === 'yellow',
+                    'yellow': getSlots().lastFifteenMinutes.color === 'red',
                     'green': getSlots().lastFifteenMinutes.color === 'green',
-                    'orange': getSlots().lastFifteenMinutes.color === 'orange'
+                    'orange': getSlots().lastFifteenMinutes.color === 'yellow'
                   }"></div>
                 </div>
                 <div class="bar-label">{{ getSlots().lastFifteenMinutes.label }}</div>
@@ -103,9 +103,9 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastHour.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastHour.value" [ngClass]="{
-                    'yellow': getSlots().lastHour.color === 'yellow',
+                    'yellow': getSlots().lastHour.color === 'red',
                     'green': getSlots().lastHour.color === 'green',
-                    'orange': getSlots().lastHour.color === 'orange'
+                    'orange': getSlots().lastHour.color === 'yellow'
                   }"></div>
                 </div>
                 <div class="bar-label">{{ getSlots().lastHour.label }}</div>
@@ -114,9 +114,9 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().today.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().today.value" [ngClass]="{
-                    'yellow': getSlots().today.color === 'yellow',
+                    'yellow': getSlots().today.color === 'red',
                     'green': getSlots().today.color === 'green',
-                    'orange': getSlots().today.color === 'orange'
+                    'orange': getSlots().today.color === 'yellow'
                   }"></div>
                 </div>
                 <div class="bar-label">{{ getSlots().today.label }}</div>
@@ -133,20 +133,19 @@
 
   <!-- Offline / stopped (status 0 or -1) -->
   <ng-container *ngSwitchCase="'offline'">
-    <div class="lane-background"  [ngClass] = "{'lane-offline-bg': (lane?.fault != 'System_Paused'), 'lane-stop-bg': (lane?.fault == 'System_Paused')}">
-      <div class="lane-inner" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
-        <div class="operator-block">
+    <div class="lane-background lane-stop-bg">
+      <div class="lane-inner">
+        <div class="operator-block stopped">
           <div class="operator-text">
             <div class="operator-content">{{ lane?.operator || 'NO OPERATOR' }}</div>
           </div>
         </div>
-        <div class="data-block" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
+        <div class="data-block stopped">
           <div class="fault-display">
-            <div class="fault-text" *ngIf="lane?.fault == 'System_Paused'">Paused</div>
-            <div class="fault-text" *ngIf="lane?.fault != 'System_Paused'">{{ lane?.fault }}</div>
+            <div class="fault-text">{{ getFaultDisplayText() }}</div>
           </div>
           <div class="timer-display">
-            <div class="timer-text">ELAPSED TIME: {{ getElapsedDisplay() }}</div>
+            <div class="timer-text">ELAPSED TIME: {{ lane?.displayTimers?.on }}</div>
           </div>
         </div>
       </div>
@@ -167,12 +166,12 @@
         </div>
         <div class="data-block fault">
           <div class="fault-display">
-            <div class="fault-text">{{ lane?.fault }}</div>
+            <div class="fault-text">{{ getFaultDisplayText() }}</div>
             <div class="fault-label">FAULT</div>
             <div class="fault-code">CODE: {{ lane?.status }}</div>
           </div>
           <div class="timer-display">
-            <div class="timer-text">ELAPSED TIME: {{ getElapsedDisplay() }}</div>
+            <div class="timer-text">ELAPSED TIME: {{ lane?.displayTimers?.on }}</div>
           </div>
         </div>
       </div>
