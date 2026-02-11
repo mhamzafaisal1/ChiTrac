@@ -328,37 +328,72 @@ module.exports = function (server) {
 
   // ---- HELPER FUNCTIONS ----
 
-  // Fast machine status using daily totals cache
+  // Fast machine status using daily totals cache + actual paused-session time; remainder = Offline
   async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd) {
     try {
-      // Query the daily totals cache for machine entity type
-      // Use date string instead of dateObj range since dateObj is set to start of day
-      const dateStr = dayStart.toISOString().split('T')[0]; // Get YYYY-MM-DD format
-      
+      const dateStr = dayStart.toISOString().split('T')[0];
+      const dayStartDate = new Date(dayStart);
+      const dayEndDate = new Date(dayEnd);
+      const windowMs = dayEndDate - dayStartDate;
+
       const dailyTotals = await db.collection('totals-daily').find({
         entityType: 'machine',
         date: dateStr
       }).sort({ machineSerial: 1 }).toArray();
-      
+
       if (dailyTotals.length === 0) {
         logger.warn('No daily totals found for machine status calculation');
         return [];
       }
 
-      // Transform daily totals to machine status format
+      // Sum actual paused time from paused-session collection (overlap with [dayStart, dayEnd] per machine)
+      const pausedColl = config.pausedSessionCollectionName
+        ? db.collection(config.pausedSessionCollectionName)
+        : null;
+      const pausedMsByMachine = new Map(); // key: string serial for lookup
+
+      if (pausedColl) {
+        // Sessions overlapping [dayStart, dayEnd]: start < dayEnd AND (end >= dayStart OR end missing)
+        const pausedSessions = await pausedColl.find({
+          'timestamps.start': { $lt: dayEndDate },
+          $or: [
+            { 'timestamps.end': { $gte: dayStartDate } },
+            { 'timestamps.end': null },
+            { 'timestamps.end': { $exists: false } }
+          ]
+        }).toArray();
+
+        for (const s of pausedSessions) {
+          const machineId = s.machine?.id ?? s.machine?.serial;
+          if (machineId == null) continue;
+          const sStart = s.timestamps?.start ? new Date(s.timestamps.start) : null;
+          const sEnd = s.timestamps?.end ? new Date(s.timestamps.end) : dayEndDate;
+          if (!sStart) continue;
+          const { ovSec } = overlap(sStart, sEnd, dayStartDate, dayEndDate);
+          const key = String(machineId);
+          pausedMsByMachine.set(key, (pausedMsByMachine.get(key) || 0) + Math.round(ovSec * 1000));
+        }
+      }
+
       const machineStatus = dailyTotals.map(total => {
+        const runningMs = total.runtimeMs || 0;
+        const faultedMs = total.faultTimeMs || 0;
+        const serialKey = String(total.machineSerial);
+        const pausedMs = pausedMsByMachine.get(serialKey) || 0;
+        const offlineMs = Math.max(0, windowMs - runningMs - faultedMs - pausedMs);
+
         return {
           serial: total.machineSerial,
           name: total.machineName || `Serial ${total.machineSerial}`,
-          runningMs: total.runtimeMs || 0,
-          pausedMs: total.pausedTimeMs || 0,
-          faultedMs: total.faultTimeMs || 0
+          runningMs,
+          pausedMs,
+          faultedMs,
+          offlineMs
         };
       });
 
       logger.info(`Built machine status from daily totals for ${machineStatus.length} machines`);
       return machineStatus;
-      
     } catch (error) {
       logger.error('Error building machine status from daily totals:', error);
       throw error;
