@@ -456,7 +456,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     // Account for all padding and margins
     const horizontalPadding = 136; // 48 + 64 + 24 (modal + content + carousel padding)
-    const verticalPadding = 150; // Modal actions, tab headers, and spacing
+    // Slightly increase vertical padding to better account for
+    // tab headers, modal actions, and any internal spacing so that
+    // charts don't overflow and require scrolling.
+    const verticalPadding = 200;
 
     // Available space for chart (before adding legend space)
     const availableWidth = modalWidth - horizontalPadding - 200; // Remove legend width
@@ -561,8 +564,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 startTime: this.startTime,
                 endTime: this.endTime,
                 machineSerial,
-                chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
-                chartHeight: modalChartDimensions.height,
+                chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
+                // Reduce height slightly inside the modal so the
+                // chart area fits comfortably without vertical scroll.
+                chartHeight: Math.max(modalChartDimensions.height - 40, 300),
                 isModal: this.isModal,
                 mode: "dashboard",
                 preloadedData: machineData.itemHourlyStack,
@@ -604,8 +609,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 startTime: this.startTime,
                 endTime: this.endTime,
                 machineSerial,
-                chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
-                chartHeight: modalChartDimensions.height,
+                chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
+                // Reduce height slightly inside the modal so the
+                // chart area fits comfortably without vertical scroll.
+                chartHeight: Math.max(modalChartDimensions.height - 40, 300),
                 isModal: this.isModal,
                 mode: "dashboard",
                 preloadedData: {
@@ -620,9 +627,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   hourlyData: machineData.operatorEfficiency ?? [],
                 },
                 marginTop: 30,
-                marginRight: 180,  // Increase right margin to accommodate legend
-                marginBottom: 60,
-                marginLeft: 25,
+                marginRight: 180, // Increase right margin to accommodate legend
+                // Give X and Y axis labels a bit more breathing room
+                // so they are not visually clipped inside the modal.
+                marginBottom: 80,
+                marginLeft: 40,
                 showLegend: true,
                 legendPosition: "right",
                 legendWidthPx: 120,
@@ -705,8 +714,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   startTime: this.startTime,
                   endTime: this.endTime,
                   machineSerial,
-                  chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
-                  chartHeight: modalChartDimensions.height,
+                  chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
+                  // Reduce height slightly inside the modal so the
+                  // chart area fits comfortably without vertical scroll.
+                  chartHeight: Math.max(modalChartDimensions.height - 40, 300),
                   isModal: this.isModal,
                   mode: "dashboard",
                   preloadedData: machineData.itemHourlyStack,
@@ -748,8 +759,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   startTime: this.startTime,
                   endTime: this.endTime,
                   machineSerial,
-                  chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
-                  chartHeight: modalChartDimensions.height,
+                  chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
+                  // Reduce height slightly inside the modal so the
+                  // chart area fits comfortably without vertical scroll.
+                  chartHeight: Math.max(modalChartDimensions.height - 40, 300),
                   isModal: this.isModal,
                   mode: "dashboard",
                   preloadedData: {
@@ -764,9 +777,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     hourlyData: machineData.operatorEfficiency ?? [],
                   },
                   marginTop: 30,
-                  marginRight: 180,  // Increase right margin to accommodate legend
-                  marginBottom: 60,
-                  marginLeft: 25,
+                  marginRight: 180, // Increase right margin to accommodate legend
+                  // Give X and Y axis labels a bit more breathing room
+                  // so they are not visually clipped inside the modal.
+                  marginBottom: 80,
+                  marginLeft: 40,
                   showLegend: true,
                   legendPosition: "right",
                   legendWidthPx: 120,

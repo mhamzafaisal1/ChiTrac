@@ -39,6 +39,8 @@ import {
     xTickFormat?: (v:any)=>string;
     yTickFormat?: (v:number)=>string;
     margin?: { top:number; right:number; bottom:number; left:number };
+    /** Offset in px from the x-axis line to the x-axis label (default derived from margin). Use a smaller value to bring the label closer to the axis. */
+    xLabelOffsetFromAxis?: number;
     legend?: { show: boolean; position: 'top'|'right' };
     pie?: { padAngle?: number; cornerRadius?: number; innerRatio?: number }; // innerRatio for donut, e.g. 0.6
     series: XYSeries[];
@@ -220,10 +222,13 @@ import {
 
       // ===== Axis Labels =====
       if (cfg.xLabel) {
+        const xLabelOffset = cfg.xLabelOffsetFromAxis !== undefined
+          ? cfg.xLabelOffsetFromAxis
+          : Math.max(28, (cfg.margin?.bottom ?? 50) - 8);
         g.append('text')
           .attr('class', 'cc-x-label')
           .attr('x', innerW / 2)
-          .attr('y', innerH + Math.max(28, (cfg.margin?.bottom ?? 50) - 8)) // use bottom margin
+          .attr('y', innerH + xLabelOffset)
           .attr('text-anchor', 'middle')
           .style('fill', textColor)
           .style('font-size', '14px')
@@ -358,6 +363,7 @@ import {
         xTickFormat: cfg.xTickFormat,
         yTickFormat: cfg.yTickFormat,
         margin,
+        xLabelOffsetFromAxis: cfg.xLabelOffsetFromAxis,
         legend,
         series: cfg.series || []
       };

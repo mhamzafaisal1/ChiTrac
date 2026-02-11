@@ -218,17 +218,14 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       orientation: 'vertical',
       xType: 'category',
       xLabel: 'Time',
-      yLabel: 'Count',
+      xTickFormat: (v: any) => this.formatXAxisDate(v),
       margin: {
         top: Math.max(this.marginTop || 50, 60),
-        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
-        bottom: Math.max(this.marginBottom || 50, 80), // Increased bottom margin for more space
+        right: Math.max(this.marginRight || 30, 30),
+        bottom: Math.max(this.marginBottom || 50, 80),
         left: this.marginLeft || 50
       },
-      legend: {
-        show: this.showLegend !== false,
-        position: this.legendPosition || 'top'
-      },
+      legend: { show: false, position: 'top' },
       series: series
     };
   }
@@ -239,6 +236,20 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     this.hasInitialData = false;
     this.chartConfig = null;
     this.cdr.markForCheck();
+  }
+
+  /** Format x-axis tick: month and day only (no year). */
+  private formatXAxisDate(v: any): string {
+    const s = String(v);
+    const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const [, y, m, d] = match;
+      const date = new Date(+y, +m - 1, +d);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    const d = new Date(v);
+    if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return s;
   }
 
   private formatDateForInput(date: Date): string {
