@@ -91,7 +91,7 @@ module.exports = function faultHistoryRoute(server) {
             },
           },
           { $match: { $expr: { $lt: ["$ovStart", "$ovEnd"] } } },
-          // derive code/name from startState
+          // derive code/name from states.start (actual doc shape) or legacy startState
           {
             $project: {
               _id: 1,
@@ -103,8 +103,8 @@ module.exports = function faultHistoryRoute(server) {
               activeStations: 1,
               ovStart: 1,
               ovEnd: 1,
-              code: "$startState.status.code",
-              name: "$startState.status.name",
+              code: { $ifNull: ["$states.start.status.id", "$startState.status.code"] },
+              name: { $ifNull: ["$states.start.status.name", "$startState.status.name"] },
               // stored aggregates if present
               storedFaulttime: "$faulttime",
               storedWorkMissed: "$workTimeMissed",
