@@ -121,6 +121,22 @@ import {
         return; 
       }
 
+      // Compute domains early for auto left-margin
+      const allX = this.collectXDomain(cfg);
+      const yMax = this.collectYMax(cfg, allX);
+      const isHorizontal = cfg.orientation === 'horizontal';
+
+      // Auto-fit left margin for y-axis tick labels (vertical charts with numeric y-axis)
+      if (!isHorizontal) {
+        const yTicks = d3.scaleLinear().domain([0, yMax]).nice().ticks(6);
+        const yLabels = yTicks.map(t => cfg.yTickFormat ? cfg.yTickFormat(t) : String(t));
+        const neededLeft = Math.max(50, ...yLabels.map(s => s.length * 7)) + 18;
+        cfg.margin = {
+          ...cfg.margin,
+          left: Math.max(cfg.margin.left, neededLeft)
+        };
+      }
+
       const { width, height, margin, orientation } = cfg;
   
       // size
@@ -134,8 +150,6 @@ import {
   
       const innerW = Math.max(10, width - margin.left - margin.right);
       const innerH = Math.max(10, height - margin.top - margin.bottom);
-  
-      const isHorizontal = orientation === 'horizontal';
       const isDark = document.body.classList.contains('dark-theme');
       const textColor = isDark ? '#e0e0e0' : '#333';
   
@@ -151,10 +165,6 @@ import {
           .style('fill', textColor)
           .text(cfg.title);
       }
-  
-      // ===== Domains =====
-      const allX = this.collectXDomain(cfg);
-      const yMax = this.collectYMax(cfg, allX);
   
       // ===== Scales =====
       const xScale = this.buildXScale(cfg, allX, innerW, innerH, isHorizontal);
