@@ -27,24 +27,21 @@
         ></app-daily-machine-oee-bar-chart>
       </app-chart-tile>
 
-      <!-- Machine Item Stacked Bar Chart -->
+      <!-- Item Totals by Type (horizontal bars, one per item) -->
       <app-chart-tile
-        title="Machine Item Stacked Bar"
+        title="Item Totals by Type"
         icon="stacked_bar_chart"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
-        <app-daily-machine-item-stacked-bar-chart
+        <app-daily-count-by-item-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
           [marginTop]="50"
           [marginRight]="30"
           [marginBottom]="50"
-          [marginLeft]="50"
-          [showLegend]="true"
-          [legendPosition]="'right'"
-          [legendWidthPx]="120"
-        ></app-daily-machine-item-stacked-bar-chart>
+          [marginLeft]="120"
+        ></app-daily-count-by-item-chart>
       </app-chart-tile>
 
       <!-- Daily Plantwide Count Totals Chart -->
