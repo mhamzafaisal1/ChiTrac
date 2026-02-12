@@ -696,6 +696,66 @@ module.exports = function (server) {
     }
   }
 
+  // Item totals by type (sum per item over date range, exclude zeros) — uses hourly-totals cache
+  async function buildItemTotalsFromCache(db, dayStart, dayEnd) {
+    try {
+      const startDate = new Date(dayStart);
+      const endDate = new Date(dayEnd);
+
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('Invalid date range provided');
+      }
+
+      const dateStrings = [];
+      const curr = new Date(startDate);
+      curr.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      while (curr <= end) {
+        dateStrings.push(curr.toISOString().split('T')[0]);
+        curr.setDate(curr.getDate() + 1);
+      }
+
+      if (dateStrings.length === 0) {
+        return { title: 'Item Totals by Type', items: [] };
+      }
+
+      const pipeline = [
+        {
+          $match: {
+            entityType: 'item',
+            date: { $in: dateStrings }
+          }
+        },
+        {
+          $group: {
+            _id: '$itemName',
+            totalCount: { $sum: '$totalCounts' }
+          }
+        },
+        { $match: { totalCount: { $gt: 0 } } },
+        { $sort: { _id: 1 } }
+      ];
+
+      const results = await db.collection('hourly-totals').aggregate(pipeline).toArray();
+
+      const items = results.map(r => ({
+        itemName: r._id,
+        totalCount: r.totalCount
+      }));
+
+      logger.info(`Built item totals from cache for range: ${dateStrings.length} day(s), ${items.length} items with count > 0`);
+
+      return {
+        title: 'Item Totals by Type',
+        items
+      };
+    } catch (error) {
+      logger.error('Error in buildItemTotalsFromCache:', error);
+      throw error;
+    }
+  }
+
   // ---- INDIVIDUAL ROUTES ----
 
   // Route 1: Machine Status Breakdowns
@@ -791,6 +851,32 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch item hourly production data from cache" });
+    }
+  });
+
+  // Route 3C: Item Totals by Type (one bar per item, total count for range; uses start/end query params like item-hourly-production URL)
+  router.get('/analytics/hourly/item-totals-by-type', async (req, res) => {
+    try {
+      let dayStart, dayEnd;
+      try {
+        const { start, end } = parseAndValidateQueryParams(req);
+        dayStart = new Date(start);
+        dayEnd = new Date(end);
+      } catch (err) {
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+        dayStart = now.startOf('day').toJSDate();
+        dayEnd = now.toJSDate();
+      }
+
+      const itemTotals = await buildItemTotalsFromCache(db, dayStart, dayEnd);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        itemTotals
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch item totals by type from cache" });
     }
   });
 

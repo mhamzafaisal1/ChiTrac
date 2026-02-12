@@ -4,7 +4,7 @@ import { ChartTileComponent } from "../components/chart-tile/chart-tile.componen
 
 import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component";
 import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component";
-import { DailyMachineItemStackedBarChartComponent } from "../charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component";
+import { DailyCountByItemChartComponent } from "../charts/daily-count-by-item-chart/daily-count-by-item-chart.component";
 import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/daily-count-bar-chart.component";
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
 import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-chart/plantwide-metrics-chart.component";
@@ -16,7 +16,7 @@ import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-char
         ChartTileComponent,
         DailyMachineStackedBarChartComponent,
         DailyMachineOeeBarChartComponent,
-        DailyMachineItemStackedBarChartComponent,
+        DailyCountByItemChartComponent,
         DailyCountBarChartComponent,
         RankedOperatorBarChartComponent,
         PlantwideMetricsChartComponent
@@ -25,7 +25,7 @@ import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-char
     styleUrls: ['./daily-analytics-dashboard-split.component.scss']
 })
 export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy, AfterViewInit {
-  @ViewChild(DailyMachineItemStackedBarChartComponent) itemChart!: DailyMachineItemStackedBarChartComponent;
+  @ViewChild(DailyCountByItemChartComponent) itemChart!: DailyCountByItemChartComponent;
   
   isDarkTheme: boolean = false;
   chartWidth: number = 600;

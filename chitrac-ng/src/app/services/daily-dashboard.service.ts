@@ -105,6 +105,11 @@ getItemsSummary(start: string, end: string, serial?: number) {
     return this.http.get(`${this.apiUrl}/analytics/hourly/item-hourly-production`, { params });
   }
 
+  getItemTotalsByType(start: string, end: string): Observable<any> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get(`${this.apiUrl}/analytics/hourly/item-totals-by-type`, { params });
+  }
+
   getDailyTopOperators(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
     return this.http.get(`${this.apiUrl}/analytics/daily/top-operators-cache`, { params });

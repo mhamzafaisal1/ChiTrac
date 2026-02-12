@@ -10,7 +10,7 @@ import {
   export type SeriesType = 'bar' | 'line' | 'area' | 'dot' | 'lollipop' | 'pie' | 'donut';
   export type XType = 'category' | 'time' | 'linear';
   
-  export interface XYPoint { x: string | number | Date; y: number; }
+  export interface XYPoint { x: string | number | Date; y: number; color?: string; }
   
   export interface XYSeries {
     id: string;
@@ -221,12 +221,14 @@ import {
           )
           .selectAll('text').style('fill', textColor).style('font-size', '12px');
       } else {
-        // horizontal: x is linear, y is band
-        const ax = d3.axisBottom(yScaleH as d3.ScaleLinear<number, number>);
-        if (cfg.yTickFormat) (ax as any).tickFormat(cfg.yTickFormat);
-        xAxisG.attr('transform', `translate(0,${innerH})`).call(ax as any)
+        // horizontal: x is linear (bottom), y is band (left = categories)
+        const xAx = d3.axisBottom(yScaleH as d3.ScaleLinear<number, number>);
+        if (cfg.xTickFormat) (xAx as any).tickFormat(cfg.xTickFormat);
+        xAxisG.attr('transform', `translate(0,${innerH})`).call(xAx as any)
               .selectAll('text').style('fill', textColor).style('font-size', '12px');
-        yAxisG.call(d3.axisLeft(yScale as d3.ScaleBand<string>))
+        const yAx = d3.axisLeft(yScale as d3.ScaleBand<string>);
+        if (cfg.yTickFormat) (yAx as any).tickFormat((d: string) => cfg.yTickFormat!(d as any));
+        yAxisG.call(yAx)
               .selectAll('text').style('fill', textColor).style('font-size', '12px');
       }
 
@@ -615,6 +617,7 @@ import {
   
         s.data.forEach(p => {
           const xKey = String(p.x);
+          const fillColor = (p as XYPoint).color ?? color;
           if (isHorizontal) {
             const y = band(xKey)! + sub(s.id)!;
             const w = (yScaleH as d3.ScaleLinear<number, number>)(p.y || 0);
@@ -623,7 +626,7 @@ import {
               .attr('y', y)
               .attr('width', w)
               .attr('height', sub.bandwidth())
-              .attr('fill', color);
+              .attr('fill', fillColor);
           } else {
             const x = band(xKey)! + sub(s.id)!;
             const y = (yScale as d3.ScaleLinear<number, number>)(p.y || 0);
@@ -632,7 +635,7 @@ import {
               .attr('y', y)
               .attr('width', sub.bandwidth())
               .attr('height', innerH - y)
-              .attr('fill', color);
+              .attr('fill', fillColor);
           }
         });
       });
@@ -651,7 +654,7 @@ import {
       .map(s => ({
         key: String(s.data[0].x),
         y: +s.data[0].y || 0,
-        color: s.color || this.colorForSeries(s.id),
+        color: (s.data[0] as XYPoint).color ?? s.color ?? this.colorForSeries(s.id),
       }));
 
     const barPadding = series[0]?.options?.barPadding ?? 0.2;
@@ -701,19 +704,20 @@ import {
 
     series.forEach(s => {
       const color = s.color || this.colorForSeries(s.id);
-      const grp = g.append('g').attr('class','cc-bar-group').attr('fill', color);
+      const grp = g.append('g').attr('class','cc-bar-group');
       s.data.forEach(p => {
+        const fillColor = (p as XYPoint).color ?? color;
         const key = String(p.x);
         if (isHorizontal) {
           const y = band(key)! + sub(s.id)!;
           const w = (yScaleH as d3.ScaleLinear<number, number>)(+p.y || 0);
           grp.append('rect').attr('x', 0).attr('y', y)
-            .attr('width', w).attr('height', sub.bandwidth());
+            .attr('width', w).attr('height', sub.bandwidth()).attr('fill', fillColor);
         } else {
           const x = band(key)! + sub(s.id)!;
           const y = (yScale as d3.ScaleLinear<number, number>)(+p.y || 0);
           grp.append('rect').attr('x', x).attr('y', y)
-            .attr('width', sub.bandwidth()).attr('height', innerH - y);
+            .attr('width', sub.bandwidth()).attr('height', innerH - y).attr('fill', fillColor);
         }
       });
     });
@@ -749,11 +753,14 @@ import {
   
       stacked.forEach(layer => {
         const sId = layer.key;
-        const color = (series.find(ss => ss.id === sId)?.color) || this.colorForSeries(sId);
-        const grp = g.append('g').attr('class','cc-bar-stacked').attr('fill', color);
+        const s = series.find(ss => ss.id === sId);
+        const color = s?.color || this.colorForSeries(sId);
+        const grp = g.append('g').attr('class','cc-bar-stacked');
   
         layer.forEach((d, i) => {
           const xKey = rows[i].__x as string;
+          const point = s?.data.find(p => String(p.x) === xKey);
+          const fillColor = (point as XYPoint)?.color ?? color;
           if (isHorizontal) {
             const y = band(xKey)!;
             const x0 = (yScaleH as d3.ScaleLinear<number, number>)(d[0]);
@@ -762,7 +769,8 @@ import {
               .attr('x', x0)
               .attr('y', y)
               .attr('width', Math.max(0, x1 - x0))
-              .attr('height', band.bandwidth());
+              .attr('height', band.bandwidth())
+              .attr('fill', fillColor);
           } else {
             const x = band(xKey)!;
             const y0 = (yScale as d3.ScaleLinear<number, number>)(d[1]);
@@ -771,7 +779,8 @@ import {
               .attr('x', x)
               .attr('y', y0)
               .attr('width', band.bandwidth())
-              .attr('height', Math.max(0, y1 - y0));
+              .attr('height', Math.max(0, y1 - y0))
+              .attr('fill', fillColor);
           }
         });
       });
