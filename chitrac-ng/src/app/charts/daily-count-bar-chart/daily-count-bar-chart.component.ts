@@ -223,7 +223,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, 30),
         bottom: Math.max(this.marginBottom || 50, 80),
-        left: this.marginLeft || 50
+        left: Math.max(this.marginLeft ?? 0, 60) 
       },
       legend: { show: false, position: 'top' },
       series: series
