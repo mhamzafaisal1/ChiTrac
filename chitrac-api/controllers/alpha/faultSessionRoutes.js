@@ -82,11 +82,25 @@ module.exports = function faultHistoryRoute(server) {
               // clip window
               ovStart: { $cond: [{ $gt: ["$timestamps.start", startDate] }, "$timestamps.start", startDate] },
               ovEnd: {
-                $cond: [
-                  { $gt: [{ $ifNull: ["$timestamps.end", endDate] }, endDate] },
-                  endDate,
-                  { $ifNull: ["$timestamps.end", endDate] },
-                ],
+                $let: {
+                  vars: {
+                    // If timestamps.end is missing, the session was likely orphaned by a crash.
+                    // Cap at start + 5 minutes instead of endDate to prevent 10+ hour phantom faults.
+                    effectiveEnd: {
+                      $ifNull: [
+                        "$timestamps.end",
+                        { $min: [{ $add: ["$timestamps.start", 5 * 60 * 1000] }, endDate] }
+                      ]
+                    }
+                  },
+                  in: {
+                    $cond: [
+                      { $gt: ["$$effectiveEnd", endDate] },
+                      endDate,
+                      "$$effectiveEnd"
+                    ]
+                  }
+                }
               },
             },
           },
