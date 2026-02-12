@@ -1,6 +1,6 @@
 :host {
   display: block;
-  height: 94vh;
+  height: 93.25vh;
   width: 100%;
   overflow: hidden;
   box-sizing: border-box;
@@ -11,7 +11,7 @@
   width: 100%;
   padding: 2px;
   box-sizing: border-box;
-  background-color: var(--md-sys-color-background);
+  background-color: var(--theme-production-screens-background);
   display: flex;
   flex-direction: column;
   overflow: hidden;
