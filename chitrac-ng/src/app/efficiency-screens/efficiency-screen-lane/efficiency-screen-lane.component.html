@@ -140,7 +140,7 @@
             <div class="operator-content">{{ lane?.operator || 'NO OPERATOR' }}</div>
           </div>
         </div>
-        <div class="data-block stopped">
+        <div class="data-block" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
           <div class="fault-display">
             <div class="fault-text">{{ getFaultDisplayText() }}</div>
           </div>
