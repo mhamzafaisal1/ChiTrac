@@ -1,4 +1,4 @@
-// charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component.ts
+// charts/daily-count-by-item-chart/daily-count-by-item-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
@@ -8,21 +8,19 @@ import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
-type OperatorRow = { id: number | string; label: string; efficiency: number };
-
 @Component({
-  selector: 'app-ranked-operator-bar-chart',
+  selector: 'app-daily-count-by-item-chart',
   standalone: true,
   imports: [CommonModule, CartesianChartComponent],
-  templateUrl: './ranked-operator-bar-chart.component.html',
-  styleUrls: ['./ranked-operator-bar-chart.component.scss'],
+  templateUrl: './daily-count-by-item-chart.component.html',
+  styleUrls: ['./daily-count-by-item-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnChanges {
+export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChanges {
   @Input() chartWidth!: number;
   @Input() chartHeight!: number;
   @Input() showLegend!: boolean;
-  @Input() legendPosition!: 'top' | 'right';
+  @Input() legendPosition!: "top" | "right";
   @Input() legendWidthPx!: number;
   @Input() marginTop!: number;
   @Input() marginRight!: number;
@@ -44,6 +42,12 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private readonly POLLING_INTERVAL = 6000;
   private cdr = inject(ChangeDetectorRef);
 
+  /** Palette for item bars (each item gets a different color) */
+  private readonly ITEM_COLORS = [
+    '#42a5f5', '#66bb6a', '#ffca28', '#ab47bc', '#ef5350',
+    '#26a69a', '#ff7043', '#5c6bc0', '#ec407a', '#8d6e63'
+  ];
+
   constructor(
     private dailyDashboardService: DailyDashboardService,
     private pollingService: PollingService,
@@ -55,11 +59,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     }).observe(document.body, { attributes: true });
   }
 
-  ngOnChanges(changes: SimpleChanges): void {
-    // optional logs
-    // console.log('RankedOperatorBarChart: Input changes:', changes);
-    // console.log('RankedOperatorBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
-  }
+  ngOnChanges(changes: SimpleChanges): void {}
 
   ngOnInit(): void {
     const isLive = this.dateTimeService.getLiveMode();
@@ -72,12 +72,11 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
     this.enterDummy();
 
-    // Consolidated initial fetch logic - only one fetch call
     this.performInitialFetch(isLive, wasConfirmed);
 
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(live => {
+      .subscribe((live) => {
         this.liveMode = live;
         if (live) this.startLive(); else this.stopLive();
       });
@@ -89,7 +88,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         this.stopPolling();
         this.enterDummy();
         this.startTime = this.dateTimeService.getStartTime();
-        this.endTime   = this.dateTimeService.getEndTime();
+        this.endTime = this.dateTimeService.getEndTime();
         this.fetchOnce().subscribe();
       });
   }
@@ -100,16 +99,13 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   }
 
   private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
-    // Determine if we should fetch data based on the current state
     const shouldFetch = !isLive || wasConfirmed;
-    
+
     if (shouldFetch) {
-      // Use confirmed times if available, otherwise use default times
       if (wasConfirmed) {
         this.startTime = this.dateTimeService.getStartTime();
         this.endTime = this.dateTimeService.getEndTime();
       }
-      
       this.fetchOnce().subscribe();
     }
   }
@@ -118,9 +114,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.enterDummy();
     const start = new Date(); start.setHours(0, 0, 0, 0);
     this.startTime = this.formatDateForInput(start);
-    this.endTime   = this.pollingService.updateEndTimestampToNow();
-
-    // setupPolling() handles the initial fetch, no need for separate fetchOnce()
+    this.endTime = this.pollingService.updateEndTimestampToNow();
     this.setupPolling();
   }
 
@@ -133,19 +127,15 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
   private pollOnce(): Observable<any> {
     this.endTime = this.pollingService.updateEndTimestampToNow();
-    return this.dailyDashboardService.getDailyTopOperators(this.startTime, this.endTime)
+    return this.dailyDashboardService.getItemTotalsByType(this.startTime, this.endTime)
       .pipe(tap(this.consumeResponse('poll')));
   }
 
   private setupPolling(): void {
     this.stopPolling();
-
-    this.pollingSub = this.pollOnce()               // immediate first poll
+    this.pollingSub = this.pollOnce()
       .pipe(
-        // wait POLLING_INTERVAL after completion, then resubscribe to pollOnce()
-        // ensures: no overlap, next call starts only after prior finished + delay
-        // RxJS 7+
-        // @ts-ignore – type inference sometimes complains on repeat config
+        // @ts-ignore
         repeat({ delay: this.POLLING_INTERVAL }),
         takeUntil(this.destroy$)
       )
@@ -159,7 +149,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private fetchOnce(): Observable<any> {
     if (!this.startTime || !this.endTime) return new Observable();
     this.isLoading = true;
-    return this.dailyDashboardService.getDailyTopOperators(this.startTime, this.endTime)
+    return this.dailyDashboardService.getItemTotalsByType(this.startTime, this.endTime)
       .pipe(
         takeUntil(this.destroy$),
         tap(this.consumeResponse('once')),
@@ -167,38 +157,18 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
       );
   }
 
-  private formatOperatorName(name: any): string {
-    // Handle name as object with first and surname properties
-    if (name && typeof name === 'object') {
-      const first = name.first || '';
-      const surname = name.surname || '';
-      return `${first} ${surname}`.trim() || 'Unknown';
-    }
-    // Handle name as string or fallback
-    return String(name ?? 'Unknown');
-  }
-
   private consumeResponse =
-    (_: 'once' | 'poll') =>
+    (_source: 'once' | 'poll') =>
     (res: any) => {
-      let rows: OperatorRow[] = [];
-      if (res && res.topOperators && Array.isArray(res.topOperators)) {
-        rows = res.topOperators.map((r: any, i: number) => ({
-          id: r.id ?? `row-${i}`,
-          label: this.formatOperatorName(r.name ?? r.operator ?? r.id),
-          efficiency: Number(r.efficiency ?? r.oee ?? 0)
-        }));
-      } else if (Array.isArray(res)) {
-        rows = res.map((r: any, i: number) => ({
-          id: r.id ?? `row-${i}`,
-          label: this.formatOperatorName(r.name ?? r.operator ?? r.id),
-          efficiency: Number(r.efficiency ?? r.oee ?? 0)
-        }));
+      let items: Array<{ itemName: string; totalCount: number }> = [];
+
+      if (res && res.itemTotals && res.itemTotals.items && Array.isArray(res.itemTotals.items)) {
+        items = res.itemTotals.items;
+      } else if (res && Array.isArray(res.items)) {
+        items = res.items;
       }
 
-      const top = rows.sort((a, b) => b.efficiency - a.efficiency).slice(0, 10);
-
-      this.chartConfig = top.length ? this.formatChartData(top) : null;
+      this.chartConfig = items.length ? this.formatChartData(items) : null;
       this.isLoading = false;
       this.dummyMode = false;
       this.hasInitialData = !!this.chartConfig;
@@ -206,49 +176,33 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
       this.cdr.markForCheck();
     };
 
-  private formatChartData(data: OperatorRow[]): CartesianChartConfig {
-    // One bar series with unique x keys (id) so duplicate display names don't flip render path.
-    // Per-bar color via XYPoint.color; Y-axis labels via yTickFormat from id -> label.
-    const series: XYSeries[] = [{
-      id: 'operators',
-      title: 'Efficiency',
+  private formatChartData(data: Array<{ itemName: string; totalCount: number }>): CartesianChartConfig {
+    const series: XYSeries[] = data.map((item, index) => ({
+      id: `item-${index}`,
+      title: item.itemName,
       type: 'bar',
-      data: data.map(op => ({
-        x: String(op.id),
-        y: op.efficiency,
-        color: this.getEfficiencyColor(op.efficiency),
-      })),
-      options: { barPadding: 0.2 },
-    }];
+      data: [{ x: item.itemName, y: item.totalCount }],
+      color: this.ITEM_COLORS[index % this.ITEM_COLORS.length],
+      options: { barPadding: 0.2 }
+    }));
 
     return {
-      title: 'Top Operators by Efficiency',
+      title: 'Item Totals by Type',
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'linear',
-      xLabel: 'Efficiency (%)',
-      yLabel: 'Operator',
-      yTickFormat: (v: any) => {
-        const key = String(v);
-        return data.find(d => String(d.id) === key)?.label ?? key;
-      },
+      xLabel: 'Count',
+      yLabel: 'Item',
       margin: {
         top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
         bottom: Math.max(this.marginBottom || 50, 80),
-        left: Math.max(this.marginLeft || 50, 120)
+        left: Math.max(this.marginLeft ?? 0, 150) 
       },
       legend: { show: false, position: 'top' },
-      series,
+      series: series
     };
-  }
-
-  private getEfficiencyColor(efficiency: number): string {
-    // Same color logic as machine OEE chart for consistency
-    if (efficiency >= 85) return '#66bb6a';  // Green: Excellent (85%+)
-    if (efficiency >= 60) return '#ffca28';  // Yellow: Good (60-84%)
-    return '#ef5350';                        // Red: Poor (<60%)
   }
 
   private enterDummy(): void {
@@ -266,5 +220,11 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  setAvailableSize(w: number, h: number): void {
+    this.chartWidth = w;
+    this.chartHeight = h;
+    this.cdr.markForCheck();
   }
 }
