@@ -377,6 +377,7 @@ import {
         margin,
         xLabelOffsetFromAxis: cfg.xLabelOffsetFromAxis,
         legend,
+        pie: cfg.pie,
         series: cfg.series || []
       };
     }
@@ -506,10 +507,13 @@ import {
       // assume a single pie series; if multiple, merge or draw first
       const s = cfg.series.find(ss => ss.type === 'pie' || ss.type === 'donut')!;
       const data = s.data.map(d => ({ name: String(d.x), value: +d.y }));
-      const center = g.append('g')
-        .attr('transform', `translate(${margin.left + innerW/2}, ${margin.top + innerH/2})`);
 
-      const r = Math.min(innerW, innerH) / 2;
+      // Reserve space for title so it doesn't sit cramped above the pie
+      const titleAreaHeight = 36;
+      const chartInnerH = Math.max(10, innerH - titleAreaHeight);
+      const r = Math.min(innerW, chartInnerH) / 2;
+      const center = g.append('g')
+        .attr('transform', `translate(${margin.left + innerW/2}, ${margin.top + titleAreaHeight + chartInnerH/2})`);
       const innerRatio = (s.type === 'donut' ? (cfg.pie?.innerRatio ?? 0.6) : 0);
       const innerR = Math.max(0, r * innerRatio);
 
@@ -526,6 +530,11 @@ import {
         .innerRadius(innerR)
         .outerRadius(r)
         .cornerRadius(cfg.pie?.cornerRadius ?? 0);
+
+      // Outer arc (same angle, radius r) so callout line starts at pie edge, not at slice centroid
+      const outerArc = d3.arc<d3.PieArcDatum<{name:string; value:number}>>()
+        .innerRadius(r)
+        .outerRadius(r);
 
       const arcs = pie(data);
 
@@ -561,7 +570,7 @@ import {
 
       arcs.forEach((d, i) => {
         const mid = (d.startAngle + d.endAngle) / 2;
-        const start = arc.centroid(d);
+        const start = outerArc.centroid(d);
         const breakPt = [Math.sin(mid) * breakR, -Math.cos(mid) * breakR];
         const endPt = [Math.sin(mid) * labelR, -Math.cos(mid) * labelR];
         const align = mid < Math.PI ? 'start' : 'end';
@@ -581,11 +590,11 @@ import {
 
       if (cfg.title) {
         g.append('text')
-          .attr('x', width/2)
-          .attr('y', Math.max(18, margin.top/2))
-          .attr('text-anchor','middle')
+          .attr('x', width / 2)
+          .attr('y', 22)
+          .attr('text-anchor', 'middle')
           .style('fill', textColor)
-          .style('font-size','14px')
+          .style('font-size', '14px')
           .text(cfg.title);
       }
     }

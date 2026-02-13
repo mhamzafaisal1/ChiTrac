@@ -328,7 +328,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
     // Account for all padding and margins
     const horizontalPadding = 136; // 48 + 64 + 24 (modal + content + carousel padding)
-    const verticalPadding = 150; // Modal actions, tab headers, and spacing
+    // Slightly increase vertical padding so charts fit without overflow/scroll (align with machine modal)
+    const verticalPadding = 200;
 
     // Available space for chart (before adding legend space)
     const availableWidth = modalWidth - horizontalPadding - 200; // Remove legend width
@@ -426,12 +427,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId,
                     isModal: true,
-                    chartHeight: modalChartDimensions.height,
-                    chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
+                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+                    chartWidth: modalChartDimensions.width + 200,
                     marginTop: 30,
-                    marginRight: 180,  // Increase right margin to accommodate legend
-                    marginBottom: 60,
-                    marginLeft: 25,
+                    marginRight: 180,
+                    marginBottom: 80,
+                    marginLeft: 40,
                     showLegend: true,
                     legendPosition: 'right',
                     legendWidthPx: 120
@@ -445,12 +446,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId,
                     isModal: true,
-                    chartHeight: modalChartDimensions.height,
-                    chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
+                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+                    chartWidth: modalChartDimensions.width + 200,
                     marginTop: 30,
-                    marginRight: 180,  // Increase right margin to accommodate legend
-                    marginBottom: 60,
-                    marginLeft: 25,
+                    marginRight: 180,
+                    marginBottom: 80,
+                    marginLeft: 40,
                     showLegend: true,
                     legendPosition: 'right',
                     legendWidthPx: 120
@@ -474,12 +475,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     dashboardData: [data],
                     operatorId: operatorId.toString(),
                     isModal: true,
-                    chartHeight: modalChartDimensions.height,
-                    chartWidth: modalChartDimensions.width + 200,  // Add extra width for right-side legend
+                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+                    chartWidth: modalChartDimensions.width + 200,
                     marginTop: 30,
-                    marginRight: 180,  // Increase right margin to accommodate legend
-                    marginBottom: 60,
-                    marginLeft: 25,
+                    marginRight: 180,
+                    marginBottom: 80,
+                    marginLeft: 40,
                     showLegend: true,
                     legendPosition: 'right',
                     legendWidthPx: 120
