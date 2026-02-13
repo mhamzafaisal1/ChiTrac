@@ -106,11 +106,17 @@ export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChan
       return null;
     }
 
-    // Create data points for pie chart (x=name, y=value)
-    const dataPoints = pieData.map((item, index) => ({
-      x: item.name,
-      y: item.value
-    }));
+    // Only include slices with value > 0 (e.g. no Faulted slice/label if no fault time)
+    const dataPoints = pieData
+      .filter((item) => (item.value ?? 0) > 0)
+      .map((item) => ({
+        x: item.name,
+        y: item.value
+      }));
+
+    if (dataPoints.length === 0) {
+      return null;
+    }
 
     const series: XYSeries[] = [{
       id: 'cycleTime',
