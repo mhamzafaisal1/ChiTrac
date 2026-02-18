@@ -51,7 +51,7 @@ module.exports = function (server) {
     buildItemHourlyStack,
     buildFaultData,
     buildOperatorEfficiency
-  } = require("../../utils/machineDashboardBuilder");
+  } = require("../../utils/machineFunctions");
 
   const {
     parseAndValidateQueryParams,

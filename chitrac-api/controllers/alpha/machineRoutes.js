@@ -39,7 +39,8 @@ module.exports = function (server) {
     buildFaultData,
     buildOperatorEfficiency,
     buildCurrentOperators,
-  } = require("../../utils/machineDashboardBuilder");
+    buildMachineSessionAnalytics,
+  } = require("../../utils/machineFunctions");
 
   const {
     buildMachineOEE,
@@ -71,8 +72,7 @@ module.exports = function (server) {
   } = require("../../utils/analytics");
 
   const { getBookendedGlobalRange } = require("../../utils/miscFunctions");
-  const {getBookendedStatesAndTimeRange} = require("../../utils/bookendingBuilder")
-  const { buildMachineSessionAnalytics } = require('../../utils/machineSessionAnalytics');
+  const {getBookendedStatesAndTimeRange} = require("../../utils/bookendingBuilder");
 
   // router.get("/machine-dashboard", async (req, res) => {
   //   try {

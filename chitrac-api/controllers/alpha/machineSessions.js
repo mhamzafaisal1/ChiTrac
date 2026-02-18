@@ -1,8 +1,8 @@
 const express = require("express");
 
 const { formatDuration } = require("../../utils/time");
-const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 const {
+  buildCurrentOperators,
   normalizePPH,
   safeNumber,
   recalcSession,
@@ -1115,7 +1115,7 @@ module.exports = function (server) {
         buildFaultData,
         buildOperatorEfficiency,
         buildCurrentOperators,
-      } = require("../../utils/machineDashboardBuilder");
+      } = require("../../utils/machineFunctions");
 
       // Split time range into complete days and partial days
       const startOfFirstDay = DateTime.fromJSDate(exactStart, {
@@ -1557,7 +1557,7 @@ module.exports = function (server) {
         buildFaultData,
         buildOperatorEfficiency,
         buildCurrentOperators,
-      } = require("../../utils/machineDashboardBuilder");
+      } = require("../../utils/machineFunctions");
 
       const groupedData = await fetchGroupedAnalyticsData(
         db,

@@ -1,7 +1,6 @@
 /**
  * Functions for session data (running, paused, fault) not specific to dashboards or reports.
- * Session logic from controllers/alpha (e.g. dashboardSessionsRoutes, faultSessionRoutes,
- * machineSessions, operatorSessions, itemSessions, efficiencyScreenSessionRoute) can be moved here.
+
  *
  * Extracted from controllers/alpha/efficiencyScreenSessionRoute.js
  */

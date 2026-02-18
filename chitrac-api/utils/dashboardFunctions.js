@@ -8,7 +8,7 @@ const {
   buildItemHourlyStack,
   buildFaultData,
   buildOperatorEfficiency
-} = require("./machineDashboardBuilder");
+} = require("./machineFunctions");
 const {
   buildOperatorPerformance,
   buildOperatorCountByItem
