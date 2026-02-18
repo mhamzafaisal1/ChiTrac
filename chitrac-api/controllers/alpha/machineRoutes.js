@@ -46,7 +46,7 @@ module.exports = function (server) {
     buildMachineOEE,
     buildDailyItemHourlyStack,
     buildPlantwideMetricsByHour,
-  } = require("../../utils/dailyDashboardBuilder");
+  } = require("../../utils/dashboardFunctions");
 
   const {
     fetchGroupedAnalyticsData,

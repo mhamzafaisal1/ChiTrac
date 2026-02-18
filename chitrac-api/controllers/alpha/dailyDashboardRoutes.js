@@ -43,7 +43,7 @@ module.exports = function (server) {
     buildOperatorCyclePie,
     buildOperatorFaultHistory,
     buildOperatorEfficiencyLine,
-  } = require("../../utils/operatorDashboardBuilder");
+  } = require("../../utils/operatorFunctions");
 
   const {
     buildMachinePerformance,

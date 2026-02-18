@@ -13,7 +13,7 @@ module.exports = function (server) {
 
   const {
     buildTopOperatorEfficiency,
-  } = require("../../utils/dailyDashboardBuilder");
+  } = require("../../utils/dashboardFunctions");
 
   const {
     buildOperatorPerformance,
@@ -22,7 +22,7 @@ module.exports = function (server) {
     buildOptimizedOperatorCountByItem,
     buildOptimizedOperatorCyclePie,
     buildOptimizedOperatorFaultHistory,
-  } = require("../../utils/operatorDashboardBuilder");
+  } = require("../../utils/operatorFunctions");
 
   const {
     fetchGroupedAnalyticsData

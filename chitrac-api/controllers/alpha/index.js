@@ -67,7 +67,7 @@ const {
   buildMachineOEE,
   buildDailyItemHourlyStack,
   buildTopOperatorEfficiency,
-} = require("../../utils/dailyDashboardBuilder");
+} = require("../../utils/dashboardFunctions");
 
 const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
 const {
