@@ -34,14 +34,13 @@ module.exports = function (server) {
     buildItemHourlyStack,
     buildFaultData,
     buildOperatorEfficiency,
-    buildMachineSessionAnalytics,
-  } = require("../../utils/machineFunctions");
+  } = require("../../utils/machineDashboardBuilder");
 
   const {
     buildMachineOEE,
     buildDailyItemHourlyStack,
     buildPlantwideMetricsByHour,
-  } = require("../../utils/dashboardFunctions");
+  } = require("../../utils/dailyDashboardBuilder");
 
   const {
     fetchGroupedAnalyticsData,
@@ -67,7 +66,8 @@ module.exports = function (server) {
   } = require("../../utils/analytics");
 
   const { getBookendedGlobalRange } = require("../../utils/miscFunctions");
-  const {getBookendedStatesAndTimeRange} = require("../../utils/bookendingBuilder");
+  const {getBookendedStatesAndTimeRange} = require("../../utils/bookendingBuilder")
+  const { buildMachineSessionAnalytics } = require('../../utils/machineSessionAnalytics');
 
 router.get("/analytics/item-dashboard-summary", async (req, res) => {
     try {

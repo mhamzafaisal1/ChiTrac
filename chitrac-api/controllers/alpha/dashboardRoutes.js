@@ -35,7 +35,7 @@ module.exports = function (server) {
     buildItemHourlyStack,
     buildFaultData,
     buildOperatorEfficiency,
-  } = require("../../utils/machineFunctions");
+  } = require("../../utils/machineDashboardBuilder");
 
   const {
     calculateDowntime,

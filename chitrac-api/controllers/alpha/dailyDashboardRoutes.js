@@ -43,7 +43,7 @@ module.exports = function (server) {
     buildOperatorCyclePie,
     buildOperatorFaultHistory,
     buildOperatorEfficiencyLine,
-  } = require("../../utils/operatorFunctions");
+  } = require("../../utils/operatorDashboardBuilder");
 
   const {
     buildMachinePerformance,
@@ -51,7 +51,7 @@ module.exports = function (server) {
     buildItemHourlyStack,
     buildFaultData,
     buildOperatorEfficiency
-  } = require("../../utils/machineFunctions");
+  } = require("../../utils/machineDashboardBuilder");
 
   const {
     parseAndValidateQueryParams,

@@ -6,7 +6,9 @@ const { formatDuration } = require("../../utils/time");
 const {
   buildDailyItemHourlyStack,
   buildPlantwideMetricsByHour,
-  buildDailyCountTotals,
+  buildDailyCountTotals
+} = require("../../utils/dailyDashboardBuilder");
+const {
   buildDailyMachineStatusFromSessions,
   buildMachineOEEFromSessions,
   buildTopOperatorEfficiencyFromSessions
