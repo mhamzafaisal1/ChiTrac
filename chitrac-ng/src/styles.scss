@@ -136,8 +136,15 @@ body.dark-theme {
   --theme-color-text: var(--sg-color-white);
   --theme-color-on-ryo: var(--sg-color-black);
 
+  --theme-color-header-background: var(--sg-color-background);
+  --theme-color-header-icon: var(--sg-color-white);
+
+  --theme-color-table-row-background: var(--sg-color-blue-gray-light-500);
+
   --theme-efficiency-lane-background-color: var(--sg-color-blue-gray-light-200);
-  --theme-background: var(--sg-color-blue-gray-light-300);
+  --theme-background: var(--sg-color-blue-gray-light-100);
+  --theme-production-screens-background: var(--sg-color-blue-gray-light-300);
+  
 
 
   /* Direct theme color overrides*/
@@ -211,9 +218,15 @@ body.dark-theme {
   --theme-color-text: var(--sg-color-black);
   --theme-color-on-ryo: var(--sg-color-black);
 
+  --theme-color-header-background: var(--sg-color-white);
+  --theme-color-header-icon: var(--sg-color-black);
+
+  --theme-color-table-row-background: var(--sg-color-blue-gray-light-100);
+
   --theme-efficiency-lane-background-color: var(--sg-color-blue-gray-medium-200);
 
-  --theme-background: var(--sg-color-blue-gray-medium-300);
+  --theme-background: var(--sg-color-blue-gray-light-300);
+  --theme-production-screens-background: var(--sg-color-blue-gray-medium-300);
 
 
   --sg-border-radius: 4px;
@@ -247,6 +260,7 @@ input::-webkit-inner-spin-button {
 /* Firefox */
 input[type=number] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Custom modal styling */
@@ -306,24 +320,6 @@ body.cdk-global-scrollblock {
 //   box-sizing: border-box !important;
 // }
 
-/* Hide vertical scrollbar for modal and carousel */
-.modal-wrapper,
-.carousel-container,
-.cdk-overlay-pane,
-.mat-dialog-container,
-body,
-html {
-  // overflow-y: hidden !important;
-}
-
-.modal-wrapper::-webkit-scrollbar,
-.carousel-container::-webkit-scrollbar,
-.cdk-overlay-pane::-webkit-scrollbar,
-.mat-dialog-container::-webkit-scrollbar,
-body::-webkit-scrollbar,
-html::-webkit-scrollbar {
-  // display: none !important;
-}
 
 ::ng-deep .performance-chart-dialog .mat-dialog-container {
   padding: 0;
@@ -371,24 +367,6 @@ html, body {
 
 .mat-mdc-menu-panel {
   max-width: none !important;
-}
-
-//for the efficiency screens
-.mat-drawer-transition .mat-drawer-content {
-  // overflow-y: hidden !important;
-}
-
-// Additional Material Design drawer overrides to prevent scrollbars
-::ng-deep .mat-drawer-container {
-  // overflow: hidden !important;
-}
-
-::ng-deep .mat-drawer-content {
-  // overflow: hidden !important;
-}
-
-::ng-deep .mat-sidenav-container {
-  // overflow: hidden !important;
 }
 
 /* Login Menu Panel Styles */
