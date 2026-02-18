@@ -7,7 +7,7 @@ import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-ba
 import { DailyCountByItemChartComponent } from "../charts/daily-count-by-item-chart/daily-count-by-item-chart.component";
 import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/daily-count-bar-chart.component";
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
-import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-chart/plantwide-metrics-chart.component";
+import { EfficiencyByMachineGroupBarChartComponent } from "../charts/efficiency-by-machine-group-bar-chart/efficiency-by-machine-group-bar-chart.component";
 
 @Component({
     selector: 'app-daily-analytics-dashboard-split',
@@ -19,7 +19,7 @@ import { PlantwideMetricsChartComponent } from "../charts/plantwide-metrics-char
         DailyCountByItemChartComponent,
         DailyCountBarChartComponent,
         RankedOperatorBarChartComponent,
-        PlantwideMetricsChartComponent
+        EfficiencyByMachineGroupBarChartComponent
     ],
     templateUrl: './daily-analytics-dashboard-split.component.html',
     styleUrls: ['./daily-analytics-dashboard-split.component.scss']
