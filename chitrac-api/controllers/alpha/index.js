@@ -140,7 +140,7 @@ function constructor(server) {
   router.use("/", faultSessionRoutes);
 
   // Import machine-details routes
-  const machineDetailsRoutes = require("./machineDetails..js")(server);
+  const machineDetailsRoutes = require("./machineDetails.js")(server);
   router.use("/", machineDetailsRoutes);
 
   // Import operator-details routes

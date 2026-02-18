@@ -2,6 +2,7 @@
 const express = require("express");
 const config = require("../../modules/config");
 const { parseAndValidateQueryParams } = require("../../utils/time");
+const { buildItemStackRelative } = require("../../utils/dashboardFunctions");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -123,36 +124,3 @@ module.exports = function (server) {
 
   return router;
 };
-
-function buildItemStackRelative(rows, startDate, endDate) {
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return { title: "No data", data: { hours: [], operators: {} } };
-  }
-  const hourMs = 3600000;
-  let maxIdx = -1;
-  const series = new Map();
-
-  for (const r of rows) {
-    const ts = new Date(r.timestamp);
-    if (ts < startDate || ts > endDate) continue;
-    const idx = Math.floor((ts - startDate) / hourMs);
-    if (idx > maxIdx) maxIdx = idx;
-    const key = r.itemName || "Unknown";
-    if (!series.has(key)) series.set(key, []);
-    const arr = series.get(key);
-    arr[idx] = (arr[idx] || 0) + 1;
-  }
-
-  const bins = maxIdx + 1;
-  if (bins <= 0) return { title: "No data", data: { hours: [], operators: {} } };
-
-  const hours = Array.from({ length: bins }, (_, i) => i);
-  const operators = {};
-  for (const [name, arr] of series.entries()) {
-    const row = Array(bins).fill(0);
-    for (let i = 0; i < arr.length; i++) if (typeof arr[i] === "number") row[i] = arr[i];
-    operators[name] = row;
-  }
-
-  return { title: "Item Stacked Count Chart", data: { hours, operators } };
-}
