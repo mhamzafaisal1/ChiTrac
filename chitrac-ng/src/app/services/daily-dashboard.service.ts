@@ -115,6 +115,11 @@ getItemsSummary(start: string, end: string, serial?: number) {
     return this.http.get(`${this.apiUrl}/analytics/daily/top-operators-cache`, { params });
   }
 
+  getDailyTopFaults(start: string, end: string): Observable<any> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get(`${this.apiUrl}/analytics/daily/top-faults`, { params });
+  }
+
   getDailyPlantwideMetrics(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
     return this.http.get(`${this.apiUrl}/analytics/daily/plantwide-metrics-cache`, { params });
