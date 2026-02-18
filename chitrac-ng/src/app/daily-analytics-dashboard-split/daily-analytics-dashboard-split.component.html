@@ -44,17 +44,17 @@
         ></app-daily-count-by-item-chart>
       </app-chart-tile>
 
-      <!-- Daily Plantwide Count Totals Chart -->
+      <!-- Plantwide Metrics by Hour Chart -->
       <app-chart-tile
-        title="Daily Plantwide Count Totals"
-        icon="calendar_view_day"
+        title="Plantwide Metrics by Hour"
+        icon="trending_up"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
-        <app-daily-count-bar-chart
+        <app-plantwide-metrics-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
-        ></app-daily-count-bar-chart>
+        ></app-plantwide-metrics-chart>
       </app-chart-tile>
 
       <!-- Top Operator Efficiency Chart -->
@@ -70,17 +70,17 @@
         ></app-ranked-operator-bar-chart>
       </app-chart-tile>
 
-      <!-- Efficiency % by Machine Group Chart -->
+      <!-- Daily Plantwide Count Totals Chart -->
       <app-chart-tile
-        title="Efficiency % by Machine Group"
-        icon="groups"
+        title="Daily Plantwide Count Totals"
+        icon="calendar_view_day"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
-        <app-efficiency-by-machine-group-bar-chart
+        <app-daily-count-bar-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
-        ></app-efficiency-by-machine-group-bar-chart>
+        ></app-daily-count-bar-chart>
       </app-chart-tile>
     </div>
   </div>
