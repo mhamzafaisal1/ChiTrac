@@ -25,7 +25,11 @@ const {
   getValidCounts,
 } = require("../../utils/count");
 
-const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
+const {
+  buildSoftrolCycleSummary,
+  assignOperatorsToRunningCyclesMulti,
+  buildStationAlignedOperators,
+} = require("../../utils/miscFunctions");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -399,71 +403,6 @@ module.exports = function (server) {
       res.status(500).json({ error: "Internal server error" });
     }
   });
-  
-  function assignOperatorsToRunningCyclesMulti(runningCycles, operatorCycles) {
-    return runningCycles.map(run => {
-      const runStart = new Date(run.start);
-      const runEnd = new Date(run.end);
-  
-      const seen = new Set();
-      const operators = [];
-  
-      for (const op of operatorCycles) {
-        const opStart = new Date(op.start);
-        const opEnd = new Date(op.end);
-  
-        const overlapStart = runStart > opStart ? runStart : opStart;
-        const overlapEnd = runEnd < opEnd ? runEnd : opEnd;
-        const overlapDuration = overlapEnd - overlapStart;
-  
-        if (overlapDuration > 0 && !seen.has(op.operatorId)) {
-          operators.push({
-            id: op.operatorId,
-            name: op.name || null,
-            station: op.station ?? null
-          });
-          seen.add(op.operatorId);
-        }
-  
-        if (operators.length >= 8) break;
-      }
-  
-      // Pad remaining slots with -1
-      while (operators.length < 8) {
-        operators.push({ id: -1, name: null, station: null });
-      }
-  
-      return {
-        ...run,
-        operators
-      };
-    });
-  }
-
-  function buildStationAlignedOperators(overlappingOperatorCycles) {
-    // Initialize array with 8 dummy entries, 1-indexed stations
-    const operators = Array.from({ length: 8 }, (_, i) => ({
-      id: -1,
-      name: null,
-      station: i + 1
-    }));
-  
-    for (const op of overlappingOperatorCycles) {
-      const stationIndex = (op.station ?? 1) - 1;
-  
-      if (stationIndex >= 0 && stationIndex < 8) {
-        operators[stationIndex] = {
-          id: op.operatorId,
-          name: op.name ?? null,
-          station: op.station
-        };
-      }
-    }
-  
-    return operators;
-  }
-  
-  
 
   // router.get("/dryer/running-with-operators", async (req, res) => {
   //   try {

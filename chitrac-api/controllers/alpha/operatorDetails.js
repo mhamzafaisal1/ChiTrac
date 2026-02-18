@@ -3,8 +3,8 @@ const express = require("express");
 const { DateTime, Interval } = require("luxon");
 const config = require("../../modules/config");
 const { parseAndValidateQueryParams, formatDuration, getCountCollectionName, getStateCollectionName } = require("../../utils/time");
-const { fetchStatesForOperator, extractFaultCycles, groupStatesByOperatorAndSerial, getCompletedCyclesForOperator } = require("../../utils/state");
-const { buildOperatorCyclePie } = require("../../utils/operatorFunctions");
+const { fetchStatesForOperator, groupStatesByOperatorAndSerial, getCompletedCyclesForOperator } = require("../../utils/state");
+const { buildOperatorCyclePie, buildOptimizedOperatorFaultHistorySingle } = require("../../utils/operatorFunctions");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -131,38 +131,6 @@ module.exports = function (server) {
       operator: { id: Number(operatorId), name: operatorName },
       timeRange: { start: startDt.toISOString(), end: endDt.toISOString(), totalDays: data.length },
       data
-    };
-  }
-
-  // -----------------------------------
-  // Fault History Builder
-  // -----------------------------------
-  function buildOptimizedOperatorFaultHistorySingle(operatorId, operatorName, machineSerial, machineName, states, start, end) {
-    const { faultCycles, faultSummaries } = extractFaultCycles(states, new Date(start), new Date(end));
-  
-    const enrichedFaultCycles = faultCycles.map(cycle => ({
-      ...cycle,
-      machineName,
-      machineSerial,
-      operatorName,
-      operatorId
-    }));
-  
-    const summaryList = faultSummaries.map(summary => {
-      const totalSeconds = Math.floor(summary.totalDuration / 1000);
-      return {
-        ...summary,
-        formatted: {
-          hours: Math.floor(totalSeconds / 3600),
-          minutes: Math.floor((totalSeconds % 3600) / 60),
-          seconds: totalSeconds % 60
-        }
-      };
-    });
-  
-    return {
-      faultCycles: enrichedFaultCycles,
-      faultSummaries: summaryList
     };
   }
 

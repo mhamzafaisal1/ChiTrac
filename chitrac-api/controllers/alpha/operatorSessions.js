@@ -12,6 +12,21 @@ module.exports = function (server) {
   const db = server.db;
   const config = require('../../modules/config');
 
+  // Import shared helper functions from operatorFunctions.js
+  const {
+    clamp01,
+    normalizePPH,
+    recalcOperatorSession,
+    truncateAndRecalcOperator,
+    mergeIntervals,
+    overlapsAny,
+    coalesceItems,
+    queryOperatorsSummaryDailyCache,
+    queryOperatorsSummarySessions,
+    combineOperatorsSummaryData,
+    buildHybridOperatorsSummary,
+  } = require('../../utils/operatorFunctions');
+
   // Helper function to parse and validate query parameters
   function parseAndValidateQueryParams(req) {
     const { start, end, timeframe } = req.query;
@@ -698,22 +713,22 @@ module.exports = function (server) {
       }
 
       // Query daily cache for complete days
-      const dailyRecords = await queryOperatorsSummaryDailyCache(completeDays);
+      const dailyRecords = await queryOperatorsSummaryDailyCache(db, completeDays);
       logger.info(`[operatorSessions] Daily cache query returned ${dailyRecords.length} records`);
-      
+
       // Query sessions for partial days
-      const sessionData = await queryOperatorsSummarySessions(partialDays);
+      const sessionData = await queryOperatorsSummarySessions(db, logger, partialDays);
       logger.info(`[operatorSessions] Session query returned ${sessionData.length} records`);
-      
+
       // Combine the data
       const combinedData = combineOperatorsSummaryData(dailyRecords, sessionData);
       logger.info(`[operatorSessions] Combined data has ${combinedData.size} operators`);
-      
+
       // Get current machine statuses from stateTicker collection
       const stateTickerData = await db.collection('stateTicker')
         .find({})
         .toArray();
-      
+
       // Create a map of machine serial to current status
       const machineStatusMap = new Map();
       for (const stateRecord of stateTickerData) {
@@ -821,222 +836,6 @@ module.exports = function (server) {
     }
   });
 
-  // Helper function to build hybrid operators summary
-  async function buildHybridOperatorsSummary(exactStart, exactEnd) {
-    const { SYSTEM_TIMEZONE } = require('../../utils/time');
-    const HYBRID_THRESHOLD_HOURS = 36; // Configurable threshold
-    const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-
-    const startOfFirstDay = DateTime.fromJSDate(exactStart, { zone: SYSTEM_TIMEZONE }).startOf('day');
-    const endOfLastDay = DateTime.fromJSDate(exactEnd, { zone: SYSTEM_TIMEZONE }).endOf('day');
-    
-    const completeDays = [];
-    const partialDays = [];
-    
-    // Add complete days (full 24-hour periods)
-    let currentDay = startOfFirstDay;
-    while (currentDay < endOfLastDay) {
-      const dayStart = currentDay.toJSDate();
-      const dayEnd = currentDay.plus({ days: 1 }).startOf('day').toJSDate();
-      
-      // Only include if the day is completely within the query range
-      if (dayStart >= exactStart && dayEnd <= exactEnd) {
-        completeDays.push({
-          start: dayStart,
-          end: dayEnd,
-          dateStr: currentDay.toFormat('yyyy-LL-dd')
-        });
-      }
-      
-      currentDay = currentDay.plus({ days: 1 });
-    }
-    
-    // Add partial days (beginning and end of range)
-    const nextDayStart = startOfFirstDay.plus({ days: 1 }).toJSDate();
-    if (exactStart < nextDayStart) {
-      const partialEnd = exactEnd < nextDayStart ? exactEnd : nextDayStart;
-      if (partialEnd > exactStart) {
-        partialDays.push({
-          start: exactStart,
-          end: partialEnd,
-          type: 'start'
-        });
-      }
-    }
-    
-    const previousDayEnd = endOfLastDay.minus({ days: 1 }).toJSDate();
-    if (exactEnd > previousDayEnd) {
-      const partialStart = exactStart > previousDayEnd ? exactStart : previousDayEnd;
-      if (exactEnd > partialStart) {
-        partialDays.push({
-          start: partialStart,
-          end: exactEnd,
-          type: 'end'
-        });
-      }
-    }
-
-    // Remove duplicate partial days if they overlap
-    if (partialDays.length === 2 &&
-        partialDays[0].start.getTime() === partialDays[1].start.getTime() &&
-        partialDays[0].end.getTime() === partialDays[1].end.getTime()) {
-      partialDays.splice(1, 1);
-    }
-
-    // Query daily cache for complete days
-    const dailyRecords = await queryOperatorsSummaryDailyCache(completeDays);
-    logger.info(`[operatorSessions] Daily cache query returned ${dailyRecords.length} records`);
-    
-    // Query sessions for partial days
-    const sessionData = await queryOperatorsSummarySessions(partialDays);
-    logger.info(`[operatorSessions] Session query returned ${sessionData.length} records`);
-    
-    // Combine the data
-    const combinedData = combineOperatorsSummaryData(dailyRecords, sessionData);
-    logger.info(`[operatorSessions] Combined data has ${combinedData.size} operators`);
-    
-    // Get current machine statuses from stateTicker collection
-    const stateTickerData = await db.collection('stateTicker')
-      .find({})
-      .toArray();
-    
-    // Build operator ticker map (latest machine/status per operator)
-    const operatorTickerMap = new Map();
-    for (const stateRecord of stateTickerData) {
-      const machine = stateRecord.machine || {};
-      const status = stateRecord.status || {};
-      const timestamp = new Date(
-        status.timestamp ||
-        stateRecord.timestamp ||
-        (stateRecord.timestamps &&
-          (stateRecord.timestamps.update ||
-            stateRecord.timestamps.active ||
-            stateRecord.timestamps.create)) ||
-        0
-      ).getTime();
-
-      if (Array.isArray(stateRecord.operators)) {
-        for (const op of stateRecord.operators) {
-          if (!op || typeof op.id === "undefined" || op.id === null) {
-            continue;
-          }
-
-          const operatorKey =
-            typeof op.id === "string" ? Number.parseInt(op.id, 10) : op.id;
-
-          if (Number.isNaN(operatorKey)) {
-            continue;
-          }
-
-          const existing = operatorTickerMap.get(operatorKey);
-          if (!existing || existing.timestamp < timestamp) {
-            const serial =
-              machine.serial ?? machine.id ?? machine.serialNumber ?? null;
-            // Status schema uses 'id', but legacy code used 'code' - support both
-            const statusId = status?.id ?? status?.code ?? null;
-            operatorTickerMap.set(operatorKey, {
-              machine:
-                serial !== null && serial !== undefined
-                  ? {
-                      serial,
-                      name: machine.name || null
-                    }
-                  : null,
-              status:
-                typeof statusId !== "undefined" && statusId !== null ||
-                typeof status.name !== "undefined"
-                  ? {
-                      code: statusId, // Use 'code' in API response for backward compatibility
-                      name: status.name ?? null
-                    }
-                  : null,
-              timestamp
-            });
-          }
-        }
-      }
-    }
-    
-    // Build final results
-    const results = [];
-    for (const [operatorId, data] of combinedData) {
-      // Get current machine and status from ticker map
-      const tickerContext = operatorTickerMap.get(operatorId);
-      const currentMachine = tickerContext?.machine || data.currentMachine || null;
-      const currentStatus = tickerContext?.status || data.currentStatus || { code: 0, name: "Unknown" };
-      
-      const result = {
-        operator: {
-          id: operatorId,
-          name: data.operatorName
-        },
-        currentMachine,
-        currentStatus,
-        metrics: {
-          runtime: {
-            total: data.runtimeMs,
-            formatted: formatDuration(data.runtimeMs)
-          },
-          downtime: {
-            total: data.downtimeMs,
-            formatted: formatDuration(data.downtimeMs)
-          },
-          output: {
-            totalCount: data.totalCount,
-            misfeedCount: data.misfeedCount
-          },
-          performance: {
-            availability: {
-              value: data.availability,
-              percentage: (data.availability * 100).toFixed(2)
-            },
-            throughput: {
-              value: data.throughput,
-              percentage: (data.throughput * 100).toFixed(2)
-            },
-            efficiency: {
-              value: data.efficiency,
-              percentage: (data.efficiency * 100).toFixed(2)
-            },
-            oee: {
-              value: data.oee,
-              percentage: (data.oee * 100).toFixed(2)
-            }
-          }
-        },
-        timeRange: {
-          start: exactStart,
-          end: exactEnd
-        }
-      };
-      
-      results.push(result);
-    }
-
-    const metadata = {
-      timeRange: {
-        start: exactStart,
-        end: exactEnd,
-        hours: Math.round(timeRangeHours * 100) / 100
-      },
-      optimization: {
-        used: true,
-        approach: 'hybrid',
-        thresholdHours: HYBRID_THRESHOLD_HOURS,
-        timeRangeHours: Math.round(timeRangeHours * 100) / 100,
-        completeDays: completeDays.length,
-        partialDays: partialDays.length,
-        dailyRecords: dailyRecords.length,
-        sessionRecords: sessionData.length,
-        performance: {
-          estimatedSpeedup: `${Math.round((timeRangeHours / 24) * 10)}x faster for ${Math.round(timeRangeHours / 24)} days`
-        }
-      }
-    };
-
-    return { results, metadata };
-  }
-
   // New route: /analytics/operator-summary-timeframe
   router.get("/analytics/operator-summary-timeframe", async (req, res) => {
     try {
@@ -1071,6 +870,8 @@ module.exports = function (server) {
       const exactEnd = new Date(end);
 
       const { results } = await buildHybridOperatorsSummary(
+        db,
+        logger,
         exactStart,
         exactEnd
       );
@@ -1193,7 +994,7 @@ module.exports = function (server) {
               const first = sessions[0];
               const firstStart = new Date(first.timestamps?.start);
               if (firstStart < queryStart) {
-                sessions[0] = truncateAndRecalcOperator(first, queryStart, first.timestamps?.end ? new Date(first.timestamps.end) : queryEnd);
+                sessions[0] = truncateAndRecalcOperator(first, queryStart, first.timestamps?.end ? new Date(first.timestamps.end) : queryEnd, logger);
               }
             }
 
@@ -1208,7 +1009,8 @@ module.exports = function (server) {
                 sessions[lastIdx] = truncateAndRecalcOperator(
                   last,
                   new Date(sessions[lastIdx].timestamps.start),
-                  effectiveEnd
+                  effectiveEnd,
+                  logger
                 );
               }
             }
@@ -1563,410 +1365,6 @@ module.exports = function (server) {
       return res.status(500).json({ error: 'Failed to build operator machine summary' });
     }
   });
-
-  /* ---------------- helpers (operator version) ---------------- */
-
-  function clamp01(x) {
-    return Math.min(Math.max(x, 0), 1);
-  }
-
-  function normalizePPH(std) {
-    const n = Number(std) || 0;
-    return n > 0 && n < 60 ? n * 60 : n;
-  }
-
-  // Recompute metrics exactly like simulator's operator-session rules
-  function recalcOperatorSession(session) {
-    if (!session || !session.timestamps || !session.timestamps.start) {
-      logger.warn('Invalid session data for recalculation');
-      return session;
-    }
-
-    const start = new Date(session.timestamps.start);
-    const end = new Date(session.timestamps.end || new Date());
-    const runtimeMs = Math.max(0, end - start);
-    const runtimeSec = runtimeMs / 1000;
-
-    // Operator-level work time == runtimeSec
-    const workTimeSec = runtimeSec;
-
-    const counts = Array.isArray(session.counts) ? session.counts : [];
-    const misfeeds = Array.isArray(session.misfeeds) ? session.misfeeds : [];
-    const totalCount = counts.length;
-    const misfeedCount = misfeeds.length;
-
-    // Calculate total time credit (simplified - count per-item and use per-item standards)
-    let totalTimeCredit = 0;
-
-    // 1. Count how many of each item were produced in the truncated window
-    const perItemCounts = new Map(); // key: item.id
-    for (const c of counts) {
-      const id = c?.item?.id;
-      if (id == null) continue;
-      perItemCounts.set(id, (perItemCounts.get(id) || 0) + 1);
-    }
-
-    // 2. Calculate time credit for each item based on its actual count and standard
-    for (const [id, cnt] of perItemCounts) {
-      // Find the standard for this specific item from session.items
-      const item = session.items?.find(it => it && it.id === id);
-      if (item && item.standard) {
-        const pph = normalizePPH(item.standard);
-        if (pph > 0) {
-          totalTimeCredit += cnt / (pph / 3600); // seconds
-        }
-      }
-    }
-
-    session.runtime = runtimeMs / 1000;
-    session.workTime = workTimeSec;
-    session.totalCount = totalCount;
-    session.misfeedCount = misfeedCount;
-    session.totalTimeCredit = totalTimeCredit;
-    return session;
-  }
-
-  // Truncate to [newStart, newEnd] and recompute
-  function truncateAndRecalcOperator(original, newStart, newEnd) {
-    if (!original || !original.timestamps) {
-      logger.warn('Invalid session for truncation');
-      return original;
-    }
-
-    // Only clone what we need to modify
-    const s = {
-      ...original,
-      timestamps: { ...original.timestamps },
-      counts: [...(original.counts || [])],
-      misfeeds: [...(original.misfeeds || [])]
-    };
-
-    const start = new Date(s.timestamps.start);
-    const end = new Date(s.timestamps.end || new Date());
-
-    const clampedStart = start < newStart ? newStart : start;
-    const clampedEnd = end > newEnd ? newEnd : end;
-
-    s.timestamps.start = clampedStart;
-    s.timestamps.end = clampedEnd;
-
-    const inWindow = (d) => {
-      if (!d || !d.timestamp) return false;
-      const ts = new Date(d.timestamp);
-      return ts >= clampedStart && ts <= clampedEnd;
-    };
-
-    s.counts = s.counts.filter(inWindow);
-    s.misfeeds = s.misfeeds.filter(inWindow);
-
-    return recalcOperatorSession(s);
-  }
-
-  /* ---------------- helpers (operator-machine-summary version) ---------------- */
-
-  function mergeIntervals(intervals) {
-    const arr = intervals
-      .map(iv => ({ s: new Date(iv.s).getTime(), e: new Date(iv.e).getTime() }))
-      .filter(iv => Number.isFinite(iv.s) && Number.isFinite(iv.e) && iv.s < iv.e)
-      .sort((a, b) => a.s - b.s);
-
-    const out = [];
-    for (const iv of arr) {
-      if (!out.length || iv.s > out[out.length - 1].e) out.push({ ...iv });
-      else out[out.length - 1].e = Math.max(out[out.length - 1].e, iv.e);
-    }
-    return out;
-  }
-
-  function overlapsAny(iv, merged) {
-    const s = new Date(iv.s).getTime();
-    const e = new Date(iv.e).getTime();
-    if (!(s < e)) return false;
-    // binary scan or linear; linear is fine for small lists
-    for (const m of merged) {
-      if (e <= m.s) break;
-      if (s < m.e && e > m.s) return true;
-    }
-    return false;
-  }
-
-  function coalesceItems(items) {
-    const map = new Map();
-    for (const it of items) {
-      const key = it.id ?? '__null__';
-      if (!map.has(key)) map.set(key, { id: it.id, name: it.name, standard: it.standard, totalCount: 0, totalTimeCredit: 0 });
-      const curr = map.get(key);
-      curr.totalCount += it.totalCount || 0;
-      curr.totalTimeCredit += it.totalTimeCredit || 0;
-    }
-    // Remove null-id rows if any slipped in
-    return Array.from(map.values()).filter(x => x.id != null);
-  }
-
-  // Helper function to query operators summary daily cache
-  async function queryOperatorsSummaryDailyCache(completeDays) {
-    if (completeDays.length === 0) return [];
-    
-    const cacheCollection = db.collection('totals-daily');
-    
-    // Try multiple date formats to handle timezone variations
-    const dateFormats = completeDays.flatMap(day => {
-      const dateStr = day.dateStr;
-      return [
-        new Date(dateStr + 'T00:00:00.000Z'), // UTC midnight
-        new Date(dateStr + 'T05:00:00.000Z'), // CST midnight (UTC+5)
-        new Date(dateStr + 'T06:00:00.000Z'), // CDT midnight (UTC+6)
-        dateStr, // String format
-        new Date(dateStr) // Local timezone
-      ];
-    });
-    
-    const records = await cacheCollection.find({
-      entityType: 'operator-machine',
-      $or: [
-        { dateObj: { $in: dateFormats } },
-        { date: { $in: completeDays.map(d => d.dateStr) } }
-      ]
-    }).toArray();
-    
-    return records;
-  }
-
-  // Helper function to query operators summary sessions for partial days
-  async function queryOperatorsSummarySessions(partialDays) {
-    if (partialDays.length === 0) return [];
-    
-    const results = [];
-    
-    for (const partialDay of partialDays) {
-      const collName = config.operatorSessionCollectionName;
-      const coll = db.collection(collName);
-
-      // Find operators that have at least one overlapping operator-session
-      // Use proper overlap logic: session starts before window ends AND session ends after window starts
-      const operatorIds = await coll.distinct("operator.id", {
-        "operator.id": { $ne: -1 },
-        "timestamps.start": { $lt: partialDay.end },
-        $or: [
-          { "timestamps.end": { $gt: partialDay.start } },
-          { "timestamps.end": { $exists: false } } // Handle open sessions
-        ]
-      });
-
-      if (!operatorIds.length) continue;
-
-      logger.info(`[operatorSessions] Found ${operatorIds.length} operators for partial day:`, operatorIds);
-
-      for (const opId of operatorIds) {
-        try {
-          // Pull all overlapping sessions for this operator
-          // Use proper overlap logic: session starts before window ends AND session ends after window starts
-          const sessions = await coll.find({
-            "operator.id": opId,
-            "timestamps.start": { $lt: partialDay.end },
-            $or: [
-              { "timestamps.end": { $gt: partialDay.start } },
-              { "timestamps.end": { $exists: false } } // Handle open sessions
-            ]
-          })
-            .sort({ "timestamps.start": 1 })
-            .toArray();
-
-          if (!sessions.length) continue;
-
-          const mostRecent = sessions[sessions.length - 1];
-          let currentMachine = {};
-          let currentStatus = {};
-
-          if (mostRecent.endState) {
-            // Operator not currently running
-            currentMachine = {
-              serial: null,
-              name: null
-            };
-            // Status schema uses 'id', but legacy code used 'code' - support both
-            const statusId = mostRecent.endState?.status?.id ?? mostRecent.endState?.status?.code ?? 0;
-            currentStatus = {
-              code: statusId, // Use 'code' in API response for backward compatibility
-              name: mostRecent.endState?.status?.name ?? "Unknown"
-            };
-          } else {
-            currentMachine = {
-              serial: mostRecent?.machine?.serial ?? null,
-              name: mostRecent?.machine?.name ?? null
-            };
-            currentStatus = {
-              code: 1,
-              name: "Running"
-            };
-          }
-
-          const operatorName = mostRecent?.operator?.name ?? sessions[0]?.operator?.name ?? "Unknown";
-
-          // Truncate first if it starts before window
-          if (sessions[0]) {
-            const first = sessions[0];
-            const firstStart = new Date(first.timestamps?.start);
-            if (firstStart < partialDay.start) {
-              sessions[0] = truncateAndRecalcOperator(first, partialDay.start, first.timestamps?.end ? new Date(first.timestamps.end) : partialDay.end);
-            }
-          }
-
-          // Truncate last if it ends after window (or is open)
-          if (sessions.length > 0) {
-            const lastIdx = sessions.length - 1;
-            const last = sessions[lastIdx];
-            const lastEnd = last.timestamps?.end ? new Date(last.timestamps.end) : null;
-
-            if (!lastEnd || lastEnd > partialDay.end) {
-              const effectiveEnd = lastEnd ? partialDay.end : partialDay.end;
-              sessions[lastIdx] = truncateAndRecalcOperator(
-                last,
-                new Date(sessions[lastIdx].timestamps.start),
-                effectiveEnd
-              );
-            }
-          }
-
-          // Aggregate metrics
-          let runtimeMs = 0;
-          let workTimeSec = 0;
-          let totalCount = 0;
-          let misfeedCount = 0;
-          let totalTimeCredit = 0;
-
-          for (const s of sessions) {
-            runtimeMs += Math.floor(s.runtime) * 1000;
-            workTimeSec += Math.floor(s.workTime);
-            totalCount += s.totalCount;
-            misfeedCount += s.misfeedCount;
-            totalTimeCredit += s.totalTimeCredit;
-          }
-
-          const downtimeMs = Math.max(0, (partialDay.end - partialDay.start) - runtimeMs);
-
-          results.push({
-            operatorId: opId,
-            operatorName,
-            currentMachine,
-            currentStatus,
-            runtimeMs,
-            downtimeMs,
-            totalCount,
-            misfeedCount,
-            workTimeSec,
-            totalTimeCredit,
-            timeRange: {
-              start: partialDay.start,
-              end: partialDay.end,
-              type: partialDay.type
-            }
-          });
-        } catch (err) {
-          logger.error(`Error processing operator ${opId} for partial day:`, err);
-          continue;
-        }
-      }
-    }
-    
-    return results;
-  }
-
-  // Helper function to combine operators summary data
-  function combineOperatorsSummaryData(dailyRecords, sessionData) {
-    const combinedMap = new Map();
-    
-    // Add daily records (group by operator)
-    for (const record of dailyRecords) {
-      const operatorId = record.operatorId;
-      
-      if (!combinedMap.has(operatorId)) {
-        // Format operator name from object (first + surname) or use string if already formatted
-        const operatorNameStr = typeof record.operatorName === 'object' && record.operatorName !== null
-          ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
-          : record.operatorName || "Unknown";
-        
-        combinedMap.set(operatorId, {
-          operatorId,
-          operatorName: operatorNameStr,
-          currentMachine: {
-            serial: record.machineSerial,
-            name: record.machineName
-          },
-          currentStatus: {
-            code: 1,
-            name: "Running"
-          },
-          runtimeMs: 0,
-          downtimeMs: 0,
-          totalCount: 0,
-          misfeedCount: 0,
-          workTimeSec: 0,
-          totalTimeCredit: 0
-        });
-      }
-      
-      const operator = combinedMap.get(operatorId);
-      operator.runtimeMs += record.runtimeMs || 0;
-      operator.downtimeMs += record.pausedTimeMs || 0; // pausedTimeMs from daily cache
-      operator.totalCount += record.totalCounts || 0;
-      operator.misfeedCount += record.totalMisfeeds || 0;
-      operator.workTimeSec += (record.workedTimeMs || 0) / 1000; // Convert to seconds
-      operator.totalTimeCredit += (record.totalTimeCreditMs || 0) / 1000; // Convert to seconds
-    }
-    
-    // Add session data
-    for (const session of sessionData) {
-      const operatorId = session.operatorId;
-      
-      if (!combinedMap.has(operatorId)) {
-        combinedMap.set(operatorId, {
-          operatorId,
-          operatorName: session.operatorName,
-          currentMachine: session.currentMachine,
-          currentStatus: session.currentStatus,
-          runtimeMs: 0,
-          downtimeMs: 0,
-          totalCount: 0,
-          misfeedCount: 0,
-          workTimeSec: 0,
-          totalTimeCredit: 0
-        });
-      }
-      
-      const operator = combinedMap.get(operatorId);
-      operator.runtimeMs += session.runtimeMs || 0;
-      operator.downtimeMs += session.downtimeMs || 0;
-      operator.totalCount += session.totalCount || 0;
-      operator.misfeedCount += session.misfeedCount || 0;
-      operator.workTimeSec += session.workTimeSec || 0;
-      operator.totalTimeCredit += session.totalTimeCredit || 0;
-      
-      // Update current machine and status from most recent session
-      if (session.currentMachine?.serial) {
-        operator.currentMachine = session.currentMachine;
-      }
-      if (session.currentStatus?.code !== undefined) {
-        operator.currentStatus = session.currentStatus;
-      }
-    }
-    
-    // Calculate performance metrics for each operator
-    for (const [operatorId, data] of combinedMap) {
-      const totalMs = data.runtimeMs + data.downtimeMs;
-      const availability = totalMs ? Math.min(Math.max(data.runtimeMs / totalMs, 0), 1) : 0;
-      const throughput = (data.totalCount + data.misfeedCount) ? data.totalCount / (data.totalCount + data.misfeedCount) : 0;
-      const efficiency = data.workTimeSec > 0 ? data.totalTimeCredit / data.workTimeSec : 0;
-      const oee = availability * throughput * efficiency;
-      
-      data.availability = availability;
-      data.throughput = throughput;
-      data.efficiency = efficiency;
-      data.oee = oee;
-    }
-    
-    return combinedMap;
-  }
 
   return router;
 };
