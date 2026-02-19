@@ -514,6 +514,17 @@ module.exports = function (server) {
     "Small Piece Ironer",
   ];
 
+  // Previous calendar day (YYYY-MM-DD) for "yesterday" in same timezone context
+  function previousDateStr(dateStr) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() - 1);
+    const yy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yy}-${mm}-${dd}`;
+  }
+
   router.get("/analytics/machines-group-summary-daily-cached", async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
@@ -522,12 +533,13 @@ module.exports = function (server) {
       const dateStr = start.toLocaleDateString("en-CA", {
         timeZone: "America/Chicago",
       });
+      const yesterdayStr = previousDateStr(dateStr);
 
       logger.info(
         `[machineSessions] machine-group-summary: query params start=${req.query.start} end=${req.query.end} serial=${req.query.serial || "none"}`
       );
       logger.info(
-        `[machineSessions] machine-group-summary: parsed start=${start?.toISOString?.()} end=${end?.toISOString?.()} dateStr=${dateStr}`
+        `[machineSessions] machine-group-summary: parsed start=${start?.toISOString?.()} end=${end?.toISOString?.()} dateStr=${dateStr} yesterdayStr=${yesterdayStr}`
       );
 
       const filter = {
@@ -538,14 +550,22 @@ module.exports = function (server) {
         filter.machineSerial = parseInt(serial);
       }
 
+      const filterYesterday = {
+        entityType: "machine",
+        date: yesterdayStr,
+      };
+      if (serial) {
+        filterYesterday.machineSerial = parseInt(serial);
+      }
+
       logger.info(
         `[machineSessions] machine-group-summary: querying totals-daily with filter ${JSON.stringify(filter)}`
       );
 
-      const cacheRecords = await db
-        .collection("totals-daily")
-        .find(filter)
-        .toArray();
+      const [cacheRecords, yesterdayRecords] = await Promise.all([
+        db.collection("totals-daily").find(filter).toArray(),
+        db.collection("totals-daily").find(filterYesterday).toArray(),
+      ]);
 
       logger.info(
         `[machineSessions] machine-group-summary: totals-daily returned ${cacheRecords.length} record(s) for date=${dateStr}`
@@ -609,6 +629,17 @@ module.exports = function (server) {
           `Skipped (no department): ${skippedNoDept}, skipped (unknown department): ${skippedUnknownDept}`
       );
 
+      // Group yesterday's records by department (same logic) for previous-day efficiency
+      const byDeptYesterday = new Map();
+      for (const name of MACHINE_GROUP_DEPARTMENTS) {
+        byDeptYesterday.set(name, []);
+      }
+      for (const record of yesterdayRecords) {
+        const dept = record.machine?.groups?.department;
+        if (!dept || !byDeptYesterday.has(dept)) continue;
+        byDeptYesterday.get(dept).push(record);
+      }
+
       const data = [];
       for (const departmentName of MACHINE_GROUP_DEPARTMENTS) {
         const records = byDept.get(departmentName);
@@ -647,6 +678,31 @@ module.exports = function (server) {
         const totalTimeCreditSec = sumTotalTimeCreditMs / 1000;
         const efficiency = workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
         const oee = availability * throughput * efficiency;
+
+        // Previous-day efficiency for this group (N/A if no yesterday data or no worked time)
+        let efficiencyPreviousDay = null;
+        const recordsYesterday = byDeptYesterday.get(departmentName);
+        if (recordsYesterday && recordsYesterday.length > 0) {
+          let sumWorkedMsY = 0;
+          let sumTimeCreditMsY = 0;
+          for (const rec of recordsYesterday) {
+            sumTimeCreditMsY += rec.totalTimeCreditMs || 0;
+            let w = rec.workedTimeMs || 0;
+            if (w === 0 && (rec.totalTimeCreditMs || 0) > 0 && (rec.runtimeMs || 0) > 0) {
+              w = rec.runtimeMs;
+            }
+            sumWorkedMsY += w;
+          }
+          const workTimeSecY = sumWorkedMsY / 1000;
+          const totalTimeCreditSecY = sumTimeCreditMsY / 1000;
+          if (workTimeSecY > 0) {
+            const effY = totalTimeCreditSecY / workTimeSecY;
+            efficiencyPreviousDay = {
+              value: effY,
+              percentage: (effY * 100).toFixed(2),
+            };
+          }
+        }
 
         data.push({
           machine: {
@@ -688,6 +744,7 @@ module.exports = function (server) {
             start: rangeStart,
             end: rangeEnd,
           },
+          efficiencyPreviousDay,
         });
       }
 
