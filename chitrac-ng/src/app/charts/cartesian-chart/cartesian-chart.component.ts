@@ -10,7 +10,7 @@ import {
   export type SeriesType = 'bar' | 'line' | 'area' | 'dot' | 'lollipop' | 'pie' | 'donut';
   export type XType = 'category' | 'time' | 'linear';
   
-  export interface XYPoint { x: string | number | Date; y: number; color?: string; }
+  export interface XYPoint { x: string | number | Date; y: number; color?: string; endMarkerValue?: number; }
   
   export interface XYSeries {
     id: string;
@@ -25,6 +25,14 @@ import {
       areaOpacity?: number;         // for area
       barPadding?: number;          // 0..0.5 (defaults to 0.2)
       radius?: number;              // for dot/lollipop (default 3-5)
+      endMarker?: {
+        show?: boolean;             // default false
+        dash?: string;              // default "6,6"
+        stroke?: string;            // default "#1e88e5"
+        strokeWidth?: number;      // default 2
+        offsetPx?: number;         // default 0
+        opacity?: number;          // default 1
+      };
     };
   }
   
@@ -476,6 +484,30 @@ import {
     }
   
     private hash(s: string) { let h=0; for (let i=0;i<s.length;i++) h=((h<<5)-h)+s.charCodeAt(i)|0; return h; }
+
+    /** Append a vertical dashed line (end marker) for horizontal bar charts. Only call when orientation is horizontal and endMarker.show. */
+    private appendEndMarkerLine(
+      parent: d3.Selection<SVGGElement, unknown, null, undefined>,
+      lineX: number,
+      rectY: number,
+      rectHeight: number,
+      opts: { show?: boolean; dash?: string; stroke?: string; strokeWidth?: number; offsetPx?: number; opacity?: number }
+    ): void {
+      if (opts.show !== true) return;
+      const dash = opts.dash ?? '6,6';
+      const stroke = opts.stroke ?? '#1e88e5';
+      const strokeWidth = opts.strokeWidth ?? 2;
+      const opacity = opts.opacity ?? 1;
+      const offsetPx = opts.offsetPx ?? 0;
+      const x = lineX + offsetPx;
+      parent.append('line')
+        .attr('x1', x).attr('x2', x)
+        .attr('y1', rectY).attr('y2', rectY + rectHeight)
+        .attr('stroke', stroke)
+        .attr('stroke-width', strokeWidth)
+        .attr('stroke-dasharray', dash)
+        .attr('opacity', opacity);
+    }
   
     /* ===== Renderers ===== */
 
@@ -622,6 +654,7 @@ import {
   
       series.forEach(s => {
         const color = s.color || this.colorForSeries(s.id);
+        const endMarkerOpts = s.options?.endMarker;
         const sel = g.append('g').attr('class','cc-bar-group');
   
         s.data.forEach(p => {
@@ -636,6 +669,13 @@ import {
               .attr('width', w)
               .attr('height', sub.bandwidth())
               .attr('fill', fillColor);
+            if (endMarkerOpts?.show && s.type === 'bar') {
+              const val = (p as XYPoint).endMarkerValue;
+              if (val != null && val > 0) {
+                const lineX = (yScaleH as d3.ScaleLinear<number, number>)(val);
+                this.appendEndMarkerLine(sel, lineX, y, sub.bandwidth(), { ...endMarkerOpts });
+              }
+            }
           } else {
             const x = band(xKey)! + sub(s.id)!;
             const y = (yScale as d3.ScaleLinear<number, number>)(p.y || 0);
@@ -664,9 +704,11 @@ import {
         key: String(s.data[0].x),
         y: +s.data[0].y || 0,
         color: (s.data[0] as XYPoint).color ?? s.color ?? this.colorForSeries(s.id),
+        endMarkerValue: (s.data[0] as XYPoint).endMarkerValue,
       }));
 
     const barPadding = series[0]?.options?.barPadding ?? 0.2;
+    const endMarkerOpts = series[0]?.options?.endMarker;
     const band = (cfg.xType === 'category'
         ? (isHorizontal ? yScale : xScale)
         : d3.scaleBand<string>().domain(items.map(i => i.key))
@@ -678,8 +720,13 @@ import {
       if (isHorizontal) {
         const y = band(it.key)!;
         const w = (yScaleH as d3.ScaleLinear<number, number>)(it.y);
-        grp.append('rect').attr('x', 0).attr('y', y)
+        const barGrp = grp.append('g');
+        barGrp.append('rect').attr('x', 0).attr('y', y)
           .attr('width', w).attr('height', band.bandwidth()).attr('fill', it.color);
+        if (endMarkerOpts?.show && it.endMarkerValue != null && it.endMarkerValue > 0) {
+          const lineX = (yScaleH as d3.ScaleLinear<number, number>)(it.endMarkerValue);
+          this.appendEndMarkerLine(barGrp, lineX, y, band.bandwidth(), { ...endMarkerOpts });
+        }
       } else {
         const x = band(it.key)!;
         const y = (yScale as d3.ScaleLinear<number, number>)(it.y);
@@ -713,6 +760,7 @@ import {
 
     series.forEach(s => {
       const color = s.color || this.colorForSeries(s.id);
+      const endMarkerOpts = s.options?.endMarker;
       const grp = g.append('g').attr('class','cc-bar-group');
       s.data.forEach(p => {
         const fillColor = (p as XYPoint).color ?? color;
@@ -722,6 +770,13 @@ import {
           const w = (yScaleH as d3.ScaleLinear<number, number>)(+p.y || 0);
           grp.append('rect').attr('x', 0).attr('y', y)
             .attr('width', w).attr('height', sub.bandwidth()).attr('fill', fillColor);
+          if (endMarkerOpts?.show && s.type === 'bar') {
+            const val = (p as XYPoint).endMarkerValue;
+            if (val != null && val > 0) {
+              const lineX = (yScaleH as d3.ScaleLinear<number, number>)(val);
+              this.appendEndMarkerLine(grp, lineX, y, sub.bandwidth(), { ...endMarkerOpts });
+            }
+          }
         } else {
           const x = band(key)! + sub(s.id)!;
           const y = (yScale as d3.ScaleLinear<number, number>)(+p.y || 0);
@@ -755,16 +810,18 @@ import {
   
       // Get barPadding from series options (use first series as reference, or default to 0.2)
       const barPadding = series[0]?.options?.barPadding ?? 0.2;
+      const endMarkerOpts = series[0]?.options?.endMarker;
       const band = (cfg.xType === 'category'
         ? (isHorizontal ? yScale : xScale)
         : d3.scaleBand<string>().domain((xDomain as any[]).map(String)).range(isHorizontal ? [0, innerH] : [0, innerW]).padding(barPadding)
       ) as d3.ScaleBand<string>;
   
-      stacked.forEach(layer => {
+      stacked.forEach((layer, layerIdx) => {
         const sId = layer.key;
         const s = series.find(ss => ss.id === sId);
         const color = s?.color || this.colorForSeries(sId);
         const grp = g.append('g').attr('class','cc-bar-stacked');
+        const isLastLayer = layerIdx === stacked.length - 1;
   
         layer.forEach((d, i) => {
           const xKey = rows[i].__x as string;
@@ -780,6 +837,14 @@ import {
               .attr('width', Math.max(0, x1 - x0))
               .attr('height', band.bandwidth())
               .attr('fill', fillColor);
+            if (isLastLayer && endMarkerOpts?.show) {
+              const rowPoint = series[0]?.data.find(p => String(p.x) === xKey);
+              const val = (rowPoint as XYPoint)?.endMarkerValue;
+              if (val != null && val > 0) {
+                const lineX = (yScaleH as d3.ScaleLinear<number, number>)(val);
+                this.appendEndMarkerLine(grp, lineX, y, band.bandwidth(), { ...endMarkerOpts });
+              }
+            }
           } else {
             const x = band(xKey)!;
             const y0 = (yScale as d3.ScaleLinear<number, number>)(d[1]);

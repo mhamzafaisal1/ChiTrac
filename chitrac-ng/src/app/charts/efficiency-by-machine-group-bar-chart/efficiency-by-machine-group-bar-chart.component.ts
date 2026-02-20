@@ -8,7 +8,7 @@ import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
-type GroupRow = { id: string; name: string; efficiency: number };
+type GroupRow = { id: string; name: string; efficiency: number; efficiencyPreviousDay?: number | null };
 
 @Component({
   selector: 'app-efficiency-by-machine-group-bar-chart',
@@ -166,10 +166,18 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
         const eff = item?.metrics?.performance?.efficiency;
         const value = typeof eff?.value === 'number' ? eff.value * 100 :
           (typeof eff?.percentage === 'string' ? parseFloat(eff.percentage) : Number(eff?.percentage ?? 0));
+        const prev = item?.efficiencyPreviousDay;
+        const efficiencyPreviousDay =
+          prev == null
+            ? null
+            : typeof prev.value === 'number'
+              ? prev.value * 100
+              : (typeof prev.percentage === 'string' ? parseFloat(prev.percentage) : Number(prev.percentage ?? 0));
         rows.push({
           id: `group-${i}`,
           name: String(name),
-          efficiency: value
+          efficiency: value,
+          efficiencyPreviousDay: efficiencyPreviousDay ?? undefined,
         });
       }
 
@@ -193,8 +201,14 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
         x: g.id,
         y: g.efficiency,
         color: this.getEfficiencyColor(g.efficiency),
+        ...(g.efficiencyPreviousDay != null && g.efficiencyPreviousDay > 0
+          ? { endMarkerValue: g.efficiencyPreviousDay }
+          : {}),
       })),
-      options: { barPadding: 0.2 },
+      options: {
+        barPadding: 0.2,
+        endMarker: { show: true, dash: '6,6', stroke: '#1e88e5', strokeWidth: 2 },
+      },
     }];
 
     return {
