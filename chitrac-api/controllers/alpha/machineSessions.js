@@ -582,12 +582,21 @@ module.exports = function (server) {
           .limit(3)
           .project({ date: 1, entityType: 1, machineSerial: 1, "machine.groups.department": 1 })
           .toArray();
+        const debug = {
+          reason: "no_cached_data_for_date",
+          message: `No daily cached data for the requested date (${dateStr}). Totals may not have been built yet for this date.`,
+          details: {
+            requestedDate: dateStr,
+            totalsDailyCountForDate: anyByDate,
+            sampleDocsInCollection: sampleDocs,
+          },
+        };
         logger.warn(
           `[machineSessions] No daily cached data for date: ${dateStr}, returning empty array. ` +
             `totals-daily count for date "${dateStr}": ${anyByDate}. ` +
             `Sample docs in collection: ${JSON.stringify(sampleDocs)}`
         );
-        return res.json([]);
+        return res.json({ data: [], debug });
       }
 
       // Log first record shape to verify machine.groups.department
@@ -749,9 +758,23 @@ module.exports = function (server) {
       }
 
       if (data.length === 0 && cacheRecords.length > 0) {
+        const debug = {
+          reason: "all_records_skipped_no_matching_department",
+          message:
+            `Found ${cacheRecords.length} cache record(s) for ${dateStr} but none matched known machine groups (departments). ` +
+            `Skipped: ${skippedNoDept} with no department, ${skippedUnknownDept} with unknown department.`,
+          details: {
+            requestedDate: dateStr,
+            cacheRecordsCount: cacheRecords.length,
+            skippedNoDepartment: skippedNoDept,
+            skippedUnknownDepartment: skippedUnknownDept,
+            knownDepartments: MACHINE_GROUP_DEPARTMENTS,
+          },
+        };
         logger.warn(
           `[machineSessions] machine-group-summary: had ${cacheRecords.length} cache record(s) but 0 department groups (all skipped or no matching department)`
         );
+        return res.json({ data: [], debug });
       }
       logger.info(
         `[machineSessions] Retrieved ${data.length} department group(s) for date: ${dateStr}`
