@@ -15,6 +15,8 @@ const {
   createMongoDateQuery,
   formatDuration,
   getHourlyIntervals,
+  getStateCollectionName,
+  getCountCollectionName,
 } = require("../../utils/time");
 const {
   fetchStatesForMachine,
@@ -73,6 +75,12 @@ const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
 const {
   getBookendedStatesAndTimeRange,
 } = require("../../utils/bookendingBuilder");
+const {
+  groupRecordsBySerial,
+  buildPerformanceFromMachineRecord,
+  buildItemSummaryFromRecords,
+} = require("../../utils/machineFunctions");
+const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 
 module.exports = function (server) {
   return constructor(server);
@@ -250,6 +258,251 @@ function constructor(server) {
       counts: countsFind,
       stacks: stacksFind,
     });
+  });
+
+  router.get("/sample/machineOverview", async (req, res, next) => {
+    try {
+      const serialParam =
+        typeof req.query.serial !== "undefined"
+          ? Number.parseInt(req.query.serial, 10)
+          : null;
+
+      // Today's date in Chicago (same as machine-dashboard-daily-cached)
+      const today = new Date();
+      const chicagoTime = new Date(
+        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      );
+      const dateStr = chicagoTime.toISOString().split("T")[0];
+
+      const cacheCollection = db.collection("totals-daily");
+      const tickerColl = db.collection(config.stateTickerCollectionName);
+      const faultSessionColl = db.collection(config.faultSessionCollectionName);
+
+      const machineFilter = {
+        entityType: "machine",
+        date: dateStr,
+      };
+      if (Number.isFinite(serialParam)) {
+        machineFilter.machineSerial = serialParam;
+      }
+
+      const machineTotals = await cacheCollection.find(machineFilter).toArray();
+
+      let serial = Number.isFinite(serialParam) ? serialParam : null;
+      let machineRecord = machineTotals.length > 0 ? machineTotals[0] : null;
+      if (machineRecord) {
+        serial = Number(machineRecord.machineSerial) || serial;
+      }
+
+      // If no totals-daily record, resolve machine from stateTicker
+      if (!machineRecord) {
+        let ticker;
+        if (Number.isFinite(serial)) {
+          ticker = await tickerColl.findOne({
+            $or: [
+              { "machine.id": serial },
+              { "machine.serial": serial },
+            ],
+          });
+        } else {
+          ticker = await tickerColl.findOne({});
+        }
+        if (!ticker) {
+          return res.status(500).json({
+            error: "Failed to fetch machine overview data",
+          });
+        }
+        serial = ticker.machine?.id ?? ticker.machine?.serial ?? serial;
+      }
+
+      const machineSerialFilter = Number.isFinite(serial) ? serial : null;
+      if (machineSerialFilter === null) {
+        return res.status(500).json({
+          error: "Failed to fetch machine overview data",
+        });
+      }
+
+      const tickerSerialFilter = [
+        machineSerialFilter,
+        String(machineSerialFilter),
+      ];
+      const [tickerDoc, faultSessionDoc, machineItemRecords] = await Promise.all([
+        tickerColl.findOne({
+          $or: [
+            { "machine.serial": { $in: tickerSerialFilter } },
+            { "machine.id": { $in: tickerSerialFilter } },
+          ],
+        }),
+        faultSessionColl
+          .find({
+            $and: [
+              {
+                $or: [
+                  { "machine.serial": machineSerialFilter },
+                  { "machine.id": machineSerialFilter },
+                ],
+              },
+              {
+                $or: [
+                  { "timestamps.end": { $exists: false } },
+                  { "timestamps.end": null },
+                ],
+              },
+            ],
+          })
+          .sort({ "timestamps.start": -1 })
+          .limit(1)
+          .toArray()
+          .then((arr) => arr[0])
+          .catch(() => null),
+        cacheCollection
+          .find({
+            entityType: "machine-item",
+            date: dateStr,
+            machineSerial: machineSerialFilter,
+          })
+          .toArray(),
+      ]);
+
+      // If no open fault session, get most recent fault session for this machine
+      let faultDoc = faultSessionDoc;
+      if (!faultDoc) {
+        faultDoc = await faultSessionColl
+          .find({
+            $or: [
+              { "machine.serial": machineSerialFilter },
+              { "machine.id": machineSerialFilter },
+            ],
+          })
+          .sort({ "timestamps.start": -1 })
+          .limit(1)
+          .toArray()
+          .then((arr) => arr[0])
+          .catch(() => null);
+      }
+
+      const ticker = tickerDoc;
+      if (!ticker) {
+        return res.status(500).json({
+          error: "Failed to fetch machine overview data",
+        });
+      }
+
+      const sessionStart = machineRecord?.timeRange?.start
+        ? new Date(machineRecord.timeRange.start)
+        : new Date(`${dateStr}T00:00:00.000Z`);
+      const sessionEnd = machineRecord?.timeRange?.end
+        ? new Date(machineRecord.timeRange.end)
+        : chicagoTime;
+
+      const performance = machineRecord
+        ? buildPerformanceFromMachineRecord(machineRecord)
+        : {
+            runtime: { total: 0 },
+            output: { totalCount: 0 },
+          };
+
+      const machineItems = machineItemRecords || [];
+      const itemSummary = buildItemSummaryFromRecords(
+        machineItems,
+        sessionStart,
+        sessionEnd
+      );
+      const sessionItems = itemSummary.sessions?.[0]?.items || [];
+      const items = sessionItems.map((i) => ({
+        id: i.itemId,
+        count: i.countTotal || 0,
+      }));
+      if (items.length === 0 && ticker.items) {
+        const tickerItems = Array.isArray(ticker.items)
+          ? ticker.items
+          : (ticker.program?.items && Array.isArray(ticker.program.items))
+            ? ticker.program.items
+            : [];
+        tickerItems.forEach((it) => {
+          items.push({
+            id: it.id ?? it.number,
+            count: 0,
+          });
+        });
+      }
+
+      const currentOperators = await buildCurrentOperators(db, machineSerialFilter);
+      const tickerItemsForTasks = ticker.items || ticker.program?.items || [];
+      const tasksFromTicker = Array.isArray(tickerItemsForTasks)
+        ? tickerItemsForTasks.map((it) => ({
+            name: it.name || `Item ${it.id ?? it.number}`,
+            standard: Number(it.standard) || 0,
+          }))
+        : [];
+      const timeOnTaskSec = Math.round(performance.runtime.total / 1000);
+
+      const operators = currentOperators.map((op, idx) => {
+        const pace =
+          tasksFromTicker.length > 0 ? tasksFromTicker[0].standard : 0;
+        return {
+          id: op.operatorId,
+          name: op.operatorName,
+          pace,
+          timeOnTask: timeOnTaskSec,
+          count: op.metrics?.totalCount ?? 0,
+          efficiency: Math.min(
+            100,
+            Math.max(0, op.metrics?.efficiencyPct ?? 0)
+          ),
+          station:
+            Array.isArray(ticker.stations) && ticker.stations[idx] != null
+              ? ticker.stations[idx]
+              : idx + 1,
+          tasks: tasksFromTicker,
+        };
+      });
+
+      const status = ticker.status || {};
+      const statusCode = status.id ?? status.code ?? 0;
+      const statusName = status.name || "Unknown";
+      const statusColor = status.softrolColor || "Gray";
+
+      let fault = { code: 0, name: "None" };
+      if (faultDoc) {
+        const startState = faultDoc.states?.start ?? faultDoc.startState;
+        const faultStatus = startState?.status;
+        if (faultStatus) {
+          fault = {
+            code: faultStatus.id ?? faultStatus.code ?? 0,
+            name: faultStatus.name || "Fault",
+          };
+        }
+      }
+
+      const overview = {
+        machineInfo: {
+          serial: machineSerialFilter,
+          name:
+            ticker.machine?.name ||
+            machineRecord?.machineName ||
+            `Serial ${machineSerialFilter}`,
+        },
+        fault,
+        status: {
+          code: statusCode,
+          name: statusName,
+          color: statusColor,
+        },
+        timeOnTask: timeOnTaskSec,
+        onTime: timeOnTaskSec,
+        totalCount: performance.output?.totalCount ?? 0,
+        operators,
+        items,
+      };
+
+      res.json(overview);
+    } catch (err) {
+      logger && logger.error(err);
+      res.status(500).json({
+        error: "Failed to fetch machine overview data",
+      });
+    }
   });
 
   router.post("/ac360/post", async (req, res, next) => {
