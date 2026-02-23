@@ -1,7 +1,6 @@
 :host {
   display: block;
-  height: 100vh;
-  max-height: 100vh;
+  height: 93.25vh;
   width: 100%;
   overflow: hidden;
   box-sizing: border-box;
@@ -9,84 +8,410 @@
 
 .screen-container {
   height: 100%;
-  min-height: 0;
   width: 100%;
-  padding: 0.25rem;
+  padding: 2px;
   box-sizing: border-box;
-  background-color: var(--md-sys-color-background, #1e1e1e);
+  background-color: var(--theme-production-screens-background);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.groups-wrapper {
-  display: flex;
-  flex-direction: row;
-  gap: 0.5rem;
-  flex: 1 1 0;
-  min-height: 0;
   overflow: hidden;
-}
-
-.group {
-  display: flex;
-  flex-direction: column;
-  /* flex set inline: N 1 0 so width is proportional to lane count (4:2:2) = equal width per lane */
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.group-header {
-  flex-shrink: 0;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--theme-color-text, #e0e0e0);
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.group-label {
-  font-weight: 600;
-}
-
-.group-serial {
-  opacity: 0.85;
-  font-weight: 500;
 }
 
 .lanes-wrapper {
   display: flex;
   flex-direction: row;
-  gap: 0.25rem;
-  flex: 1 1 0;
-  min-height: 0;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
+  flex: 1;
+  min-height: 0;
 }
 
 .lane-container {
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
+
+  // Hide operator/machine label at top of each lane for this screen
+  ::ng-deep .operator-block {
+    display: none !important;
+  }
 }
 
-.loading-container,
-.no-data-container {
+// ===== LANE BACKGROUND SECTION =====
+.lane-background {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 10px 0;
+  box-sizing: border-box;
+}
+
+.lane-running-bg {
+  background-color: var(--sg-color-blue-gray-light-200);
+}
+
+.lane-greyed-bg {
+  background-color: #838D99;
+}
+
+.lane-stop-bg {
+  background-color: #46505A;
+}
+
+.lane-fault-bg {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--sg-color-background),
+    var(--sg-color-background) 8px,
+    var(--sg-color-red) 8px,
+    var(--sg-color-red) 16px
+  );
+}
+
+.lane-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 10px;
+  min-height: 0;
+}
+
+// ===== OPERATOR BLOCK =====
+.operator-block {
+  flex: 0 0 auto;
+  height: 10%;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  min-height: 0;
+  margin-bottom: 0;
 }
 
-.loading-text,
-.no-data-text {
-  font-size: 1.25rem;
-  color: var(--theme-color-text, #e0e0e0);
+.operator-text {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  text-transform: uppercase;
+  text-align: center;
+  flex-direction: column;
+  padding-top: 0.5rem;
+  font-size: 1.2rem;
+  line-height: 1.1;
+  color: var(--sg-color-background);
+  font-weight: 700;
+}
+
+.operator-content {
+  width: 100%;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Color classes for operator block and bars
+.green {
+  background-color: var(--sg-color-green) !important;
+  color: var(--sg-color-background);
+}
+
+.yellow {
+  background-color: var(--sg-color-yellow) !important;
+  color: var(--sg-color-background);
+  font-weight: bolder;
+}
+
+.red {
+  background-color: var(--sg-color-red) !important;
+  color: var(--sg-color-background);
+  font-weight: bolder;
+}
+
+.orange {
+  background-color: #FB950B !important;
+  color: var(--sg-color-background, #ffffff);
+  font-weight: bolder;
+}
+
+.no-operator {
+  background-color: #555 !important;
+}
+
+.stopped {
+  background-color: var(--sg-color-blue-gray-medium-300) !important;
+}
+
+.fault {
+  background-color: var(--sg-color-red) !important;
+  color: var(--sg-color-background);
+}
+
+// Offline/stopped and fault lanes only: text color
+.operator-block.stopped .operator-text,
+.operator-block.stopped .operator-content {
+  color: #E0E9F3 !important;
+}
+
+.operator-block.fault .operator-text,
+.operator-block.fault .operator-content {
+  color: #E0E9F3 !important;
+}
+
+.data-block.stopped .fault-text,
+.data-block.stopped .timer-text {
+  color: #E0E9F3 !important;
+}
+
+.data-block.fault .fault-text,
+.data-block.fault .fault-label,
+.data-block.fault .fault-code,
+.data-block.fault .timer-text {
+  color: #E0E9F3 !important;
+}
+
+.item-block-stopped,
+.item-block-stopped .item-line {
+  color: #E0E9F3 !important;
+}
+
+.item-block-fault,
+.item-block-fault .item-line {
+  color: #E0E9F3 !important;
+}
+
+// ===== DATA BLOCK =====
+.data-block {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// Running state - Efficiency display
+.efficiency-value {
+  flex: 0 0 30%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.value-text {
+  text-align: center;
+  font-weight: bold;
+  font-size: 3rem;
+  line-height: 1;
+  color: var(--sg-color-background);
+}
+
+.bars-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.bars {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.bar-item {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bar-chart {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  display: block;
+}
+
+.bar-fill {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  min-height: 0;
+  transition: height 0.3s ease;
+}
+
+.bar-value {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 600;
+  margin-bottom: 0.15em;
+  color: var(--sg-color-background);
+  pointer-events: none;
+}
+
+.bar-label {
+  flex: 0 0 auto;
+  height: 12%;
+  min-height: 25px;
+  display: flex;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  border: 1px solid var(--sg-color-blue-gray-light-200);
+  font-size: 1rem;
+  line-height: 1.1;
+  color: white;
+  background-color: var(--sg-color-blue-gray-light-200);
+  padding: 0.15rem;
+}
+
+// Fault/Stop state display
+.fault-display {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.fault-text {
+  display: flex;
+  font-weight: bold;
+  text-align: center;
+  justify-content: center;
+  flex-direction: column;
+  text-transform: uppercase;
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--theme-color-text);
+}
+
+.fault-label {
+  text-align: center;
+  font-size: 1rem;
+  text-transform: uppercase;
+  color: var(--sg-color-background);
+  margin-top: 0.3rem;
+}
+
+.fault-code {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--sg-color-background);
+  margin-top: 0.2rem;
+}
+
+.timer-display {
+  flex: 0 0 auto;
+  height: 6%;
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timer-text {
+  display: flex;
+  text-align: center;
+  justify-content: center;
+  flex-direction: column;
+  font-size: 0.9rem;
+  color: var(--sg-color-background);
+}
+
+// ===== ITEM BLOCK =====
+.item-block {
+  flex: 0 0 auto;
+  height: 14%;
+  min-height: 60px;
+  max-height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  text-align: center;
+  background-color: var(--sg-color-blue-gray-light-200);
+  border-top: 0.4em solid var(--sg-color-blue-gray-light-200);
+  border-bottom: 0.8em solid var(--sg-color-blue-gray-light-300);
+  margin: 0;
+  padding: 0.3rem;
+  box-sizing: border-box;
+}
+
+.item-block-greyed {
+  background-color: #333;
+  border-top-color: #191919;
+  border-bottom-color: #333;
+  color: white;
+}
+
+// Running lane: item block matches lane background
+.item-block-running,
+.item-block-running.item-block-greyed {
+  background-color: var(--sg-color-blue-gray-light-200);
+  border: none;
+  border-top: 1px solid #1e1e1e;
+}
+
+.item-block-stopped {
+  background-color: var(--sg-color-blue-gray-light-200);
+  border: 1px solid var(--sg-color-blue-gray-medium-300) !important;
+  color: var(--sg-color-black);
+}
+
+.item-block-fault {
+  background-color: var(--sg-color-blue-gray-light-200);
+  border: 1px solid var(--sg-color-blue-gray-medium-300) !important;
+  color: var(--sg-color-black);
+}
+
+.item-line {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-line-serial {
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+
+// Ensure proper color handling
+.data-block.stopped,
+.data-block.fault {
+  background-color: inherit;
 }

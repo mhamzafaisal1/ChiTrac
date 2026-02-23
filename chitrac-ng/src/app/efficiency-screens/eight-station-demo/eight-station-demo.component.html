@@ -1,15 +1,7 @@
 <div class="screen-container">
-  <div class="groups-wrapper" *ngIf="!isLoading && groups.length > 0">
-    <div class="group" *ngFor="let group of groups" [style.flex]="group.lanes.length + ' 1 0'">
-      <div class="group-header">
-        <span class="group-label">{{ group.label }}</span>
-        <span class="group-serial">({{ group.serial }})</span>
-      </div>
-      <div class="lanes-wrapper">
-        <div class="lane-container" *ngFor="let lane of group.lanes; trackBy: ident">
-          <app-efficiency-screen-lane [lane]="lane" [mode]="getLaneMode(lane)"></app-efficiency-screen-lane>
-        </div>
-      </div>
+  <div class="lanes-wrapper" *ngIf="!isLoading && lanes.length > 0">
+    <div class="lane-container" *ngFor="let lane of lanes; trackBy: ident">
+      <app-efficiency-screen-lane [lane]="lane" [mode]="getLaneMode(lane)"></app-efficiency-screen-lane>
     </div>
   </div>
 
@@ -17,7 +9,7 @@
     <div class="loading-text">Loading 8 Station Demo (SPL1, Blanket 1, Blanket 2)...</div>
   </div>
 
-  <div class="no-data-container" *ngIf="!isLoading && groups.length === 0">
+  <div class="no-data-container" *ngIf="!isLoading && lanes.length === 0">
     <div class="no-data-text">No data for 8 Station Demo</div>
   </div>
 </div>

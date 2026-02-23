@@ -138,6 +138,11 @@ export class EightStationDemoComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
+  /** Flattened lanes (SPL1, then Blanket 1, then Blanket 2) for single-row layout. */
+  get lanes(): any[] {
+    return this.groups.flatMap(g => g.lanes);
+  }
+
   ident(index: number, _lane: any): number {
     return index;
   }
