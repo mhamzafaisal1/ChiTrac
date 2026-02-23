@@ -23,6 +23,7 @@ import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-ef
 import { LPLsEfficiencyScreenComponent } from './efficiency-screens/LPLs-efficiency-screen/LPLs-efficiency-screen';
 import { SPFsEfficiencyScreenComponent } from './efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen';
 import { BlanketBlastersEfficiencyScreenComponent } from './efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen';
+import { EightStationDemoComponent } from './efficiency-screens/eight-station-demo/eight-station-demo.component';
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
@@ -64,6 +65,7 @@ export const routes: Routes = [
 	{ path: 'ng/lpls-efficiency-screen', component: LPLsEfficiencyScreenComponent },
 	{ path: 'ng/spfs-efficiency-screen', component: SPFsEfficiencyScreenComponent },
 	{ path: 'ng/blanket-blasters-efficiency-screen', component: BlanketBlastersEfficiencyScreenComponent },
+	{ path: 'ng/eight-station-demo', component: EightStationDemoComponent },
 	
 	// Redirects
 	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
