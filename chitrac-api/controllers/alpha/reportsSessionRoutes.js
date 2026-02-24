@@ -5052,14 +5052,14 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         operatorId,
       });
 
-      const stateCollectionName = "state-machine";
+      const stateCollectionName = "state";
       const countCollectionName = "count";
       console.log("[OPERATOR-STATES] Using collections", {
         stateCollectionName,
         countCollectionName,
       });
 
-      // ---------- 1) Fetch states from state-machine ----------
+      // ---------- 1) Fetch states from state ----------
       const stateQuery = {
         timestamp: { $gte: paddedStart, $lte: paddedEnd },
       };
