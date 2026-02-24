@@ -159,7 +159,8 @@ getItemsSummary(start: string, end: string, serial?: number) {
       params = params.set('operatorId', operatorId.toString());
     }
 
-    return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary-cache`, { params });
+    // return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary-cache`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/operator-item-states-summary`, { params });
   }
 
 }

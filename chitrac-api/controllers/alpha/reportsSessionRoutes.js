@@ -1,8 +1,21 @@
 const express = require("express");
 const config = require("../../modules/config");
-const { parseAndValidateQueryParams, formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
+const {
+  parseAndValidateQueryParams,
+  formatDuration,
+  SYSTEM_TIMEZONE,
+  createPaddedTimeRange,
+} = require("../../utils/time");
 const { getBookendedStatesAndTimeRange } = require("../../utils/bookendingBuilder");
 const { DateTime } = require("luxon");
+const {
+  groupStatesByOperatorAndSerial,
+  getCompletedCyclesForOperator,
+} = require("../../utils/state");
+const {
+  groupCountsByOperatorAndMachine,
+  groupCountsByItem,
+} = require("../../utils/count");
 
 const {
   queryItemDailyCache,
@@ -5021,6 +5034,320 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     } catch (error) {
       console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to generate cached operator item summary" });
+    }
+  });
+
+  // Live operator-item summary based on raw state + count collections
+  router.get("/analytics/operator-item-states-summary", async (req, res) => {
+    try {
+      console.log("[OPERATOR-STATES] Route start");
+      const { start, end } = parseAndValidateQueryParams(req);
+      const operatorId = req.query.operatorId ? parseInt(req.query.operatorId, 10) : null;
+      const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+      console.log("[OPERATOR-STATES] Parsed params", {
+        start: start.toISOString(),
+        end: end.toISOString(),
+        paddedStart: paddedStart.toISOString(),
+        paddedEnd: paddedEnd.toISOString(),
+        operatorId,
+      });
+
+      const stateCollectionName = "state-machine";
+      const countCollectionName = "count";
+      console.log("[OPERATOR-STATES] Using collections", {
+        stateCollectionName,
+        countCollectionName,
+      });
+
+      // ---------- 1) Fetch states from state-machine ----------
+      const stateQuery = {
+        timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      };
+      if (operatorId) {
+        stateQuery["operators.id"] = operatorId;
+      }
+
+      console.log("[OPERATOR-STATES] Querying states", stateQuery);
+      const allStates = await db
+        .collection(stateCollectionName)
+        .find(stateQuery)
+        .project({
+          timestamp: 1,
+          status: 1,
+          machine: 1,
+          program: 1,
+          operators: 1,
+        })
+        .toArray();
+      console.log("[OPERATOR-STATES] Fetched states", { count: allStates.length });
+
+      if (!allStates.length) {
+        return res.json({
+          timeRange: { start: start.toISOString(), end: end.toISOString() },
+          results: [],
+        });
+      }
+
+      const groupedStates = groupStatesByOperatorAndSerial(allStates);
+      console.log("[OPERATOR-STATES] Grouped states by operator+machine", {
+        groups: Object.keys(groupedStates).length,
+      });
+
+      const allOperatorMachinePairs = Object.keys(groupedStates)
+        .map((key) => {
+          const [opId, machineSerial] = key.split("-").map(Number);
+          return { operatorId: opId, machineSerial };
+        })
+        .filter((pair) => !operatorId || pair.operatorId === operatorId);
+
+      if (!allOperatorMachinePairs.length) {
+        console.log(
+          "[OPERATOR-STATES] No operator-machine pairs after grouping, returning empty results"
+        );
+        return res.json({
+          timeRange: { start: start.toISOString(), end: end.toISOString() },
+          results: [],
+        });
+      }
+
+      console.log("[OPERATOR-STATES] Operator-machine pairs", {
+        count: allOperatorMachinePairs.length,
+        sample: allOperatorMachinePairs.slice(0, 5),
+      });
+
+      // ---------- 2) Fetch counts from count collection ----------
+      const countQuery = {
+        timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      };
+      if (operatorId) {
+        countQuery["operator.id"] = operatorId;
+      } else {
+        // Restrict to machines we know from states to avoid scanning entire collection
+        const machineSerials = Array.from(
+          new Set(allOperatorMachinePairs.map((p) => p.machineSerial))
+        );
+        countQuery["machine.serial"] = { $in: machineSerials };
+      }
+
+      console.log("[OPERATOR-STATES] Querying counts", countQuery);
+      const allCounts = await db
+        .collection(countCollectionName)
+        .find(countQuery)
+        .toArray();
+      console.log("[OPERATOR-STATES] Fetched counts", { count: allCounts.length });
+
+      if (!allCounts.length) {
+        console.log("[OPERATOR-STATES] No counts found, returning empty results");
+        return res.json({
+          timeRange: { start: start.toISOString(), end: end.toISOString() },
+          results: [],
+        });
+      }
+
+      const groupedCounts = groupCountsByOperatorAndMachine(allCounts);
+      console.log("[OPERATOR-STATES] Grouped counts by operator+machine", {
+        groups: Object.keys(groupedCounts).length,
+      });
+
+      // Helper to format ms into {hours, minutes}
+      function formatMs(ms) {
+        const m = Math.max(0, Math.floor(ms / 60000));
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        return { hours: h, minutes: mm };
+      }
+
+      // Helper to normalize item name for consistent grouping
+      const normalizeItemName = (name) => {
+        if (!name) return "Unknown";
+        const str = String(name);
+        const normalized = str.trim().replace(/\s+/g, " ").toLowerCase();
+        return normalized || "Unknown";
+      };
+
+      // Aggregate per-operator totals and per-item metrics
+      const operatorMap = new Map();
+
+      for (const [key, countGroup] of Object.entries(groupedCounts)) {
+        console.log("[OPERATOR-STATES] Processing operator+machine group", { key });
+        const { operator, machine, validCounts } = countGroup;
+
+        if (!operator || operator.id === -1) continue;
+        const opId = operator.id;
+
+        const states = groupedStates[key]?.states || [];
+        let totalRunMs = 0;
+
+        if (states.length) {
+          console.log("[OPERATOR-STATES] Found states for key, computing run cycles", {
+            key,
+            stateCount: states.length,
+          });
+          const runCycles = getCompletedCyclesForOperator(states);
+          totalRunMs = runCycles.reduce((acc, cycle) => acc + (cycle.duration || 0), 0);
+          console.log("[OPERATOR-STATES] Computed runtime", {
+            key,
+            runCycles: runCycles.length,
+            totalRunMs,
+          });
+        }
+
+        const itemMap = groupCountsByItem(validCounts);
+        console.log("[OPERATOR-STATES] Grouped valid counts by item", {
+          key,
+          itemGroups: Object.keys(itemMap).length,
+        });
+        const pairTotalCounts = Object.values(itemMap).reduce(
+          (sum, group) => sum + group.length,
+          0
+        );
+
+        if (!operatorMap.has(opId)) {
+          operatorMap.set(opId, {
+            operator: { id: opId, name: operator.name || `Operator ${opId}` },
+            totalCount: 0,
+            totalWorkedMs: 0,
+            totalRuntimeMs: 0,
+            items: new Map(), // key: normalized item name
+          });
+        }
+
+        const opBucket = operatorMap.get(opId);
+        opBucket.totalRuntimeMs += totalRunMs;
+        opBucket.totalWorkedMs += totalRunMs; // treat run time as worked time
+
+        // Distribute worked time across items proportionally by counts
+        for (const [itemId, group] of Object.entries(itemMap)) {
+          const first = group[0] || {};
+          const item = first.item || {};
+          const counts = group.length;
+
+          if (counts <= 0) continue;
+
+          const normalizedName = normalizeItemName(item.name);
+          if (normalizedName === "Unknown") continue;
+
+          if (!opBucket.items.has(normalizedName)) {
+            opBucket.items.set(normalizedName, {
+              itemName: item.name || "Unknown",
+              totalCounts: 0,
+              workedTimeMs: 0,
+              standardWeightedSum: 0,
+              totalCountsForStandard: 0,
+            });
+          }
+
+          const itemBucket = opBucket.items.get(normalizedName);
+          const itemWorkedMs =
+            pairTotalCounts > 0 && totalRunMs > 0
+              ? (counts / pairTotalCounts) * totalRunMs
+              : 0;
+
+          const standard = Number(item.standard) || 0;
+
+          itemBucket.totalCounts += counts;
+          itemBucket.workedTimeMs += itemWorkedMs;
+
+          if (counts > 0 && standard > 0) {
+            itemBucket.standardWeightedSum += counts * standard;
+            itemBucket.totalCountsForStandard += counts;
+          }
+
+          // Keep a more descriptive name if we see one later
+          if (
+            item.name &&
+            (itemBucket.itemName === "Unknown" ||
+              item.name.length > itemBucket.itemName.length)
+          ) {
+            itemBucket.itemName = item.name;
+          }
+        }
+
+        opBucket.totalCount += pairTotalCounts;
+      }
+
+      console.log("[OPERATOR-STATES] Finished aggregating operators", {
+        operators: operatorMap.size,
+      });
+
+      const results = [];
+
+      for (const [opId, opBucket] of operatorMap.entries()) {
+        if (opBucket.totalCount === 0) continue;
+
+        let proratedStandard = 0;
+        const itemSummaries = {};
+
+        for (const [normalizedName, item] of opBucket.items.entries()) {
+          if (item.totalCounts === 0) continue;
+
+          const proratedItemStandard =
+            item.totalCountsForStandard > 0
+              ? item.standardWeightedSum / item.totalCountsForStandard
+              : 0;
+
+          const itemWorkedMs =
+            item.workedTimeMs ||
+            (opBucket.totalWorkedMs > 0 && opBucket.totalCount > 0
+              ? (item.totalCounts / opBucket.totalCount) * opBucket.totalWorkedMs
+              : 0);
+
+          const hours = itemWorkedMs / 3600000;
+          const pph = hours > 0 ? item.totalCounts / hours : 0;
+          const eff = proratedItemStandard > 0 ? pph / proratedItemStandard : null;
+          const weight =
+            opBucket.totalCount > 0 ? item.totalCounts / opBucket.totalCount : 0;
+
+          proratedStandard += weight * proratedItemStandard;
+
+          itemSummaries[normalizedName] = {
+            name: item.itemName,
+            standard: Math.round(proratedItemStandard * 100) / 100,
+            countTotal: item.totalCounts,
+            workedTimeFormatted: formatMs(itemWorkedMs),
+            pph: Math.round(pph * 100) / 100,
+            efficiency: eff ? Math.round(eff * 10000) / 100 : null,
+          };
+        }
+
+        const hours = opBucket.totalWorkedMs / 3600000;
+        const operatorPph = hours > 0 ? opBucket.totalCount / hours : 0;
+        const operatorEff = proratedStandard
+          ? operatorPph / proratedStandard
+          : null;
+
+        results.push({
+          operator: opBucket.operator,
+          sessions: [],
+          operatorSummary: {
+            totalCount: opBucket.totalCount,
+            workedTimeMs: opBucket.totalWorkedMs || 0,
+            workedTimeFormatted: formatMs(opBucket.totalWorkedMs || 0),
+            runtimeMs: opBucket.totalRuntimeMs || 0,
+            runtimeFormatted: formatMs(opBucket.totalRuntimeMs || 0),
+            pph: Math.round(operatorPph * 100) / 100,
+            proratedStandard: proratedStandard || null,
+            efficiency: operatorEff
+              ? Math.round(operatorEff * 10000) / 100
+              : null,
+            itemSummaries,
+          },
+        });
+      }
+
+      console.log("[OPERATOR-STATES] Returning results", {
+        operatorCount: results.length,
+      });
+
+      return res.json({
+        timeRange: { start: start.toISOString(), end: end.toISOString() },
+        results,
+      });
+    } catch (error) {
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res
+        .status(500)
+        .json({ error: "Failed to generate operator item states summary" });
     }
   });
 
