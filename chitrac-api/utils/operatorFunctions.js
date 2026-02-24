@@ -211,6 +211,7 @@ function truncateAndRecalcOperator(original, newStart, newEnd, logger) {
 
 /* ---------------- helpers (operator-machine-summary version) ---------------- */
 
+/** Sorts by start, merges overlapping intervals, returns sorted merged list. */
 function mergeIntervals(intervals) {
   const arr = intervals
     .map(iv => ({ s: new Date(iv.s).getTime(), e: new Date(iv.e).getTime() }))
@@ -225,11 +226,11 @@ function mergeIntervals(intervals) {
   return out;
 }
 
+/** Returns true if interval iv overlaps any merged interval. Merged must be sorted; breaks on first overlap. */
 function overlapsAny(iv, merged) {
   const s = new Date(iv.s).getTime();
   const e = new Date(iv.e).getTime();
   if (!(s < e)) return false;
-  // binary scan or linear; linear is fine for small lists
   for (const m of merged) {
     if (e <= m.s) break;
     if (s < m.e && e > m.s) return true;
