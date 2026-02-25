@@ -6,11 +6,19 @@ const {
   SYSTEM_TIMEZONE,
   createPaddedTimeRange,
 } = require("../../utils/time");
+const {
+  parseAndValidateQueryParams,
+  formatDuration,
+  SYSTEM_TIMEZONE,
+  createPaddedTimeRange,
+} = require("../../utils/time");
 const { getBookendedStatesAndTimeRange } = require("../../utils/bookendingBuilder");
 const { DateTime } = require("luxon");
 const {
   groupStatesByOperatorAndSerial,
   getCompletedCyclesForOperator,
+  groupStatesByMachine,
+  extractAllCyclesFromStates,
 } = require("../../utils/state");
 const {
   groupCountsByOperatorAndMachine,
