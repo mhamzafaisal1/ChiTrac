@@ -5489,10 +5489,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
             if (!cycleCounts.length) continue;
 
-            const uniqueOperatorIds = new Set(
-              cycleCounts.map((c) => c.operator?.id).filter(Boolean)
-            );
-            const workedTimeMs = cycleMs * Math.max(1, uniqueOperatorIds.size);
+            // Use actual cycle duration for machine runtime (do not multiply by operator count)
+            const workedTimeMs = cycleMs;
 
             const groupedCounts = groupCountsByItem(cycleCounts);
 
