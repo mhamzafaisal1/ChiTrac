@@ -198,7 +198,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
             return this.analyticsService
-              .getMachineSummary(this.startTime, this.endTime)
+              .getMachinePerformance(this.startTime, this.endTime)
               .pipe(
                 tap((data: any) => {
                   const responses = Array.isArray(data) ? data : [data];
@@ -257,27 +257,25 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   fetchAnalyticsData(): void {
     this.isLoading = true;
-    
-    // Check if we have a timeframe selected
-    const timeframe = this.dateTimeService.getTimeframe();
-    
-    if (timeframe) {
-      // Use timeframe-based API call
-      this.analyticsService
-        .getMachineSummaryWithTimeframe(timeframe)
-        .subscribe({
+
+    if (!this.startTime || !this.endTime) {
+      this.isLoading = false;
+      return;
+    }
+
+    // Use legacy state/count route: /api/alpha/analytics/machine-performance
+    this.analyticsService
+      .getMachinePerformance(this.startTime, this.endTime)
+      .subscribe({
         next: (data: any) => {
           const responses = Array.isArray(data) ? data : [data];
 
-          // Guard: if responses is not an array or is empty, set rows to [] and return
           if (!Array.isArray(responses) || responses.length === 0) {
             this.rows = [];
             this.isLoading = false;
             return;
           }
 
-          // Filter out undefined/null/invalid responses
-          // Accept responses with either metrics OR itemSummary structure
           const validResponses = responses.filter(
             (response) =>
               response &&
@@ -292,21 +290,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           }
 
           const formattedData = validResponses.map((response) => {
-            // Support both response structures:
-            // 1. metrics.output.totalCount (from cached/real-time summary routes)
-            // 2. itemSummary.machineSummary.totalCount (from dashboard route)
-            const totalCount = response.metrics?.output?.totalCount ?? 
-                              response.itemSummary?.machineSummary?.totalCount ?? 0;
-            const misfeedCount = response.metrics?.output?.misfeedCount ?? 
-                                response.itemSummary?.machineSummary?.misfeedCount ?? 0;
-            
-            // Runtime and downtime can come from metrics or performance
-            const runtime = response.metrics?.runtime ?? response.performance?.runtime;
-            const downtime = response.metrics?.downtime ?? response.performance?.downtime;
-            
-            // Performance metrics can come from metrics.performance or performance directly
-            const performance = response.metrics?.performance ?? response.performance;
-            
+            const totalCount =
+              response.metrics?.output?.totalCount ??
+              response.itemSummary?.machineSummary?.totalCount ??
+              0;
+            const misfeedCount =
+              response.metrics?.output?.misfeedCount ??
+              response.itemSummary?.machineSummary?.misfeedCount ??
+              0;
+            const runtime =
+              response.metrics?.runtime ?? response.performance?.runtime;
+            const downtime =
+              response.metrics?.downtime ?? response.performance?.downtime;
+            const performance =
+              response.metrics?.performance ?? response.performance;
+
             return {
               Status: getStatusDotByCode(response.currentStatus?.code),
               "Machine Name": response.machine?.name ?? "Unknown",
@@ -320,14 +318,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               "Total Count": totalCount,
               "Misfeed Count": misfeedCount,
               Availability:
-                (performance?.availability?.percentage ?? "0") +
-                "%",
+                (performance?.availability?.percentage ?? "0") + "%",
               Throughput:
-                (performance?.throughput?.percentage ?? "0") +
-                "%",
+                (performance?.throughput?.percentage ?? "0") + "%",
               Efficiency:
-                (performance?.efficiency?.percentage ?? "0") +
-                "%",
+                (performance?.efficiency?.percentage ?? "0") + "%",
               OEE: (performance?.oee?.percentage ?? "0") + "%",
             };
           });
@@ -347,98 +342,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           this.isLoading = false;
         },
       });
-    } else {
-      // Fallback to date-based API call
-      if (!this.startTime || !this.endTime) {
-        this.isLoading = false;
-        return;
-      }
-      
-      this.analyticsService
-        .getMachineSummary(this.startTime, this.endTime)
-        .subscribe({
-          next: (data: any) => {
-            const responses = Array.isArray(data) ? data : [data];
-
-            // Guard: if responses is not an array or is empty, set rows to [] and return
-            if (!Array.isArray(responses) || responses.length === 0) {
-              this.rows = [];
-              this.isLoading = false;
-              return;
-            }
-
-            // Filter out undefined/null/invalid responses
-            // Accept responses with either metrics OR itemSummary structure
-            const validResponses = responses.filter(
-              (response) =>
-                response &&
-                (response.metrics || response.itemSummary || response.performance) &&
-                response.machine &&
-                response.currentStatus
-            );
-            if (validResponses.length === 0) {
-              this.rows = [];
-              this.isLoading = false;
-              return;
-            }
-
-            const formattedData = validResponses.map((response) => {
-              // Support both response structures:
-              // 1. metrics.output.totalCount (from cached/real-time summary routes)
-              // 2. itemSummary.machineSummary.totalCount (from dashboard route)
-              const totalCount = response.metrics?.output?.totalCount ?? 
-                                response.itemSummary?.machineSummary?.totalCount ?? 0;
-              const misfeedCount = response.metrics?.output?.misfeedCount ?? 
-                                  response.itemSummary?.machineSummary?.misfeedCount ?? 0;
-              
-              // Runtime and downtime can come from metrics or performance
-              const runtime = response.metrics?.runtime ?? response.performance?.runtime;
-              const downtime = response.metrics?.downtime ?? response.performance?.downtime;
-              
-              // Performance metrics can come from metrics.performance or performance directly
-              const performance = response.metrics?.performance ?? response.performance;
-              
-              return {
-                Status: getStatusDotByCode(response.currentStatus?.code),
-                "Machine Name": response.machine?.name ?? "Unknown",
-                "Serial Number": response.machine?.serial,
-                Runtime: `${runtime?.formatted?.hours ?? 0}h ${
-                  runtime?.formatted?.minutes ?? 0
-                }m`,
-                Downtime: `${downtime?.formatted?.hours ?? 0}h ${
-                  downtime?.formatted?.minutes ?? 0
-                }m`,
-                "Total Count": totalCount,
-                "Misfeed Count": misfeedCount,
-                Availability:
-                  (performance?.availability?.percentage ?? "0") +
-                  "%",
-                Throughput:
-                  (performance?.throughput?.percentage ?? "0") +
-                  "%",
-                Efficiency:
-                  (performance?.efficiency?.percentage ?? "0") +
-                  "%",
-                OEE: (performance?.oee?.percentage ?? "0") + "%",
-              };
-            });
-
-            const allColumns = Object.keys(formattedData[0]);
-            const columnsToHide: string[] = [""];
-            this.columns = allColumns.filter(
-              (col) => !columnsToHide.includes(col)
-            );
-
-            this.rows = formattedData;
-            this.isLoading = false;
-          },
-          error: (err) => {
-            console.error("Error fetching dashboard data:", err);
-            this.rows = [];
-            this.isLoading = false;
-          },
-        });
-    }
   }
 
   /**
