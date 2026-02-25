@@ -5054,14 +5054,14 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         operatorId,
       });
 
-      const stateCollectionName = "state";
+      const stateCollectionName = "state-machine";
       const countCollectionName = "count";
       console.log("[OPERATOR-STATES] Using collections", {
         stateCollectionName,
         countCollectionName,
       });
 
-      // ---------- 1) Fetch states from state ----------
+      // ---------- 1) Fetch states from state-machine ----------
       const stateQuery = {
         timestamp: { $gte: paddedStart, $lte: paddedEnd },
       };
@@ -5350,6 +5350,232 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
       res
         .status(500)
         .json({ error: "Failed to generate operator item states summary" });
+    }
+  });
+
+  // Machine-item summary using state and count collections (same shape as index.js machine-item-summary)
+  router.get("/analytics/machine-item-states-summary", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+      const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+
+      const stateCollectionName = "state";
+      const countCollectionName = "count";
+
+      const stateQuery = {
+        $and: [
+          {
+            $or: [
+              { timestamp: { $gte: paddedStart, $lte: paddedEnd } },
+              {
+                "timestamps.create": {
+                  $gte: paddedStart,
+                  $lte: paddedEnd,
+                },
+              },
+            ],
+          },
+        ],
+      };
+      if (serial != null) {
+        stateQuery.$and.push({
+          $or: [{ "machine.serial": serial }, { "machine.id": serial }],
+        });
+      }
+
+      const allStatesRaw = await db
+        .collection(stateCollectionName)
+        .find(stateQuery)
+        .project({
+          timestamp: 1,
+          "timestamps.create": 1,
+          status: 1,
+          machine: 1,
+          program: 1,
+        })
+        .toArray();
+
+      const allStates = allStatesRaw.map((s) => {
+        const m = s.machine || {};
+        const st = s.status || {};
+        const code = st?.code ?? st?.id;
+        // Legacy state docs may have no status; treat as running (1) so cycles are detected
+        const statusCode =
+          code !== undefined && code !== null ? code : 1;
+        return {
+          ...s,
+          timestamp: s.timestamp || s.timestamps?.create,
+          machine: {
+            ...m,
+            serial: m.serial ?? m.id,
+          },
+          status: { ...st, code: statusCode },
+        };
+      });
+
+      if (!allStates.length) return res.json([]);
+
+      // extractAllCyclesFromStates expects states in chronological order
+      allStates.sort(
+        (a, b) =>
+          new Date(a.timestamp || 0).getTime() -
+          new Date(b.timestamp || 0).getTime()
+      );
+
+      const groupedStates = groupStatesByMachine(allStates);
+      const machineSerials = Object.keys(groupedStates);
+
+      const results = await Promise.all(
+        machineSerials.map(async (machineSerial) => {
+          const group = groupedStates[machineSerial];
+          const machineName = group.machine?.name || "Unknown";
+          const machineStates = group.states;
+
+          const cycles = extractAllCyclesFromStates(
+            machineStates,
+            start,
+            end
+          ).running;
+
+          if (!cycles.length) {
+            return {
+              machine: {
+                name: machineName,
+                serial: parseInt(machineSerial, 10),
+              },
+              sessions: [],
+              machineSummary: {
+                totalCount: 0,
+                workedTimeMs: 0,
+                workedTimeFormatted: formatDuration(0),
+                pph: 0,
+                proratedStandard: 0,
+                efficiency: 0,
+                itemSummaries: {},
+              },
+            };
+          }
+
+          const machineSerialNum = parseInt(machineSerial, 10);
+          const countQuery = {
+            timestamp: { $gte: start, $lte: end },
+            $or: [
+              { "machine.serial": machineSerialNum },
+              { "machine.id": machineSerialNum },
+            ],
+            "operator.id": { $exists: true, $ne: -1 },
+            misfeed: { $ne: true },
+          };
+          const allCounts = await db
+            .collection(countCollectionName)
+            .find(countQuery)
+            .sort({ timestamp: 1 })
+            .toArray();
+
+          let totalCount = 0;
+          let totalWorkedMs = 0;
+          const itemSummaries = {};
+          const sessions = [];
+
+          for (const cycle of cycles) {
+            const cycleStart = new Date(cycle.start);
+            const cycleEnd = new Date(cycle.end);
+            const cycleMs = cycleEnd - cycleStart;
+
+            const cycleCounts = allCounts.filter((c) => {
+              const ts = new Date(c.timestamp);
+              return ts >= cycleStart && ts <= cycleEnd;
+            });
+
+            if (!cycleCounts.length) continue;
+
+            const uniqueOperatorIds = new Set(
+              cycleCounts.map((c) => c.operator?.id).filter(Boolean)
+            );
+            const workedTimeMs = cycleMs * Math.max(1, uniqueOperatorIds.size);
+
+            const groupedCounts = groupCountsByItem(cycleCounts);
+
+            for (const [itemId, records] of Object.entries(groupedCounts)) {
+              const count = records.length;
+              const standard = records[0].item?.standard || 666;
+              const name = records[0].item?.name || "Unknown";
+
+              if (!itemSummaries[itemId]) {
+                itemSummaries[itemId] = {
+                  name,
+                  standard,
+                  count: 0,
+                  workedTimeMs: 0,
+                };
+              }
+
+              itemSummaries[itemId].count += count;
+              itemSummaries[itemId].workedTimeMs += workedTimeMs;
+              totalCount += count;
+              totalWorkedMs += workedTimeMs;
+            }
+
+            sessions.push({
+              start: cycleStart.toISOString(),
+              end: cycleEnd.toISOString(),
+              workedTimeMs,
+              workedTimeFormatted: formatDuration(workedTimeMs),
+            });
+          }
+
+          let proratedStandard = 0;
+          const itemSummariesFormatted = {};
+
+          for (const [itemId, summary] of Object.entries(itemSummaries)) {
+            const hours = summary.workedTimeMs / 3600000;
+            const pph = hours > 0 ? summary.count / hours : 0;
+            const efficiency =
+              summary.standard > 0 ? pph / summary.standard : 0;
+
+            const weight = totalCount > 0 ? summary.count / totalCount : 0;
+            proratedStandard += weight * summary.standard;
+
+            itemSummariesFormatted[itemId] = {
+              name: summary.name,
+              standard: summary.standard,
+              countTotal: summary.count,
+              workedTimeFormatted: formatDuration(summary.workedTimeMs),
+              pph: Math.round(pph * 100) / 100,
+              efficiency: Math.round(efficiency * 10000) / 100,
+            };
+          }
+
+          const totalHours = totalWorkedMs / 3600000;
+          const machinePph = totalHours > 0 ? totalCount / totalHours : 0;
+          const machineEff =
+            proratedStandard > 0 ? machinePph / proratedStandard : 0;
+
+          return {
+            machine: {
+              name: machineName,
+              serial: parseInt(machineSerial, 10),
+            },
+            sessions,
+            machineSummary: {
+              totalCount,
+              workedTimeMs: totalWorkedMs,
+              workedTimeFormatted: formatDuration(totalWorkedMs),
+              pph: Math.round(machinePph * 100) / 100,
+              proratedStandard: Math.round(proratedStandard * 100) / 100,
+              efficiency: Math.round(machineEff * 10000) / 100,
+              itemSummaries: itemSummariesFormatted,
+            },
+          };
+        })
+      );
+
+      res.json(results);
+    } catch (error) {
+      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res
+        .status(500)
+        .json({ error: "Failed to generate machine item states summary" });
     }
   });
 
