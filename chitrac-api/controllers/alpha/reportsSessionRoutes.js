@@ -5494,6 +5494,8 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
             const groupedCounts = groupCountsByItem(cycleCounts);
 
+            totalWorkedMs += workedTimeMs;
+
             for (const [itemId, records] of Object.entries(groupedCounts)) {
               const count = records.length;
               const standard = records[0].item?.standard || 666;
@@ -5511,7 +5513,6 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
               itemSummaries[itemId].count += count;
               itemSummaries[itemId].workedTimeMs += workedTimeMs;
               totalCount += count;
-              totalWorkedMs += workedTimeMs;
             }
 
             sessions.push({
