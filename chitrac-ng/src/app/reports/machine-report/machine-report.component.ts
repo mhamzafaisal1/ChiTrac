@@ -128,7 +128,19 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       const itemSummaries = summary.itemSummaries;
       const items = itemSummaries != null ? Object.values(itemSummaries) : [];
 
-      const totalItem = items.find((item: any) => item.name === 'Total');
+      // machine-item-states-summary does not include a Total entry; build one from machineSummary when missing
+      let totalItem = items.find((item: any) => item.name === 'Total');
+      if (!totalItem && (summary.totalCount != null || summary.workedTimeFormatted != null)) {
+        const wt = summary.workedTimeFormatted;
+        totalItem = {
+          name: 'Total',
+          standard: summary.proratedStandard ?? 0,
+          countTotal: summary.totalCount ?? 0,
+          workedTimeFormatted: wt && typeof wt === 'object' ? wt : { hours: 0, minutes: 0 },
+          pph: summary.pph ?? 0,
+          efficiency: summary.efficiency ?? null,
+        };
+      }
       const otherItems = items.filter((item: any) => item.name !== 'Total');
       const sortedItems = totalItem ? [totalItem, ...otherItems] : items;
 
