@@ -66,11 +66,12 @@
   </div>
 
   <div class="table-container" [class.loading]="isLoading">
+    <!-- Item column temporarily hidden: use [columns]="columns" to show again -->
     <base-table
       *ngIf="rows.length"
       [class.dark]="isDarkTheme"
       [class.light]="!isDarkTheme"
-      [columns]="columns"
+      [columns]="columns.filter(c => c !== 'Item')"
       [rows]="displayedRows"
       [getCellClass]="getEfficiencyClass.bind(this)"
       style="height:93%; border-radius: 4px;"
