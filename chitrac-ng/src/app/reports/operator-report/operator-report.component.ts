@@ -53,7 +53,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   isLoading: boolean = false;
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
-  showSummaryOnly: boolean = false;
+  showSummaryOnly: boolean = true;
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
@@ -138,8 +138,11 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
 
   private processTableData(results: any[]): void {
     const formattedData: any[] = [];
+    const sortedResults = [...results].sort(
+      (a, b) => (a.operator?.id ?? 0) - (b.operator?.id ?? 0)
+    );
 
-    results.forEach((operator: any) => {
+    sortedResults.forEach((operator: any) => {
       const summary = operator.operatorSummary;
       const operatorId = operator.operator.id;
       const operatorName = this.normalizeOperatorName(operator.operator.name, operatorId);
