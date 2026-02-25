@@ -71,9 +71,9 @@
       *ngIf="rows.length"
       [class.dark]="isDarkTheme"
       [class.light]="!isDarkTheme"
-      [columns]="columns.filter(c => c !== 'Item')"
+      [columns]="displayedColumns"
       [rows]="displayedRows"
-      [getCellClass]="getEfficiencyClass.bind(this)"
+      [getCellClass]="getCellClass"
       style="height:93%; border-radius: 4px;"
     >
     </base-table>

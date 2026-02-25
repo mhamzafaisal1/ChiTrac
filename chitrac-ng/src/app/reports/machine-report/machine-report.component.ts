@@ -54,6 +54,12 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     return this.rows;
   }
 
+  get displayedColumns(): string[] {
+    return this.columns.filter(c => c !== 'Item');
+  }
+
+  getCellClass = (value: any, column: string): string => this.getEfficiencyClass(value, column);
+
   constructor(
     private analyticsService: MachineAnalyticsService,
     private renderer: Renderer2,
