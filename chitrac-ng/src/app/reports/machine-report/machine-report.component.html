@@ -18,6 +18,7 @@
       [(value)]="endTime"
     ></app-date-time-picker>
 
+    <!-- Toggle temporarily hidden - default is summary mode
     <div class="report-mode-toggle">
       <span class="toggle-label" style="margin-right: 12px;">Detailed</span>
       <mat-slide-toggle 
@@ -26,6 +27,7 @@
       </mat-slide-toggle>
       <span class="toggle-label" style="margin-left: 12px;">Summary</span>
     </div>
+    -->
 
     <div class="button-group">
       <button
@@ -64,11 +66,12 @@
   </div>
 
   <div class="table-container" [class.loading]="isLoading">
+    <!-- Item column temporarily hidden: use [columns]="columns" to show again -->
     <base-table
       *ngIf="rows.length"
       [class.dark]="isDarkTheme"
       [class.light]="!isDarkTheme"
-      [columns]="columns"
+      [columns]="columns.filter(c => c !== 'Item')"
       [rows]="displayedRows"
       [getCellClass]="getEfficiencyClass.bind(this)"
       style="height:93%; border-radius: 4px;"

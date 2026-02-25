@@ -44,7 +44,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isLoading: boolean = false;
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
-  showSummaryOnly: boolean = false;
+  showSummaryOnly: boolean = true;
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
