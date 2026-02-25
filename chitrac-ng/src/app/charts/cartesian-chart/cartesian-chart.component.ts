@@ -495,7 +495,7 @@ import {
     ): void {
       if (opts.show !== true) return;
       const dash = opts.dash ?? '6,6';
-      const stroke = opts.stroke ?? '#1e88e5';
+      const stroke = opts.stroke ?? '#5A646E';
       const strokeWidth = opts.strokeWidth ?? 2;
       const opacity = opts.opacity ?? 1;
       const offsetPx = opts.offsetPx ?? 0;

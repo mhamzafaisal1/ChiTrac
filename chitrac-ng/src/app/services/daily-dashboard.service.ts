@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
@@ -146,8 +147,10 @@ getItemsSummary(start: string, end: string, serial?: number) {
       params = params.set('serial', serial.toString());
     }
 
-    // return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary-cache`, { params });
-    return this.http.get(`${this.apiUrl}/analytics/machine-report-cache`, { params });
+    // Uses state + count collections (machine-item-states-summary returns array; wrap as { results } for component)
+    return this.http.get<any[]>(`${this.apiUrl}/analytics/machine-item-states-summary`, { params }).pipe(
+      map((results) => ({ results: results ?? [] }))
+    );
   }
 
   getOperatorItemSessionsSummary(start: string, end: string, operatorId?: number): Observable<any> {
