@@ -4,9 +4,10 @@
     <td mat-cell *matCellDef="let row" [ngClass]="getCellClassForColumn(row[column], column)">
       <span *ngIf="column == 'Status'">
         <mat-icon aria-hidden="false" aria-label="Running dot" fontIcon="circle" *ngIf="row[column] == 'Running Dot'" class="green"></mat-icon>
-        <mat-icon aria-hidden="false" aria-label="Running dot" fontIcon="circle" *ngIf="row[column] == 'Paused Dot'" class="yellow"></mat-icon>
-        <mat-icon aria-hidden="false" aria-label="Running dot" fontIcon="circle" *ngIf="row[column] == 'Faulted Dot'" class="red"></mat-icon>
-        <mat-icon aria-hidden="false" aria-label="Running dot" fontIcon="circle" *ngIf="row[column] == 'Offline Dot'" class="white"></mat-icon>
+        <mat-icon aria-hidden="false" aria-label="Paused dot" fontIcon="circle" *ngIf="row[column] == 'Paused Dot'" class="yellow"></mat-icon>
+        <mat-icon aria-hidden="false" aria-label="Faulted dot" fontIcon="circle" *ngIf="row[column] == 'Faulted Dot'" class="red"></mat-icon>
+        <mat-icon aria-hidden="false" aria-label="Offline dot" fontIcon="circle" *ngIf="row[column] == 'Offline Dot'" class="white"></mat-icon>
+        <mat-icon aria-hidden="false" aria-label="No current machine" fontIcon="circle" *ngIf="row[column] == 'No Machine Dot'" class="grey"></mat-icon>
       </span>
       <span *ngIf="column != 'Status'">{{ row[column] }}</span>
     </td>
