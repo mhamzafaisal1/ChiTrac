@@ -1659,7 +1659,6 @@ function constructor(server) {
 
   router.get("/analytics/machine-performance", async (req, res) => {
     try {
-      console.log("[MACHINE-PERFORMANCE] Route start");
       // Legacy collections: hardcoded for machine dashboard (state/count)
       const STATE_COLLECTION = "state";
       const COUNT_COLLECTION = "count";
@@ -1668,13 +1667,6 @@ function constructor(server) {
       const { start, end, serial } = parseAndValidateQueryParams(req);
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
-      console.log("[MACHINE-PERFORMANCE] Parsed params", {
-        start: start?.toISOString?.() ?? start,
-        end: end?.toISOString?.() ?? end,
-        serial,
-        paddedStart: paddedStart?.toISOString?.() ?? paddedStart,
-        paddedEnd: paddedEnd?.toISOString?.() ?? paddedEnd,
-      });
 
       const stateCollection = db.collection(STATE_COLLECTION);
       const countCollection = db.collection(COUNT_COLLECTION);
@@ -1703,11 +1695,7 @@ function constructor(server) {
       let groupedStates;
 
       if (serial) {
-        console.log("[MACHINE-PERFORMANCE] Fetching states for serial", serial);
         const machineStates = await fetchStatesFromLegacyCollection(serial);
-        console.log("[MACHINE-PERFORMANCE] Fetched states (serial filter)", {
-          count: machineStates.length,
-        });
         groupedStates = {
           [serial]: {
             machine: {
@@ -1719,19 +1707,9 @@ function constructor(server) {
           },
         };
       } else {
-        console.log("[MACHINE-PERFORMANCE] Fetching all states (no serial)");
         const allStates = await fetchStatesFromLegacyCollection(null);
-        console.log("[MACHINE-PERFORMANCE] Fetched states", {
-          count: allStates.length,
-        });
         groupedStates = groupStatesByMachine(allStates);
       }
-
-      const machineSerials = Object.keys(groupedStates);
-      console.log("[MACHINE-PERFORMANCE] Grouped states", {
-        machineCount: machineSerials.length,
-        machineSerials: machineSerials.slice(0, 20),
-      });
 
       const results = [];
 
@@ -1740,21 +1718,11 @@ function constructor(server) {
         const states = group.states;
 
         // Skip if no states found for this machine
-        if (!states.length) {
-          console.log("[MACHINE-PERFORMANCE] Skipping machine (no states)", {
-            machineSerial,
-          });
-          continue;
-        }
+        if (!states.length) continue;
 
         // Extract all types of cycles
         const cycles = extractAllCyclesFromStates(states, start, end);
         const runningCycles = cycles.running;
-        console.log("[MACHINE-PERFORMANCE] Machine cycles", {
-          machineSerial,
-          stateCount: states.length,
-          runningCycles: runningCycles.length,
-        });
 
         // Get counts from legacy count collection
         const validCounts = await countCollection
@@ -1775,11 +1743,6 @@ function constructor(server) {
           })
           .sort({ timestamp: 1 })
           .toArray();
-        console.log("[MACHINE-PERFORMANCE] Machine counts", {
-          machineSerial,
-          validCounts: validCounts.length,
-          misfeedCounts: misfeedCounts.length,
-        });
 
         // Calculate metrics for this machine
         const totalQueryMs = new Date(end) - new Date(start);
@@ -1856,14 +1819,8 @@ function constructor(server) {
         };
 
         results.push(machineResponse);
-        console.log("[MACHINE-PERFORMANCE] Pushed result for machine", {
-          machineSerial,
-        });
       }
 
-      console.log("[MACHINE-PERFORMANCE] Returning results", {
-        resultCount: results.length,
-      });
       res.json(results);
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
