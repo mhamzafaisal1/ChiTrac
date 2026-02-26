@@ -5054,7 +5054,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         operatorId,
       });
 
-      const stateCollectionName = "state-machine";
+      const stateCollectionName = "state";
       const countCollectionName = "count";
       console.log("[OPERATOR-STATES] Using collections", {
         stateCollectionName,
