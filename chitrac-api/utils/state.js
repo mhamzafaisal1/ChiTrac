@@ -320,16 +320,26 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   // State functions for Operator
 
   async function fetchStatesForOperator(db, operatorId, paddedStart, paddedEnd, collectionName = 'state') {
+  // Support both document shapes: top-level timestamp and timestamps.create (e.g. simulator/legacy)
   const query = {
-    "timestamps.create": {
-      $gte: new Date(paddedStart),
-      $lte: new Date(paddedEnd)
-    },
-    'machine.id': { $exists: true }
+    $and: [
+      {
+        $or: [
+          { timestamp: { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } },
+          { "timestamps.create": { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } }
+        ]
+      },
+      {
+        $or: [
+          { 'machine.serial': { $exists: true } },
+          { 'machine.id': { $exists: true } }
+        ]
+      }
+    ]
   };
 
   if (operatorId) {
-    query['operators.id'] = operatorId;
+    query.$and.push({ 'operators.id': operatorId });
   }
 
   // Use explicit collection name when provided (e.g. 'state'); otherwise dynamic by date
@@ -344,7 +354,7 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
 
   const states = await db.collection(collection)
     .find(query)
-    .sort({ "timestamps.create": 1 })
+    .sort({ "timestamps.create": 1, timestamp: 1 })
     .project({
       _id:0, //RTI II: ADDED 06/10/25 to omit _ids from the API returns as those are extraneous outside of UPDATE or DELETE actions
       "timestamps.create": 1,
