@@ -5356,11 +5356,23 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
   // Machine-item summary using state and count collections (same shape as index.js machine-item-summary)
   router.get("/analytics/machine-item-states-summary", async (req, res) => {
     try {
+      console.log("[MACHINE-ITEM-STATES] Route start");
       const { start, end, serial } = parseAndValidateQueryParams(req);
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+      console.log("[MACHINE-ITEM-STATES] Parsed params", {
+        start: start.toISOString(),
+        end: end.toISOString(),
+        paddedStart: paddedStart.toISOString(),
+        paddedEnd: paddedEnd.toISOString(),
+        serial,
+      });
 
       const stateCollectionName = "state";
       const countCollectionName = "count";
+      console.log("[MACHINE-ITEM-STATES] Using collections", {
+        stateCollectionName,
+        countCollectionName,
+      });
 
       const stateQuery = {
         $and: [
@@ -5383,6 +5395,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         });
       }
 
+      console.log("[MACHINE-ITEM-STATES] Querying state", stateQuery);
       const allStatesRaw = await db
         .collection(stateCollectionName)
         .find(stateQuery)
@@ -5394,6 +5407,7 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           program: 1,
         })
         .toArray();
+      console.log("[MACHINE-ITEM-STATES] Fetched states", { count: allStatesRaw.length });
 
       const allStates = allStatesRaw.map((s) => {
         const m = s.machine || {};
@@ -5413,7 +5427,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         };
       });
 
-      if (!allStates.length) return res.json([]);
+      if (!allStates.length) {
+        console.log("[MACHINE-ITEM-STATES] No states, returning []");
+        return res.json([]);
+      }
 
       // extractAllCyclesFromStates expects states in chronological order
       allStates.sort(
@@ -5424,6 +5441,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
 
       const groupedStates = groupStatesByMachine(allStates);
       const machineSerials = Object.keys(groupedStates);
+      console.log("[MACHINE-ITEM-STATES] Grouped by machine", {
+        machineCount: machineSerials.length,
+        machineSerials: machineSerials.slice(0, 10),
+      });
 
       const results = await Promise.all(
         machineSerials.map(async (machineSerial) => {
@@ -5436,6 +5457,12 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             start,
             end
           ).running;
+          console.log("[MACHINE-ITEM-STATES] Machine", {
+            serial: machineSerial,
+            name: machineName,
+            stateCount: machineStates.length,
+            runningCycles: cycles.length,
+          });
 
           if (!cycles.length) {
             return {
@@ -5471,6 +5498,10 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
             .find(countQuery)
             .sort({ timestamp: 1 })
             .toArray();
+          console.log("[MACHINE-ITEM-STATES] Counts for machine", {
+            serial: machineSerial,
+            count: allCounts.length,
+          });
 
           let totalCount = 0;
           let totalWorkedMs = 0;
@@ -5549,6 +5580,13 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
           const machinePph = totalHours > 0 ? totalCount / totalHours : 0;
           const machineEff =
             proratedStandard > 0 ? machinePph / proratedStandard : 0;
+          console.log("[MACHINE-ITEM-STATES] Machine summary", {
+            serial: machineSerial,
+            totalCount,
+            totalWorkedMs,
+            sessions: sessions.length,
+            itemCount: Object.keys(itemSummariesFormatted).length,
+          });
 
           return {
             machine: {
@@ -5569,6 +5607,9 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         })
       );
 
+      console.log("[MACHINE-ITEM-STATES] Returning results", {
+        machineCount: results.length,
+      });
       res.json(results);
     } catch (error) {
       console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
