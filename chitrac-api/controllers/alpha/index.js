@@ -2048,6 +2048,28 @@ function constructor(server) {
         return res.json([]);
       }
 
+      // --- 1b) stateTicker: current machine per operator (one doc per machine; operators[] lists who is on it)
+      const stateTickerCollectionName = "stateTicker";
+      const tickerDocs = await db
+        .collection(stateTickerCollectionName)
+        .find({ "operators.id": { $in: operatorIds } })
+        .project({ machine: 1, operators: 1 })
+        .toArray();
+
+      const currentMachineByOperator = {};
+      for (const ticker of tickerDocs) {
+        const machine = ticker.machine;
+        if (!machine) continue;
+        const name = machine.name || "Unknown";
+        const serial = machine.serial ?? machine.id;
+        for (const op of ticker.operators || []) {
+          const opId = op?.id;
+          if (opId != null) {
+            currentMachineByOperator[opId] = { name, serial };
+          }
+        }
+      }
+
       // --- 2) State: all state in range (state docs have timestamp, machine; no operators)
       const allStates = await fetchStatesForOperator(
         db,
@@ -2175,6 +2197,7 @@ function constructor(server) {
 
         operatorResults.push({
           operator: { id: opId, name: opName },
+          currentMachine: currentMachineByOperator[opId] || null,
           currentStatus,
           metrics: {
             runtime: {
