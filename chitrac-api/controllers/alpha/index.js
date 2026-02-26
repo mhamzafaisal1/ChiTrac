@@ -1996,8 +1996,20 @@ function constructor(server) {
       // Step 1: Parse and validate query parameters
       const { start, end, operatorId } = parseAndValidateQueryParams(req);
 
+      // Basic logging of query inputs
+      console.log("[operator-performance] query", {
+        rawQuery: req.query,
+        start,
+        end,
+        operatorId,
+      });
+
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+      console.log("[operator-performance] padded range", {
+        paddedStart,
+        paddedEnd,
+      });
 
       const stateCollectionName = "state";
       const countCollectionName = "count";
@@ -2014,6 +2026,11 @@ function constructor(server) {
           paddedEnd,
           stateCollectionName
         );
+        console.log("[operator-performance] states for single operator", {
+          operatorId,
+          stateCount: states.length,
+        });
+
         // Create a single group for this operator
         groupedStates = {
           [operatorId]: {
@@ -2033,7 +2050,14 @@ function constructor(server) {
           paddedEnd,
           stateCollectionName
         );
+        console.log("[operator-performance] fetched all operator states", {
+          totalStates: allStates.length,
+        });
+
         groupedStates = groupStatesByOperator(allStates);
+        console.log("[operator-performance] groupedStates summary", {
+          operatorGroupCount: Object.keys(groupedStates).length,
+        });
 
         // Update operator names for all groups
         for (const [opId, group] of Object.entries(groupedStates)) {
@@ -2041,8 +2065,19 @@ function constructor(server) {
         }
       }
 
+      // Early exit logging if no groups
+      if (!groupedStates || !Object.keys(groupedStates).length) {
+        console.log("[operator-performance] no groupedStates after fetch/group", {
+          hasGroupedStates: !!groupedStates,
+        });
+        return res.json([]);
+      }
+
       // Step 3: Get all operator IDs for count query
       const operatorIds = Object.keys(groupedStates).map((id) => parseInt(id));
+      console.log("[operator-performance] operatorIds for count query", {
+        operatorIds,
+      });
 
       // Get counts for all operators in a single query
       const allCounts = await db
@@ -2053,6 +2088,11 @@ function constructor(server) {
         })
         .sort({ timestamp: 1 })
         .toArray();
+
+      console.log("[operator-performance] fetched counts", {
+        countCollectionName,
+        totalCounts: allCounts.length,
+      });
 
       // Group counts by operator
       const operatorCounts = {};
@@ -2076,19 +2116,29 @@ function constructor(server) {
         }
       }
 
-      const results = [];
+      console.log("[operator-performance] operatorCounts summary", {
+        operatorsWithCounts: Object.keys(operatorCounts).length,
+      });
 
       // Step 4: Process each operator's data in parallel
       const operatorResults = await Promise.all(
         Object.entries(groupedStates).map(async ([operatorId, group]) => {
           const states = group.states;
 
-          // Skip if no states found for this operator
-          if (!states.length) return null;
+          if (!states.length) {
+            console.log("[operator-performance] skipping operator with no states", {
+              operatorId,
+            });
+            return null;
+          }
 
-          // Get counts for this operator
           const counts = operatorCounts[parseInt(operatorId)];
-          if (!counts) return null;
+          if (!counts) {
+            console.log("[operator-performance] skipping operator with no counts", {
+              operatorId,
+            });
+            return null;
+          }
 
           // Process count statistics using the new utility function
           const stats = processCountStatistics(counts.counts);
@@ -2107,6 +2157,17 @@ function constructor(server) {
             stats.total,
             counts.validCounts
           );
+
+          console.log("[operator-performance] operator metrics", {
+            operatorId,
+            stateCount: states.length,
+            countTotal: stats.total,
+            runtimeMs,
+            pausedTimeMs,
+            faultTimeMs,
+            piecesPerHour,
+            efficiency,
+          });
 
           // Get current status for this operator
           const currentState = states[states.length - 1] || {};
@@ -2159,10 +2220,14 @@ function constructor(server) {
         })
       );
 
-      // Filter out null results and send response
-      res.json(operatorResults.filter((result) => result !== null));
+      const filtered = operatorResults.filter((result) => result !== null);
+      console.log("[operator-performance] final result count", {
+        total: filtered.length,
+      });
+
+      res.json(filtered);
     } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      console.error(`[operator-performance] Error in ${req.method} ${req.originalUrl}:`, error);
       res
         .status(500)
         .json({ error: "Failed to fetch operator performance metrics" });
