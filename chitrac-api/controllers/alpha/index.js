@@ -1999,6 +1999,9 @@ function constructor(server) {
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
 
+      const stateCollectionName = "state";
+      const countCollectionName = "count";
+
       let states;
       let groupedStates;
 
@@ -2008,7 +2011,8 @@ function constructor(server) {
           db,
           operatorId,
           paddedStart,
-          paddedEnd
+          paddedEnd,
+          stateCollectionName
         );
         // Create a single group for this operator
         groupedStates = {
@@ -2026,7 +2030,8 @@ function constructor(server) {
           db,
           null,
           paddedStart,
-          paddedEnd
+          paddedEnd,
+          stateCollectionName
         );
         groupedStates = groupStatesByOperator(allStates);
 
@@ -2041,7 +2046,7 @@ function constructor(server) {
 
       // Get counts for all operators in a single query
       const allCounts = await db
-        .collection("count")
+        .collection(countCollectionName)
         .find({
           "operator.id": { $in: operatorIds },
           timestamp: { $gte: new Date(start), $lte: new Date(end) },

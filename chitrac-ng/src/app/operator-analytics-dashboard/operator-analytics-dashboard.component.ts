@@ -205,22 +205,20 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           const timeframe = this.dateTimeService.getTimeframe();
           
           if (timeframe) {
-            // Use timeframe-based API call
             return this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
                 }),
-                delay(0) // Force change detection cycle
+                delay(0)
               );
           } else {
-            // Use regular API call with start/end times
-            return this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
+            return this.analyticsService.getOperatorPerformance(this.startTime, this.endTime)
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
                 }),
-                delay(0) // Force change detection cycle
+                delay(0)
               );
           }
         },
@@ -240,25 +238,63 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Normalize operator-performance API response to table shape (downtime, availability, throughput, oee). */
+  private normalizeOperatorPerformanceItem(item: any): any {
+    if (!item?.metrics?.pausedTime) return item;
+    const runtime = item.metrics.runtime?.total ?? 0;
+    const paused = item.metrics.pausedTime?.total ?? 0;
+    const fault = item.metrics.faultTime?.total ?? 0;
+    const total = runtime + paused + fault;
+    const downtimeMs = paused + fault;
+    const availability = total > 0 ? Math.round((runtime / total) * 10000) / 100 : 0;
+    const eff = item.metrics.performance?.efficiency?.value ?? 0;
+    const effPct = (typeof eff === 'number' ? eff * 100 : 0).toFixed(2);
+    return {
+      ...item,
+      currentMachine: item.currentMachine || { name: '', serial: '' },
+      metrics: {
+        ...item.metrics,
+        downtime: { formatted: this.formatDurationFromMs(downtimeMs) },
+        performance: {
+          ...item.metrics.performance,
+          availability: { percentage: availability.toFixed(2) },
+          throughput: { percentage: effPct },
+          oee: { percentage: effPct },
+        },
+      },
+    };
+  }
+
+  private formatDurationFromMs(ms: number): { hours: number; minutes: number } {
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.round((ms % 3600000) / 60000);
+    return { hours, minutes };
+  }
+
   private updateDashboardData(data: any): void {
-    this.operatorData = Array.isArray(data) ? data : [data];
-    
-    this.rows = this.operatorData.map(response => ({
-      'Status': getStatusDotByCode(response.currentStatus?.code),
-      'Operator Name': response.operator.name,
-      'Operator ID': response.operator.id,
-      'Current Machine': response.currentMachine?.name || '',
-      'Current Machine Serial': response.currentMachine?.serial || '',
-      'Runtime': `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
-      'Downtime': `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
-      'Total Count': response.metrics.output.totalCount,
-      'Misfeed Count': response.metrics.output.misfeedCount,
-      'Availability': `${response.metrics.performance.availability.percentage}%`,
-      'Throughput': `${response.metrics.performance.throughput.percentage}%`,
-      'Efficiency': `${`${response.metrics.performance.efficiency.percentage}%`}%`,
-      'OEE': `${response.metrics.performance.oee.percentage}%`,
-      'Time Range': `${this.startTime} to ${this.endTime}`
-    }));
+    const raw = Array.isArray(data) ? data : [data];
+    this.operatorData = raw.map((r: any) => this.normalizeOperatorPerformanceItem(r));
+
+    this.rows = this.operatorData.map(response => {
+      const effPct = response.metrics?.performance?.efficiency?.percentage ?? '';
+      const effStr = typeof effPct === 'string' && effPct.endsWith('%') ? effPct : `${effPct}%`;
+      return {
+        'Status': getStatusDotByCode(response.currentStatus?.code),
+        'Operator Name': response.operator.name,
+        'Operator ID': response.operator.id,
+        'Current Machine': response.currentMachine?.name || '',
+        'Current Machine Serial': response.currentMachine?.serial || '',
+        'Runtime': `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
+        'Downtime': `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
+        'Total Count': response.metrics.output.totalCount,
+        'Misfeed Count': response.metrics.output.misfeedCount,
+        'Availability': `${response.metrics.performance.availability.percentage}%`,
+        'Throughput': `${response.metrics.performance.throughput.percentage}%`,
+        'Efficiency': effStr,
+        'OEE': `${response.metrics.performance.oee.percentage}%`,
+        'Time Range': `${this.startTime} to ${this.endTime}`
+      };
+    });
 
     const allColumns = Object.keys(this.rows[0]);
     const columnsToHide = ['Operator ID', 'Time Range'];
@@ -288,8 +324,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           }
         });
     } else {
-      // Use operator-summary route for initial table data (all operators)
-      this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
+      // Use operator-performance (state/count collections) for table data
+      this.analyticsService.getOperatorPerformance(this.startTime, this.endTime)
         .subscribe({
           next: (data: any) => {
             this.updateDashboardData(data);
@@ -391,24 +427,16 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     // Get modal-aware dimensions
     const modalChartDimensions = this.getModalAwareChartDimensions();
 
-    // Check if we have a timeframe selected
     const timeframe = this.dateTimeService.getTimeframe();
+    const useCachedBase = !timeframe && this.operatorData?.length > 0;
 
-    // Fetch detailed operator data for the modal
-    const summaryObservable = timeframe
-      ? this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
-      : this.analyticsService.getOperatorSummary(this.startTime, this.endTime);
+    const openModalWithBase = (base: any) => {
+      this.analyticsService.getOperatorInfo(this.startTime, this.endTime, operatorId)
+        .subscribe({
+          next: (infoData) => {
+            const data = { ...base, ...infoData };
 
-    summaryObservable.subscribe({
-      next: (summaryData) => {
-        const base = Array.isArray(summaryData) ? summaryData.find(d => d.operator.id === operatorId) : summaryData;
-  
-        this.analyticsService.getOperatorInfo(this.startTime, this.endTime, operatorId)
-          .subscribe({
-            next: (infoData) => {
-              const data = { ...base, ...infoData }; // Merge both
-  
-              const carouselTabs = [
+            const carouselTabs = [
                 {
                   label: 'Item Summary',
                   component: OperatorItemSummaryTableComponent,
@@ -511,11 +539,26 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                   }
                 }
               });
-            }
-          });
-      }
-    });
-  
+          }
+        });
+    };
+
+    if (useCachedBase) {
+      const base = this.operatorData.find((d: any) => d.operator?.id === operatorId);
+      if (base) openModalWithBase(base);
+    } else {
+      const summaryObservable = timeframe
+        ? this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
+        : this.analyticsService.getOperatorPerformance(this.startTime, this.endTime);
+      summaryObservable.subscribe({
+        next: (summaryData: any) => {
+          const base = Array.isArray(summaryData)
+            ? summaryData.find((d: any) => d.operator?.id === operatorId)
+            : summaryData;
+          if (base) openModalWithBase(base);
+        },
+      });
+    }
   }
 
   getEfficiencyClass(value: any, column: string): string {
