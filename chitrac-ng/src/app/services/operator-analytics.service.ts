@@ -66,8 +66,8 @@ export class OperatorAnalyticsService {
 
   getOperatorPerformance(startTime: string, endTime: string, operatorId?: number): Observable<any> {
     let params = new HttpParams()
-      .set('startTime', startTime)
-      .set('endTime', endTime);
+      .set('start', startTime)
+      .set('end', endTime);
 
     if (operatorId) {
       params = params.set('operatorId', operatorId.toString());

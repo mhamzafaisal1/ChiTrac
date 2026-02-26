@@ -332,10 +332,15 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     query['operators.id'] = operatorId;
   }
 
-  // Use dynamic collection selection based on start date with fallback
-  const stateCollection = getStateCollectionName(paddedStart);
-  const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
-  const collection = collectionExists ? stateCollection : 'state';
+  // Use explicit collection name when provided (e.g. 'state'); otherwise dynamic by date
+  let collection = 'state';
+  if (arguments.length >= 5 && typeof collectionName === 'string' && collectionName) {
+    collection = collectionName;
+  } else {
+    const stateCollection = getStateCollectionName(paddedStart);
+    const collectionExists = await db.listCollections({ name: stateCollection }).hasNext();
+    collection = collectionExists ? stateCollection : 'state';
+  }
 
   const states = await db.collection(collection)
     .find(query)
