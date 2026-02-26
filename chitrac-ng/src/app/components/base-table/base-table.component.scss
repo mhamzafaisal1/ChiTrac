@@ -130,6 +130,10 @@ mat-row {
   color: var(--sg-color-white);
   font-weight: 600;
 }
+.grey {
+  color: var(--sg-color-grey, #757575);
+  font-weight: 600;
+}
 
 :host ::ng-deep {
   .mat-mdc-row {

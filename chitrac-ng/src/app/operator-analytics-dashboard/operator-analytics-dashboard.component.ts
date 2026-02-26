@@ -278,8 +278,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.rows = this.operatorData.map(response => {
       const effPct = response.metrics?.performance?.efficiency?.percentage ?? '';
       const effStr = typeof effPct === 'string' && effPct.endsWith('%') ? effPct : `${effPct}%`;
+      const hasCurrentMachine = response.currentMachine?.name != null && response.currentMachine?.name !== '';
+      const statusDot = hasCurrentMachine
+        ? getStatusDotByCode(response.currentStatus?.code)
+        : 'No Machine Dot';
       return {
-        'Status': getStatusDotByCode(response.currentStatus?.code),
+        'Status': statusDot,
         'Operator Name': response.operator.name,
         'Operator ID': response.operator.id,
         'Current Machine': response.currentMachine?.name || '',
