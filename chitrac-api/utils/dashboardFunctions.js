@@ -945,15 +945,49 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
         ]
       }).toArray();
 
+      // Group sessions by machine, then compute union of time ranges to avoid
+      // double-counting duplicate sessions (e.g. from concurrent simulator workers).
+      const sessionsByMachine = new Map();
       for (const s of pausedSessions) {
         const machineId = s.machine?.id ?? s.machine?.serial;
         if (machineId == null) continue;
         const sStart = s.timestamps?.start ? new Date(s.timestamps.start) : null;
-        const sEnd = s.timestamps?.end ? new Date(s.timestamps.end) : dayEndDate;
         if (!sStart) continue;
-        const { ovSec } = _sessionOverlap(sStart, sEnd, dayStartDate, dayEndDate);
+        const sEnd = s.timestamps?.end ? new Date(s.timestamps.end) : dayEndDate;
         const key = String(machineId);
-        pausedMsByMachine.set(key, (pausedMsByMachine.get(key) || 0) + Math.round(ovSec * 1000));
+        if (!sessionsByMachine.has(key)) sessionsByMachine.set(key, []);
+        sessionsByMachine.get(key).push({ start: sStart, end: sEnd });
+      }
+
+      for (const [key, ranges] of sessionsByMachine) {
+        // Clamp each range to [dayStartDate, dayEndDate] and sort by start
+        const clamped = ranges
+          .map(r => ({
+            start: r.start < dayStartDate ? dayStartDate : r.start,
+            end: r.end > dayEndDate ? dayEndDate : r.end
+          }))
+          .filter(r => r.start < r.end)
+          .sort((a, b) => a.start - b.start);
+
+        // Merge overlapping ranges (union)
+        let unionMs = 0;
+        let mergeEnd = null;
+        let mergeStart = null;
+        for (const r of clamped) {
+          if (mergeStart === null) {
+            mergeStart = r.start;
+            mergeEnd = r.end;
+          } else if (r.start <= mergeEnd) {
+            if (r.end > mergeEnd) mergeEnd = r.end;
+          } else {
+            unionMs += mergeEnd - mergeStart;
+            mergeStart = r.start;
+            mergeEnd = r.end;
+          }
+        }
+        if (mergeStart !== null) unionMs += mergeEnd - mergeStart;
+
+        pausedMsByMachine.set(key, unionMs);
       }
     }
 
@@ -961,8 +995,10 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
       const runningMs = total.runtimeMs || 0;
       const faultedMs = total.faultTimeMs || 0;
       const serialKey = String(total.machineSerial);
-      const pausedMs = pausedMsByMachine.get(serialKey) || 0;
-      const offlineMs = Math.max(0, windowMs - runningMs - faultedMs - pausedMs);
+      // Cap pausedMs so running + faulted + paused never exceeds the window
+      const maxDowntimeMs = Math.max(0, windowMs - runningMs - faultedMs);
+      const pausedMs = Math.min(pausedMsByMachine.get(serialKey) || 0, maxDowntimeMs);
+      const offlineMs = Math.max(0, maxDowntimeMs - pausedMs);
 
       return {
         serial: total.machineSerial,
