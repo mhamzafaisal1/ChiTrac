@@ -5390,9 +5390,16 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
         ],
       };
       if (serial != null) {
-        stateQuery.$and.push({
-          $or: [{ "machine.serial": serial }, { "machine.id": serial }],
-        });
+        const serialNum = parseInt(serial, 10);
+        const serialMatch = Number.isNaN(serialNum)
+          ? [{ "machine.serial": serial }, { "machine.id": serial }]
+          : [
+              { "machine.serial": serial },
+              { "machine.id": serial },
+              { "machine.serial": serialNum },
+              { "machine.id": serialNum },
+            ];
+        stateQuery.$and.push({ $or: serialMatch });
       }
 
       console.log("[MACHINE-ITEM-STATES] Querying state", stateQuery);

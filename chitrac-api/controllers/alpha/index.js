@@ -1711,6 +1711,39 @@ function constructor(server) {
         groupedStates = groupStatesByMachine(allStates);
       }
 
+      // Build current-status map from stateTicker (one doc per machine; status.id/code, machine.id/serial)
+      const machineSerialsForTicker = Object.keys(groupedStates).map((s) =>
+        parseInt(s, 10)
+      ).filter((n) => !Number.isNaN(n));
+      const tickerQuery =
+        machineSerialsForTicker.length > 0
+          ? {
+              $or: [
+                { "machine.serial": { $in: machineSerialsForTicker } },
+                { "machine.id": { $in: machineSerialsForTicker } },
+              ],
+            }
+          : {};
+      const tickers = await db
+        .collection(config.stateTickerCollectionName)
+        .find(tickerQuery)
+        .project({ "machine.serial": 1, "machine.id": 1, status: 1, timestamp: 1 })
+        .toArray();
+      const tickerByMachine = new Map();
+      tickers.forEach((ticker) => {
+        const serial = ticker.machine?.serial ?? ticker.machine?.id;
+        const id = ticker.machine?.id ?? ticker.machine?.serial;
+        const keys = [...new Set([serial, id].filter((k) => k != null))];
+        const existing = keys.length ? tickerByMachine.get(keys[0]) : null;
+        const existingTs = existing
+          ? new Date(existing.timestamp || 0).getTime()
+          : 0;
+        const ts = new Date(ticker.timestamp || 0).getTime();
+        if (!existing || ts >= existingTs) {
+          keys.forEach((k) => tickerByMachine.set(k, ticker));
+        }
+      });
+
       const results = [];
 
       // Process each machine's states
@@ -1720,8 +1753,28 @@ function constructor(server) {
         // Skip if no states found for this machine
         if (!states.length) continue;
 
-        // Extract all types of cycles
-        const cycles = extractAllCyclesFromStates(states, start, end);
+        // Normalize state docs for cycle extraction: state collection often has no status
+        // (LPLs use stateTicker for status). Treat missing status as running (1) so runtime
+        // accrues and matches report (machine-item-states-summary). extractAllCyclesFromStates
+        // otherwise defaults missing status to 0 (paused) and undercounts.
+        const normalizedStates = states.map((s) => {
+          const code = s.status?.code ?? s.status?.id;
+          const statusCode =
+            code !== undefined && code !== null ? code : 1;
+          return {
+            ...s,
+            status: {
+              ...s.status,
+              code: statusCode,
+              name:
+                s.status?.name ??
+                (statusCode === 1 ? "Run" : statusCode === 0 ? "Paused" : "Fault"),
+            },
+          };
+        });
+
+        // Extract all types of cycles (use normalized states so running cycles are detected)
+        const cycles = extractAllCyclesFromStates(normalizedStates, start, end);
         const runningCycles = cycles.running;
 
         // Get counts from legacy count collection
@@ -1766,8 +1819,21 @@ function constructor(server) {
         );
         const oee = calculateOEE(availability, efficiency, throughput);
 
-        // Get current status for this machine
+        // Current status from stateTicker (source of truth for LPLs etc.); fallback to last state doc
         const currentState = states[states.length - 1] || {};
+        const ticker =
+          tickerByMachine.get(parseInt(machineSerial, 10)) ??
+          tickerByMachine.get(machineSerial);
+        const currentStatusFromTicker = ticker?.status
+          ? {
+              code: ticker.status?.code ?? ticker.status?.id ?? 0,
+              name: ticker.status?.name ?? "Unknown",
+            }
+          : null;
+        const currentStatus = currentStatusFromTicker ?? {
+          code: currentState.status?.code ?? 0,
+          name: currentState.status?.name ?? "Unknown",
+        };
 
         // Format response for this machine
         const machineResponse = {
@@ -1775,10 +1841,7 @@ function constructor(server) {
             name: currentState.machine?.name || "Unknown",
             serial: currentState.machine?.serial || parseInt(machineSerial),
           },
-          currentStatus: {
-            code: currentState.status?.code || 0,
-            name: currentState.status?.name || "Unknown",
-          },
+          currentStatus,
           metrics: {
             runtime: {
               total: runtimeMs,
