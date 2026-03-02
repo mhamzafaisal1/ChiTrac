@@ -2,7 +2,7 @@
 const express = require("express");
 const config = require("../../modules/config");
 const { parseAndValidateQueryParams } = require("../../utils/time");
-const { buildFaultData } = require("../../utils/machineDashboardBuilder");
+const { buildFaultData } = require("../../utils/machineFunctions");
 const { fetchGroupedAnalyticsData } = require("../../utils/fetchData");
 const { getBookendedStatesAndTimeRange } = require("../../utils/bookendingBuilder");
 const {

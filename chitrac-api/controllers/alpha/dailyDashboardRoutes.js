@@ -40,10 +40,10 @@ module.exports = function (server) {
     buildOperatorPerformance,
     buildOperatorItemSummary,
     buildOperatorCountByItem,
-    buildOperatorCyclePie,
+    buildOperatorCyclePieFromGroup: buildOperatorCyclePie,
     buildOperatorFaultHistory,
     buildOperatorEfficiencyLine,
-  } = require("../../utils/operatorDashboardBuilder");
+  } = require("../../utils/operatorFunctions");
 
   const {
     buildMachinePerformance,
@@ -51,7 +51,7 @@ module.exports = function (server) {
     buildItemHourlyStack,
     buildFaultData,
     buildOperatorEfficiency
-  } = require("../../utils/machineDashboardBuilder");
+  } = require("../../utils/machineFunctions");
 
   const {
     parseAndValidateQueryParams,

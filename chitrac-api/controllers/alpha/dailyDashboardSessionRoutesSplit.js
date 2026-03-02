@@ -8,7 +8,7 @@ const {
   buildPlantwideMetricsByHourFromCache,
   buildDailyCountTotals,
   buildMachineOEE
-} = require("../../utils/dailyDashboardBuilder");
+} = require("../../utils/dashboardFunctions");
 const {
   buildDailyMachineStatusFromSessions,
   buildTopOperatorEfficiencyFromSessions,

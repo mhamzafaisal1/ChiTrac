@@ -69,7 +69,7 @@ const {
   buildMachineOEE,
   buildDailyItemHourlyStack,
   buildTopOperatorEfficiency,
-} = require("../../utils/dailyDashboardBuilder");
+} = require("../../utils/dashboardFunctions");
 
 const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
 const {
@@ -79,8 +79,8 @@ const {
   groupRecordsBySerial,
   buildPerformanceFromMachineRecord,
   buildItemSummaryFromRecords,
+  buildCurrentOperatorsFromTicker: buildCurrentOperators,
 } = require("../../utils/machineFunctions");
-const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 
 module.exports = function (server) {
   return constructor(server);

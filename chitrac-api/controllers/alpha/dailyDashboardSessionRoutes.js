@@ -7,7 +7,7 @@ const {
   buildDailyItemHourlyStack,
   buildPlantwideMetricsByHour,
   buildDailyCountTotals
-} = require("../../utils/dailyDashboardBuilder");
+} = require("../../utils/dashboardFunctions");
 const {
   buildDailyMachineStatusFromSessions,
   buildMachineOEEFromSessions,

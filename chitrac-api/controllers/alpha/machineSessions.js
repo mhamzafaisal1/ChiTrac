@@ -1,8 +1,8 @@
 const express = require("express");
 
 const { formatDuration } = require("../../utils/time");
-const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 const {
+  buildCurrentOperatorsFromTicker: buildCurrentOperators,
   normalizePPH,
   safeNumber,
   recalcSession,
@@ -21,6 +21,12 @@ const {
   queryMachineDailyCache,
   queryMachineSessions,
   combineMachineDashboardData,
+  // dashboard builder helpers used in hybrid routes
+  buildMachinePerformance,
+  buildMachineItemSummary,
+  buildItemHourlyStack,
+  buildFaultData,
+  buildOperatorEfficiency,
 } = require("../../utils/machineFunctions");
 
 module.exports = function (server) {
@@ -1188,14 +1194,6 @@ module.exports = function (server) {
       const {
         getBookendedStatesAndTimeRange,
       } = require("../../utils/bookendingBuilder");
-      const {
-        buildMachinePerformance,
-        buildMachineItemSummary,
-        buildItemHourlyStack,
-        buildFaultData,
-        buildOperatorEfficiency,
-        buildCurrentOperators,
-      } = require("../../utils/machineDashboardBuilder");
 
       // Split time range into complete days and partial days
       const startOfFirstDay = DateTime.fromJSDate(exactStart, {
@@ -1630,14 +1628,6 @@ module.exports = function (server) {
       const {
         getBookendedStatesAndTimeRange,
       } = require("../../utils/bookendingBuilder");
-      const {
-        buildMachinePerformance,
-        buildMachineItemSummary,
-        buildItemHourlyStack,
-        buildFaultData,
-        buildOperatorEfficiency,
-        buildCurrentOperators,
-      } = require("../../utils/machineDashboardBuilder");
 
       const groupedData = await fetchGroupedAnalyticsData(
         db,
