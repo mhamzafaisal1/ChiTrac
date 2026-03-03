@@ -4,7 +4,7 @@ const {
     fetchStatesForOperator,
     getCompletedCyclesForOperator
   } = require("./state");
-const { getStateCollectionName, getCountCollectionName, formatDuration, SYSTEM_TIMEZONE } = require("./time");
+const { getStateCollectionName, getCountCollectionName, formatDuration, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require("./time");
 const {
     calculateDowntime,
     calculateAvailability,
@@ -17,6 +17,7 @@ const {
 const { DateTime, Interval } = require("luxon");
 const config = require('../modules/config');
 const { getValidCountsForOperator, processCountStatistics, groupCountsByItem, extractItemNamesFromCounts } = require('./count');
+const { fetchGroupedAnalyticsData } = require('./machineFunctions');
 
 
 // ============================================================
@@ -2882,6 +2883,501 @@ async function fetchOperatorDashboardData(db, start, end) {
 }
 
 // ============================================================
+// getOperatorsSummaryRealTime
+// Used as fallback when cached operator summary data is missing or on error.
+//
+// Used in:
+//   - chitrac-api/controllers/alpha/operatorRoutes.js
+//     GET /analytics/operators-summary-daily-cached (fallback when no cache or on error)
+//   - chitrac-api/controllers/alpha/operatorSessions.js
+//     Multiple analytics routes that fall back to real-time operator summary:
+//     operators-summary-cached, operators-summary-daily-cached, operators-summary-hybrid,
+//     and other routes that call getOperatorsSummaryRealTime on empty cache or error.
+// ============================================================
+function getOperatorsSummaryRealTime(db, logger, config) {
+  return async function (req, res) {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const queryStart = req.query.start && !req.query.timeframe
+        ? new Date(DateTime.fromISO(req.query.start).toISO())
+        : new Date(start);
+      let queryEnd = req.query.end && !req.query.timeframe
+        ? new Date(DateTime.fromISO(req.query.end).toISO())
+        : new Date(end);
+      const now = new Date(DateTime.now().toISO());
+      if (queryEnd > now) queryEnd = now;
+      if (!(queryStart < queryEnd)) {
+        return res.status(416).json({ error: "start must be before end" });
+      }
+
+      const collName = config.operatorSessionCollectionName;
+      const coll = db.collection(collName);
+
+      const operatorIds = await coll.distinct("operator.id", {
+        "operator.id": { $ne: -1 },
+        $or: [
+          { "timestamps.start": { $gte: queryStart, $lte: queryEnd } },
+          { "timestamps.end": { $gte: queryStart, $lte: queryEnd } }
+        ]
+      });
+
+      if (!operatorIds.length) return res.json([]);
+
+      const rows = await Promise.all(
+        operatorIds.map(async (opId) => {
+          try {
+            const sessions = await coll.find({
+              "operator.id": opId,
+              $or: [
+                { "timestamps.start": { $gte: queryStart, $lte: queryEnd } },
+                { "timestamps.end": { $gte: queryStart, $lte: queryEnd } }
+              ]
+            })
+              .sort({ "timestamps.start": 1 })
+              .toArray();
+
+            if (!sessions.length) return null;
+
+            const mostRecent = sessions[sessions.length - 1];
+            let currentMachine = {};
+            let statusSource = {};
+            let currentStatus = {};
+
+            if (mostRecent.endState) {
+              currentMachine = {
+                serial: null,
+                name: null
+              };
+              statusSource = mostRecent.endState;
+              const statusId = statusSource?.status?.id ?? statusSource?.status?.code ?? 0;
+              currentStatus = {
+                code: statusId,
+                name: statusSource?.status?.name ?? "Unknown"
+              };
+            } else {
+              currentMachine = {
+                serial: mostRecent?.machine?.serial ?? null,
+                name: mostRecent?.machine?.name ?? null
+              };
+              statusSource = mostRecent.startState;
+              currentStatus = {
+                code: 1,
+                name: "Running"
+              };
+            }
+
+            const operatorName =
+              mostRecent?.operator?.name ??
+              sessions[0]?.operator?.name ??
+              "Unknown";
+
+            {
+              const first = sessions[0];
+              const firstStart = new Date(first.timestamps?.start);
+              if (firstStart < queryStart) {
+                sessions[0] = truncateAndRecalcOperator(first, queryStart, first.timestamps?.end ? new Date(first.timestamps.end) : queryEnd, logger);
+              }
+            }
+
+            {
+              const lastIdx = sessions.length - 1;
+              const last = sessions[lastIdx];
+              const lastEnd = last.timestamps?.end ? new Date(last.timestamps.end) : null;
+              if (!lastEnd || lastEnd > queryEnd) {
+                const effectiveEnd = queryEnd;
+                sessions[lastIdx] = truncateAndRecalcOperator(
+                  last,
+                  new Date(sessions[lastIdx].timestamps.start),
+                  effectiveEnd,
+                  logger
+                );
+              }
+            }
+
+            let runtimeMs = 0;
+            let workTimeSec = 0;
+            let totalCount = 0;
+            let misfeedCount = 0;
+            let totalTimeCredit = 0;
+
+            const allCounts = await db
+              .collection("count")
+              .find({
+                "operator.id": opId,
+                "timestamps.create": { $gte: queryStart, $lte: queryEnd },
+              })
+              .toArray();
+
+            const validCounts = allCounts.filter(c => !c.misfeed);
+            const misfeedCounts = allCounts.filter(c => c.misfeed);
+
+            totalCount = validCounts.length;
+            misfeedCount = misfeedCounts.length;
+
+            for (const s of sessions) {
+              const sessionStart = new Date(s.timestamps?.start);
+              const sessionEnd = s.timestamps?.end ? new Date(s.timestamps.end) : queryEnd;
+              const clampedStart = sessionStart < queryStart ? queryStart : sessionStart;
+              const clampedEnd = sessionEnd > queryEnd ? queryEnd : sessionEnd;
+              const sessionRuntimeMs = Math.max(0, clampedEnd - clampedStart);
+
+              runtimeMs += sessionRuntimeMs;
+            }
+
+            workTimeSec = runtimeMs / 1000;
+
+            const perItemCounts = new Map();
+
+            for (const c of validCounts) {
+              const id = c.item?.id;
+              if (id != null) {
+                perItemCounts.set(id, (perItemCounts.get(id) || 0) + 1);
+              }
+            }
+
+            let items = [];
+            for (const s of sessions) {
+              const sessionItems = s.program?.items || s.states?.start?.program?.items || [];
+              if (sessionItems.length > 0) {
+                items = sessionItems;
+                break;
+              }
+            }
+
+            for (const [id, cnt] of perItemCounts) {
+              const item = items.find((it) => it && it.id === id);
+              if (item && item.standard) {
+                const pph = normalizePPH(item.standard);
+                if (pph > 0) {
+                  totalTimeCredit += cnt / (pph / 3600);
+                }
+              }
+            }
+
+            const totalMs = Math.max(0, queryEnd - queryStart);
+            const downtimeMs = Math.max(0, totalMs - runtimeMs);
+            const availability = totalMs ? (runtimeMs / totalMs) : 0;
+            const throughput = (totalCount + misfeedCount) ? (totalCount / (totalCount + misfeedCount)) : 0;
+            const efficiency = workTimeSec > 0 ? totalTimeCredit / workTimeSec : 0;
+            const oee = availability * throughput * efficiency;
+
+            return {
+              operator: { id: opId, name: operatorName },
+              currentStatus,
+              currentMachine,
+              metrics: {
+                runtime: {
+                  total: runtimeMs,
+                  formatted: formatDuration(runtimeMs)
+                },
+                downtime: {
+                  total: downtimeMs,
+                  formatted: formatDuration(downtimeMs)
+                },
+                output: {
+                  totalCount,
+                  misfeedCount
+                },
+                totalCount,
+                misfeedCount,
+                performance: {
+                  availability: {
+                    value: availability,
+                    percentage: (availability * 100).toFixed(2)
+                  },
+                  throughput: {
+                    value: throughput,
+                    percentage: (throughput * 100).toFixed(2)
+                  },
+                  efficiency: {
+                    value: efficiency,
+                    percentage: (efficiency * 100).toFixed(2)
+                  },
+                  oee: {
+                    value: oee,
+                    percentage: (oee * 100).toFixed(2)
+                  }
+                }
+              },
+              timeRange: { start: queryStart, end: queryEnd }
+            };
+          } catch (sessionError) {
+            logger.error(`Error processing operator ${opId}:`, sessionError);
+            return null;
+          }
+        })
+      );
+
+      res.json(rows.filter(Boolean));
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      if (
+        err.message.includes("Start and end dates are required") ||
+        err.message.includes("start/startTime and end/endTime are required") ||
+        err.message.includes("Invalid date format") ||
+        err.message.includes("Start date must be before end date") ||
+        err.message.includes("Invalid timeframe")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+      res.status(500).json({ error: "Failed to build operators summary" });
+    }
+  };
+}
+
+// --- Function moved from bookendingBuilder.js (formerly utils/bookendingBuilder.js) ---
+// Returns bookended state data and true session start/end times for an operator.
+// Fetches in-range, pre-start, and post-end states; normalizes timestamps and machine fields.
+async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end) {
+  const now = new Date();
+  const startDate = new Date(start);
+  let endDate = new Date(end);
+  if (endDate > now) endDate = now;
+
+  const stateCollection = getStateCollectionName(startDate);
+
+  const inRangeStatesQ = db.collection(stateCollection)
+    .find({
+      'operators.id': operatorId,
+      'timestamps.create': { $gte: startDate, $lte: endDate }
+    })
+    .sort({ 'timestamps.create': 1 });
+
+  const beforeStartQ = db.collection(stateCollection)
+    .find({
+      'operators.id': operatorId,
+      'timestamps.create': { $lt: startDate }
+    })
+    .sort({ 'timestamps.create': -1 })
+    .limit(1);
+
+  const afterEndQ = db.collection(stateCollection)
+    .find({
+      'operators.id': operatorId,
+      'timestamps.create': { $gt: endDate }
+    })
+    .sort({ 'timestamps.create': 1 })
+    .limit(1);
+
+  const [inRangeStates, [beforeStart], [afterEnd]] = await Promise.all([
+    inRangeStatesQ.toArray(),
+    beforeStartQ.toArray(),
+    afterEndQ.toArray()
+  ]);
+
+  const normalizeState = (state) => {
+    if (!state.timestamp && state.timestamps?.create) {
+      state.timestamp = state.timestamps.create;
+    }
+    if (!state.machine?.serial && state.machine?.id) {
+      state.machine = state.machine || {};
+      state.machine.serial = state.machine.id;
+    }
+    return state;
+  };
+
+  const fullStates = [
+    ...(beforeStart ? [normalizeState(beforeStart)] : []),
+    ...inRangeStates.map(normalizeState),
+    ...(afterEnd ? [normalizeState(afterEnd)] : [])
+  ];
+
+  if (!fullStates.length) return null;
+
+  fullStates.sort((a, b) => {
+    const aTime = a.timestamp || a.timestamps?.create;
+    const bTime = b.timestamp || b.timestamps?.create;
+    return new Date(aTime) - new Date(bTime);
+  });
+
+  const { running: runCycles } = extractAllCyclesFromStates(fullStates, startDate, endDate);
+  if (!runCycles.length) return null;
+
+  const sessionStart = runCycles[0].start;
+  const sessionEnd = runCycles[runCycles.length - 1].end;
+
+  const filteredStates = fullStates.filter(s => {
+    const stateTime = s.timestamp || s.timestamps?.create;
+    return new Date(stateTime) >= sessionStart && new Date(stateTime) <= sessionEnd;
+  });
+
+  return { sessionStart, sessionEnd, states: filteredStates };
+}
+
+// --- Functions moved from fetchData.js (formerly utils/fetchData.js) ---
+
+async function fetchGroupedAnalyticsDataForOperator(db, adjustedStart, end, operatorId) {
+  const grouped = await fetchGroupedAnalyticsData(
+    db,
+    new Date(adjustedStart),
+    new Date(end),
+    'operator',
+    { operatorId }
+  );
+
+  return grouped[operatorId] || {
+    states: [],
+    counts: {
+      all: [],
+      valid: [],
+      misfeed: []
+    },
+    machineNames: {}
+  };
+}
+
+// Fetches and groups state + count data by machine or operator for a given time range.
+// Includes operators array on state records. Use for operator-centric analytics.
+async function fetchGroupedAnalyticsDataWithOperators(db, start, end, groupBy = 'machine', options = {}) {
+  const { targetSerials = [], operatorId = null } = options;
+
+  const stateQuery = {
+    timestamp: { $gte: start, $lte: end },
+    "machine.serial": { $type: "int" }
+  };
+
+  if (groupBy === 'machine' && targetSerials.length > 0) {
+    stateQuery["machine.serial"] = { $in: targetSerials };
+  }
+
+  const countQuery = {
+    timestamp: { $gte: start, $lte: end },
+    "machine.serial": { $type: "int" }
+  };
+
+  if (groupBy === 'machine' && targetSerials.length > 0) {
+    countQuery["machine.serial"] = { $in: targetSerials };
+  }
+
+  if (groupBy === 'operator' && operatorId !== null) {
+    countQuery["operator.id"] = operatorId;
+  }
+
+  const [states, counts] = await Promise.all([
+    db.collection("state")
+      .find(stateQuery)
+      .project({
+        timestamp: 1,
+        "machine.serial": 1,
+        "machine.name": 1,
+        "program.mode": 1,
+        "status.code": 1,
+        "status.name": 1,
+        operators: 1
+      })
+      .sort({ timestamp: 1 })
+      .toArray(),
+
+    db.collection("count")
+      .find(countQuery)
+      .project({
+        timestamp: 1,
+        "machine.serial": 1,
+        "operator.id": 1,
+        "operator.name": 1,
+        "item.id": 1,
+        "item.name": 1,
+        "item.standard": 1,
+        misfeed: 1
+      })
+      .sort({ timestamp: 1 })
+      .toArray()
+  ]);
+
+  const grouped = {};
+  const machineNameMap = {};
+
+  for (const state of states) {
+    if (state.machine?.serial && state.machine?.name) {
+      machineNameMap[state.machine.serial] = state.machine.name;
+    }
+  }
+
+  if (groupBy === 'machine') {
+    for (const state of states) {
+      const serial = state.machine?.serial;
+      if (serial == null) continue;
+
+      if (!grouped[serial]) {
+        grouped[serial] = {
+          states: [],
+          counts: { all: [], valid: [], misfeed: [] },
+          machineNames: machineNameMap
+        };
+      }
+
+      grouped[serial].states.push(state);
+    }
+
+    for (const count of counts) {
+      const serial = count.machine?.serial;
+      if (serial == null) continue;
+
+      if (!grouped[serial]) {
+        grouped[serial] = {
+          states: [],
+          counts: { all: [], valid: [], misfeed: [] },
+          machineNames: machineNameMap
+        };
+      }
+
+      grouped[serial].counts.all.push(count);
+
+      if (count.misfeed === true) {
+        grouped[serial].counts.misfeed.push(count);
+      } else if (count.operator?.id !== -1) {
+        grouped[serial].counts.valid.push(count);
+      }
+    }
+  } else if (groupBy === 'operator') {
+    const operatorMachineMap = {};
+
+    for (const count of counts) {
+      const opId = count.operator?.id;
+      const machineSerial = count.machine?.serial;
+      if (opId && machineSerial) {
+        if (!operatorMachineMap[opId]) {
+          operatorMachineMap[opId] = new Set();
+        }
+        operatorMachineMap[opId].add(machineSerial);
+      }
+    }
+
+    for (const count of counts) {
+      const opId = count.operator?.id;
+      if (opId == null) continue;
+
+      if (!grouped[opId]) {
+        grouped[opId] = {
+          states: [],
+          counts: { all: [], valid: [], misfeed: [] },
+          machineNames: machineNameMap
+        };
+      }
+
+      grouped[opId].counts.all.push(count);
+
+      if (count.misfeed === true) {
+        grouped[opId].counts.misfeed.push(count);
+      } else if (count.operator?.id !== -1) {
+        grouped[opId].counts.valid.push(count);
+      }
+    }
+
+    for (const [opId, machineSerials] of Object.entries(operatorMachineMap)) {
+      if (grouped[opId]) {
+        const operatorStates = states.filter(state =>
+          state.machine?.serial && machineSerials.has(state.machine.serial)
+        );
+        grouped[opId].states = operatorStates;
+      }
+    }
+  }
+
+  return grouped;
+}
+
+// ============================================================
 // Module exports
 // ============================================================
 
@@ -2934,4 +3430,10 @@ module.exports = {
     buildOptimizedOperatorCyclePie,
     buildOptimizedOperatorFaultHistory,
     fetchOperatorDashboardData,
+    getOperatorsSummaryRealTime,
+    // From bookendingBuilder.js
+    getBookendedOperatorStatesAndTimeRange,
+    // From fetchData.js
+    fetchGroupedAnalyticsDataForOperator,
+    fetchGroupedAnalyticsDataWithOperators,
 };

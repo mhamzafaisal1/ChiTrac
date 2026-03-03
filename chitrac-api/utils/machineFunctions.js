@@ -3,15 +3,12 @@
     createPaddedTimeRange,
     formatDuration,
     getStateCollectionName,
+    getCountCollectionName,
     getHourlyIntervals,
     SYSTEM_TIMEZONE,
   } = require("./time");
   const { DateTime, Interval } = require("luxon");
   const config = require("../modules/config");
-  const { fetchGroupedAnalyticsData } = require("./fetchData");
-  const {
-    getBookendedStatesAndTimeRange,
-  } = require("./bookendingBuilder");
   const {
     calculateDowntime,
     calculateAvailability,
@@ -1982,6 +1979,668 @@ async function getActiveMachineSerials(db, start, end) {
     return rows.filter(Boolean);
   }
 
+  // ---------------------------------------------------------------------------
+  // getMachinesSummaryRealTime
+  // Used as fallback when cached data is missing or on error.
+  // Used in:
+  //   - chitrac-api/controllers/alpha/machineRoutes.js
+  //     GET /analytics/machines-summary-daily-cached (fallback when no cache or on error)
+  //   - chitrac-api/controllers/alpha/machineSessions.js
+  //     Various analytics routes that fall back to real-time summary (e.g. hybrid routes)
+  // ---------------------------------------------------------------------------
+  function getMachinesSummaryRealTime(db, logger, config) {
+    return async function (req, res) {
+      try {
+        const { start, end } = parseAndValidateQueryParams(req);
+        const queryStart = new Date(start);
+        let queryEnd = new Date(end);
+        const now = new Date();
+        if (queryEnd > now) queryEnd = now;
+
+        logger.info(
+          `[machineSessions] Real-time calculation for range: ${queryStart.toISOString()} to ${queryEnd.toISOString()}`
+        );
+
+        const activeSerials = new Set(
+          await db
+            .collection(config.machineCollectionName)
+            .distinct("serial", { active: true })
+        );
+
+        logger.info(
+          `[machineSessions] Found ${activeSerials.size} active machines: ${[...activeSerials].join(", ")}`
+        );
+
+        const tickers = await db
+          .collection(config.stateTickerCollectionName)
+          .find({ "machine.id": { $in: [...activeSerials] } })
+          .project({ _id: 0, "machine.id": 1, "machine.serial": 1, "machine.name": 1, status: 1, timestamp: 1 })
+          .toArray();
+
+        logger.info(
+          `[machineSessions] Found ${tickers.length} tickers for active machines`
+        );
+
+        const latestTickers = new Map();
+        tickers.forEach((ticker) => {
+          const id = Number(ticker.machine?.id);
+          const ts = new Date(ticker.timestamp || 0);
+          const existing = latestTickers.get(id);
+          if (!existing || ts > new Date(existing.timestamp || 0)) {
+            latestTickers.set(id, ticker);
+          }
+        });
+
+        logger.info(
+          `[machineSessions] After deduplication: ${latestTickers.size} unique machines`
+        );
+
+        const results = await Promise.all(
+          [...latestTickers.values()].map(async (t) => {
+            const { machine, status } = t || {};
+            const serial = machine?.id || machine?.serial;
+            if (!serial) {
+              return null;
+            }
+
+            const normalizedMachine = {
+              serial: serial,
+              name: machine?.name || `Serial ${serial}`,
+            };
+
+            const sessions = await db
+              .collection(config.machineSessionCollectionName)
+              .find({
+                "machine.id": serial,
+                "timestamps.start": { $lt: queryEnd },
+                $or: [
+                  { "timestamps.end": { $gt: queryStart } },
+                  { "timestamps.end": { $exists: false } },
+                ],
+              })
+              .sort({ "timestamps.start": 1 })
+              .toArray();
+
+            logger.info(
+              `[machineSessions] Machine ${serial}: Found ${sessions.length} sessions in time range`
+            );
+
+            if (!sessions.length) {
+              const totalMs = queryEnd - queryStart;
+              return formatMachinesSummaryRow({
+                machine: normalizedMachine,
+                status,
+                runtimeMs: 0,
+                downtimeMs: totalMs,
+                totalCount: 0,
+                misfeedCount: 0,
+                workTimeSec: 0,
+                totalTimeCredit: 0,
+                queryStart,
+                queryEnd,
+              });
+            }
+
+            {
+              const first = sessions[0];
+              const firstStart = new Date(first.timestamps?.start);
+              if (firstStart < queryStart) {
+                sessions[0] = truncateAndRecalc(
+                  first,
+                  queryStart,
+                  first.timestamps?.end
+                    ? new Date(first.timestamps.end)
+                    : queryEnd
+                );
+              }
+            }
+
+            {
+              const lastIdx = sessions.length - 1;
+              const last = sessions[lastIdx];
+              const lastEnd = last.timestamps?.end
+                ? new Date(last.timestamps.end)
+                : null;
+
+              if (!lastEnd || lastEnd > queryEnd) {
+                const effectiveEnd = lastEnd ? queryEnd : queryEnd;
+                sessions[lastIdx] = truncateAndRecalc(
+                  last,
+                  new Date(sessions[lastIdx].timestamps.start),
+                  effectiveEnd
+                );
+              }
+            }
+
+            const allCounts = await db
+              .collection("count")
+              .find({
+                "machine.id": serial,
+                "timestamps.create": { $gte: queryStart, $lte: queryEnd },
+              })
+              .toArray();
+
+            const validCounts = allCounts.filter(c => !c.misfeed);
+            const misfeedCounts = allCounts.filter(c => c.misfeed);
+
+            logger.info(
+              `[machineSessions] Machine ${serial}: Found ${validCounts.length} valid counts, ${misfeedCounts.length} misfeed counts in time window`
+            );
+
+            let runtimeMs = 0;
+            let workTimeSec = 0;
+            let totalTimeCredit = 0;
+
+            for (const s of sessions) {
+              const sessionStart = new Date(s.timestamps?.start);
+              const sessionEnd = s.timestamps?.end ? new Date(s.timestamps.end) : queryEnd;
+              const clampedStart = sessionStart < queryStart ? queryStart : sessionStart;
+              const clampedEnd = sessionEnd > queryEnd ? queryEnd : sessionEnd;
+              const sessionRuntimeMs = Math.max(0, clampedEnd - clampedStart);
+
+              const operators = s.states?.start?.operators || [];
+              const activeStations = operators.filter((op) => op && op.id !== -1).length;
+              const sessionWorkTimeSec = (sessionRuntimeMs / 1000) * activeStations;
+
+              runtimeMs += sessionRuntimeMs;
+              workTimeSec += sessionWorkTimeSec;
+            }
+
+            const items = sessions[0]?.program?.items || sessions[0]?.states?.start?.program?.items || [];
+            const perItemCounts = new Map();
+
+            for (const c of validCounts) {
+              const id = c.item?.id;
+              if (id != null) {
+                perItemCounts.set(id, (perItemCounts.get(id) || 0) + 1);
+              }
+            }
+
+            for (const [id, cnt] of perItemCounts) {
+              const item = items.find((it) => it && it.id === id);
+              if (item && item.standard) {
+                const pph = normalizePPH(item.standard);
+                if (pph > 0) {
+                  totalTimeCredit += cnt / (pph / 3600);
+                }
+              }
+            }
+
+            const totalCount = validCounts.length;
+            const misfeedCount = misfeedCounts.length;
+            const downtimeMs = Math.max(0, queryEnd - queryStart - runtimeMs);
+
+            return formatMachinesSummaryRow({
+              machine: normalizedMachine,
+              status,
+              runtimeMs,
+              downtimeMs,
+              totalCount,
+              misfeedCount,
+              workTimeSec,
+              totalTimeCredit,
+              queryStart,
+              queryEnd,
+            });
+          })
+        );
+
+        const finalResults = results.filter(Boolean);
+        logger.info(
+          `[machineSessions] Returning ${finalResults.length} machine summary results`
+        );
+        res.json(finalResults);
+      } catch (err) {
+        logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+
+        if (
+          err.message.includes("Start and end dates are required") ||
+          err.message.includes("start/startTime and end/endTime are required") ||
+          err.message.includes("Invalid date format") ||
+          err.message.includes("Start date must be before end date") ||
+          err.message.includes("Invalid timeframe")
+        ) {
+          return res.status(400).json({ error: err.message });
+        }
+
+        res.status(500).json({ error: "Failed to build machines summary" });
+      }
+    };
+  }
+
+  // ============================================================
+  // Function moved from bookendingBuilder.js (formerly utils/bookendingBuilder.js)
+  // ============================================================
+  // Returns bookended state data and true session start/end times per machine.
+  // Fetches states before/after range to extend run sessions, normalizes timestamps and machine fields.
+  async function getBookendedStatesAndTimeRange(db, serial, start, end) {
+    const serialNum = parseInt(serial);
+    let startDate = new Date(start);
+    let endDate = new Date(end);
+    const now = new Date();
+
+    if (endDate > now) endDate = now;
+
+    const startISO = startDate.toISOString();
+    const endISO = endDate.toISOString();
+
+    const stateCollection = getStateCollectionName(startDate);
+
+    const inRangeStatesQ = db.collection(stateCollection)
+      .find({
+        $or: [
+          {
+            $or: [
+              { "machine.id": serialNum },
+              { "machine.serial": serialNum }
+            ],
+            "timestamps.create": { $gte: startISO, $lte: endISO }
+          },
+          {
+            $or: [
+              { "machine.id": serialNum },
+              { "machine.serial": serialNum }
+            ],
+            timestamp: { $gte: startDate, $lte: endDate }
+          }
+        ]
+      })
+      .project({
+        timestamp: 1,
+        "timestamps.create": 1,
+        "machine.serial": 1,
+        "machine.id": 1,
+        "machine.name": 1,
+        "program.mode": 1,
+        "status.code": 1,
+        "status.name": 1
+      })
+      .sort({ "timestamps.create": 1, timestamp: 1 });
+
+    const beforeStartQ = db.collection(stateCollection)
+      .find({
+        $or: [
+          {
+            $or: [
+              { "machine.id": serialNum },
+              { "machine.serial": serialNum }
+            ],
+            "timestamps.create": { $lt: startISO }
+          },
+          {
+            $or: [
+              { "machine.id": serialNum },
+              { "machine.serial": serialNum }
+            ],
+            timestamp: { $lt: startDate }
+          }
+        ]
+      })
+      .project({
+        timestamp: 1,
+        "timestamps.create": 1,
+        "machine.serial": 1,
+        "machine.id": 1,
+        "machine.name": 1,
+        "program.mode": 1,
+        "status.code": 1,
+        "status.name": 1
+      })
+      .sort({ "timestamps.create": -1, timestamp: -1 })
+      .limit(1);
+
+    const afterEndQ = db.collection(stateCollection)
+      .find({
+        $or: [
+          {
+            $or: [
+              { "machine.id": serialNum },
+              { "machine.serial": serialNum }
+            ],
+            "timestamps.create": { $gt: endISO }
+          },
+          {
+            $or: [
+              { "machine.id": serialNum },
+              { "machine.serial": serialNum }
+            ],
+            timestamp: { $gt: endDate }
+          }
+        ]
+      })
+      .project({
+        timestamp: 1,
+        "timestamps.create": 1,
+        "machine.serial": 1,
+        "machine.id": 1,
+        "machine.name": 1,
+        "program.mode": 1,
+        "status.code": 1,
+        "status.name": 1
+      })
+      .sort({ "timestamps.create": 1, timestamp: 1 })
+      .limit(1);
+
+    const [inRangeStates, [beforeStart], [afterEnd]] = await Promise.all([
+      inRangeStatesQ.toArray(),
+      beforeStartQ.toArray(),
+      afterEndQ.toArray()
+    ]);
+
+    const normalizeState = (state) => {
+      if (!state.timestamp && state.timestamps?.create) {
+        state.timestamp = state.timestamps.create;
+      }
+      if (!state.machine?.serial && state.machine?.id) {
+        state.machine = state.machine || {};
+        state.machine.serial = state.machine.id;
+      }
+      return state;
+    };
+
+    const fullStates = [
+      ...(beforeStart ? [normalizeState(beforeStart)] : []),
+      ...inRangeStates.map(normalizeState),
+      ...(afterEnd ? [normalizeState(afterEnd)] : [])
+    ].sort((a, b) => {
+      const aTime = a.timestamp || a.timestamps?.create;
+      const bTime = b.timestamp || b.timestamps?.create;
+      return new Date(aTime) - new Date(bTime);
+    });
+
+    if (!fullStates.length) return null;
+
+    const { running: runSessions } = extractAllCyclesFromStates(fullStates, startDate, endDate);
+    if (!runSessions.length) return null;
+
+    const sessionStart = runSessions[0].start;
+    const sessionEnd = runSessions.at(-1).end;
+
+    const filteredStates = fullStates.filter(s => {
+      const stateTime = s.timestamp || s.timestamps?.create;
+      return new Date(stateTime) >= sessionStart &&
+             new Date(stateTime) <= sessionEnd;
+    });
+
+    return {
+      sessionStart,
+      sessionEnd,
+      states: filteredStates
+    };
+  }
+
+  // ============================================================
+  // Functions moved from fetchData.js (formerly utils/fetchData.js)
+  // ============================================================
+  // Core fetch: fetches and groups state + count data by machine or operator for a given time range.
+  // Uses timestamps.create, supports machine.serial/machine.id, normalizes documents for downstream use.
+  async function fetchGroupedAnalyticsData(db, start, end, groupBy = 'machine', options = {}) {
+    const { targetSerials = [], operatorId = null } = options;
+
+    const startDate = start instanceof Date ? start : new Date(start);
+    const endDate = end instanceof Date ? end : new Date(end);
+
+    const countQuery = {
+      "timestamps.create": { $gte: startDate, $lte: endDate },
+      $or: [
+        { "machine.serial": { $type: "int" } },
+        { "machine.id": { $type: "int" } }
+      ]
+    };
+
+    if (groupBy === 'machine' && targetSerials.length > 0) {
+      countQuery.$or = [
+        { "machine.serial": { $in: targetSerials } },
+        { "machine.id": { $in: targetSerials } }
+      ];
+    }
+
+    if (groupBy === 'operator' && operatorId !== null) {
+      countQuery["operator.id"] = operatorId;
+    }
+
+    let states = [];
+    const countCollection = getCountCollectionName(start);
+
+    let counts = await db.collection(countCollection)
+      .find(countQuery)
+      .project({
+        "timestamps.create": 1,
+        "machine.serial": 1,
+        "machine.id": 1,
+        "operator.id": 1,
+        "operator.name": 1,
+        "item.id": 1,
+        "item.name": 1,
+        "item.standard": 1,
+        misfeed: 1
+      })
+      .sort({ "timestamps.create": 1 })
+      .toArray();
+
+    counts = counts.map(count => {
+      if (!count.timestamp && count.timestamps?.create) {
+        count.timestamp = count.timestamps.create;
+      }
+      if (!count.machine?.serial && count.machine?.id) {
+        count.machine = count.machine || {};
+        count.machine.serial = count.machine.id;
+      }
+      return count;
+    });
+
+    if (groupBy === 'operator') {
+      const machineSerialsUsed = Array.from(
+        new Set(counts.map(c => c.machine?.serial).filter(Boolean))
+      );
+      const stateQuery = {
+        $or: [
+          {
+            timestamp: { $gte: startDate, $lte: endDate },
+            $or: [
+              { "machine.serial": { $in: machineSerialsUsed } },
+              { "machine.id": { $in: machineSerialsUsed } }
+            ]
+          },
+          {
+            "timestamps.create": { $gte: startDate, $lte: endDate },
+            $or: [
+              { "machine.serial": { $in: machineSerialsUsed } },
+              { "machine.id": { $in: machineSerialsUsed } }
+            ]
+          }
+        ]
+      };
+      const stateCollection = getStateCollectionName(start);
+      states = await db.collection(stateCollection)
+        .find(stateQuery)
+        .project({
+          timestamp: 1,
+          "timestamps.create": 1,
+          "machine.serial": 1,
+          "machine.id": 1,
+          "machine.name": 1,
+          "program.mode": 1,
+          "status.code": 1,
+          "status.name": 1,
+          "_tickerDoc.status": 1
+        })
+        .sort({ timestamp: 1, "timestamps.create": 1 })
+        .toArray();
+    } else {
+      const stateQuery = {
+        $or: [
+          {
+            timestamp: { $gte: startDate, $lte: endDate },
+            $or: [
+              { "machine.serial": { $type: "int" } },
+              { "machine.id": { $type: "int" } }
+            ]
+          },
+          {
+            "timestamps.create": { $gte: startDate, $lte: endDate },
+            $or: [
+              { "machine.serial": { $type: "int" } },
+              { "machine.id": { $type: "int" } }
+            ]
+          }
+        ]
+      };
+      if (groupBy === 'machine' && targetSerials.length > 0) {
+        stateQuery.$or = [
+          {
+            timestamp: { $gte: startDate, $lte: endDate },
+            $or: [
+              { "machine.serial": { $in: targetSerials } },
+              { "machine.id": { $in: targetSerials } }
+            ]
+          },
+          {
+            "timestamps.create": { $gte: startDate, $lte: endDate },
+            $or: [
+              { "machine.serial": { $in: targetSerials } },
+              { "machine.id": { $in: targetSerials } }
+            ]
+          }
+        ];
+      }
+      const stateCollection = getStateCollectionName(start);
+      states = await db.collection(stateCollection)
+        .find(stateQuery)
+        .project({
+          timestamp: 1,
+          "timestamps.create": 1,
+          "machine.serial": 1,
+          "machine.id": 1,
+          "machine.name": 1,
+          "program.mode": 1,
+          "status.code": 1,
+          "status.name": 1,
+          "_tickerDoc.status": 1
+        })
+        .sort({ timestamp: 1, "timestamps.create": 1 })
+        .toArray();
+    }
+
+    states = states.map(state => {
+      if (!state.timestamp && state.timestamps?.create) {
+        state.timestamp = state.timestamps.create;
+      }
+      if (!state.machine?.serial && state.machine?.id) {
+        state.machine = state.machine || {};
+        state.machine.serial = state.machine.id;
+      }
+      if (!state.status && state._tickerDoc?.status) {
+        state.status = state._tickerDoc.status;
+      }
+      return state;
+    });
+
+    const grouped = {};
+    const machineNameMap = {};
+    for (const state of states) {
+      if (state.machine?.serial && state.machine?.name) {
+        machineNameMap[state.machine.serial] = state.machine.name;
+      }
+    }
+
+    if (groupBy === 'machine') {
+      for (const state of states) {
+        const serial = state.machine?.serial;
+        if (serial === undefined || serial === null) continue;
+
+        if (!grouped[serial]) {
+          grouped[serial] = {
+            states: [],
+            counts: { all: [], valid: [], misfeed: [] },
+            machineNames: machineNameMap
+          };
+        }
+        grouped[serial].states.push(state);
+      }
+
+      for (const count of counts) {
+        const serial = count.machine?.serial;
+        if (serial === undefined || serial === null) continue;
+
+        if (!grouped[serial]) {
+          grouped[serial] = {
+            states: [],
+            counts: { all: [], valid: [], misfeed: [] },
+            machineNames: machineNameMap
+          };
+        }
+        grouped[serial].counts.all.push(count);
+
+        if (count.misfeed === true) {
+          grouped[serial].counts.misfeed.push(count);
+        } else if (count.operator?.id !== -1) {
+          grouped[serial].counts.valid.push(count);
+        }
+      }
+    } else if (groupBy === 'operator') {
+      const operatorMachineMap = {};
+      for (const count of counts) {
+        const operatorId = count.operator?.id;
+        const machineSerial = count.machine?.serial;
+        if (operatorId && machineSerial) {
+          if (!operatorMachineMap[operatorId]) {
+            operatorMachineMap[operatorId] = new Set();
+          }
+          operatorMachineMap[operatorId].add(machineSerial);
+        }
+      }
+
+      for (const count of counts) {
+        const operatorId = count.operator?.id;
+        if (operatorId === undefined || operatorId === null) continue;
+
+        if (!grouped[operatorId]) {
+          grouped[operatorId] = {
+            states: [],
+            counts: { all: [], valid: [], misfeed: [] },
+            machineNames: machineNameMap
+          };
+        }
+        grouped[operatorId].counts.all.push(count);
+
+        if (count.misfeed === true) {
+          grouped[operatorId].counts.misfeed.push(count);
+        } else if (count.operator?.id !== -1) {
+          grouped[operatorId].counts.valid.push(count);
+        }
+      }
+
+      for (const [operatorId, machineSerials] of Object.entries(operatorMachineMap)) {
+        if (grouped[operatorId]) {
+          const operatorStates = states.filter(state =>
+            state.machine?.serial && machineSerials.has(state.machine.serial)
+          );
+          grouped[operatorId].states = operatorStates;
+        }
+      }
+    }
+
+    return grouped;
+  }
+
+  // Wrapper: fetches grouped analytics for a single machine. Returns empty structure if no data.
+  async function fetchGroupedAnalyticsDataForMachine(db, start, end, machineSerial) {
+    const grouped = await fetchGroupedAnalyticsData(
+      db,
+      new Date(start),
+      new Date(end),
+      'machine',
+      { targetSerials: [machineSerial] }
+    );
+
+    return grouped[machineSerial] || {
+      states: [],
+      counts: { all: [], valid: [], misfeed: [] },
+      machineNames: {}
+    };
+  }
+
   module.exports = {
     // --- existing exports ---
     getActiveMachineSerials,
@@ -2017,4 +2676,10 @@ async function getActiveMachineSerials(db, start, end) {
     buildFaultData,
     buildOperatorEfficiency,
     buildCurrentOperatorsFromTicker,
+    getMachinesSummaryRealTime,
+    // From bookendingBuilder.js
+    getBookendedStatesAndTimeRange,
+    // From fetchData.js
+    fetchGroupedAnalyticsData,
+    fetchGroupedAnalyticsDataForMachine,
   };
