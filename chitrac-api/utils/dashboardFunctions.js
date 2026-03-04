@@ -1,7 +1,7 @@
 const { formatDuration, createPaddedTimeRange } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./bookendingBuilder");
-const { getValidCounts, getMisfeedCounts, groupCountsByItem } = require("./count");
-const { extractAllCyclesFromStates } = require("./state");
+const { getValidCounts, getMisfeedCounts, groupCountsByItem, groupCountsByOperatorAndMachine } = require("./count");
+const { extractAllCyclesFromStates, groupStatesByOperatorAndSerial, getCompletedCyclesForOperator } = require("./state");
 const {
   buildMachinePerformance,
   buildMachineItemSummary,
@@ -1236,6 +1236,139 @@ async function buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd, logger)
   }
 }
 
+/**
+ * Top operator efficiency (same shape as cache/session) using state + count only.
+ * Returns up to 10 operators sorted by efficiency desc: [{ id, name, efficiency, metrics: { runtime, output } }].
+ */
+function clampCycleToWindow(cycle, windowStart, windowEnd) {
+  const start = new Date(cycle.start).getTime();
+  const end = new Date(cycle.end).getTime();
+  const wStart = new Date(windowStart).getTime();
+  const wEnd = new Date(windowEnd).getTime();
+  const clampedStart = Math.max(start, wStart);
+  const clampedEnd = Math.min(end, wEnd);
+  return Math.max(0, clampedEnd - clampedStart);
+}
+
+async function buildTopOperatorEfficiencyFromStateAndCount(db, dayStart, dayEnd, logger) {
+  try {
+    const stateCollectionName = 'state';
+    const countCollectionName = 'count';
+    const dayStartDate = new Date(dayStart);
+    const dayEndDate = new Date(dayEnd);
+    const { paddedStart, paddedEnd } = createPaddedTimeRange(dayStartDate, dayEndDate);
+
+    const allStates = await db.collection(stateCollectionName)
+      .find({ timestamp: { $gte: paddedStart, $lte: paddedEnd } })
+      .project({ timestamp: 1, status: 1, machine: 1, program: 1, operators: 1 })
+      .toArray();
+
+    const allStatesNormalized = allStates.map(s => {
+      if (s.machine && s.machine.id != null && s.machine.serial == null) {
+        s.machine = { ...s.machine, serial: s.machine.id };
+      }
+      if (s.status && typeof s.status.code !== 'number' && typeof s.status.id === 'number') {
+        s.status = { ...s.status, code: s.status.id };
+      }
+      return s;
+    });
+
+    const groupedStates = groupStatesByOperatorAndSerial(allStatesNormalized);
+    const runtimeMsByOperator = new Map();
+    const operatorNameByOperator = new Map();
+
+    for (const [key, group] of Object.entries(groupedStates)) {
+      const states = group.states || [];
+      const operatorId = group.operator?.id;
+      if (operatorId == null || operatorId === -1) continue;
+      if (group.operator?.name) operatorNameByOperator.set(operatorId, group.operator.name);
+      const runCycles = getCompletedCyclesForOperator(states);
+      const runtimeMs = runCycles.reduce(
+        (acc, cycle) => acc + clampCycleToWindow(cycle, dayStartDate, dayEndDate),
+        0
+      );
+      runtimeMsByOperator.set(operatorId, (runtimeMsByOperator.get(operatorId) || 0) + runtimeMs);
+    }
+
+    const allCounts = await db.collection(countCollectionName)
+      .find({
+        timestamp: { $gte: dayStartDate, $lte: dayEndDate },
+        'operator.id': { $exists: true, $ne: -1 }
+      })
+      .toArray();
+
+    const groupedCounts = groupCountsByOperatorAndMachine(allCounts);
+    const validCountByOperator = new Map();
+    const misfeedCountByOperator = new Map();
+    const timeCreditSecByOperator = new Map();
+
+    for (const [key, group] of Object.entries(groupedCounts)) {
+      const operatorId = group.operator?.id;
+      if (operatorId == null || operatorId === -1) continue;
+      if (group.operator?.name) operatorNameByOperator.set(operatorId, group.operator.name);
+      const validCounts = group.validCounts || [];
+      const misfeedCounts = group.misfeedCounts || [];
+      const validCount = validCounts.length;
+      const misfeedCount = misfeedCounts.length;
+      validCountByOperator.set(operatorId, (validCountByOperator.get(operatorId) || 0) + validCount);
+      misfeedCountByOperator.set(operatorId, (misfeedCountByOperator.get(operatorId) || 0) + misfeedCount);
+
+      const itemMap = groupCountsByItem(validCounts);
+      let timeCreditSec = 0;
+      for (const groupArr of Object.values(itemMap)) {
+        if (!Array.isArray(groupArr) || !groupArr.length) continue;
+        const standard = Number(groupArr[0].item?.standard) || 0;
+        if (standard > 0) timeCreditSec += (groupArr.length / standard) * 3600;
+      }
+      timeCreditSecByOperator.set(operatorId, (timeCreditSecByOperator.get(operatorId) || 0) + timeCreditSec);
+    }
+
+    const operatorIds = new Set([...runtimeMsByOperator.keys(), ...validCountByOperator.keys()]);
+    const rows = [];
+
+    for (const id of operatorIds) {
+      const runtimeMs = runtimeMsByOperator.get(id) || 0;
+      const runtimeSec = runtimeMs / 1000;
+      const validCount = validCountByOperator.get(id) || 0;
+      const misfeedCount = misfeedCountByOperator.get(id) || 0;
+      const timeCreditSec = timeCreditSecByOperator.get(id) || 0;
+      const efficiency = runtimeSec > 0 ? timeCreditSec / runtimeSec : 0;
+      const name = operatorNameByOperator.get(id) || `#${id}`;
+
+      rows.push({
+        id,
+        name,
+        efficiency: +(efficiency * 100).toFixed(2),
+        metrics: {
+          runtime: {
+            total: Math.round(runtimeMs),
+            formatted: formatDuration(Math.round(runtimeMs))
+          },
+          output: {
+            totalCount: validCount + misfeedCount,
+            validCount,
+            misfeedCount
+          }
+        }
+      });
+    }
+
+    const topOperators = rows
+      .sort((a, b) => {
+        const effDiff = b.efficiency - a.efficiency;
+        if (effDiff !== 0) return effDiff;
+        return a.id - b.id;
+      })
+      .slice(0, 10);
+
+    if (logger) logger.info(`Built top operator efficiency from state/count for ${topOperators.length} operators`);
+    return topOperators;
+  } catch (error) {
+    if (logger) logger.error('Error building top operator efficiency from state/count:', error);
+    throw error;
+  }
+}
+
 async function buildItemHourlyStackFromCache(db, dayStart, dayEnd, logger) {
   try {
     const startDate = new Date(dayStart);
@@ -1424,6 +1557,7 @@ module.exports = {
   buildDailyCountTotalsFromCache,
   buildCountTotalsFromDailyTotals,
   buildTopOperatorEfficiencyFromCache,
+  buildTopOperatorEfficiencyFromStateAndCount,
   buildItemHourlyStackFromCache,
   buildItemTotalsFromCache
 };

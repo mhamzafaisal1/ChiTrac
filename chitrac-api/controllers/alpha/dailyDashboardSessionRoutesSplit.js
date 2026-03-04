@@ -18,6 +18,7 @@ const {
   buildMachineStatusFromStateAndCount,
   buildCountTotalsFromDailyTotals,
   buildTopOperatorEfficiencyFromCache,
+  buildTopOperatorEfficiencyFromStateAndCount,
   buildItemHourlyStackFromCache,
   buildItemTotalsFromCache
 } = require("../../utils/dashboardFunctions");
@@ -211,6 +212,25 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch fast top operator data" });
+    }
+  });
+
+  // Route 4B-alt: Top Operator Rankings (state + count only, same response shape as top-operators-cache)
+  router.get('/analytics/daily/top-operators-state', async (req, res) => {
+    try {
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const topOperators = await buildTopOperatorEfficiencyFromStateAndCount(db, dayStart, dayEnd, logger);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        topOperators
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch top operator data from state/count" });
     }
   });
 
