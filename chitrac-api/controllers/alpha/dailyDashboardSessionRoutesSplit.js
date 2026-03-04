@@ -15,6 +15,7 @@ const {
   buildTopOperatorEfficiencyFromSessions,
   buildMachineOEEFromDailyTotals,
   buildMachineStatusFromDailyTotals,
+  buildMachineStatusFromStateAndCount,
   buildCountTotalsFromDailyTotals,
   buildTopOperatorEfficiencyFromCache,
   buildItemHourlyStackFromCache,
@@ -63,6 +64,25 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch fast machine status data" });
+    }
+  });
+
+  // Route 1C: Machine Status Breakdowns (state collection)
+  router.get('/analytics/daily/machine-status-state', async (req, res) => {
+    try {
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+      const dayStart = now.startOf('day').toJSDate();
+      const dayEnd = now.toJSDate();
+
+      const machineStatus = await buildMachineStatusFromStateAndCount(db, dayStart, dayEnd, logger);
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        machineStatus
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch machine status data (state)" });
     }
   });
 

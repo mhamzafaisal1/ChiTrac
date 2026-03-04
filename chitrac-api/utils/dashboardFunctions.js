@@ -1,4 +1,4 @@
-const { formatDuration } = require("./time");
+const { formatDuration, createPaddedTimeRange } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./bookendingBuilder");
 const { getValidCounts, getMisfeedCounts, groupCountsByItem } = require("./count");
 const { extractAllCyclesFromStates } = require("./state");
@@ -982,6 +982,74 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
   }
 }
 
+/**
+ * Machine status breakdown (running/paused/fault/offline) using state collection only.
+ * Same output shape as buildMachineStatusFromDailyTotals: [{ serial, name, runningMs, pausedMs, faultedMs, offlineMs }].
+ */
+async function buildMachineStatusFromStateAndCount(db, dayStart, dayEnd, logger) {
+  try {
+    const stateCollectionName = 'state';
+    const dayStartDate = new Date(dayStart);
+    const dayEndDate = new Date(dayEnd);
+    const windowMs = dayEndDate - dayStartDate;
+    const { paddedStart, paddedEnd } = createPaddedTimeRange(dayStartDate, dayEndDate);
+
+    const machineSerials = await db.collection(stateCollectionName).distinct('machine.serial', {
+      timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      'machine.serial': { $exists: true, $ne: null }
+    });
+    const machineIds = await db.collection(stateCollectionName).distinct('machine.id', {
+      timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      'machine.id': { $exists: true, $ne: null }
+    });
+    const serials = [...new Set([...machineSerials, ...machineIds].filter(Boolean))];
+
+    const results = [];
+    for (const serial of serials) {
+      const stateQuery = {
+        timestamp: { $gte: paddedStart, $lte: paddedEnd },
+        $or: [{ 'machine.serial': serial }, { 'machine.id': serial }]
+      };
+      let states = await db.collection(stateCollectionName)
+        .find(stateQuery)
+        .project({ timestamp: 1, timestamps: 1, status: 1, machine: 1 })
+        .sort({ timestamp: 1 })
+        .toArray();
+
+      states = states.map(s => {
+        if (!s.timestamp && s.timestamps?.create) s.timestamp = s.timestamps.create;
+        if (s.status && typeof s.status.code !== 'number' && typeof s.status.id === 'number') {
+          s.status = { ...s.status, code: s.status.id };
+        }
+        return s;
+      });
+
+      const cycles = extractAllCyclesFromStates(states, dayStartDate, dayEndDate);
+      const runningMs = cycles.running.reduce((sum, c) => sum + c.duration, 0);
+      const pausedMs = cycles.paused.reduce((sum, c) => sum + c.duration, 0);
+      const faultedMs = cycles.fault.reduce((sum, c) => sum + c.duration, 0);
+      const offlineMs = Math.max(0, windowMs - runningMs - pausedMs - faultedMs);
+
+      const name = (states[0]?.machine?.name) || `Serial ${serial}`;
+      results.push({
+        serial,
+        name,
+        runningMs,
+        pausedMs,
+        faultedMs,
+        offlineMs
+      });
+    }
+
+    results.sort((a, b) => (a.serial < b.serial ? -1 : a.serial > b.serial ? 1 : 0));
+    if (logger) logger.info(`Built machine status from state for ${results.length} machines`);
+    return results;
+  } catch (error) {
+    if (logger) logger.error('Error building machine status from state:', error);
+    throw error;
+  }
+}
+
 async function buildDailyCountTotalsFromCache(db, dayEnd, logger) {
   try {
     const endDate = new Date(dayEnd);
@@ -1352,6 +1420,7 @@ module.exports = {
   buildTopOperatorEfficiencyFromSessions,
   buildMachineOEEFromDailyTotals,
   buildMachineStatusFromDailyTotals,
+  buildMachineStatusFromStateAndCount,
   buildDailyCountTotalsFromCache,
   buildCountTotalsFromDailyTotals,
   buildTopOperatorEfficiencyFromCache,

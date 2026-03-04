@@ -93,7 +93,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
       params = params.set('serial', serial.toString());
     }
 
-    return this.http.get(`${this.apiUrl}/analytics/daily/machine-status-cache`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/daily/machine-status-state`, { params });
   }
 
   getDailyMachineOee(start: string, end: string): Observable<any> {

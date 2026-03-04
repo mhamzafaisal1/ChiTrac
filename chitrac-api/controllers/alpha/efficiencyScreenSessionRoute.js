@@ -606,7 +606,7 @@ module.exports = function (server) {
 
       const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
         .findOne(
-          { 'machine.id': serialNum },
+          { $or: [{ 'machine.id': serialNum }, { 'machine.serial': serialNum }] },
           {
             projection: {
               timestamp: 1,
