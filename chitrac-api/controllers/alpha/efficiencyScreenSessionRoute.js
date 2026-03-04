@@ -2,6 +2,15 @@
 
 const express = require('express');
 const { DateTime } = require('luxon');
+const {
+  fetchStatesForMachine,
+  extractAllCyclesFromStates,
+} = require('../../utils/state');
+const {
+  getCountsForMachine,
+  groupCountsByOperatorAndMachine,
+  groupCountsByItem,
+} = require('../../utils/count');
 
 module.exports = function (server) {
   const router = express.Router();
@@ -578,6 +587,246 @@ module.exports = function (server) {
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  // --- Daily Machine Live State Summary API (state + count) ---
+
+  router.get('/analytics/daily/machine-live-state-summary', async (req, res) => {
+    const routeStartTime = Date.now();
+
+    try {
+      const { serial } = req.query;
+      if (!serial) {
+        return res.status(400).json({ error: 'Missing serial' });
+      }
+
+      const serialNum = Number(serial);
+      console.log(`[PERF] [${serialNum}] Route START - daily/machine-live-state-summary`);
+      console.log(`[PERF] [${serialNum}] Fetching ticker...`);
+      const tickerStartTime = Date.now();
+
+      const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
+        .findOne(
+          { 'machine.id': serialNum },
+          {
+            projection: {
+              timestamp: 1,
+              machine: 1,
+              program: 1,
+              item: 1,
+              status: 1,
+              operators: 1
+            }
+          }
+        );
+
+      console.log(`[PERF] [${serialNum}] Ticker query completed in ${Date.now() - tickerStartTime}ms`);
+
+      // No ticker: Offline - but still return flipperData structure
+      if (!ticker) {
+        const machineConfig = await db.collection('machines').findOne(
+          { serial: serialNum },
+          { projection: { name: 1 } }
+        );
+
+        const machineName = machineConfig?.name || `Serial ${serialNum}`;
+
+        const offlineLanes = [{
+          status: -1,
+          fault: 'Offline',
+          operator: null,
+          operatorId: null,
+          machine: machineName,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: buildZeroEfficiencyPayload(),
+          batch: { item: '', code: 0 }
+        }];
+
+        return res.json({ flipperData: offlineLanes });
+      }
+
+      // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
+      const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
+        .filter(op => op && op.id !== -1)
+        .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
+
+      const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
+      console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${statusCode}`);
+
+      const nowLuxon = DateTime.now();
+
+      // If machine is NOT running, mirror behavior with 0% efficiency/OEE but use ticker for batch
+      if (statusCode !== 1) {
+        console.log(`[PERF] [${serialNum}] Machine NOT running (state-based) - processing ${onMachineOperators.length} operators`);
+        const notRunningStartTime = Date.now();
+
+        const currentItemName =
+          ticker.item?.name ||
+          (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
+          '';
+
+        const performanceData = onMachineOperators.map(op => {
+          const operatorName = op.name?.first && op.name?.surname
+            ? `${op.name.first} ${op.name.surname}`
+            : (op.name || 'Unknown');
+
+          return {
+            status: statusCode,
+            fault: ticker.status?.name ?? 'Unknown',
+            operator: operatorName,
+            operatorId: op.id,
+            machine: ticker.machine?.name || `Serial ${serialNum}`,
+            timers: { on: 0, ready: 0 },
+            displayTimers: { on: '', run: '' },
+            efficiency: buildZeroEfficiencyPayload(),
+            oee: buildZeroEfficiencyPayload(),
+            batch: { item: currentItemName, code: 10000001 }
+          };
+        });
+
+        console.log(`[PERF] [${serialNum}] Non-running state-based path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
+        return res.json({ flipperData: performanceData });
+      }
+
+      // Running: compute performance directly from state + count collections
+      console.log(`[PERF] [${serialNum}] Machine RUNNING (state-based) - processing ${onMachineOperators.length} operators`);
+      const runningStartTime = Date.now();
+
+      const frames = {
+        lastSixMinutes: { start: nowLuxon.minus({ minutes: 6 }), label: 'Last 6 Mins' },
+        lastFifteenMinutes: { start: nowLuxon.minus({ minutes: 15 }), label: 'Last 15 Mins' },
+        lastHour: { start: nowLuxon.minus({ hours: 1 }), label: 'Last Hour' },
+        today: { start: nowLuxon.startOf('day'), label: 'All Day' }
+      };
+
+      async function computeWindowFromStateAndCount(operatorId, frameKey) {
+        const frame = frames[frameKey];
+        const windowStart = frame.start.toJSDate();
+        const windowEnd = nowLuxon.toJSDate();
+
+        // Fetch counts for this machine/operator in window
+        const allCounts = await getCountsForMachine(
+          db,
+          serialNum,
+          windowStart,
+          windowEnd,
+          operatorId
+        );
+        const groupedCounts = groupCountsByOperatorAndMachine(allCounts);
+        const key = `${operatorId}-${serialNum}`;
+        const validCounts = groupedCounts[key]?.validCounts || [];
+        const misfeedCounts = groupedCounts[key]?.misfeedCounts || [];
+
+        // Fetch states for this machine in window and filter by operator
+        const machineStates = await fetchStatesForMachine(db, serialNum, windowStart, windowEnd);
+        const operatorStates = machineStates.filter(s =>
+          Array.isArray(s.operators) &&
+          s.operators.some(op => Number(op.id) === Number(operatorId))
+        );
+
+        const runningCycles = extractAllCyclesFromStates(operatorStates, windowStart, windowEnd).running;
+        const runtimeMs = runningCycles.reduce((sum, c) => sum + c.duration, 0);
+        const runtimeSec = runtimeMs / 1000;
+
+        // Time credit from standards in count records
+        const itemGroups = groupCountsByItem(validCounts);
+        let totalTimeCreditSec = 0;
+        for (const group of Object.values(itemGroups)) {
+          if (!Array.isArray(group) || !group.length) continue;
+          const first = group[0];
+          const standard = Number(first.item?.standard) || 0;
+          if (standard > 0) {
+            totalTimeCreditSec += (group.length / standard) * 3600;
+          }
+        }
+
+        const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+        const efficiencyPct = Math.round(efficiencyRatio * 100);
+
+        const windowSec = (windowEnd.getTime() - windowStart.getTime()) / 1000;
+        const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+
+        const validCount = validCounts.length;
+        const misfeedCount = misfeedCounts.length;
+        const throughput =
+          validCount + misfeedCount > 0 ? validCount / (validCount + misfeedCount) : 0;
+
+        const oeeVal = availability * efficiencyRatio * throughput;
+        const oeePct = Math.round(oeeVal * 100);
+
+        const color =
+          efficiencyRatio >= 0.9 ? 'green' :
+          efficiencyRatio >= 0.7 ? 'orange' :
+          'yellow';
+
+        return {
+          efficiency: {
+            value: efficiencyPct,
+            label: frame.label,
+            color
+          },
+          oee: {
+            value: oeePct,
+            label: frame.label,
+            color
+          }
+        };
+      }
+
+      const performanceData = await Promise.all(
+        onMachineOperators.map(async (op, idx) => {
+          const operatorStartTime = Date.now();
+          console.log(`[PERF] [${serialNum}] [STATE] Starting operator ${op.id} (${idx + 1}/${onMachineOperators.length})`);
+
+          const efficiencyObj = {};
+          const oeeObj = {};
+
+          for (const frameKey of ['lastSixMinutes', 'lastFifteenMinutes', 'lastHour', 'today']) {
+            const { efficiency, oee } = await computeWindowFromStateAndCount(op.id, frameKey);
+            efficiencyObj[frameKey] = efficiency;
+            oeeObj[frameKey] = oee;
+          }
+
+          const currentItemName =
+            ticker.item?.name ||
+            (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
+            '';
+
+          const operatorName = op.name?.first && op.name?.surname
+            ? `${op.name.first} ${op.name.surname}`
+            : (op.name || 'Unknown');
+
+          const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
+
+          const operatorTotalTime = Date.now() - operatorStartTime;
+          console.log(`[PERF] [${serialNum}] [STATE] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
+
+          return {
+            status: statusCodeForResponse,
+            fault: ticker.status?.name ?? 'Unknown',
+            operator: operatorName,
+            operatorId: op.id,
+            machine: ticker.machine?.name || `Serial ${serialNum}`,
+            timers: { on: 0, ready: 0 },
+            displayTimers: { on: '', run: '' },
+            efficiency: efficiencyObj,
+            oee: oeeObj,
+            batch: { item: currentItemName, code: 10000001 }
+          };
+        })
+      );
+
+      console.log(`[PERF] [${serialNum}] State-based running path completed in ${Date.now() - runningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
+      return res.json({ flipperData: performanceData });
+    } catch (err) {
+      console.error(`[PERF] [state-based ${req.query.serial || 'unknown'}] ERROR after ${Date.now() - routeStartTime}ms:`, err);
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  
   router.get('/machines/spf', async (req, res) => {
     try {
       const machines = await db.collection('machines')

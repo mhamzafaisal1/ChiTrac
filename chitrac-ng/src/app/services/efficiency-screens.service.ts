@@ -11,7 +11,7 @@ export class EfficiencyScreensService {
   getLiveEfficiencySummary(serial: number): Observable<any> {
     const params = new HttpParams()
       .set('serial', serial.toString());
-    return this.http.get('/api/alpha/analytics/daily/machine-live-session-summary', { params });
+    return this.http.get('/api/alpha/analytics/daily/machine-live-state-summary', { params });
   }
 
   getMachineLiveEfficiencySummary(serial: number): Observable<{ flipperData: any[] }> {
