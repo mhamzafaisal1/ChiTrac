@@ -7,6 +7,7 @@ const {
   buildPlantwideMetricsByHour,
   buildPlantwideMetricsByHourFromCache,
   buildDailyCountTotals,
+  buildDailyCountTotalsFromStateAndCount,
   buildMachineOEE
 } = require("../../utils/dailyDashboardBuilder");
 const {
@@ -338,6 +339,24 @@ module.exports = function (server) {
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res.status(500).json({ error: "Failed to fetch daily count totals data" });
+    }
+  });
+
+  // Route 6A: Daily Count Totals (state + count collections)
+  router.get('/analytics/daily/count-totals-state', async (req, res) => {
+    try {
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+      const dayEnd = now.toJSDate();
+
+      const dailyCounts = await buildDailyCountTotalsFromStateAndCount(db, null, dayEnd);
+
+      return res.json({
+        timeRange: { end: dayEnd },
+        dailyCounts
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch daily count totals data (state/count)" });
     }
   });
 

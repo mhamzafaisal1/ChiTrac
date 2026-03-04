@@ -128,7 +128,7 @@ getItemsSummary(start: string, end: string, serial?: number) {
 
   getDailyCountTotals(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get(`${this.apiUrl}/analytics/daily/count-totals-cache`, { params });
+    return this.http.get(`${this.apiUrl}/analytics/daily/count-totals-state`, { params });
   }
 
   /** Machine groups (departments) summary with efficiency per group – used for Efficiency% by Machine Group chart */

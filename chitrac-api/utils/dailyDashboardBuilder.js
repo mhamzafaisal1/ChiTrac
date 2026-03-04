@@ -798,7 +798,88 @@ async function buildPlantwideMetricsByHourFromCache(db, start, end) {
       throw error;
     }
   }
-  
+
+  /**
+   * Daily count totals using state + count collections only.
+   * Same output format as buildDailyCountTotals: [{ date, count }, ...] for the last 28 days.
+   * Uses state to get machine serials active in the range; aggregates valid counts from count by day.
+   */
+  async function buildDailyCountTotalsFromStateAndCount(db, _start, end) {
+    try {
+      const endDate = new Date(end);
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - 27);
+      startDate.setHours(0, 0, 0, 0);
+
+      const stateCollectionName = 'state';
+      const countCollectionName = 'count';
+
+      const machineSerials = await db
+        .collection(stateCollectionName)
+        .distinct('machine.serial', {
+          timestamp: { $gte: startDate, $lte: endDate },
+          'machine.serial': { $exists: true, $ne: null }
+        });
+      const machineIds = await db
+        .collection(stateCollectionName)
+        .distinct('machine.id', {
+          timestamp: { $gte: startDate, $lte: endDate },
+          'machine.id': { $exists: true, $ne: null }
+        });
+      const serials = [...new Set([...machineSerials, ...machineIds].filter(Boolean))];
+
+      const countMatch = {
+        timestamp: { $gte: startDate, $lte: endDate },
+        misfeed: { $ne: true },
+        'operator.id': { $exists: true, $ne: -1 }
+      };
+      if (serials.length > 0) {
+        countMatch.$or = [
+          { 'machine.serial': { $in: serials } },
+          { 'machine.id': { $in: serials } }
+        ];
+      }
+
+      const pipeline = [
+        { $match: countMatch },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$timestamp' },
+              month: { $month: '$timestamp' },
+              day: { $dayOfMonth: '$timestamp' }
+            },
+            count: { $sum: 1 },
+            date: { $first: '$timestamp' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            date: {
+              $dateFromParts: {
+                year: '$_id.year',
+                month: '$_id.month',
+                day: '$_id.day'
+              }
+            },
+            count: 1
+          }
+        },
+        { $sort: { date: 1 } }
+      ];
+
+      const results = await db.collection(countCollectionName).aggregate(pipeline).toArray();
+
+      return results.map(entry => ({
+        date: entry.date.toISOString().split('T')[0],
+        count: entry.count
+      }));
+    } catch (error) {
+      console.error('Error in buildDailyCountTotalsFromStateAndCount:', error);
+      throw error;
+    }
+  }
 
 module.exports = {
   buildMachineOEE,
@@ -807,5 +888,6 @@ module.exports = {
   buildPlantwideMetricsByHour,
   buildPlantwideMetricsByHourFromCache,
   buildDailyMachineStatus,
-  buildDailyCountTotals
+  buildDailyCountTotals,
+  buildDailyCountTotalsFromStateAndCount
 };
