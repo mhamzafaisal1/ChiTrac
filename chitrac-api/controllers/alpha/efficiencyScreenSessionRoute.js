@@ -3,14 +3,14 @@
 const express = require('express');
 const { DateTime } = require('luxon');
 const {
-  fetchStatesForMachine,
-  extractAllCyclesFromStates,
+  groupStatesByOperatorAndSerial,
+  getCompletedCyclesForOperator,
 } = require('../../utils/state');
 const {
-  getCountsForMachine,
   groupCountsByOperatorAndMachine,
   groupCountsByItem,
 } = require('../../utils/count');
+const { createPaddedTimeRange } = require('../../utils/time');
 
 module.exports = function (server) {
   const router = express.Router();
@@ -700,57 +700,120 @@ module.exports = function (server) {
         today: { start: nowLuxon.startOf('day'), label: 'All Day' }
       };
 
+      const stateCollectionName = 'state';
+      const countCollectionName = 'count';
+
+      // Clamp cycle to window and return duration in ms (same idea as operator-item-states-summary)
+      function clampCycleToWindow(cycle, windowStart, windowEnd) {
+        const start = new Date(cycle.start).getTime();
+        const end = new Date(cycle.end).getTime();
+        const wStart = new Date(windowStart).getTime();
+        const wEnd = new Date(windowEnd).getTime();
+        const clampedStart = Math.max(start, wStart);
+        const clampedEnd = Math.min(end, wEnd);
+        return Math.max(0, clampedEnd - clampedStart);
+      }
+
       async function computeWindowFromStateAndCount(operatorId, frameKey) {
         const frame = frames[frameKey];
         const windowStart = frame.start.toJSDate();
         const windowEnd = nowLuxon.toJSDate();
+        const { paddedStart, paddedEnd } = createPaddedTimeRange(windowStart, windowEnd);
 
-        // Fetch counts for this machine/operator in window
-        const allCounts = await getCountsForMachine(
-          db,
-          serialNum,
-          windowStart,
-          windowEnd,
-          operatorId
-        );
-        const groupedCounts = groupCountsByOperatorAndMachine(allCounts);
+        // 1) Fetch states from "state" (same as operator-item-states-summary)
+        const stateQuery = {
+          timestamp: { $gte: paddedStart, $lte: paddedEnd },
+          $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }],
+          'operators.id': operatorId
+        };
+        let allStates = await db
+          .collection(stateCollectionName)
+          .find(stateQuery)
+          .project({ timestamp: 1, status: 1, machine: 1, program: 1, operators: 1 })
+          .toArray();
+        allStates = allStates.map(s => {
+          if (s.machine && s.machine.id != null && s.machine.serial == null) {
+            s.machine = { ...s.machine, serial: s.machine.id };
+          }
+          if (s.status && typeof s.status.code !== 'number' && typeof s.status.id === 'number') {
+            s.status = { ...s.status, code: s.status.id };
+          }
+          return s;
+        });
+
+        const groupedStates = groupStatesByOperatorAndSerial(allStates);
         const key = `${operatorId}-${serialNum}`;
-        const validCounts = groupedCounts[key]?.validCounts || [];
-        const misfeedCounts = groupedCounts[key]?.misfeedCounts || [];
-
-        // Fetch states for this machine in window and filter by operator
-        const machineStates = await fetchStatesForMachine(db, serialNum, windowStart, windowEnd);
-        const operatorStates = machineStates.filter(s =>
-          Array.isArray(s.operators) &&
-          s.operators.some(op => Number(op.id) === Number(operatorId))
+        const states = groupedStates[key]?.states || [];
+        const sortedStates = [...states].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
 
-        const runningCycles = extractAllCyclesFromStates(operatorStates, windowStart, windowEnd).running;
-        const runtimeMs = runningCycles.reduce((sum, c) => sum + c.duration, 0);
-        const runtimeSec = runtimeMs / 1000;
+        const runCycles = getCompletedCyclesForOperator(states);
+        let runtimeMs = runCycles.reduce(
+          (acc, cycle) => acc + clampCycleToWindow(cycle, windowStart, windowEnd),
+          0
+        );
 
-        // Time credit from standards in count records
-        const itemGroups = groupCountsByItem(validCounts);
-        let totalTimeCreditSec = 0;
-        for (const group of Object.values(itemGroups)) {
-          if (!Array.isArray(group) || !group.length) continue;
-          const first = group[0];
-          const standard = Number(first.item?.standard) || 0;
-          if (standard > 0) {
-            totalTimeCreditSec += (group.length / standard) * 3600;
+        // Open cycle: if machine is still in Run at end of window, extend last run to windowEnd (we're in running path)
+        if (sortedStates.length > 0) {
+          const lastState = sortedStates[sortedStates.length - 1];
+          const lastCode = lastState.status?.code ?? lastState.status?.id;
+          if (lastCode === 1) {
+            let runStart = new Date(lastState.timestamp).getTime();
+            for (let i = sortedStates.length - 2; i >= 0; i--) {
+              const c = sortedStates[i].status?.code ?? sortedStates[i].status?.id;
+              if (c !== 1) break;
+              runStart = new Date(sortedStates[i].timestamp).getTime();
+            }
+            const openCycle = { start: new Date(runStart), end: windowEnd };
+            runtimeMs += clampCycleToWindow(openCycle, windowStart, windowEnd);
           }
         }
 
-        const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
-        const efficiencyPct = Math.round(efficiencyRatio * 100);
+        const runtimeSec = runtimeMs / 1000;
+
+        // 2) Fetch counts from "count" (same as operator-item-states-summary)
+        const countQuery = {
+          timestamp: { $gte: windowStart, $lte: windowEnd },
+          $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }],
+          'operator.id': operatorId
+        };
+        const allCounts = await db
+          .collection(countCollectionName)
+          .find(countQuery)
+          .toArray();
+        const groupedCounts = groupCountsByOperatorAndMachine(allCounts);
+        const validCounts = groupedCounts[key]?.validCounts || [];
+        const misfeedCounts = groupedCounts[key]?.misfeedCounts || [];
+
+        const pairTotalCounts = validCounts.length;
+        const itemMap = groupCountsByItem(validCounts);
+
+        // Prorated standard: weighted average of item.standard by count (operator-item-states-summary logic)
+        let proratedStandard = 0;
+        if (pairTotalCounts > 0) {
+          for (const group of Object.values(itemMap)) {
+            if (!Array.isArray(group) || !group.length) continue;
+            const first = group[0];
+            const standard = Number(first.item?.standard) || 0;
+            const weight = group.length / pairTotalCounts;
+            proratedStandard += weight * standard;
+          }
+        }
+
+        // Efficiency = (totalCount per hour) / proratedStandard (operator report formula)
+        const hours = runtimeMs / 3600000;
+        const operatorPph = hours > 0 ? pairTotalCounts / hours : 0;
+        const efficiencyRatio =
+          proratedStandard > 0 ? operatorPph / proratedStandard : 0;
 
         const windowSec = (windowEnd.getTime() - windowStart.getTime()) / 1000;
         const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
-
         const validCount = validCounts.length;
         const misfeedCount = misfeedCounts.length;
         const throughput =
           validCount + misfeedCount > 0 ? validCount / (validCount + misfeedCount) : 0;
+        const efficiencyPct = Math.round(efficiencyRatio * 100);
 
         const oeeVal = availability * efficiencyRatio * throughput;
         const oeePct = Math.round(oeeVal * 100);
@@ -826,7 +889,7 @@ module.exports = function (server) {
     }
   });
 
-  
+
   router.get('/machines/spf', async (req, res) => {
     try {
       const machines = await db.collection('machines')
