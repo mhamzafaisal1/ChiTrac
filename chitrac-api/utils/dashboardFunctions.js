@@ -994,12 +994,19 @@ async function buildMachineStatusFromStateAndCount(db, dayStart, dayEnd, logger)
     const windowMs = dayEndDate - dayStartDate;
     const { paddedStart, paddedEnd } = createPaddedTimeRange(dayStartDate, dayEndDate);
 
+    // Query both timestamp fields so LPL machines (which use timestamps.create) are discovered
+    const tsFilter = {
+      $or: [
+        { timestamp: { $gte: paddedStart, $lte: paddedEnd } },
+        { 'timestamps.create': { $gte: paddedStart, $lte: paddedEnd } },
+      ],
+    };
     const machineSerials = await db.collection(stateCollectionName).distinct('machine.serial', {
-      timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      ...tsFilter,
       'machine.serial': { $exists: true, $ne: null }
     });
     const machineIds = await db.collection(stateCollectionName).distinct('machine.id', {
-      timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      ...tsFilter,
       'machine.id': { $exists: true, $ne: null }
     });
     const serials = [...new Set([...machineSerials, ...machineIds].filter(Boolean))];
@@ -1007,8 +1014,10 @@ async function buildMachineStatusFromStateAndCount(db, dayStart, dayEnd, logger)
     const results = [];
     for (const serial of serials) {
       const stateQuery = {
-        timestamp: { $gte: paddedStart, $lte: paddedEnd },
-        $or: [{ 'machine.serial': serial }, { 'machine.id': serial }]
+        $and: [
+          tsFilter,
+          { $or: [{ 'machine.serial': serial }, { 'machine.id': serial }] },
+        ],
       };
       let states = await db.collection(stateCollectionName)
         .find(stateQuery)
@@ -1018,8 +1027,13 @@ async function buildMachineStatusFromStateAndCount(db, dayStart, dayEnd, logger)
 
       states = states.map(s => {
         if (!s.timestamp && s.timestamps?.create) s.timestamp = s.timestamps.create;
+        // Normalize status.id → status.code (some docs use id instead of code)
         if (s.status && typeof s.status.code !== 'number' && typeof s.status.id === 'number') {
           s.status = { ...s.status, code: s.status.id };
+        }
+        // Default missing status to running (1) — LPL docs often have no status field
+        if (!s.status || (s.status.code === undefined && s.status.id === undefined)) {
+          s.status = { ...s.status, code: 1 };
         }
         return s;
       });
@@ -1046,6 +1060,324 @@ async function buildMachineStatusFromStateAndCount(db, dayStart, dayEnd, logger)
     return results;
   } catch (error) {
     if (logger) logger.error('Error building machine status from state:', error);
+    throw error;
+  }
+}
+
+/** Clamp a cycle's duration to a window; returns ms in window. */
+function clampCycleToWindowMs(cycle, windowStart, windowEnd) {
+  const start = new Date(cycle.start).getTime();
+  const end = new Date(cycle.end).getTime();
+  const wStart = new Date(windowStart).getTime();
+  const wEnd = new Date(windowEnd).getTime();
+  const clampedStart = Math.max(start, wStart);
+  const clampedEnd = Math.min(end, wEnd);
+  return Math.max(0, clampedEnd - clampedStart);
+}
+
+/**
+ * Machines group summary (by department) from state + count only.
+ * Same response shape as totals-daily cached route: { data: [...], debug? }.
+ * options: { machineCollectionName, machineGroupDepartments, yesterdayStart, yesterdayEnd }.
+ */
+async function buildMachinesGroupSummaryFromStateAndCount(db, start, end, serial, logger, options = {}) {
+  try {
+    const machineCollectionName = options.machineCollectionName || config.machineCollectionName || 'machine';
+    const MACHINE_GROUP_DEPARTMENTS = options.machineGroupDepartments || [
+      'Small Piece Folder', 'Large Piece Ironer', 'Blanket Blaster', 'Small Piece Ironer'
+    ];
+    const yesterdayStart = options.yesterdayStart || null;
+    const yesterdayEnd = options.yesterdayEnd || null;
+
+    const rangeStart = new Date(start);
+    const rangeEnd = new Date(end);
+    const windowMs = rangeEnd - rangeStart;
+    const { paddedStart, paddedEnd } = createPaddedTimeRange(rangeStart, rangeEnd);
+
+    const stateColl = db.collection('state');
+    const countColl = db.collection('count');
+
+    // Machine serials that have state in the window (support both machine.serial and machine.id)
+    let serials = await stateColl.distinct('machine.serial', {
+      timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      'machine.serial': { $exists: true, $ne: null }
+    });
+    const ids = await stateColl.distinct('machine.id', {
+      timestamp: { $gte: paddedStart, $lte: paddedEnd },
+      'machine.id': { $exists: true, $ne: null }
+    });
+    serials = [...new Set([...serials, ...ids].filter(Boolean))];
+    if (serial != null && serial !== '') {
+      const s = parseInt(serial, 10);
+      if (serials.indexOf(s) === -1) serials = [s];
+      else serials = serials.filter(x => x === s);
+    }
+
+    if (serials.length === 0) {
+      return {
+        data: [],
+        debug: {
+          reason: 'no_state_data_for_range',
+          message: 'No state data for the requested range; no machines found.',
+          details: { requestedStart: rangeStart, requestedEnd: rangeEnd }
+        }
+      };
+    }
+
+    // Machine serial -> department from machine collection
+    const machines = await db.collection(machineCollectionName)
+      .find({
+        $or: [
+          { 'machine.serial': { $in: serials } },
+          { 'machine.id': { $in: serials } }
+        ]
+      })
+      .project({ 'machine.serial': 1, 'machine.id': 1, 'machine.groups.department': 1 })
+      .toArray();
+    const serialToDept = new Map();
+    for (const m of machines) {
+      const s = m.machine?.serial ?? m.machine?.id;
+      const dept = m.machine?.groups?.department;
+      if (s != null) serialToDept.set(s, dept);
+    }
+
+    // Per-machine state metrics (runtime, paused, fault) clamped to [rangeStart, rangeEnd]
+    const machineMetrics = new Map();
+    for (const s of serials) {
+      const stateQuery = {
+        timestamp: { $gte: paddedStart, $lte: paddedEnd },
+        $or: [{ 'machine.serial': s }, { 'machine.id': s }]
+      };
+      let states = await stateColl
+        .find(stateQuery)
+        .project({ timestamp: 1, timestamps: 1, status: 1, machine: 1 })
+        .sort({ timestamp: 1 })
+        .toArray();
+      states = states.map(st => {
+        if (!st.timestamp && st.timestamps?.create) st.timestamp = st.timestamps.create;
+        if (st.status && typeof st.status.code !== 'number' && typeof st.status.id === 'number') {
+          st.status = { ...st.status, code: st.status.id };
+        }
+        return st;
+      });
+      const cycles = extractAllCyclesFromStates(states, paddedStart, paddedEnd);
+      let runningMs = 0, pausedMs = 0, faultMs = 0;
+      for (const c of cycles.running) runningMs += clampCycleToWindowMs(c, rangeStart, rangeEnd);
+      for (const c of cycles.paused) pausedMs += clampCycleToWindowMs(c, rangeStart, rangeEnd);
+      for (const c of cycles.fault) faultMs += clampCycleToWindowMs(c, rangeStart, rangeEnd);
+      machineMetrics.set(s, { runtimeMs: runningMs, pausedMs, faultMs });
+    }
+
+    // Per-machine count metrics (totalCounts, totalMisfeeds, totalTimeCreditMs)
+    const countQuery = {
+      timestamp: { $gte: rangeStart, $lte: rangeEnd },
+      'operator.id': { $exists: true, $ne: -1 }
+    };
+    if (serials.length === 1) {
+      countQuery.$or = [{ 'machine.serial': serials[0] }, { 'machine.id': serials[0] }];
+    } else {
+      countQuery.$or = [
+        { 'machine.serial': { $in: serials } },
+        { 'machine.id': { $in: serials } }
+      ];
+    }
+    const allCounts = await countColl.find(countQuery).toArray();
+    const byMachine = new Map();
+    for (const c of allCounts) {
+      const s = c.machine?.serial ?? c.machine?.id;
+      if (s == null) continue;
+      if (!byMachine.has(s)) {
+        byMachine.set(s, { validCounts: [], misfeedCounts: [] });
+      }
+      if (c.misfeed) byMachine.get(s).misfeedCounts.push(c);
+      else byMachine.get(s).validCounts.push(c);
+    }
+    const countMetricsByMachine = new Map();
+    for (const [s, { validCounts, misfeedCounts }] of byMachine) {
+      const totalCounts = validCounts.length;
+      const totalMisfeeds = misfeedCounts.length;
+      const itemMap = groupCountsByItem(validCounts);
+      let totalTimeCreditMs = 0;
+      for (const groupArr of Object.values(itemMap)) {
+        if (!Array.isArray(groupArr) || !groupArr.length) continue;
+        const standard = Number(groupArr[0].item?.standard) || 0;
+        if (standard > 0) totalTimeCreditMs += (groupArr.length / standard) * 3600 * 1000;
+      }
+      countMetricsByMachine.set(s, { totalCounts, totalMisfeeds, totalTimeCreditMs });
+    }
+
+    // Build per-machine records with department
+    const byDept = new Map();
+    for (const name of MACHINE_GROUP_DEPARTMENTS) {
+      byDept.set(name, []);
+    }
+    let skippedNoDept = 0, skippedUnknownDept = 0;
+    for (const s of serials) {
+      const dept = serialToDept.get(s);
+      if (!dept) {
+        skippedNoDept++;
+        continue;
+      }
+      if (!byDept.has(dept)) {
+        skippedUnknownDept++;
+        continue;
+      }
+      const stateM = machineMetrics.get(s) || { runtimeMs: 0, pausedMs: 0, faultMs: 0 };
+      const countM = countMetricsByMachine.get(s) || { totalCounts: 0, totalMisfeeds: 0, totalTimeCreditMs: 0 };
+      let workedTimeMs = 0;
+      if (stateM.runtimeMs > 0 && countM.totalTimeCreditMs > 0) workedTimeMs = stateM.runtimeMs;
+      const record = {
+        machineSerial: s,
+        runtimeMs: stateM.runtimeMs,
+        pausedTimeMs: stateM.pausedMs,
+        faultTimeMs: stateM.faultMs,
+        totalCounts: countM.totalCounts,
+        totalMisfeeds: countM.totalMisfeeds,
+        totalTimeCreditMs: countM.totalTimeCreditMs,
+        workedTimeMs,
+        machine: { groups: { department: dept } }
+      };
+      byDept.get(dept).push(record);
+    }
+
+    // Yesterday metrics for efficiencyPreviousDay (same structure, aggregate by dept)
+    const byDeptYesterday = new Map();
+    for (const name of MACHINE_GROUP_DEPARTMENTS) {
+      byDeptYesterday.set(name, []);
+    }
+    if (yesterdayStart && yesterdayEnd) {
+      const padY = createPaddedTimeRange(new Date(yesterdayStart), new Date(yesterdayEnd));
+      for (const s of serials) {
+        const stateQuery = {
+          timestamp: { $gte: padY.paddedStart, $lte: padY.paddedEnd },
+          $or: [{ 'machine.serial': s }, { 'machine.id': s }]
+        };
+        let states = await stateColl
+          .find(stateQuery)
+          .project({ timestamp: 1, timestamps: 1, status: 1 })
+          .sort({ timestamp: 1 })
+          .toArray();
+        states = states.map(st => {
+          if (!st.timestamp && st.timestamps?.create) st.timestamp = st.timestamps.create;
+          if (st.status && typeof st.status.code !== 'number' && typeof st.status.id === 'number') {
+            st.status = { ...st.status, code: st.status.id };
+          }
+          return st;
+        });
+        const cycles = extractAllCyclesFromStates(states, padY.paddedStart, padY.paddedEnd);
+        let runningMs = 0;
+        for (const c of cycles.running) runningMs += clampCycleToWindowMs(c, yesterdayStart, yesterdayEnd);
+        const countQueryY = {
+          timestamp: { $gte: yesterdayStart, $lte: yesterdayEnd },
+          $or: [{ 'machine.serial': s }, { 'machine.id': s }],
+          'operator.id': { $exists: true, $ne: -1 }
+        };
+        const countsY = await countColl.find(countQueryY).toArray();
+        const validY = countsY.filter(c => !c.misfeed);
+        const itemMapY = groupCountsByItem(validY);
+        let totalTimeCreditMsY = 0;
+        for (const groupArr of Object.values(itemMapY)) {
+          if (!Array.isArray(groupArr) || !groupArr.length) continue;
+          const standard = Number(groupArr[0].item?.standard) || 0;
+          if (standard > 0) totalTimeCreditMsY += (groupArr.length / standard) * 3600 * 1000;
+        }
+        const dept = serialToDept.get(s);
+        if (!dept || !byDeptYesterday.has(dept)) continue;
+        byDeptYesterday.get(dept).push({
+          runtimeMs: runningMs,
+          totalTimeCreditMs: totalTimeCreditMsY,
+          workedTimeMs: runningMs > 0 && totalTimeCreditMsY > 0 ? runningMs : 0
+        });
+      }
+    }
+
+    const data = [];
+    for (const departmentName of MACHINE_GROUP_DEPARTMENTS) {
+      const records = byDept.get(departmentName);
+      if (!records || records.length === 0) continue;
+
+      let sumRuntimeMs = 0, sumPausedMs = 0, sumFaultMs = 0, sumTotalCounts = 0, sumTotalMisfeeds = 0;
+      let sumTotalTimeCreditMs = 0, sumWorkedTimeMs = 0;
+      for (const record of records) {
+        sumRuntimeMs += record.runtimeMs || 0;
+        sumPausedMs += record.pausedTimeMs || 0;
+        sumFaultMs += record.faultTimeMs || 0;
+        sumTotalCounts += record.totalCounts || 0;
+        sumTotalMisfeeds += record.totalMisfeeds || 0;
+        sumTotalTimeCreditMs += record.totalTimeCreditMs || 0;
+        let workMs = record.workedTimeMs || 0;
+        if (workMs === 0 && (record.totalTimeCreditMs || 0) > 0 && (record.runtimeMs || 0) > 0) {
+          workMs = record.runtimeMs;
+        }
+        sumWorkedTimeMs += workMs;
+      }
+
+      const downtimeMs = sumPausedMs + sumFaultMs;
+      const availability = windowMs > 0 ? Math.min(Math.max(sumRuntimeMs / windowMs, 0), 1) : 0;
+      const totalOutput = sumTotalCounts + sumTotalMisfeeds;
+      const throughput = totalOutput > 0 ? sumTotalCounts / totalOutput : 0;
+      const workTimeSec = sumWorkedTimeMs / 1000;
+      const totalTimeCreditSec = sumTotalTimeCreditMs / 1000;
+      const efficiency = workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
+      const oee = availability * throughput * efficiency;
+
+      let efficiencyPreviousDay = null;
+      const recordsYesterday = byDeptYesterday.get(departmentName);
+      if (recordsYesterday && recordsYesterday.length > 0) {
+        let sumWorkedMsY = 0, sumTimeCreditMsY = 0;
+        for (const rec of recordsYesterday) {
+          sumTimeCreditMsY += rec.totalTimeCreditMs || 0;
+          let w = rec.workedTimeMs || 0;
+          if (w === 0 && (rec.totalTimeCreditMs || 0) > 0 && (rec.runtimeMs || 0) > 0) w = rec.runtimeMs;
+          sumWorkedMsY += w;
+        }
+        const workTimeSecY = sumWorkedMsY / 1000;
+        const totalTimeCreditSecY = sumTimeCreditMsY / 1000;
+        if (workTimeSecY > 0) {
+          const effY = totalTimeCreditSecY / workTimeSecY;
+          efficiencyPreviousDay = { value: effY, percentage: (effY * 100).toFixed(2) };
+        }
+      }
+
+      data.push({
+        machine: { name: departmentName },
+        metrics: {
+          runtime: { total: sumRuntimeMs, formatted: formatDuration(sumRuntimeMs) },
+          downtime: { total: downtimeMs, formatted: formatDuration(downtimeMs) },
+          output: { totalCount: sumTotalCounts, misfeedCount: sumTotalMisfeeds },
+          performance: {
+            availability: { value: availability, percentage: (availability * 100).toFixed(2) },
+            throughput: { value: throughput, percentage: (throughput * 100).toFixed(2) },
+            efficiency: { value: efficiency, percentage: (efficiency * 100).toFixed(2) },
+            oee: { value: oee, percentage: (oee * 100).toFixed(2) }
+          }
+        },
+        timeRange: { start: rangeStart, end: rangeEnd },
+        efficiencyPreviousDay
+      });
+    }
+
+    if (data.length === 0 && (skippedNoDept > 0 || skippedUnknownDept > 0)) {
+      return {
+        data: [],
+        debug: {
+          reason: 'all_records_skipped_no_matching_department',
+          message: `Machines had state/count data but none matched known departments. Skipped: ${skippedNoDept} with no department, ${skippedUnknownDept} with unknown department.`,
+          details: {
+            requestedStart: rangeStart,
+            requestedEnd: rangeEnd,
+            skippedNoDepartment: skippedNoDept,
+            skippedUnknownDepartment: skippedUnknownDept,
+            knownDepartments: MACHINE_GROUP_DEPARTMENTS
+          }
+        }
+      };
+    }
+
+    if (logger) logger.info(`Built machines group summary from state/count for ${data.length} department(s)`);
+    return { data };
+  } catch (error) {
+    if (logger) logger.error('Error building machines group summary from state/count:', error);
     throw error;
   }
 }
@@ -1554,6 +1886,7 @@ module.exports = {
   buildMachineOEEFromDailyTotals,
   buildMachineStatusFromDailyTotals,
   buildMachineStatusFromStateAndCount,
+  buildMachinesGroupSummaryFromStateAndCount,
   buildDailyCountTotalsFromCache,
   buildCountTotalsFromDailyTotals,
   buildTopOperatorEfficiencyFromCache,

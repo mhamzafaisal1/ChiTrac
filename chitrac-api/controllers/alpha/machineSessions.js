@@ -1,4 +1,5 @@
 const express = require("express");
+const { DateTime } = require("luxon");
 
 const { formatDuration } = require("../../utils/time");
 const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
@@ -22,6 +23,7 @@ const {
   queryMachineSessions,
   combineMachineDashboardData,
 } = require("../../utils/machineFunctions");
+const { buildMachinesGroupSummaryFromStateAndCount } = require("../../utils/dashboardFunctions");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -783,6 +785,57 @@ module.exports = function (server) {
     } catch (err) {
       logger.error(
         `[machineSessions] Error in machine-group-summary-daily-cached route:`,
+        err
+      );
+      if (
+        err.message.includes("Start and end dates are required") ||
+        err.message.includes("Invalid date format") ||
+        err.message.includes("Start date must be before end date")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---- /api/alpha/analytics/machines-group-summary-daily-state ----
+  // Same as machines-group-summary-daily-cached but built from state + count only (no totals-daily).
+  router.get("/analytics/machines-group-summary-daily-state", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      const dateStr = start.toLocaleDateString("en-CA", {
+        timeZone: "America/Chicago",
+      });
+      const yesterdayStr = previousDateStr(dateStr);
+      const tz = "America/Chicago";
+      const yesterdayStart = DateTime.fromISO(yesterdayStr, { zone: tz }).startOf("day").toJSDate();
+      const yesterdayEnd = DateTime.fromISO(yesterdayStr, { zone: tz }).endOf("day").toJSDate();
+
+      logger.info(
+        `[machineSessions] machines-group-summary-daily-state: start=${req.query.start} end=${req.query.end} serial=${req.query.serial || "none"}`
+      );
+
+      const result = await buildMachinesGroupSummaryFromStateAndCount(db, start, end, serial, logger, {
+        machineCollectionName: config.machineCollectionName,
+        machineGroupDepartments: MACHINE_GROUP_DEPARTMENTS,
+        yesterdayStart,
+        yesterdayEnd,
+      });
+
+      if (result.debug) {
+        logger.warn(
+          `[machineSessions] machines-group-summary-daily-state: ${result.debug.reason} - ${result.debug.message}`
+        );
+        return res.json({ data: result.data, debug: result.debug });
+      }
+      logger.info(
+        `[machineSessions] machines-group-summary-daily-state: ${result.data.length} department group(s)`
+      );
+      res.json(result.data);
+    } catch (err) {
+      logger.error(
+        `[machineSessions] Error in machines-group-summary-daily-state route:`,
         err
       );
       if (

@@ -20,6 +20,7 @@ const {
 } = require("../../utils/time");
 const {
   fetchStatesForMachine,
+  fetchStatesForMachineForOEE,
   fetchStatesForOperator,
   groupStatesByMachine,
   groupStatesByOperator,
@@ -69,7 +70,7 @@ const {
   buildMachineOEE,
   buildDailyItemHourlyStack,
   buildTopOperatorEfficiency,
-} = require("../../utils/dailyDashboardBuilder");
+} = require("../../utils/dashboardFunctions");
 
 const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
 const {
@@ -79,8 +80,8 @@ const {
   groupRecordsBySerial,
   buildPerformanceFromMachineRecord,
   buildItemSummaryFromRecords,
+  buildCurrentOperatorsFromTicker: buildCurrentOperators,
 } = require("../../utils/machineFunctions");
-const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 
 module.exports = function (server) {
   return constructor(server);
@@ -138,6 +139,10 @@ function constructor(server) {
   // Import reports (sessions-powered) routes
   const reportsSessionRoutes = require("./reportsSessionRoutes")(server);
   router.use("/", reportsSessionRoutes);
+
+  // Import item routes (cached + hybrid analytics)
+  const itemRoutes = require("./itemRoutes")(server);
+  router.use("/", itemRoutes);
 
   // Import item sessions (sessions-powered) routes
   const itemSessionsRoutes = require("./itemSessions")(server);
@@ -1659,43 +1664,23 @@ function constructor(server) {
 
   router.get("/analytics/machine-performance", async (req, res) => {
     try {
-      // Legacy collections: hardcoded for machine dashboard (state/count)
-      const STATE_COLLECTION = "state";
-      const COUNT_COLLECTION = "count";
-
       // Step 1: Parse and validate query parameters
       const { start, end, serial } = parseAndValidateQueryParams(req);
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
 
-      const stateCollection = db.collection(STATE_COLLECTION);
-      const countCollection = db.collection(COUNT_COLLECTION);
-
-      async function fetchStatesFromLegacyCollection(serialFilter) {
-        const query = {
-          timestamp: { $gte: paddedStart, $lte: paddedEnd },
-        };
-        if (serialFilter != null) query["machine.serial"] = serialFilter;
-        return stateCollection
-          .find(query)
-          .sort({ timestamp: 1 })
-          .project({
-            _id: 0,
-            timestamp: 1,
-            "machine.serial": 1,
-            "machine.name": 1,
-            "program.mode": 1,
-            "status.code": 1,
-            "status.name": 1,
-            operators: 1,
-          })
-          .toArray();
-      }
-
+      let states;
       let groupedStates;
 
       if (serial) {
-        const machineStates = await fetchStatesFromLegacyCollection(serial);
+        // fetchStatesForMachineForOEE queries both timestamp/timestamps.create
+        // and machine.serial/machine.id, then normalizes post-fetch — required for LPL machines
+        const machineStates = await fetchStatesForMachineForOEE(
+          db,
+          serial,
+          paddedStart,
+          paddedEnd
+        );
         groupedStates = {
           [serial]: {
             machine: {
@@ -1707,42 +1692,37 @@ function constructor(server) {
           },
         };
       } else {
-        const allStates = await fetchStatesFromLegacyCollection(null);
+        // For all-machines: query both timestamp fields and normalize, same as fetchStatesForMachineForOEE
+        const stateCollectionName = getStateCollectionName(paddedStart);
+        const allStatesRaw = await db.collection(stateCollectionName)
+          .find({
+            $or: [
+              { timestamp: { $gte: paddedStart, $lte: paddedEnd } },
+              { "timestamps.create": { $gte: paddedStart, $lte: paddedEnd } },
+            ],
+          })
+          .sort({ timestamp: 1, "timestamps.create": 1 })
+          .project({
+            _id: 0,
+            timestamp: 1,
+            "timestamps.create": 1,
+            "machine.serial": 1,
+            "machine.id": 1,
+            "machine.name": 1,
+            "program.mode": 1,
+            "status.code": 1,
+            "status.id": 1,
+            "status.name": 1,
+            operators: 1,
+          })
+          .toArray();
+        const allStates = allStatesRaw.map((s) => ({
+          ...s,
+          timestamp: s.timestamp || s.timestamps?.create,
+          machine: { ...s.machine, serial: s.machine?.serial ?? s.machine?.id },
+        }));
         groupedStates = groupStatesByMachine(allStates);
       }
-
-      // Build current-status map from stateTicker (one doc per machine; status.id/code, machine.id/serial)
-      const machineSerialsForTicker = Object.keys(groupedStates).map((s) =>
-        parseInt(s, 10)
-      ).filter((n) => !Number.isNaN(n));
-      const tickerQuery =
-        machineSerialsForTicker.length > 0
-          ? {
-              $or: [
-                { "machine.serial": { $in: machineSerialsForTicker } },
-                { "machine.id": { $in: machineSerialsForTicker } },
-              ],
-            }
-          : {};
-      const tickers = await db
-        .collection(config.stateTickerCollectionName)
-        .find(tickerQuery)
-        .project({ "machine.serial": 1, "machine.id": 1, status: 1, timestamp: 1 })
-        .toArray();
-      const tickerByMachine = new Map();
-      tickers.forEach((ticker) => {
-        const serial = ticker.machine?.serial ?? ticker.machine?.id;
-        const id = ticker.machine?.id ?? ticker.machine?.serial;
-        const keys = [...new Set([serial, id].filter((k) => k != null))];
-        const existing = keys.length ? tickerByMachine.get(keys[0]) : null;
-        const existingTs = existing
-          ? new Date(existing.timestamp || 0).getTime()
-          : 0;
-        const ts = new Date(ticker.timestamp || 0).getTime();
-        if (!existing || ts >= existingTs) {
-          keys.forEach((k) => tickerByMachine.set(k, ticker));
-        }
-      });
 
       const results = [];
 
@@ -1753,49 +1733,32 @@ function constructor(server) {
         // Skip if no states found for this machine
         if (!states.length) continue;
 
-        // Normalize state docs for cycle extraction: state collection often has no status
-        // (LPLs use stateTicker for status). Treat missing status as running (1) so runtime
-        // accrues and matches report (machine-item-states-summary). extractAllCyclesFromStates
-        // otherwise defaults missing status to 0 (paused) and undercounts.
+        // Normalize: LPL state docs often have no status field (status lives in stateTicker).
+        // Default missing status to running (1) so extractAllCyclesFromStates detects runtime.
         const normalizedStates = states.map((s) => {
           const code = s.status?.code ?? s.status?.id;
-          const statusCode =
-            code !== undefined && code !== null ? code : 1;
-          return {
-            ...s,
-            status: {
-              ...s.status,
-              code: statusCode,
-              name:
-                s.status?.name ??
-                (statusCode === 1 ? "Run" : statusCode === 0 ? "Paused" : "Fault"),
-            },
-          };
+          const statusCode = code !== undefined && code !== null ? code : 1;
+          return { ...s, status: { ...s.status, code: statusCode } };
         });
 
-        // Extract all types of cycles (use normalized states so running cycles are detected)
+        // Extract all types of cycles
         const cycles = extractAllCyclesFromStates(normalizedStates, start, end);
         const runningCycles = cycles.running;
 
-        // Get counts from legacy count collection
-        const validCounts = await countCollection
-          .find({
-            "machine.serial": parseInt(machineSerial),
-            timestamp: { $gte: new Date(start), $lte: new Date(end) },
-            "operator.id": { $exists: true, $ne: -1 },
-            misfeed: { $ne: true },
-          })
-          .sort({ timestamp: 1 })
-          .toArray();
-        const misfeedCounts = await countCollection
-          .find({
-            "machine.serial": parseInt(machineSerial),
-            timestamp: { $gte: new Date(start), $lte: new Date(end) },
-            "operator.id": { $exists: true, $ne: -1 },
-            misfeed: true,
-          })
-          .sort({ timestamp: 1 })
-          .toArray();
+        // Get counts for this machine
+        const validCounts = await getValidCounts(
+          db,
+          parseInt(machineSerial),
+          start,
+          end
+        );
+        // Get misfeed counts for this machine
+        const misfeedCounts = await getMisfeedCounts(
+          db,
+          parseInt(machineSerial),
+          start,
+          end
+        );
 
         // Calculate metrics for this machine
         const totalQueryMs = new Date(end) - new Date(start);
@@ -1819,21 +1782,8 @@ function constructor(server) {
         );
         const oee = calculateOEE(availability, efficiency, throughput);
 
-        // Current status from stateTicker (source of truth for LPLs etc.); fallback to last state doc
+        // Get current status for this machine
         const currentState = states[states.length - 1] || {};
-        const ticker =
-          tickerByMachine.get(parseInt(machineSerial, 10)) ??
-          tickerByMachine.get(machineSerial);
-        const currentStatusFromTicker = ticker?.status
-          ? {
-              code: ticker.status?.code ?? ticker.status?.id ?? 0,
-              name: ticker.status?.name ?? "Unknown",
-            }
-          : null;
-        const currentStatus = currentStatusFromTicker ?? {
-          code: currentState.status?.code ?? 0,
-          name: currentState.status?.name ?? "Unknown",
-        };
 
         // Format response for this machine
         const machineResponse = {
@@ -1841,7 +1791,10 @@ function constructor(server) {
             name: currentState.machine?.name || "Unknown",
             serial: currentState.machine?.serial || parseInt(machineSerial),
           },
-          currentStatus,
+          currentStatus: {
+            code: currentState.status?.code || 0,
+            name: currentState.status?.name || "Unknown",
+          },
           metrics: {
             runtime: {
               total: runtimeMs,
@@ -2075,40 +2028,68 @@ function constructor(server) {
 
   router.get("/analytics/operator-performance", async (req, res) => {
     try {
+      // Step 1: Parse and validate query parameters
       const { start, end, operatorId } = parseAndValidateQueryParams(req);
+
+      // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
 
-      console.log("[operator-performance] query", {
-        rawQuery: req.query,
-        start,
-        end,
-        operatorId,
-      });
+      let states;
+      let groupedStates;
 
-      const stateCollectionName = "state";
-      const countCollectionName = "count";
+      if (operatorId) {
+        // If operatorId provided, get states for just that operator
+        states = await fetchStatesForOperator(
+          db,
+          operatorId,
+          paddedStart,
+          paddedEnd
+        );
+        // Create a single group for this operator
+        groupedStates = {
+          [operatorId]: {
+            operator: {
+              id: operatorId,
+              name: await getOperatorNameFromCount(db, operatorId),
+            },
+            states: states,
+          },
+        };
+      } else {
+        // If no operatorId, get all states and group them by operator
+        const allStates = await fetchStatesForOperator(
+          db,
+          null,
+          paddedStart,
+          paddedEnd
+        );
+        groupedStates = groupStatesByOperator(allStates);
 
-      // --- 1) Counts: get all counts in range (state has no operators; operators come from count)
-      const countQuery = {
-        timestamp: { $gte: new Date(start), $lte: new Date(end) },
-        "operator.id": { $exists: true, $ne: -1 },
-      };
-      if (operatorId != null) countQuery["operator.id"] = operatorId;
+        // Update operator names for all groups
+        for (const [opId, group] of Object.entries(groupedStates)) {
+          group.operator.name = await getOperatorNameFromCount(db, opId);
+        }
+      }
 
+      // Step 3: Get all operator IDs for count query
+      const operatorIds = Object.keys(groupedStates).map((id) => parseInt(id));
+
+      // Get counts for all operators in a single query
       const allCounts = await db
-        .collection(countCollectionName)
-        .find(countQuery)
+        .collection("count")
+        .find({
+          "operator.id": { $in: operatorIds },
+          timestamp: { $gte: new Date(start), $lte: new Date(end) },
+        })
         .sort({ timestamp: 1 })
         .toArray();
 
-      console.log("[operator-performance] fetched counts", {
-        totalCounts: allCounts.length,
-      });
-
+      // Group counts by operator
       const operatorCounts = {};
       for (const count of allCounts) {
         const opId = count.operator?.id;
-        if (opId == null) continue;
+        if (!opId) continue;
+
         if (!operatorCounts[opId]) {
           operatorCounts[opId] = {
             counts: [],
@@ -2116,6 +2097,7 @@ function constructor(server) {
             misfeedCounts: [],
           };
         }
+
         operatorCounts[opId].counts.push(count);
         if (count.misfeed) {
           operatorCounts[opId].misfeedCounts.push(count);
@@ -2124,207 +2106,93 @@ function constructor(server) {
         }
       }
 
-      const operatorIds = Object.keys(operatorCounts).map((id) => parseInt(id, 10));
-      if (!operatorIds.length) {
-        console.log("[operator-performance] no operators with counts");
-        return res.json([]);
-      }
+      const results = [];
 
-      // --- 1b) stateTicker: current machine per operator (one doc per machine; operators[] lists who is on it)
-      const stateTickerCollectionName = "stateTicker";
-      const tickerDocs = await db
-        .collection(stateTickerCollectionName)
-        .find({ "operators.id": { $in: operatorIds } })
-        .project({ machine: 1, operators: 1 })
-        .toArray();
+      // Step 4: Process each operator's data in parallel
+      const operatorResults = await Promise.all(
+        Object.entries(groupedStates).map(async ([operatorId, group]) => {
+          const states = group.states;
 
-      const currentMachineByOperator = {};
-      for (const ticker of tickerDocs) {
-        const machine = ticker.machine;
-        if (!machine) continue;
-        const name = machine.name || "Unknown";
-        const serial = machine.serial ?? machine.id;
-        for (const op of ticker.operators || []) {
-          const opId = op?.id;
-          if (opId != null) {
-            currentMachineByOperator[opId] = { name, serial };
-          }
-        }
-      }
+          // Skip if no states found for this operator
+          if (!states.length) return null;
 
-      // --- 2) State: all state in range (state docs have timestamp, machine; no operators)
-      const allStates = await fetchStatesForOperator(
-        db,
-        null,
-        paddedStart,
-        paddedEnd,
-        stateCollectionName
+          // Get counts for this operator
+          const counts = operatorCounts[parseInt(operatorId)];
+          if (!counts) return null;
+
+          // Process count statistics using the new utility function
+          const stats = processCountStatistics(counts.counts);
+
+          // Calculate metrics for this operator
+          const totalQueryMs = new Date(end) - new Date(start);
+          const {
+            runtime: runtimeMs,
+            pausedTime: pausedTimeMs,
+            faultTime: faultTimeMs,
+          } = calculateOperatorTimes(states, start, end);
+
+          const piecesPerHour = calculatePiecesPerHour(stats.total, runtimeMs);
+          const efficiency = calculateEfficiency(
+            runtimeMs,
+            stats.total,
+            counts.validCounts
+          );
+
+          // Get current status for this operator
+          const currentState = states[states.length - 1] || {};
+
+          // Format response for this operator
+          return {
+            operator: {
+              id: parseInt(operatorId),
+              name: group.operator.name || "Unknown",
+            },
+            currentStatus: {
+              code: currentState.status?.code || 0,
+              name: currentState.status?.name || "Unknown",
+            },
+            metrics: {
+              runtime: {
+                total: runtimeMs,
+                formatted: formatDuration(runtimeMs),
+              },
+              pausedTime: {
+                total: pausedTimeMs,
+                formatted: formatDuration(pausedTimeMs),
+              },
+              faultTime: {
+                total: faultTimeMs,
+                formatted: formatDuration(faultTimeMs),
+              },
+              output: {
+                totalCount: stats.total,
+                misfeedCount: stats.misfeeds,
+                validCount: stats.valid,
+              },
+              performance: {
+                piecesPerHour: {
+                  value: piecesPerHour,
+                  formatted: Math.round(piecesPerHour).toString(),
+                },
+                efficiency: {
+                  value: efficiency,
+                  percentage: (efficiency * 100).toFixed(2) + "%",
+                },
+              },
+            },
+            timeRange: {
+              start: start,
+              end: end,
+              total: formatDuration(totalQueryMs),
+            },
+          };
+        })
       );
 
-      // Normalize: state may have no status; treat as running (1) for cycle extraction
-      const normalizedStates = allStates.map((s) => {
-        const out = { ...s, timestamp: s.timestamp || s.timestamps?.create };
-        if (!out.machine?.serial && out.machine?.id != null) {
-          out.machine = { ...out.machine, serial: out.machine.id };
-        }
-        if (out.status?.code == null && out.status?.id != null) {
-          out.status = { ...out.status, code: out.status.id };
-        }
-        if (out.status?.code == null && out.status?.id == null) {
-          out.status = { code: 1, name: "Running" };
-        }
-        return out;
-      });
-
-      const groupedByMachine = groupStatesByMachine(normalizedStates);
-      const machineSerials = Object.keys(groupedByMachine);
-
-      console.log("[operator-performance] state summary", {
-        totalStates: normalizedStates.length,
-        machineCount: machineSerials.length,
-      });
-
-      // --- 3) Running (and paused/fault) cycles per machine
-      const cyclesByMachine = {};
-      for (const serial of machineSerials) {
-        const group = groupedByMachine[serial];
-        const machineStates = group.states;
-        machineStates.sort(
-          (a, b) =>
-            new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
-        );
-        const cycles = extractAllCyclesFromStates(machineStates, start, end);
-        cyclesByMachine[serial] = cycles;
-      }
-
-      // --- 4) Per-operator runtime = sum of running-cycle durations where operator has a count in that cycle
-      const totalQueryMs = new Date(end) - new Date(start);
-      const operatorResults = [];
-
-      for (const opId of operatorIds) {
-        const counts = operatorCounts[opId];
-        const stats = processCountStatistics(counts.counts);
-
-        let runtimeMs = 0;
-        let pausedTimeMs = 0;
-        let faultTimeMs = 0;
-
-        const countsByMachine = {};
-        for (const c of counts.counts) {
-          const serial = c.machine?.serial ?? c.machine?.id;
-          if (serial == null) continue;
-          if (!countsByMachine[serial]) countsByMachine[serial] = [];
-          countsByMachine[serial].push(c);
-        }
-
-        for (const serial of Object.keys(countsByMachine)) {
-          const cycles = cyclesByMachine[serial];
-          if (!cycles) continue;
-          const opCountsOnMachine = countsByMachine[serial];
-
-          for (const cycle of cycles.running || []) {
-            const cycleStart = new Date(cycle.start);
-            const cycleEnd = new Date(cycle.end);
-            const hasCountInCycle = opCountsOnMachine.some((c) => {
-              const t = new Date(c.timestamp);
-              return t >= cycleStart && t <= cycleEnd;
-            });
-            if (hasCountInCycle) runtimeMs += cycle.duration;
-          }
-          for (const cycle of cycles.paused || []) {
-            const cycleStart = new Date(cycle.start);
-            const cycleEnd = new Date(cycle.end);
-            const hasCountInCycle = opCountsOnMachine.some((c) => {
-              const t = new Date(c.timestamp);
-              return t >= cycleStart && t <= cycleEnd;
-            });
-            if (hasCountInCycle) pausedTimeMs += cycle.duration;
-          }
-          for (const cycle of cycles.fault || []) {
-            const cycleStart = new Date(cycle.start);
-            const cycleEnd = new Date(cycle.end);
-            const hasCountInCycle = opCountsOnMachine.some((c) => {
-              const t = new Date(c.timestamp);
-              return t >= cycleStart && t <= cycleEnd;
-            });
-            if (hasCountInCycle) faultTimeMs += cycle.duration;
-          }
-        }
-
-        const piecesPerHour = calculatePiecesPerHour(stats.total, runtimeMs);
-        const efficiency = calculateEfficiency(
-          runtimeMs,
-          stats.total,
-          counts.validCounts
-        );
-
-        const opName =
-          counts.counts[0]?.operator?.name ||
-          (await getOperatorNameFromCount(db, opId)) ||
-          "Unknown"; 
-
-        const lastCount = counts.counts[counts.counts.length - 1];
-        const lastMachineSerial = lastCount?.machine?.serial ?? lastCount?.machine?.id;
-        let currentStatus = { code: 0, name: "Unknown" };
-        if (lastMachineSerial != null && groupedByMachine[lastMachineSerial]) {
-          const lastMachineStates = groupedByMachine[lastMachineSerial].states;
-          const lastState = lastMachineStates[lastMachineStates.length - 1];
-          if (lastState?.status) {
-            currentStatus = {
-              code: lastState.status.code ?? lastState.status.id ?? 0,
-              name: lastState.status.name || "Unknown",
-            };
-          }
-        }
-
-        operatorResults.push({
-          operator: { id: opId, name: opName },
-          currentMachine: currentMachineByOperator[opId] || null,
-          currentStatus,
-          metrics: {
-            runtime: {
-              total: runtimeMs,
-              formatted: formatDuration(runtimeMs),
-            },
-            pausedTime: {
-              total: pausedTimeMs,
-              formatted: formatDuration(pausedTimeMs),
-            },
-            faultTime: {
-              total: faultTimeMs,
-              formatted: formatDuration(faultTimeMs),
-            },
-            output: {
-              totalCount: stats.total,
-              misfeedCount: stats.misfeeds,
-              validCount: stats.valid,
-            },
-            performance: {
-              piecesPerHour: {
-                value: piecesPerHour,
-                formatted: Math.round(piecesPerHour).toString(),
-              },
-              efficiency: {
-                value: efficiency,
-                percentage: (efficiency * 100).toFixed(2) + "%",
-              },
-            },
-          },
-          timeRange: {
-            start,
-            end,
-            total: formatDuration(totalQueryMs),
-          },
-        });
-      }
-
-      console.log("[operator-performance] final result count", {
-        total: operatorResults.length,
-      });
-
-      res.json(operatorResults);
+      // Filter out null results and send response
+      res.json(operatorResults.filter((result) => result !== null));
     } catch (error) {
-      console.error(`[operator-performance] Error in ${req.method} ${req.originalUrl}:`, error);
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
       res
         .status(500)
         .json({ error: "Failed to fetch operator performance metrics" });
