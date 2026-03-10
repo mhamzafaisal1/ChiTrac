@@ -6,7 +6,6 @@ import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-st
 import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/daily-count-bar-chart.component";
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
 import { EfficiencyByMachineGroupBarChartComponent } from "../charts/efficiency-by-machine-group-bar-chart/efficiency-by-machine-group-bar-chart.component";
-import { TopFaultsBarChartComponent } from "../charts/top-faults-bar-chart/top-faults-bar-chart.component";
 
 @Component({
     selector: 'app-daily-analytics-dashboard-split',
@@ -16,8 +15,7 @@ import { TopFaultsBarChartComponent } from "../charts/top-faults-bar-chart/top-f
         DailyMachineStackedBarChartComponent,
         DailyCountBarChartComponent,
         RankedOperatorBarChartComponent,
-        EfficiencyByMachineGroupBarChartComponent,
-        TopFaultsBarChartComponent
+        EfficiencyByMachineGroupBarChartComponent
     ],
     templateUrl: './daily-analytics-dashboard-split.component.html',
     styleUrls: ['./daily-analytics-dashboard-split.component.scss']
