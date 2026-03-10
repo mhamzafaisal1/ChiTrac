@@ -279,3 +279,4 @@ module.exports = function faultHistoryRoute(server) {
 
   return router;
 };
+

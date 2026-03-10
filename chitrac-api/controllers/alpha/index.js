@@ -69,18 +69,16 @@ const {
   buildMachineOEE,
   buildDailyItemHourlyStack,
   buildTopOperatorEfficiency,
-} = require("../../utils/dailyDashboardBuilder");
+} = require("../../utils/dashboardFunctions");
 
 const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
-const {
-  getBookendedStatesAndTimeRange,
-} = require("../../utils/bookendingBuilder");
 const {
   groupRecordsBySerial,
   buildPerformanceFromMachineRecord,
   buildItemSummaryFromRecords,
+  buildCurrentOperatorsFromTicker: buildCurrentOperators,
+  getBookendedStatesAndTimeRange,
 } = require("../../utils/machineFunctions");
-const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 
 module.exports = function (server) {
   return constructor(server);
@@ -99,21 +97,7 @@ function constructor(server) {
   const operatorRoutes = require("./operatorRoutes")(server);
   router.use("/", operatorRoutes);
 
-  // Import daily dashboard-related routes
-  const dailyDashboardRoutes = require("./dailyDashboardRoutes")(server);
-  router.use("/", dailyDashboardRoutes);
-
-  // Import daily sessions dashboard-related routes
-  const dailyDashboardSessionRoutes = require("./dailyDashboardSessionRoutes")(server);
-  router.use("/", dailyDashboardSessionRoutes);
-
-  // Import daily dashboard session routes (split)
-  const dailyDashboardSessionRoutesSplit = require("./dailyDashboardSessionRoutesSplit")(server);
-  router.use("/", dailyDashboardSessionRoutesSplit);
-
-  // Import dashboard sessions routes
-  const dashboardSessionsRoutes = require("./dashboardSessionsRoutes")(server);
-  router.use("/", dashboardSessionsRoutes);
+  // Import daily dashboard-related routes (legacy sessions routes removed)
 
   // Import misc-related routes
   const miscRoutes = require("./miscRoutes")(server);
@@ -123,37 +107,17 @@ function constructor(server) {
   const levelTwoDashboardRoutes = require("./level-twoRoutes")(server);
   router.use("/analytics", levelTwoDashboardRoutes);
 
-  // Import machine sessions routes
-  const machineSessionsRoutes = require("./machineSessions")(server);
-  router.use("/", machineSessionsRoutes);
+  // Import report routes (cached machine/operator/item summaries)
+  const reportRoutes = require("./reportRoutes")(server);
+  router.use("/", reportRoutes);
 
-  // Import operator sessions routes
-  const operatorSessionsRoutes = require("./operatorSessions")(server);
-  router.use("/", operatorSessionsRoutes);
+  // Import item routes (cached + hybrid analytics)
+  const itemRoutes = require("./itemRoutes")(server);
+  router.use("/", itemRoutes);
 
-  // Import efficiency screen (sessions-powered) routes
-  const efficiencyScreenSessionRoutes = require("./efficiencyScreenSessionRoute")(server);
-  router.use("/", efficiencyScreenSessionRoutes);
-
-  // Import reports (sessions-powered) routes
-  const reportsSessionRoutes = require("./reportsSessionRoutes")(server);
-  router.use("/", reportsSessionRoutes);
-
-  // Import item sessions (sessions-powered) routes
-  const itemSessionsRoutes = require("./itemSessions")(server);
-  router.use("/", itemSessionsRoutes);
-
-  // Import fault session routes
-  const faultSessionRoutes = require("./faultSessionRoutes")(server);
-  router.use("/", faultSessionRoutes);
-
-  // Import machine-details routes
-  const machineDetailsRoutes = require("./machineDetails.js")(server);
-  router.use("/", machineDetailsRoutes);
-
-  // Import operator-details routes
-  const operatorDetailsRoutes = require("./operatorDetails")(server);
-  router.use("/", operatorDetailsRoutes);
+  // Import fault routes
+  const faultRoutes = require("./faultRoutes")(server);
+  router.use("/", faultRoutes);
 
   //Import dashboard-related routes
   const dashboardRoutes = require("./dashboardRoutes")(server);

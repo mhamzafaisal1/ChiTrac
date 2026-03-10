@@ -9,7 +9,7 @@
 
 const config = require("../modules/config");
 const { SYSTEM_TIMEZONE } = require("./time");
-const { getBookendedStatesAndTimeRange } = require("./bookendingBuilder");
+const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
 const { DateTime } = require("luxon");
 
 // ---------------------------------------------------------------------------
