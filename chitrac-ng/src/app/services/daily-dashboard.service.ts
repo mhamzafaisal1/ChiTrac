@@ -162,4 +162,15 @@ getItemsSummary(start: string, end: string, serial?: number) {
     return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary-cache`, { params });
   }
 
+  /** Fault report: summary across all machines by fault code (uses fault-session, no cache) */
+  getFaultReportSummary(start: string, end: string): Observable<{ context: any; summaries: any[] }> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get<{ context: any; summaries: any[] }>(`${this.apiUrl}/analytics/fault-report-summary`, { params });
+  }
+
+  /** Fault report: detailed by machine then fault code (uses fault-session, no cache) */
+  getFaultReportDetailed(start: string, end: string): Observable<{ context: any; details: any[] }> {
+    const params = new HttpParams().set('start', start).set('end', end);
+    return this.http.get<{ context: any; details: any[] }>(`${this.apiUrl}/analytics/fault-report-detailed`, { params });
+  }
 }

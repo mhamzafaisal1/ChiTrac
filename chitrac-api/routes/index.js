@@ -9,6 +9,7 @@ function init(app, server) {
     const operatorRoutes = require('../controllers/operator')(server);
     const statusRoutes = require('../controllers/status')(server);
     const softrolRoutes = require('../controllers/softrol')(server);
+    const milnorRoutes = require('../controllers/milnor')(server);
     const alphaRoutes = require('../controllers/alpha')(server);
     const bikoRoutes = require('../controllers/biko')(server);
     const authRoutes = require('../controllers/auth')(server);
@@ -29,6 +30,13 @@ function init(app, server) {
     if (server.config.softrol) {
         app.get('/docs/api/softrol', (req, res, next) => {
             res.sendFile(path.join(server.appRoot.path, '/docs/api-softrol.html'));
+        });
+    }
+
+    // Conditionally load Milnor documentation based on environment setting
+    if (server.config.milnor) {
+        app.get('/docs/api/milnor', (req, res, next) => {
+            res.sendFile(path.join(server.appRoot.path, '/docs/api-milnor.html'));
         });
     }
 
@@ -251,6 +259,11 @@ function init(app, server) {
     // Conditionally load Softrol routes based on environment setting
     if (server.config.softrol) {
         app.use('/api/softrol', softrolRoutes);
+    }
+
+    // Conditionally load Milnor routes based on environment setting
+    if (server.config.milnor) {
+        app.use('/api/milnor', milnorRoutes);
     }
 
     app.use('/api/history', historyRoutes);
