@@ -308,6 +308,86 @@ module.exports = function (server) {
     }
   });
 
+  // Route 4C-alt: Top 10 Faults (from state collection, no fault-session cache)
+  router.get('/analytics/daily/top-faults-state', async (req, res) => {
+    try {
+      let dayStart, dayEnd;
+      try {
+        const { start, end } = parseAndValidateQueryParams(req);
+        dayStart = new Date(start);
+        dayEnd = new Date(end);
+      } catch (error) {
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+        dayStart = now.startOf('day').toJSDate();
+        dayEnd = now.toJSDate();
+      }
+
+      const stateColl = db.collection('state');
+      const topFaults = await stateColl
+        .aggregate([
+          {
+            // Normalize timestamp: prefer `timestamp`, fall back to `timestamps.create`
+            $addFields: {
+              ts: { $ifNull: ['$timestamp', '$timestamps.create'] }
+            }
+          },
+          {
+            $match: {
+              ts: { $gte: dayStart, $lte: dayEnd }
+            }
+          },
+          {
+            $project: {
+              code: {
+                $ifNull: [
+                  '$status.id',
+                  '$status.code'
+                ]
+              },
+              name: {
+                $ifNull: [
+                  '$status.name',
+                  'Fault'
+                ]
+              }
+            }
+          },
+          // Only keep actual fault codes (status > 1 and non-null)
+          {
+            $match: {
+              code: { $ne: null, $gt: 1 }
+            }
+          },
+          {
+            $group: {
+              _id: '$code',
+              name: { $first: '$name' },
+              count: { $sum: 1 }
+            }
+          },
+          { $sort: { count: -1 } },
+          { $limit: 10 },
+          {
+            $project: {
+              _id: 0,
+              code: '$_id',
+              name: 1,
+              count: 1
+            }
+          }
+        ])
+        .toArray();
+
+      return res.json({
+        timeRange: { start: dayStart, end: dayEnd, total: formatDuration(dayEnd - dayStart) },
+        topFaults
+      });
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to fetch top faults data (state)" });
+    }
+  });
+
   // Route 5: Plant-wide Metrics
   router.get('/analytics/daily/plantwide-metrics', async (req, res) => {
     try {

@@ -277,7 +277,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
     this.rows = this.operatorData.map(response => {
       const effPct = response.metrics?.performance?.efficiency?.percentage ?? '';
-      const effStr = typeof effPct === 'string' && effPct.endsWith('%') ? effPct : `${effPct}%`;
+      const effStr = this.formatPercent(effPct);
       const hasCurrentMachine = response.currentMachine?.name != null && response.currentMachine?.name !== '';
       const statusDot = hasCurrentMachine
         ? getStatusDotByCode(response.currentStatus?.code)
@@ -292,10 +292,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
         'Total Count': response.metrics.output.totalCount,
         'Misfeed Count': response.metrics.output.misfeedCount,
-        'Availability': `${response.metrics.performance.availability.percentage}%`,
-        'Throughput': `${response.metrics.performance.throughput.percentage}%`,
+        'Availability': this.formatPercent(response.metrics.performance.availability.percentage),
+        'Throughput': this.formatPercent(response.metrics.performance.throughput.percentage),
         'Efficiency': effStr,
-        'OEE': `${response.metrics.performance.oee.percentage}%`,
+        'OEE': this.formatPercent(response.metrics.performance.oee.percentage),
         'Time Range': `${this.startTime} to ${this.endTime}`
       };
     });
@@ -574,6 +574,18 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       return 'red';
     }
     return '';
+  }
+
+  private formatPercent(value: any): string {
+    if (value == null) return '0%';
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.endsWith('%') ? trimmed : `${trimmed}%`;
+    }
+    if (typeof value === 'number') {
+      return `${value}%`;
+    }
+    return `${value}%`;
   }
 
   private formatDateForInput(date: Date): string {

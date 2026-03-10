@@ -212,10 +212,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     Downtime: `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
                     "Total Count": response.metrics.output.totalCount,
                     "Misfeed Count": response.metrics.output.misfeedCount,
-                    Availability: `${response.metrics.performance.availability.percentage}%`,
-                    Throughput: `${response.metrics.performance.throughput.percentage}%`,
-                    Efficiency: `${response.metrics.performance.efficiency.percentage}%`,
-                    OEE: `${response.metrics.performance.oee.percentage}%`,
+                    Availability: this.normalizePercentage(response.metrics.performance.availability.percentage),
+                    Throughput: this.normalizePercentage(response.metrics.performance.throughput.percentage),
+                    Efficiency: this.normalizePercentage(response.metrics.performance.efficiency.percentage),
+                    OEE: this.normalizePercentage(response.metrics.performance.oee.percentage),
                   }));
 
                   this.columns = Object.keys(formattedData[0]);
@@ -317,13 +317,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               }m`,
               "Total Count": totalCount,
               "Misfeed Count": misfeedCount,
-              Availability:
-                (performance?.availability?.percentage ?? "0") + "%",
-              Throughput:
-                (performance?.throughput?.percentage ?? "0") + "%",
-              Efficiency:
-                (performance?.efficiency?.percentage ?? "0") + "%",
-              OEE: (performance?.oee?.percentage ?? "0") + "%",
+              Availability: this.normalizePercentage(
+                performance?.availability?.percentage ?? "0"
+              ),
+              Throughput: this.normalizePercentage(
+                performance?.throughput?.percentage ?? "0"
+              ),
+              Efficiency: this.normalizePercentage(
+                performance?.efficiency?.percentage ?? "0"
+              ),
+              OEE: this.normalizePercentage(performance?.oee?.percentage ?? "0"),
             };
           });
 
@@ -730,6 +733,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (num >= 90) return "green";
     if (num >= 70) return "yellow";
     return "red";
+  }
+
+  private normalizePercentage(value: any): string {
+    if (value == null) return "0%";
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed.endsWith("%") ? trimmed : `${trimmed}%`;
+    }
+    if (typeof value === "number") {
+      return `${value}%`;
+    }
+    return `${value}%`;
   }
 
   private formatDateForInput(date: Date): string {

@@ -1,13 +1,12 @@
-import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit } from "@angular/core";
+import { Component, OnInit, OnDestroy } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { ChartTileComponent } from "../components/chart-tile/chart-tile.component";
 
 import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component";
-import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component";
-import { DailyCountByItemChartComponent } from "../charts/daily-count-by-item-chart/daily-count-by-item-chart.component";
 import { DailyCountBarChartComponent } from "../charts/daily-count-bar-chart/daily-count-bar-chart.component";
 import { RankedOperatorBarChartComponent } from "../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component";
 import { EfficiencyByMachineGroupBarChartComponent } from "../charts/efficiency-by-machine-group-bar-chart/efficiency-by-machine-group-bar-chart.component";
+import { TopFaultsBarChartComponent } from "../charts/top-faults-bar-chart/top-faults-bar-chart.component";
 
 @Component({
     selector: 'app-daily-analytics-dashboard-split',
@@ -15,18 +14,15 @@ import { EfficiencyByMachineGroupBarChartComponent } from "../charts/efficiency-
         CommonModule,
         ChartTileComponent,
         DailyMachineStackedBarChartComponent,
-        DailyMachineOeeBarChartComponent,
-        DailyCountByItemChartComponent,
         DailyCountBarChartComponent,
         RankedOperatorBarChartComponent,
-        EfficiencyByMachineGroupBarChartComponent
+        EfficiencyByMachineGroupBarChartComponent,
+        TopFaultsBarChartComponent
     ],
     templateUrl: './daily-analytics-dashboard-split.component.html',
     styleUrls: ['./daily-analytics-dashboard-split.component.scss']
 })
-export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy, AfterViewInit {
-  @ViewChild(DailyCountByItemChartComponent) itemChart!: DailyCountByItemChartComponent;
-  
+export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy {
   isDarkTheme: boolean = false;
   chartWidth: number = 600;
   chartHeight: number = 450;
@@ -37,18 +33,9 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   ngOnInit(): void {
     this.detectTheme();
     this.calculateChartDimensions();
-    
+
     // Listen for window resize to recalculate chart dimensions
     window.addEventListener('resize', this.handleResize);
-  }
-
-  ngAfterViewInit(): void {
-    // Call setAvailableSize on chart components after view init
-    setTimeout(() => {
-      if (this.itemChart) {
-        this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
-      }
-    }, 0);
   }
 
   ngOnDestroy(): void {
@@ -65,37 +52,22 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     if (window.innerWidth <= 768) {
       this.chartWidth = Math.floor(window.innerWidth * 0.95);
       this.chartHeight = 350; // Fixed readable height for mobile charts
-      
-      // Update chart components with new dimensions
-      if (this.itemChart) {
-        this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
-      }
       return;
     }
 
-    // Calculate responsive chart dimensions for desktop/tablet
-    let tilesPerRow = 3; // Default for large screens
-    let tilesPerColumn = 2; // Default for large screens (2 rows)
-    
-    if (window.innerWidth <= 1200) {
-      tilesPerRow = 2;
-      tilesPerColumn = 3; // 3 rows on tablet
-    }
+    // 2x2 grid: 2 tiles per row, 2 rows
+    const tilesPerRow = 2;
+    const tilesPerColumn = 2;
 
     // Calculate tile dimensions based on viewport
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     
     const tileWidth = viewportWidth / tilesPerRow;
-    const tileHeight = viewportHeight / tilesPerColumn; // Dynamic rows based on layout
+    const tileHeight = viewportHeight / tilesPerColumn;
 
     // Set chart dimensions with some padding
     this.chartWidth = Math.floor(tileWidth * 0.95); // 95% of tile width
     this.chartHeight = Math.floor(tileHeight * 0.95); // 95% of tile height
-
-    // Update chart components with new dimensions
-    if (this.itemChart) {
-      this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
-    }
   }
 }

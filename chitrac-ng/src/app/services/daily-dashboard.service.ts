@@ -135,7 +135,8 @@ getItemsSummary(start: string, end: string, serial?: number) {
   getMachinesGroupSummary(start: string, end: string, serial?: number): Observable<any> {
     let params = new HttpParams().set('start', start).set('end', end);
     if (serial != null) params = params.set('serial', String(serial));
-    return this.http.get(`${this.apiUrl}/analytics/machines-group-summary-daily-cached`, { params });
+    // Use state + count based endpoint for more accurate, fully recomputed metrics
+    return this.http.get(`${this.apiUrl}/analytics/machines-group-summary-daily-state`, { params });
   }
 
   getMachineItemSessionsSummary(start: string, end: string, serial?: number): Observable<any> {

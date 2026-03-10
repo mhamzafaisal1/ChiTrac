@@ -154,4 +154,5 @@ router.get("/analytics/item-dashboard-summary", async (req, res) => {
     }
   });
 
+  return router;
 }

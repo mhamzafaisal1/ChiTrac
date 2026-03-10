@@ -14,37 +14,7 @@
         ></app-daily-machine-stacked-bar-chart>
       </app-chart-tile>
 
-      <!-- Machine OEE Chart -->
-      <app-chart-tile
-        title="Machine OEE"
-        icon="insights"
-        [chartWidth]="chartWidth"
-        [chartHeight]="chartHeight"
-      >
-        <app-daily-machine-oee-bar-chart
-          [chartWidth]="chartWidth"
-          [chartHeight]="chartHeight"
-        ></app-daily-machine-oee-bar-chart>
-      </app-chart-tile>
-
-      <!-- Item Totals by Type (horizontal bars, one per item) -->
-      <app-chart-tile
-        title="Item Totals by Type"
-        icon="stacked_bar_chart"
-        [chartWidth]="chartWidth"
-        [chartHeight]="chartHeight"
-      >
-        <app-daily-count-by-item-chart
-          [chartWidth]="chartWidth"
-          [chartHeight]="chartHeight"
-          [marginTop]="50"
-          [marginRight]="30"
-          [marginBottom]="50"
-          [marginLeft]="120"
-        ></app-daily-count-by-item-chart>
-      </app-chart-tile>
-
-      <!-- Plantwide Metrics by Hour Chart -->
+      <!-- Efficiency % by Machine Group -->
       <app-chart-tile
         title="Efficiency % by Machine Group"
         icon="groups"
@@ -68,6 +38,19 @@
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
         ></app-ranked-operator-bar-chart>
+      </app-chart-tile>
+
+      <!-- Top 10 Fault Codes Chart -->
+      <app-chart-tile
+        title="Top 10 Fault Codes"
+        icon="warning"
+        [chartWidth]="chartWidth"
+        [chartHeight]="chartHeight"
+      >
+        <app-top-faults-bar-chart
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        ></app-top-faults-bar-chart>
       </app-chart-tile>
 
       <!-- Daily Plantwide Count Totals Chart -->
