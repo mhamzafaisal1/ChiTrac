@@ -11,7 +11,7 @@ import {
     Inject,
   } from '@angular/core';
   import { CommonModule } from '@angular/common';
-  import { HttpClient, HttpClientModule, HttpParams } from '@angular/common/http';
+  import { HttpClientModule } from '@angular/common/http';
   import { FormsModule } from '@angular/forms';
   import { MAT_DIALOG_DATA } from '@angular/material/dialog';
   import { Subject, tap, takeUntil, debounceTime } from 'rxjs';
@@ -19,7 +19,7 @@ import {
   import { BaseTableComponent } from '../components/base-table/base-table.component';
   import { PollingService } from '../services/polling-service.service';
   import { DateTimeService } from '../services/date-time.service';
-  import { OperatorAnalyticsService } from '../services/operator-analytics.service';
+  import { OperatorService } from '../services/operator.service';
   
   type OperatorMachineSummaryResponse = {
     context: { operatorId: number; start: string; end: string };
@@ -62,12 +62,11 @@ import {
     private lastData: OperatorMachineSummaryResponse | null = null;
   
     constructor(
-      private http: HttpClient,
       private polling: PollingService,
       private dateTime: DateTimeService,
       private renderer: Renderer2,
       private elRef: ElementRef,
-      private operatorAnalytics: OperatorAnalyticsService,
+      private operatorService: OperatorService,
       @Inject(MAT_DIALOG_DATA) private data: any
     ) {
       if (data) {
@@ -129,8 +128,24 @@ import {
         .poll(
           () => {
             this.endTime = this.polling.updateEndTimestampToNow();
-            this.fetchData(true);
-            return this.operatorAnalytics.getOperatorMachineSummary(this.startTime, this.endTime, this.operatorId!);
+            return this.operatorService
+              .getOperatorMachineSummary(this.startTime, this.endTime, this.operatorId!)
+              .pipe(
+                tap({
+                  next: (data) => {
+                    this.hasFetchedOnce = true;
+                    this.lastData = data;
+                    this.updateTable();
+                    this.isLoading = false;
+                  },
+                  error: () => {
+                    this.rows = [];
+                    this.columns = [];
+                    this.isLoading = false;
+                  },
+                }),
+                takeUntil(this.destroy$)
+              );
           },
           this.POLLING_INTERVAL,
           this.destroy$,
@@ -167,7 +182,7 @@ import {
       if (!this.operatorId) return;
       if (!skipLoadingFlag) this.isLoading = true;
   
-      this.operatorAnalytics.getOperatorMachineSummary(this.startTime, this.endTime, this.operatorId)
+      this.operatorService.getOperatorMachineSummary(this.startTime, this.endTime, this.operatorId)
         .pipe(
           tap({
             next: (data) => {

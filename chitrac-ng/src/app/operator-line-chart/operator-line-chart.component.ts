@@ -15,8 +15,6 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 
-import { OeeDataService } from '../services/oee-data.service';
-import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
 function toDateTimeLocalString(dateStr: string): string {
@@ -34,7 +32,6 @@ function toDateTimeLocalString(dateStr: string): string {
         MatFormFieldModule,
         MatInputModule,
         MatButtonModule,
-        DateTimePickerComponent,
         CartesianChartComponent
     ],
     templateUrl: './operator-line-chart.component.html',
@@ -72,7 +69,6 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
   private resizeObserver!: ResizeObserver;
 
   constructor(
-    private oeeService: OeeDataService,
     private renderer: Renderer2,
     private elRef: ElementRef
   ) {}
@@ -82,9 +78,7 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
     this.observeTheme();
     this.observeResize();
 
-    if (this.mode === 'standalone' && this.isValidInput()) {
-      this.fetchData();
-    } else if (this.mode === 'dashboard' && this.dashboardData) {
+    if (this.mode === 'dashboard' && this.dashboardData) {
       this.processDashboardData();
     }
   }
@@ -98,8 +92,6 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
     }
     if (changes['dashboardData'] && this.mode === 'dashboard' && this.dashboardData) {
       this.processDashboardData();
-    } else if (this.isValidInput()) {
-      this.fetchData();
     }
   }
 
@@ -130,10 +122,6 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
     if (this.chartContainer?.nativeElement) {
       this.resizeObserver.observe(this.chartContainer.nativeElement);
     }
-  }
-
-  private isValidInput(): boolean {
-    return !!this.startTime && !!this.endTime && !!this.operatorId;
   }
 
   private processDashboardData(): void {
@@ -214,56 +202,6 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
       '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
     ];
     return colors[index % colors.length];
-  }
-
-  fetchData(): void {
-    if (!this.isValidInput()) {
-      this.error = 'All fields are required';
-      return;
-    }
-
-    this.loading = true;
-    this.error = null;
-
-    this.oeeService.getOperatorDailyEfficiency(this.startTime, this.endTime, this.operatorId).subscribe({
-      next: (response) => {
-        // Normalize operator name - handle both object {first, surname} and string formats
-        const rawName = response.operator?.name;
-        if (rawName && typeof rawName === 'object') {
-          const nameObj = rawName as { first?: string; surname?: string };
-          const fullName = `${nameObj.first || ''} ${nameObj.surname || ''}`.trim();
-          this.operatorName = fullName || `Operator ${this.operatorId}`;
-        } else if (typeof rawName === 'string') {
-          this.operatorName = rawName || `Operator ${this.operatorId}`;
-        } else {
-          this.operatorName = `Operator ${this.operatorId}`;
-        }
-        
-        this.chartConfig = this.transformDataToCartesianConfig(response.data, this.operatorName);
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error('Error fetching data:', err);
-        this.error = 'Failed to fetch data';
-        this.loading = false;
-      }
-    });
-  }
-
-  onStartTimeChange(newValue: string) {
-    if (this.mode === 'standalone') {
-      this.pickerStartTime = newValue;
-      this.startTime = new Date(newValue).toISOString();
-      this.fetchData();
-    }
-  }
-
-  onEndTimeChange(newValue: string) {
-    if (this.mode === 'standalone') {
-      this.pickerEndTime = newValue;
-      this.endTime = new Date(newValue).toISOString();
-      this.fetchData();
-    }
   }
 
   // Method to update chart size (for grid layout compatibility)

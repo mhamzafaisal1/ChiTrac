@@ -11,7 +11,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { OperatorAnalyticsService } from '../services/operator-analytics.service';
+import { OperatorService } from '../services/operator.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
@@ -74,7 +74,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   };
 
   constructor(
-    private analyticsService: OperatorAnalyticsService,
+    private operatorService: OperatorService,
     private dialog: MatDialog,
     private renderer: Renderer2,
     private elRef: ElementRef,
@@ -206,7 +206,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           
           if (timeframe) {
             // Use timeframe-based API call
-            return this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
+            return this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
@@ -215,7 +215,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
               );
           } else {
             // Use regular API call with start/end times
-            return this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
+            return this.operatorService.getOperatorSummary(this.startTime, this.endTime)
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
@@ -275,7 +275,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
+      this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
         .subscribe({
           next: (data: any) => {
             this.updateDashboardData(data);
@@ -289,7 +289,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         });
     } else {
       // Use operator-summary route for initial table data (all operators)
-      this.analyticsService.getOperatorSummary(this.startTime, this.endTime)
+      this.operatorService.getOperatorSummary(this.startTime, this.endTime)
         .subscribe({
           next: (data: any) => {
             this.updateDashboardData(data);
@@ -396,14 +396,18 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
     // Fetch detailed operator data for the modal
     const summaryObservable = timeframe
-      ? this.analyticsService.getOperatorSummaryWithTimeframe(timeframe)
-      : this.analyticsService.getOperatorSummary(this.startTime, this.endTime);
+      ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
+      : this.operatorService.getOperatorSummary(this.startTime, this.endTime);
 
     summaryObservable.subscribe({
       next: (summaryData) => {
         const base = Array.isArray(summaryData) ? summaryData.find(d => d.operator.id === operatorId) : summaryData;
   
-        this.analyticsService.getOperatorInfo(this.startTime, this.endTime, operatorId)
+        const detailsObservable = timeframe
+          ? this.operatorService.getOperatorDetailsWithTimeFrame(this.startTime, this.endTime, operatorId)
+          : this.operatorService.getOperatorDetails(this.startTime, this.endTime, operatorId);
+
+        detailsObservable
           .subscribe({
             next: (infoData) => {
               const data = { ...base, ...infoData }; // Merge both

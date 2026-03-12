@@ -11,9 +11,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
-import { MachineAnalyticsService } from '../../services/machine-analytics.service';
-import { MachineItemSummaryService } from '../../services/machine-item-summary.service';
-import { DailyDashboardService } from '../../services/daily-dashboard.service';
+import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { getStatusDotByCode } from '../../../utils/status-utils';
 
@@ -55,11 +53,9 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   }
 
   constructor(
-    private analyticsService: MachineAnalyticsService,
+    private reportsService: ReportsService,
     private renderer: Renderer2,
-    private elRef: ElementRef,
-    private machineItemSummaryService: MachineItemSummaryService,
-    private dailyDashboardService: DailyDashboardService
+    private elRef: ElementRef
   ) {}
 
   ngOnInit(): void {
@@ -97,16 +93,15 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
 
-    // Fetch the detailed summary for the table
-    this.dailyDashboardService.getMachineItemSessionsSummary(formattedStart, formattedEnd).subscribe({
+    // Fetch the machine report for the table
+    this.reportsService.getMachineReport(formattedStart, formattedEnd).subscribe({
       next: (data) => {
-        // Process table data from the results
-        this.processTableData(data.results);
-        
+        const results = data?.results ?? (Array.isArray(data) ? data : []);
+        this.processTableData(results);
         this.isLoading = false;
       },
       error: (error) => {
-        console.error('Error fetching machine item summary:', error);
+        console.error('Error fetching machine report:', error);
         this.isLoading = false;
       }
     });

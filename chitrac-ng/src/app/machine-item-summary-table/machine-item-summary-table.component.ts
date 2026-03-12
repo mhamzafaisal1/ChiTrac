@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
-import { MachineAnalyticsService } from '../services/machine-analytics.service';
+import { MachineService } from '../services/machine.service';
 
 @Component({
     selector: 'app-machine-item-summary-table',
@@ -24,7 +24,7 @@ export class MachineItemSummaryTableComponent implements OnInit {
   loading: boolean = false;
   isDarkTheme: boolean = false;
 
-  constructor(private machineAnalyticsService: MachineAnalyticsService) {}
+  constructor(private machineService: MachineService) {}
 
   ngOnInit(): void {
     if (!this.startTime || !this.endTime) {
@@ -49,10 +49,11 @@ export class MachineItemSummaryTableComponent implements OnInit {
     const formattedEnd = new Date(this.endTime).toISOString();
 
     this.loading = true;
-    this.machineAnalyticsService.getMachineItemSummary(formattedStart, formattedEnd, this.selectedMachineSerial).subscribe({
+    // Use the same machine details endpoint as the dashboard modal
+    this.machineService.getMachineDetails(formattedStart, formattedEnd, this.selectedMachineSerial).subscribe({
       next: (data: any[]) => {
-        const matched = data.find(machine => machine.machine?.serial === this.selectedMachineSerial);
-        const summary = matched?.machineSummary?.itemSummaries;
+        const machineData = Array.isArray(data) ? data[0] : data;
+        const summary = machineData?.itemSummary?.machineSummary?.itemSummaries;
         this.itemRows = summary ? this.transformItemSummary(summary) : [];
         this.loading = false;
       },

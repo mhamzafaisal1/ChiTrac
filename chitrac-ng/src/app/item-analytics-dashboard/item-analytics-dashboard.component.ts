@@ -5,9 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
-
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { ItemAnalyticsService } from '../services/item-analytics.service';
+import { ItemService } from '../services/item.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 
@@ -43,7 +42,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   constructor(
-    private analyticsService: ItemAnalyticsService,
+    private itemService: ItemService,
     private renderer: Renderer2,
     private elRef: ElementRef,
     private pollingService: PollingService,
@@ -146,7 +145,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
         () => {
           this.endTime = this.pollingService.updateEndTimestampToNow();
           this.dateTimeService.setEndTime(this.endTime);
-          return this.analyticsService.getItemAnalytics(this.startTime, this.endTime)
+          return this.itemService.getItemAnalytics(this.startTime, this.endTime)
             .pipe(
               tap((data: any[]) => {
                 this.updateTableData(data);
@@ -192,7 +191,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
     // Set loading state
     this.isLoading = true;
 
-    return this.analyticsService.getItemAnalytics(this.startTime, this.endTime)
+    return this.itemService.getItemAnalytics(this.startTime, this.endTime)
       .pipe(
         takeUntil(this.destroy$),
         tap({

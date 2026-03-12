@@ -1,21 +1,4 @@
 <div class="table-wrapper">
-    <div class="controls" *ngIf="!isModal">
-      <app-date-time-picker label="Start Time" [(value)]="startTime"></app-date-time-picker>
-      <app-date-time-picker label="End Time" [(value)]="endTime"></app-date-time-picker>
-      
-      <mat-form-field appearance="outline">
-        <mat-label>Operator ID</mat-label>
-        <input matInput type="number" [(ngModel)]="operatorId" placeholder="Enter operator ID">
-      </mat-form-field>
-  
-      <div class="button-group">
-        <button mat-flat-button color="primary" (click)="fetchItemSummary()" [disabled]="loading || !startTime || !endTime">
-          <mat-icon>refresh</mat-icon>
-          {{ loading ? 'Loading...' : 'Fetch Data' }}
-        </button>
-      </div>
-    </div>
-  
     <div class="table-container" [class.loading]="loading">
       <base-table
         *ngIf="!loading && itemRows.length"

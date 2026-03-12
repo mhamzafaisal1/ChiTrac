@@ -10,7 +10,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
-import { MachineAnalyticsService } from '../../services/machine-analytics.service';
+import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 
 interface ItemSummary {
@@ -50,7 +50,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
   private observer!: MutationObserver;
 
   constructor(
-    private analyticsService: MachineAnalyticsService,
+    private reportsService: ReportsService,
     private renderer: Renderer2,
     private elRef: ElementRef
   ) {}
@@ -92,9 +92,13 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
 
-    this.analyticsService.getItemSessionSummary(formattedStart, formattedEnd).subscribe({
-      next: (data: ItemSummary[]) => {
-        const formattedData = data.map(item => ({
+    this.reportsService.getItemReport(formattedStart, formattedEnd).subscribe({
+      next: (data: ItemSummary[] | { results?: ItemSummary[] }) => {
+        const items = Array.isArray(data)
+          ? data
+          : (data?.results ?? []);
+
+        const formattedData = items.map(item => ({
           'Item Name': item.itemName,
           'Worked Time': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
           'Count Total': item.count,

@@ -5,7 +5,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
-import { MachineAnalyticsService } from '../services/machine-analytics.service';
+import { MachineService } from '../services/machine.service';
 
 type OperatorRow = {
   'Operator': string;
@@ -41,7 +41,7 @@ export class MachineCurrentOperatorsComponent implements OnInit {
   rows: OperatorRow[] = [];
   loading = false;
 
-  constructor(private machineAnalyticsService: MachineAnalyticsService) {}
+  constructor(private machineService: MachineService) {}
 
   ngOnInit(): void {
     if (!this.startTime || !this.endTime) {
@@ -66,13 +66,13 @@ export class MachineCurrentOperatorsComponent implements OnInit {
     const end = new Date(this.endTime).toISOString();
 
     this.loading = true;
-    // Assumes service has a machine dashboard call that returns array of machines
-    // with .currentOperators included (per your backend change).
-    this.machineAnalyticsService.getMachineDashboard(start, end, this.selectedMachineSerial)
+    // Use the same machine details endpoint as the dashboard modal
+    this.machineService
+      .getMachineDetails(start, end, this.selectedMachineSerial)
       .subscribe({
         next: (data: any[]) => {
-          const m = data?.find(d => d?.machine?.serial === this.selectedMachineSerial);
-          const ops = m?.currentOperators || [];
+          const machineData = Array.isArray(data) ? data[0] : data;
+          const ops = machineData?.currentOperators || [];
           this.rows = this.transform(ops);
           this.loading = false;
         },

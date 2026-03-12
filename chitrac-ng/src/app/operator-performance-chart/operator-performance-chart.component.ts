@@ -1,13 +1,11 @@
-import { Component, OnInit, OnDestroy, OnChanges, SimpleChanges, ElementRef, Renderer2, Inject, Input } from '@angular/core';
+import { Component, OnInit, OnDestroy, OnChanges, SimpleChanges, ElementRef, Renderer2, Input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
-import { OeeDataService } from '../services/oee-data.service';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
 @Component({
@@ -48,24 +46,9 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
   private observer!: MutationObserver;
 
   constructor(
-    private oeeService: OeeDataService,
     private renderer: Renderer2,
-    private elRef: ElementRef,
-    @Inject(MAT_DIALOG_DATA) private data: any
-  ) {
-    // Only use dialog data if it exists (when opened as standalone dialog)
-    // When used in carousel, inputs come via @Input() decorators
-    if (data) {
-      this.startTime = data.startTime ?? '';
-      this.endTime = data.endTime ?? '';
-      this.machineSerial = data.machineSerial ?? '';
-      this.chartWidth = data.chartWidth ?? this.chartWidth;
-      this.chartHeight = data.chartHeight ?? this.chartHeight;
-      this.isModal = data.isModal ?? this.isModal;
-      this.mode = data.mode ?? this.mode;
-      this.preloadedData = data.preloadedData ?? this.preloadedData;
-    }
-  }
+    private elRef: ElementRef
+  ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     // Handle input changes when component is used in carousel
@@ -95,23 +78,11 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
   }
 
   ngOnInit(): void {
-    if (!this.startTime || !this.endTime) {
-      const now = new Date();
-      const before = new Date(now);
-      before.setHours(before.getHours() - 24);
-      this.startTime = before.toISOString();
-      this.endTime = now.toISOString();
-    }
-
     this.observeTheme();
 
     if (this.mode === 'dashboard' && this.preloadedData) {
       this.chartConfig = this.transformDataToCartesianConfig(this.preloadedData);
       return;
-    }
-
-    if (this.machineSerial && this.startTime && this.endTime) {
-      this.fetchData();
     }
   }
 
@@ -132,28 +103,6 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
 
   isValidInput(): boolean {
     return !!this.startTime && !!this.endTime && !!this.machineSerial;
-  }
-
-  fetchData(): void {
-    if (!this.isValidInput()) {
-      this.error = 'All fields are required';
-      return;
-    }
-
-    this.loading = true;
-    this.error = null;
-
-    this.oeeService.getOperatorEfficiency(this.startTime, this.endTime, this.machineSerial).subscribe({
-      next: (data) => {
-        this.chartConfig = this.transformDataToCartesianConfig(data);
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error(err);
-        this.error = 'Failed to fetch data.';
-        this.loading = false;
-      }
-    });
   }
 
   private transformDataToCartesianConfig(data: any): CartesianChartConfig | null {

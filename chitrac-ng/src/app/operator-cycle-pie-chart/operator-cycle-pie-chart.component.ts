@@ -5,8 +5,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
-import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
-import { OperatorAnalyticsService } from '../services/operator-analytics.service';
 
 @Component({
     selector: 'app-operator-cycle-pie-chart',
@@ -16,8 +14,7 @@ import { OperatorAnalyticsService } from '../services/operator-analytics.service
         MatButtonModule,
         MatInputModule,
         MatFormFieldModule,
-        CartesianChartComponent,
-        DateTimePickerComponent
+        CartesianChartComponent
     ],
     templateUrl: './operator-cycle-pie-chart.component.html',
     styleUrl: './operator-cycle-pie-chart.component.scss'
@@ -47,7 +44,6 @@ export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChan
   private observer!: MutationObserver;
 
   constructor(
-    private analyticsService: OperatorAnalyticsService,
     private renderer: Renderer2,
     private elRef: ElementRef
   ) {}
@@ -57,17 +53,12 @@ export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChan
     this.observer = new MutationObserver(() => this.detectTheme());
     this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
-    if (this.mode === 'standalone' && this.startTime && this.endTime) {
-      this.fetchData();
-    }
+    // Standalone API-driven mode removed; component now relies on dashboardData when used
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (this.mode === 'dashboard' && changes['dashboardData']?.currentValue) {
       this.processDashboardData(changes['dashboardData'].currentValue);
-    } else if (this.mode === 'standalone' && 
-              (changes['startTime']?.currentValue || changes['endTime']?.currentValue)) {
-      this.fetchData();
     }
   }
 
@@ -160,29 +151,6 @@ export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChan
       '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
     ];
     return colors[index % colors.length];
-  }
-
-  fetchData(): void {
-    if (!this.startTime || !this.endTime) return;
-
-    this.loading = true;
-    this.error = null;
-
-    const formattedStart = new Date(this.startTime).toISOString();
-    const formattedEnd = new Date(this.endTime).toISOString();
-
-    this.analyticsService.getOperatorCyclePieData(formattedStart, formattedEnd, this.operatorId)
-      .subscribe({
-        next: (data) => {
-          this.chartConfig = this.transformDataToCartesianConfig(data);
-          this.loading = false;
-        },
-        error: (err) => {
-          this.error = 'Failed to fetch data. Please try again.';
-          this.loading = false;
-          console.error('Error fetching operator cycle data:', err);
-        }
-      });
   }
 
   // Method to update chart size (for grid layout compatibility)

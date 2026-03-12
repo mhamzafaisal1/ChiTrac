@@ -21,7 +21,7 @@ import { Subject, tap, takeUntil, debounceTime } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
-import { FaultHistoryService } from '../services/fault-history.service';
+import { FaultService } from '../services/fault.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 
@@ -77,7 +77,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
 
   constructor(
-    private faultHistoryService: FaultHistoryService,
+    private faultService: FaultService,
     private renderer: Renderer2,
     private elRef: ElementRef,
     private pollingService: PollingService,
@@ -187,7 +187,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
-            return this.faultHistoryService
+            return this.faultService
               .getFaultHistoryBySerial(
                 this.startTime, 
                 this.endTime, 
@@ -265,7 +265,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
     // Determine which data to include based on viewType
     const includeParam = this.viewType === 'summary' ? 'summaries' : 'cycles';
     
-    this.faultHistoryService.getFaultHistoryBySerial(
+    this.faultService.getFaultHistoryBySerial(
       this.startTime, 
       this.endTime, 
       serialNumber,

@@ -16,7 +16,7 @@ import { MatDialog } from "@angular/material/dialog";
 import { Subject, tap, takeUntil } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
-import { MachineAnalyticsService } from "../services/machine-analytics.service";
+import { MachineService } from "../services/machine.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
@@ -97,7 +97,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
 
   constructor(
-    private analyticsService: MachineAnalyticsService,
+    private machineService: MachineService,
     private renderer: Renderer2,
     private elRef: ElementRef,
     private dialog: MatDialog,
@@ -197,8 +197,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
-            return this.analyticsService
-              .getMachineSummary(this.startTime, this.endTime)
+            return this.machineService
+              .getMachinesSummary(this.startTime, this.endTime)
               .pipe(
                 tap((data: any) => {
                   const responses = Array.isArray(data) ? data : [data];
@@ -263,7 +263,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.analyticsService
+      this.machineService
         .getMachineSummaryWithTimeframe(timeframe)
         .subscribe({
         next: (data: any) => {
@@ -354,8 +354,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         return;
       }
       
-      this.analyticsService
-        .getMachineSummary(this.startTime, this.endTime)
+      this.machineService
+        .getMachinesSummary(this.startTime, this.endTime)
         .subscribe({
           next: (data: any) => {
             const responses = Array.isArray(data) ? data : [data];
@@ -520,7 +520,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.analyticsService
+      this.machineService
         .getMachineDetailsWithTimeframe(timeframe, machineSerial)
         .subscribe({
         next: (res: any[]) => {
@@ -669,7 +669,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       });
     } else {
       // Fallback to date-based API call
-      this.analyticsService
+      this.machineService
         .getMachineDetails(this.startTime, this.endTime, machineSerial)
         .subscribe({
           next: (res: any[]) => {
