@@ -68,7 +68,7 @@ export const routes: Routes = [
 	{ path: 'ng/eight-station-demo', component: EightStationDemoComponent },
 	
 	// Redirects
-	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
+	{ path: 'ng/home', redirectTo: 'ng/daily-analytics-split' },
 	{ path: '', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' },
 	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }
 ];
