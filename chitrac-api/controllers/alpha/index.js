@@ -472,7 +472,7 @@ function constructor(server) {
       const statusName = status.name || "Unknown";
       const statusColor = status.softrolColor || "Gray";
 
-      let fault = { code: 0, name: "None" };
+      let fault;
       if (openFaultSessionDoc) {
         const startState = openFaultSessionDoc.states?.start ?? openFaultSessionDoc.startState;
         const faultStatus = startState?.status;
@@ -492,7 +492,6 @@ function constructor(server) {
             machineRecord?.machineName ||
             `Serial ${machineSerialFilter}`,
         },
-        fault,
         status: {
           code: statusCode,
           name: statusName,
@@ -504,6 +503,10 @@ function constructor(server) {
         operators,
         items,
       };
+
+      if (fault) {
+        overview.fault = fault;
+      }
 
       console.log("[machineOverview] success total route ms", Date.now() - routeStart, {
         serial: machineSerialFilter,
