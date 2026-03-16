@@ -343,7 +343,7 @@ function constructor(server) {
         String(machineSerialFilter),
       ];
       const promiseAllStart = Date.now();
-      const [tickerDoc, faultSessionDoc, machineItemRecords] = await Promise.all([
+      const [tickerDoc, openFaultSessionDoc, machineItemRecords] = await Promise.all([
         tickerColl.findOne({
           $or: [
             { "machine.serial": { $in: tickerSerialFilter } },
@@ -382,30 +382,9 @@ function constructor(server) {
       ]);
       console.log("[machineOverview] Promise.all completed in ms", Date.now() - promiseAllStart, {
         hasTickerDoc: !!tickerDoc,
-        hasFaultSessionDoc: !!faultSessionDoc,
+        hasOpenFaultSessionDoc: !!openFaultSessionDoc,
         machineItemRecordsCount: machineItemRecords?.length ?? 0,
       });
-
-      // If no open fault session, get most recent fault session for this machine
-      let faultDoc = faultSessionDoc;
-      if (!faultDoc) {
-        const faultFallbackStart = Date.now();
-        faultDoc = await faultSessionColl
-          .find({
-            $or: [
-              { "machine.serial": machineSerialFilter },
-              { "machine.id": machineSerialFilter },
-            ],
-          })
-          .sort({ "timestamps.start": -1 })
-          .limit(1)
-          .toArray()
-          .then((arr) => arr[0])
-          .catch(() => null);
-        console.log("[machineOverview] fault fallback lookup ms", Date.now() - faultFallbackStart, {
-          hasFaultDoc: !!faultDoc,
-        });
-      }
 
       const ticker = tickerDoc;
       if (!ticker) {
@@ -494,8 +473,8 @@ function constructor(server) {
       const statusColor = status.softrolColor || "Gray";
 
       let fault = { code: 0, name: "None" };
-      if (faultDoc) {
-        const startState = faultDoc.states?.start ?? faultDoc.startState;
+      if (openFaultSessionDoc) {
+        const startState = openFaultSessionDoc.states?.start ?? openFaultSessionDoc.startState;
         const faultStatus = startState?.status;
         if (faultStatus) {
           fault = {
