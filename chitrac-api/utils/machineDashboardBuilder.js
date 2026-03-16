@@ -876,7 +876,7 @@ async function buildCurrentOperators(db, serial) {
         _id: 0, operator: 1, machine: 1, timestamps: 1,
         workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
       })
-      .sort({ "timestamps.create": -1 })
+      .sort({ "timestamps.start": -1 })
       .limit(1)
       .toArray();
 
@@ -893,7 +893,7 @@ async function buildCurrentOperators(db, serial) {
         _id: 0, operator: 1, machine: 1, timestamps: 1,
         workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
       })
-      .sort({ "timestamps.create": -1 })
+      .sort({ "timestamps.start": -1 })
       .limit(1)
       .toArray();
     }
