@@ -12,6 +12,24 @@ module.exports = function (server) {
   const db = server.db;
   const config = require('../../modules/config');
 
+  // Ensure helpful indexes on operator-session collection once at startup
+  try {
+    const opSessionColl = db.collection(config.operatorSessionCollectionName);
+    // Supports operator/time-window queries like operator-machine-summary
+    opSessionColl
+      .createIndex(
+        {
+          "operator.id": 1,
+          "timestamps.start": 1,
+          "timestamps.end": 1,
+        },
+        { name: "operator_time_window" }
+      )
+      .catch(() => {});
+  } catch (e) {
+    logger?.error?.("Failed to ensure operator-session indexes", e);
+  }
+
   // Import shared helper functions from operatorFunctions.js
   const {
     clamp01,
@@ -1150,7 +1168,9 @@ module.exports = function (server) {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = Number(req.query.operatorId);
       if (!operatorId || Number.isNaN(operatorId)) {
-        return res.status(400).json({ error: 'operatorId required and must be a number' });
+        return res
+          .status(400)
+          .json({ error: "operatorId required and must be a number" });
       }
 
       const startDate = new Date(start);
@@ -1158,192 +1178,234 @@ module.exports = function (server) {
 
       // 1) Pull operator-sessions that overlap the window
       const matchSessions = {
-        'operator.id': operatorId,
-        'timestamps.start': { $lte: endDate },
-        $or: [{ 'timestamps.end': { $exists: false } }, { 'timestamps.end': { $gte: startDate } }],
+        "operator.id": operatorId,
+        "timestamps.start": { $lte: endDate },
+        $or: [
+          { "timestamps.end": { $exists: false } },
+          { "timestamps.end": { $gte: startDate } },
+        ],
       };
 
       // Aggregate by machine and pre-summed fields.
       // We avoid unwinding large counts[] arrays; use the precomputed fields on operator-session.
-      const sessionsAgg = await db.collection(config.operatorSessionCollectionName).aggregate([
-        { $match: matchSessions },
-        {
-          $project: {
-            machine: 1,
-            timestamps: 1,
-            totalCount: 1,
-            misfeedCount: 1,
-            totalTimeCredit: 1,
-            runtime: 1,
-            items: 1,
-            item: 1,
-            totalCountByItem: 1,
-            timeCreditByItem: 1,
-          },
-        },
-        {
-          $set: {
-            _ovStart: { $max: ['$timestamps.start', startDate] },
-            _ovEnd: {
-              $min: [
-                { $ifNull: ['$timestamps.end', endDate] },
-                endDate,
-              ],
+      const sessionsAgg = await db
+        .collection(config.operatorSessionCollectionName)
+        .aggregate([
+          { $match: matchSessions },
+          {
+            $project: {
+              machine: 1,
+              timestamps: 1,
+              totalCount: 1,
+              misfeedCount: 1,
+              totalTimeCredit: 1,
+              runtime: 1,
+              items: 1,
+              item: 1,
+              totalCountByItem: 1,
+              timeCreditByItem: 1,
             },
           },
-        },
-        { $match: { $expr: { $lt: ['$_ovStart', '$_ovEnd'] } } },
-        // Normalize items: handle both items (array) and item (single object) formats
-        // Also ensure totalCountByItem and timeCreditByItem are arrays
-        {
-          $addFields: {
-            _items: {
-              $cond: {
-                if: { $isArray: '$items' },
-                then: '$items',
-                else: {
-                  $cond: {
-                    if: { $ne: ['$item', null] },
-                    then: ['$item'],
-                    else: []
-                  }
-                }
-              }
-            },
-            _totalCountByItem: {
-              $cond: {
-                if: { $isArray: '$totalCountByItem' },
-                then: '$totalCountByItem',
-                else: []
-              }
-            },
-            _timeCreditByItem: {
-              $cond: {
-                if: { $isArray: '$timeCreditByItem' },
-                then: '$timeCreditByItem',
-                else: []
-              }
+          {
+            $set: {
+              _ovStart: { $max: ["$timestamps.start", startDate] },
+              _ovEnd: {
+                $min: [
+                  { $ifNull: ["$timestamps.end", endDate] },
+                  endDate,
+                ],
+              },
             },
           },
-        },
-        // Pair items with per-item arrays using normalized fields (_items[i] ~ _totalCountByItem[i] ~ _timeCreditByItem[i]).
-        // If lengths can differ in production, add debug sampling to detect and consider pairing by item id instead of index.
-        {
-          $set: {
-            _itemsPaired: {
-              $map: {
-                input: { $range: [0, { $size: '$_items' }] },
-                as: 'i',
-                in: {
-                  $let: {
-                    vars: {
-                      it: { $arrayElemAt: ['$_items', '$$i'] },
-                      cnt: { $arrayElemAt: ['$_totalCountByItem', '$$i'] },
-                      tci: { $arrayElemAt: ['$_timeCreditByItem', '$$i'] },
-                    },
-                    in: {
-                      id: '$$it.id',
-                      name: '$$it.name',
-                      standard: '$$it.standard',
-                      count: { $ifNull: ['$$cnt', 0] },
-                      tci: { $ifNull: ['$$tci', 0] },
+          { $match: { $expr: { $lt: ["$_ovStart", "$_ovEnd"] } } },
+          // Normalize items: handle both items (array) and item (single object) formats
+          // Also ensure totalCountByItem and timeCreditByItem are arrays
+          {
+            $addFields: {
+              _items: {
+                $cond: {
+                  if: { $isArray: "$items" },
+                  then: "$items",
+                  else: {
+                    $cond: {
+                      if: { $ne: ["$item", null] },
+                      then: ["$item"],
+                      else: [],
                     },
                   },
                 },
               },
+              _totalCountByItem: {
+                $cond: {
+                  if: { $isArray: "$totalCountByItem" },
+                  then: "$totalCountByItem",
+                  else: [],
+                },
+              },
+              _timeCreditByItem: {
+                $cond: {
+                  if: { $isArray: "$timeCreditByItem" },
+                  then: "$timeCreditByItem",
+                  else: [],
+                },
+              },
             },
           },
-        },
-        // Two branches: totals (no unwind) and items (unwind early, group by machine+item then machine)
-        {
-          $facet: {
-            totals: [
-              {
-                $group: {
-                  _id: { serial: '$machine.serial', name: '$machine.name' },
-                  sessions: { $sum: 1 },
-                  totalCount: { $sum: { $ifNull: ['$totalCount', 0] } },
-                  totalMisfeed: { $sum: { $ifNull: ['$misfeedCount', 0] } },
-                  totalTimeCredit: { $sum: { $ifNull: ['$totalTimeCredit', 0] } },
-                  runtime: { $sum: { $ifNull: ['$runtime', 0] } },
-                  intervals: { $push: { start: '$_ovStart', end: '$_ovEnd' } },
-                },
-              },
-              { $sort: { '_id.serial': 1 } },
-            ],
-            items: [
-              { $unwind: { path: '$_itemsPaired', preserveNullAndEmptyArrays: true } },
-              {
-                $group: {
-                  _id: {
-                    serial: '$machine.serial',
-                    name: '$machine.name',
-                    itemId: '$_itemsPaired.id',
-                    itemName: '$_itemsPaired.name',
-                    itemStd: '$_itemsPaired.standard',
-                  },
-                  sessionIds: { $addToSet: '$_id' },
-                  itemCount: { $sum: { $ifNull: ['$_itemsPaired.count', 0] } },
-                  itemTCI: { $sum: { $ifNull: ['$_itemsPaired.tci', 0] } },
-                },
-              },
-              {
-                $group: {
-                  _id: { serial: '$_id.serial', name: '$_id.name' },
-                  items: {
-                    $push: {
-                      id: '$_id.itemId',
-                      name: '$_id.itemName',
-                      standard: '$_id.itemStd',
-                      totalCount: '$itemCount',
-                      totalTimeCredit: '$itemTCI',
-                    },
-                  },
-                  allSessionIds: { $push: '$sessionIds' },
-                },
-              },
-              {
-                $set: {
-                  sessions: {
-                    $size: {
-                      $reduce: {
-                        input: '$allSessionIds',
-                        initialValue: [],
-                        in: { $setUnion: ['$$value', '$$this'] },
+          // Pair items with per-item arrays using normalized fields (_items[i] ~ _totalCountByItem[i] ~ _timeCreditByItem[i]).
+          // If lengths can differ in production, add debug sampling to detect and consider pairing by item id instead of index.
+          {
+            $set: {
+              _itemsPaired: {
+                $map: {
+                  input: { $range: [0, { $size: "$_items" }] },
+                  as: "i",
+                  in: {
+                    $let: {
+                      vars: {
+                        it: { $arrayElemAt: ["$_items", "$$i"] },
+                        cnt: { $arrayElemAt: ["$_totalCountByItem", "$$i"] },
+                        tci: { $arrayElemAt: ["$_timeCreditByItem", "$$i"] },
+                      },
+                      in: {
+                        id: "$$it.id",
+                        name: "$$it.name",
+                        standard: "$$it.standard",
+                        count: { $ifNull: ["$$cnt", 0] },
+                        tci: { $ifNull: ["$$tci", 0] },
                       },
                     },
                   },
-                  items: {
-                    $filter: {
-                      input: '$items',
-                      as: 'it',
-                      cond: { $ne: ['$$it.id', null] },
+                },
+              },
+            },
+          },
+          // Two branches: totals (no unwind) and items (unwind early, group by machine+item then machine)
+          {
+            $facet: {
+              totals: [
+                {
+                  $group: {
+                    _id: {
+                      serial: "$machine.serial",
+                      name: "$machine.name",
+                    },
+                    sessions: { $sum: 1 },
+                    totalCount: {
+                      $sum: { $ifNull: ["$totalCount", 0] },
+                    },
+                    totalMisfeed: {
+                      $sum: { $ifNull: ["$misfeedCount", 0] },
+                    },
+                    totalTimeCredit: {
+                      $sum: { $ifNull: ["$totalTimeCredit", 0] },
+                    },
+                    runtime: { $sum: { $ifNull: ["$runtime", 0] } },
+                    intervals: {
+                      $push: { start: "$_ovStart", end: "$_ovEnd" },
                     },
                   },
                 },
-              },
-              { $project: { allSessionIds: 0 } },
-              { $sort: { '_id.serial': 1 } },
-            ],
+                { $sort: { "_id.serial": 1 } },
+              ],
+              items: [
+                {
+                  $unwind: {
+                    path: "$_itemsPaired",
+                    preserveNullAndEmptyArrays: true,
+                  },
+                },
+                {
+                  $group: {
+                    _id: {
+                      serial: "$machine.serial",
+                      name: "$machine.name",
+                      itemId: "$_itemsPaired.id",
+                      itemName: "$_itemsPaired.name",
+                      itemStd: "$_itemsPaired.standard",
+                    },
+                    sessionIds: { $addToSet: "$_id" },
+                    itemCount: {
+                      $sum: { $ifNull: ["$_itemsPaired.count", 0] },
+                    },
+                    itemTCI: {
+                      $sum: { $ifNull: ["$_itemsPaired.tci", 0] },
+                    },
+                  },
+                },
+                {
+                  $group: {
+                    _id: { serial: "$_id.serial", name: "$_id.name" },
+                    items: {
+                      $push: {
+                        id: "$_id.itemId",
+                        name: "$_id.itemName",
+                        standard: "$_id.itemStd",
+                        totalCount: "$itemCount",
+                        totalTimeCredit: "$itemTCI",
+                      },
+                    },
+                    allSessionIds: { $push: "$sessionIds" },
+                  },
+                },
+                {
+                  $set: {
+                    sessions: {
+                      $size: {
+                        $reduce: {
+                          input: "$allSessionIds",
+                          initialValue: [],
+                          in: { $setUnion: ["$$value", "$$this"] },
+                        },
+                      },
+                    },
+                    items: {
+                      $filter: {
+                        input: "$items",
+                        as: "it",
+                        cond: { $ne: ["$$it.id", null] },
+                      },
+                    },
+                  },
+                },
+                { $project: { allSessionIds: 0 } },
+                { $sort: { "_id.serial": 1 } },
+              ],
+            },
           },
-        },
-      ]).toArray();
+        ])
+        .toArray();
 
       // $facet returns one doc { totals: [...], items: [...] }; merge by machine serial
-      const facetResult = (sessionsAgg && sessionsAgg[0]) || { totals: [], items: [] };
-      const totalsBySerial = new Map((facetResult.totals || []).map((t) => [t._id.serial, t]));
-      const itemsBySerial = new Map((facetResult.items || []).map((i) => [i._id.serial, i]));
-      const serials = [...new Set([...totalsBySerial.keys(), ...itemsBySerial.keys()])].sort((a, b) => (a == null ? 1 : b == null ? -1 : a - b));
+      const facetResult =
+        (sessionsAgg && sessionsAgg[0]) || { totals: [], items: [] };
+      const totalsBySerial = new Map(
+        (facetResult.totals || []).map((t) => [t._id.serial, t])
+      );
+      const itemsBySerial = new Map(
+        (facetResult.items || []).map((i) => [i._id.serial, i])
+      );
+      const serials = [...new Set([
+        ...totalsBySerial.keys(),
+        ...itemsBySerial.keys(),
+      ])].sort((a, b) => (a == null ? 1 : b == null ? -1 : a - b));
       const sessionsAggMerged = serials.map((serial) => {
         const t = totalsBySerial.get(serial);
         const i = itemsBySerial.get(serial);
         if (!t) {
           return {
-            _id: { serial, name: (i && i._id) ? i._id.name : `Serial ${serial}` },
-            sessions: (i && i.sessions) != null ? i.sessions : 0,
-            totals: { totalCount: 0, totalMisfeed: 0, totalTimeCredit: 0, runtime: 0 },
+            _id: {
+              serial,
+              name: i && i._id ? i._id.name : `Serial ${serial}`,
+            },
+            sessions: i && i.sessions != null ? i.sessions : 0,
+            totals: {
+              totalCount: 0,
+              totalMisfeed: 0,
+              totalTimeCredit: 0,
+              runtime: 0,
+            },
             intervals: [],
-            items: (i && i.items) ? i.items : [],
+            items: i && i.items ? i.items : [],
           };
         }
         return {
@@ -1356,12 +1418,15 @@ module.exports = function (server) {
             runtime: t.runtime,
           },
           intervals: t.intervals ?? [],
-          items: (i && i.items) ? i.items : [],
+          items: i && i.items ? i.items : [],
         };
       });
 
       if (!sessionsAggMerged.length) {
-        return res.json({ context: { operatorId, start: startDate, end: endDate }, machines: [] });
+        return res.json({
+          context: { operatorId, start: startDate, end: endDate },
+          machines: [],
+        });
       }
 
       // Fetch all fault-sessions for this operator in the window once, grouped by machine serial
@@ -1370,36 +1435,40 @@ module.exports = function (server) {
         .aggregate([
           {
             $match: {
-              'operators.id': operatorId,
-              'timestamps.start': { $lte: endDate },
+              "operators.id": operatorId,
+              "timestamps.start": { $lte: endDate },
               $or: [
-                { 'timestamps.end': { $exists: false } },
-                { 'timestamps.end': { $gte: startDate } },
+                { "timestamps.end": { $exists: false } },
+                { "timestamps.end": { $gte: startDate } },
               ],
             },
           },
           {
             $project: {
-              serial: '$machine.serial',
-              s: '$timestamps.start',
-              e: { $ifNull: ['$timestamps.end', endDate] },
+              serial: "$machine.serial",
+              s: "$timestamps.start",
+              e: { $ifNull: ["$timestamps.end", endDate] },
             },
           },
           {
             $group: {
-              _id: '$serial',
-              faults: { $push: { s: '$s', e: '$e' } },
+              _id: "$serial",
+              faults: { $push: { s: "$s", e: "$e" } },
             },
           },
         ])
         .toArray();
 
-      const faultMap = new Map(faultsByMachine.map((x) => [x._id, x.faults]));
+      const faultMap = new Map(
+        faultsByMachine.map((x) => [x._id, x.faults])
+      );
 
       // Compute overlaps in memory per machine (no extra DB calls)
       const results = sessionsAggMerged.map((m) => {
         const serial = m._id.serial;
-        const merged = mergeIntervals(m.intervals.map((iv) => ({ s: iv.start, e: iv.end })));
+        const merged = mergeIntervals(
+          m.intervals.map((iv) => ({ s: iv.start, e: iv.end }))
+        );
         const faults = faultMap.get(serial) ?? [];
         let faultsWhileRunning = 0;
         for (const f of faults) {
@@ -1420,7 +1489,9 @@ module.exports = function (server) {
       });
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
-      return res.status(500).json({ error: 'Failed to build operator machine summary' });
+      return res
+        .status(500)
+        .json({ error: "Failed to build operator machine summary" });
     }
   });
 

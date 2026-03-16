@@ -261,11 +261,6 @@ function constructor(server) {
   });
 
   router.get("/sample/machineOverview", async (req, res, next) => {
-    const routeStart = Date.now();
-    console.log("[machineOverview] route start", {
-      query: req.query,
-      routeStart,
-    });
     try {
       const serialParam =
         typeof req.query.serial !== "undefined"
@@ -282,7 +277,6 @@ function constructor(server) {
       const cacheCollection = db.collection("totals-daily");
       const tickerColl = db.collection(config.stateTickerCollectionName);
       const faultSessionColl = db.collection(config.faultSessionCollectionName);
-      console.log("[machineOverview] collections acquired");
 
       const machineFilter = {
         entityType: "machine",
@@ -292,12 +286,7 @@ function constructor(server) {
         machineFilter.machineSerial = serialParam;
       }
 
-      console.log("[machineOverview] machineFilter", machineFilter);
-      const dbStart_machineTotals = Date.now();
       const machineTotals = await cacheCollection.find(machineFilter).toArray();
-      console.log("[machineOverview] machineTotals fetched in ms", Date.now() - dbStart_machineTotals, {
-        machineTotalsCount: machineTotals.length,
-      });
 
       let serial = Number.isFinite(serialParam) ? serialParam : null;
       let machineRecord = machineTotals.length > 0 ? machineTotals[0] : null;
@@ -307,7 +296,6 @@ function constructor(server) {
 
       // If no totals-daily record, resolve machine from stateTicker
       if (!machineRecord) {
-        const tickerLookupStart = Date.now();
         let ticker;
         if (Number.isFinite(serial)) {
           ticker = await tickerColl.findOne({
@@ -319,10 +307,6 @@ function constructor(server) {
         } else {
           ticker = await tickerColl.findOne({});
         }
-        console.log("[machineOverview] ticker resolved from tickerColl in ms", Date.now() - tickerLookupStart, {
-          serial,
-          tickerFound: !!ticker,
-        });
         if (!ticker) {
           return res.status(500).json({
             error: "Failed to fetch machine overview data",
@@ -342,7 +326,6 @@ function constructor(server) {
         machineSerialFilter,
         String(machineSerialFilter),
       ];
-      const promiseAllStart = Date.now();
       const [tickerDoc, openFaultSessionDoc, machineItemRecords] = await Promise.all([
         tickerColl.findOne({
           $or: [
@@ -380,11 +363,6 @@ function constructor(server) {
           })
           .toArray(),
       ]);
-      console.log("[machineOverview] Promise.all completed in ms", Date.now() - promiseAllStart, {
-        hasTickerDoc: !!tickerDoc,
-        hasOpenFaultSessionDoc: !!openFaultSessionDoc,
-        machineItemRecordsCount: machineItemRecords?.length ?? 0,
-      });
 
       const ticker = tickerDoc;
       if (!ticker) {
@@ -432,11 +410,7 @@ function constructor(server) {
         });
       }
 
-      const currentOperatorsStart = Date.now();
       const currentOperators = await buildCurrentOperators(db, machineSerialFilter);
-      console.log("[machineOverview] buildCurrentOperators ms", Date.now() - currentOperatorsStart, {
-        operatorCount: currentOperators.length,
-      });
       const tickerItemsForTasks = ticker.items || ticker.program?.items || [];
       const tasksFromTicker = Array.isArray(tickerItemsForTasks)
         ? tickerItemsForTasks.map((it) => ({
@@ -508,17 +482,8 @@ function constructor(server) {
         overview.fault = fault;
       }
 
-      console.log("[machineOverview] success total route ms", Date.now() - routeStart, {
-        serial: machineSerialFilter,
-      });
       res.json(overview);
     } catch (err) {
-      const routeErrorTime = Date.now() - routeStart;
-      console.error("[machineOverview] ERROR", {
-        durationMs: routeErrorTime,
-        message: err?.message,
-        stack: err?.stack,
-      });
       logger && logger.error(err);
       res.status(500).json({
         error: "Failed to fetch machine overview data",
