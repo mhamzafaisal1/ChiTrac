@@ -1,0 +1,14 @@
+<div class="session-history-container">
+  <div class="machine-header">
+    <h3>Session History — {{ machineName }}</h3>
+    <span class="serial-label">Serial: {{ machineSerial }}</span>
+  </div>
+
+  <base-table
+    [columns]="columns"
+    [rows]="rows"
+    [getCellClass]="getSessionCellClass"
+    [disableSorting]="false">
+  </base-table>
+</div>
+

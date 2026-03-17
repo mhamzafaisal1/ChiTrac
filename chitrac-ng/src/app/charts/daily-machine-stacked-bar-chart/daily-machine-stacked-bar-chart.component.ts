@@ -1,12 +1,15 @@
 // charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
+import { MatDialog } from '@angular/material/dialog';
+import { CartesianChartComponent, CartesianChartConfig, XYSeries, BarClickEvent } from '../cartesian-chart/cartesian-chart.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable, EMPTY } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
+import { ModalWrapperComponent } from '../../components/modal-wrapper-component/modal-wrapper-component.component';
+import { MachineSessionHistoryComponent } from '../../machine-session-history/machine-session-history.component';
 
 interface MachineStatus {
   serial: number;
@@ -57,6 +60,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   private pollingSub: any;
   private readonly POLLING_INTERVAL = 6000;
   private cdr = inject(ChangeDetectorRef);
+  private dialog = inject(MatDialog);
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
@@ -223,7 +227,15 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         title: 'Running',
         type: 'bar',
         stack: 'status',
-        data: data.map(d => ({ x: d.name, y: toHours(d.runningMs) })),
+        data: data.map(d => ({
+          x: d.name,
+          y: toHours(d.runningMs),
+          meta: {
+            serial: d.serial,
+            machineName: d.name,
+            status: 'running'
+          }
+        })),
         color: '#66bb6a'
       },
       {
@@ -231,7 +243,15 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         title: 'Paused',
         type: 'bar',
         stack: 'status',
-        data: data.map(d => ({ x: d.name, y: toHours(d.pausedMs) })),
+        data: data.map(d => ({
+          x: d.name,
+          y: toHours(d.pausedMs),
+          meta: {
+            serial: d.serial,
+            machineName: d.name,
+            status: 'paused'
+          }
+        })),
         color: '#ffca28'
       },
       {
@@ -239,7 +259,15 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         title: 'Faulted',
         type: 'bar',
         stack: 'status',
-        data: data.map(d => ({ x: d.name, y: toHours(d.faultedMs) })),
+        data: data.map(d => ({
+          x: d.name,
+          y: toHours(d.faultedMs),
+          meta: {
+            serial: d.serial,
+            machineName: d.name,
+            status: 'faulted'
+          }
+        })),
         color: '#ef5350'
       },
       {
@@ -247,7 +275,15 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         title: 'Offline',
         type: 'bar',
         stack: 'status',
-        data: data.map(d => ({ x: d.name, y: toHours(d.offlineMs ?? 0) })),
+        data: data.map(d => ({
+          x: d.name,
+          y: toHours(d.offlineMs ?? 0),
+          meta: {
+            serial: d.serial,
+            machineName: d.name,
+            status: 'offline'
+          }
+        })),
         color: 'var(--sg-color-blue-gray-medium-100)' // theme-aware grey
       }
     ];
@@ -273,6 +309,28 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
       },
       series: series
     };
+  }
+
+  onBarClick(event: BarClickEvent): void {
+    const serial = event.meta?.serial as number | undefined;
+    const machineName = (event.meta?.machineName as string | undefined) ?? String(event.x);
+
+    if (!serial) return;
+
+    this.dialog.open(ModalWrapperComponent, {
+      width: '90vw',
+      height: '85vh',
+      maxWidth: '95vw',
+      maxHeight: '90vh',
+      panelClass: 'performance-chart-dialog',
+      data: {
+        component: MachineSessionHistoryComponent,
+        componentInputs: {
+          machineName,
+          machineSerial: serial,
+        },
+      },
+    });
   }
 
   private enterDummy(): void {

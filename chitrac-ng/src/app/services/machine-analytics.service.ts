@@ -145,6 +145,14 @@ export class MachineAnalyticsService {
   
     return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-cached`, { params });
   }
-  
-  
+
+  getMachineSessions(start: string, end: string, serial: number): Observable<any> {
+    const params = new HttpParams()
+      .set('start', start)
+      .set('end', end)
+      .set('serial', serial.toString());
+
+    return this.http.get(`${this.apiUrl}/analytics/machine-sessions`, { params });
+  }
+
 }

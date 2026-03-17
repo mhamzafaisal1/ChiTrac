@@ -1,6 +1,6 @@
 import {
-    Component, Input, ElementRef, ViewChild,
-    OnChanges, SimpleChanges, AfterViewInit, OnDestroy
+  Component, Input, Output, EventEmitter, ElementRef, ViewChild,
+  OnChanges, SimpleChanges, AfterViewInit, OnDestroy, NgZone, inject
   } from '@angular/core';
   import { CommonModule } from '@angular/common';
   import * as d3 from 'd3';
@@ -10,7 +10,20 @@ import {
   export type SeriesType = 'bar' | 'line' | 'area' | 'dot' | 'lollipop' | 'pie' | 'donut';
   export type XType = 'category' | 'time' | 'linear';
   
-  export interface XYPoint { x: string | number | Date; y: number; color?: string; endMarkerValue?: number; }
+  export interface XYPointMeta {
+    serial?: number;
+    machineName?: string;
+    status?: string;
+    [key: string]: unknown;
+  }
+  
+  export interface XYPoint {
+    x: string | number | Date;
+    y: number;
+    color?: string;
+    endMarkerValue?: number;
+    meta?: XYPointMeta;
+  }
   
   export interface XYSeries {
     id: string;
@@ -54,6 +67,12 @@ import {
     series: XYSeries[];
   }
   
+  export interface BarClickEvent {
+    x: string | number | Date;
+    seriesId: string;
+    meta: XYPointMeta;
+  }
+  
   @Component({
     selector: 'cartesian-chart',
     standalone: true,
@@ -64,11 +83,14 @@ import {
   export class CartesianChartComponent implements OnChanges, AfterViewInit, OnDestroy {
     @Input() config!: CartesianChartConfig;
   
+    @Output() barClick = new EventEmitter<BarClickEvent>();
+  
     @ViewChild('host', { static: true }) host!: ElementRef<HTMLDivElement>;
   
     private svg!: d3.Selection<SVGSVGElement, unknown, null, undefined>;
     private rootG!: d3.Selection<SVGGElement, unknown, null, undefined>;
     private resizeObserver?: ResizeObserver;
+    private zone = inject(NgZone);
   
     /** external API */
     updateData = (cfgOrSeries: CartesianChartConfig | XYSeries[]) => {
@@ -668,7 +690,17 @@ import {
               .attr('y', y)
               .attr('width', w)
               .attr('height', sub.bandwidth())
-              .attr('fill', fillColor);
+              .attr('fill', fillColor)
+              .style('cursor', 'pointer')
+              .on('click', () => {
+                this.zone.run(() => {
+                  this.barClick.emit({
+                    x: p.x,
+                    seriesId: s.id,
+                    meta: (p as XYPoint).meta ?? {}
+                  });
+                });
+              });
             if (endMarkerOpts?.show && s.type === 'bar') {
               const val = (p as XYPoint).endMarkerValue;
               if (val != null && val > 0) {
@@ -684,7 +716,17 @@ import {
               .attr('y', y)
               .attr('width', sub.bandwidth())
               .attr('height', innerH - y)
-              .attr('fill', fillColor);
+              .attr('fill', fillColor)
+              .style('cursor', 'pointer')
+              .on('click', () => {
+                this.zone.run(() => {
+                  this.barClick.emit({
+                    x: p.x,
+                    seriesId: s.id,
+                    meta: (p as XYPoint).meta ?? {}
+                  });
+                });
+              });
           }
         });
       });
@@ -702,9 +744,12 @@ import {
       .filter(s => s.data.length)
       .map(s => ({
         key: String(s.data[0].x),
+        x: s.data[0].x,
         y: +s.data[0].y || 0,
         color: (s.data[0] as XYPoint).color ?? s.color ?? this.colorForSeries(s.id),
         endMarkerValue: (s.data[0] as XYPoint).endMarkerValue,
+        meta: (s.data[0] as XYPoint).meta ?? {},
+        seriesId: s.id,
       }));
 
     const barPadding = series[0]?.options?.barPadding ?? 0.2;
@@ -722,7 +767,17 @@ import {
         const w = (yScaleH as d3.ScaleLinear<number, number>)(it.y);
         const barGrp = grp.append('g');
         barGrp.append('rect').attr('x', 0).attr('y', y)
-          .attr('width', w).attr('height', band.bandwidth()).attr('fill', it.color);
+          .attr('width', w).attr('height', band.bandwidth()).attr('fill', it.color)
+          .style('cursor', 'pointer')
+          .on('click', () => {
+            this.zone.run(() => {
+              this.barClick.emit({
+                x: it.x,
+                seriesId: it.seriesId,
+                meta: it.meta
+              });
+            });
+          });
         if (endMarkerOpts?.show && it.endMarkerValue != null && it.endMarkerValue > 0) {
           const lineX = (yScaleH as d3.ScaleLinear<number, number>)(it.endMarkerValue);
           this.appendEndMarkerLine(barGrp, lineX, y, band.bandwidth(), { ...endMarkerOpts });
@@ -731,7 +786,17 @@ import {
         const x = band(it.key)!;
         const y = (yScale as d3.ScaleLinear<number, number>)(it.y);
         grp.append('rect').attr('x', x).attr('y', y)
-          .attr('width', band.bandwidth()).attr('height', innerH - y).attr('fill', it.color);
+          .attr('width', band.bandwidth()).attr('height', innerH - y).attr('fill', it.color)
+          .style('cursor', 'pointer')
+          .on('click', () => {
+            this.zone.run(() => {
+              this.barClick.emit({
+                x: it.x,
+                seriesId: it.seriesId,
+                meta: it.meta
+              });
+            });
+          });
       }
     });
   }
@@ -769,7 +834,17 @@ import {
           const y = band(key)! + sub(s.id)!;
           const w = (yScaleH as d3.ScaleLinear<number, number>)(+p.y || 0);
           grp.append('rect').attr('x', 0).attr('y', y)
-            .attr('width', w).attr('height', sub.bandwidth()).attr('fill', fillColor);
+            .attr('width', w).attr('height', sub.bandwidth()).attr('fill', fillColor)
+            .style('cursor', 'pointer')
+            .on('click', () => {
+              this.zone.run(() => {
+                this.barClick.emit({
+                  x: p.x,
+                  seriesId: s.id,
+                  meta: (p as XYPoint).meta ?? {}
+                });
+              });
+            });
           if (endMarkerOpts?.show && s.type === 'bar') {
             const val = (p as XYPoint).endMarkerValue;
             if (val != null && val > 0) {
@@ -781,7 +856,17 @@ import {
           const x = band(key)! + sub(s.id)!;
           const y = (yScale as d3.ScaleLinear<number, number>)(+p.y || 0);
           grp.append('rect').attr('x', x).attr('y', y)
-            .attr('width', sub.bandwidth()).attr('height', innerH - y).attr('fill', fillColor);
+            .attr('width', sub.bandwidth()).attr('height', innerH - y).attr('fill', fillColor)
+            .style('cursor', 'pointer')
+            .on('click', () => {
+              this.zone.run(() => {
+                this.barClick.emit({
+                  x: p.x,
+                  seriesId: s.id,
+                  meta: (p as XYPoint).meta ?? {}
+                });
+              });
+            });
         }
       });
     });
@@ -794,13 +879,14 @@ import {
       xScale: any, yScale: any, yScaleH: any,
       xDomain: any[], innerW: number, innerH: number, isHorizontal: boolean
     ) {
-      // build wide matrix per x: {x, s1: y, s2: y, ...}
+      // build wide matrix per x: {__x, s1: y, s2: y, __metaBySeries: { [seriesId]: XYPointMeta }}
       const keys = series.map(s => s.id);
       const rows = (xDomain as any[]).map(x => {
-        const row: any = { __x: String(x) };
+        const row: any = { __x: String(x), __metaBySeries: {} as Record<string, XYPointMeta> };
         series.forEach(s => {
           const found = s.data.find(p => String(p.x) === String(x));
           row[s.id] = found ? (found.y || 0) : 0;
+          row.__metaBySeries[s.id] = (found as XYPoint | undefined)?.meta ?? {};
         });
         return row;
       });
@@ -827,6 +913,7 @@ import {
           const xKey = rows[i].__x as string;
           const point = s?.data.find(p => String(p.x) === xKey);
           const fillColor = (point as XYPoint)?.color ?? color;
+          const metaForSeries = rows[i].__metaBySeries?.[sId] ?? {};
           if (isHorizontal) {
             const y = band(xKey)!;
             const x0 = (yScaleH as d3.ScaleLinear<number, number>)(d[0]);
@@ -836,7 +923,17 @@ import {
               .attr('y', y)
               .attr('width', Math.max(0, x1 - x0))
               .attr('height', band.bandwidth())
-              .attr('fill', fillColor);
+              .attr('fill', fillColor)
+              .style('cursor', 'pointer')
+              .on('click', () => {
+                this.zone.run(() => {
+                  this.barClick.emit({
+                    x: xKey,
+                    seriesId: sId,
+                    meta: metaForSeries
+                  });
+                });
+              });
             if (isLastLayer && endMarkerOpts?.show) {
               const rowPoint = series[0]?.data.find(p => String(p.x) === xKey);
               const val = (rowPoint as XYPoint)?.endMarkerValue;
@@ -854,7 +951,17 @@ import {
               .attr('y', y0)
               .attr('width', band.bandwidth())
               .attr('height', Math.max(0, y1 - y0))
-              .attr('fill', fillColor);
+              .attr('fill', fillColor)
+              .style('cursor', 'pointer')
+              .on('click', () => {
+                this.zone.run(() => {
+                  this.barClick.emit({
+                    x: xKey,
+                    seriesId: sId,
+                    meta: metaForSeries
+                  });
+                });
+              });
           }
         });
       });

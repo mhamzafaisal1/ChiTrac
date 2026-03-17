@@ -205,6 +205,133 @@ module.exports = function (server) {
     }
   });
 
+  // GET /api/alpha/analytics/machine-sessions
+  // Returns machine session history for a given machine within a time window.
+  // Uses the machine-session collection (config.machineSessionCollectionName).
+  router.get("/machine-sessions", async (req, res) => {
+    try {
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      if (!serial) {
+        return res
+          .status(400)
+          .json({ error: "serial query parameter is required" });
+      }
+
+      const machineSerial = Number(serial);
+      if (!Number.isFinite(machineSerial)) {
+        return res
+          .status(400)
+          .json({ error: "serial must be a valid number" });
+      }
+
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      logger.info(
+        `[machineSessions] Fetching machine session history for serial=${machineSerial}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`
+      );
+
+      const collection = db.collection(config.machineSessionCollectionName);
+
+      // Filter by machine serial (support multiple possible field shapes) and time window.
+      const sessions = await collection
+        .find({
+          $and: [
+            {
+              $or: [
+                { "machine.id": machineSerial },
+                { "machine.serial": machineSerial },
+              ],
+            },
+            {
+              "timestamps.start": {
+                $gte: startDate,
+                $lte: endDate,
+              },
+            },
+          ],
+        })
+        .project({
+          _id: 1,
+          "machine.id": 1,
+          "machine.serial": 1,
+          "timestamps.start": 1,
+          "timestamps.end": 1,
+          endState: 1,
+          runtime: 1,
+          totalCount: 1,
+          "metrics.totals.counts.valid": 1,
+        })
+        .toArray();
+
+      const normalizeDate = (value) => {
+        if (!value) return null;
+        if (value instanceof Date) return value;
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      };
+
+      const mapSessionType = (session) => {
+        const status =
+          session?.endState?.status?.name ||
+          session?.endState?.statusName ||
+          session?.endState?.status?.code ||
+          "";
+
+        const s = String(status).toLowerCase();
+        if (s.includes("fault")) return "fault";
+        if (s.includes("pause") || s.includes("idle")) return "paused";
+        if (s.includes("offline") || s.includes("off-line")) return "offline";
+        return "run";
+      };
+
+      const history = sessions
+        .map((session) => {
+          const startTs =
+            normalizeDate(session.timestamps?.start) ?? startDate;
+          const endTs =
+            normalizeDate(session.timestamps?.end) ?? endDate;
+
+          const durationMs = Math.max(0, endTs - startTs);
+
+          const totalCount =
+            typeof session.totalCount === "number"
+              ? session.totalCount
+              : typeof session.metrics?.totals?.counts?.valid === "number"
+              ? session.metrics.totals.counts.valid
+              : 0;
+
+          return {
+            sessionId: String(session._id),
+            machineSerial:
+              session.machine?.serial ?? session.machine?.id ?? machineSerial,
+            sessionType: mapSessionType(session),
+            startTime: startTs,
+            endTime: endTs,
+            durationMs,
+            totalCount,
+          };
+        })
+        // Most recent first
+        .sort((a, b) => b.startTime - a.startTime);
+
+      logger.info(
+        `[machineSessions] Found ${history.length} sessions for machine ${machineSerial}`
+      );
+
+      res.json(history);
+    } catch (err) {
+      logger.error(
+        `[machineSessions] Error in machine-sessions route:`,
+        err
+      );
+      res
+        .status(500)
+        .json({ error: "Failed to fetch machine session history" });
+    }
+  });
+
   // GET /api/alpha/analytics/machine-dashboard-daily-cached
   // Returns machine dashboard from totals-daily and hourly-totals cache.
   router.get("/machine-dashboard-daily-cached", async (req, res) => {
