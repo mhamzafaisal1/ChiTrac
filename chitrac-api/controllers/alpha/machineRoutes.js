@@ -1,6 +1,7 @@
 const express = require("express");
 const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
 const config = require("../../modules/config");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getMachinesSummaryRealTime,
   buildLatestTickerMap,
@@ -31,6 +32,9 @@ module.exports = function (server) {
       );
       const dateStr = chicagoTime.toISOString().split("T")[0];
 
+      // Load shifts once per request (used to make availability/downtime shift-aware).
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+
       logger.info(
         `[machineSessions] Fetching daily cached machines summary for date: ${dateStr}, serial: ${
           serial || "all"
@@ -58,6 +62,7 @@ module.exports = function (server) {
       }
 
       const machineSerials = cacheRecords.map((r) => Number(r.machineSerial));
+      const shiftElapsedCache = new Map(); // `${rangeStartMs}|${rangeEndMs}` -> ms
 
       const tickers = await db
         .collection(config.stateTickerCollectionName)
@@ -92,13 +97,11 @@ module.exports = function (server) {
         };
 
         const timeRange = record.buildRange || record.timeRange;
-        let windowMs = 0;
         let rangeStart, rangeEnd;
 
         if (timeRange && timeRange.start && timeRange.end) {
           rangeStart = new Date(timeRange.start);
           rangeEnd = new Date(timeRange.end);
-          windowMs = rangeEnd - rangeStart;
         } else {
           const todayFallback = new Date();
           const chicagoTimeFallback = new Date(
@@ -106,14 +109,18 @@ module.exports = function (server) {
           );
           rangeStart = new Date(chicagoTimeFallback.setHours(0, 0, 0, 0));
           rangeEnd = new Date();
-          windowMs = rangeEnd - rangeStart;
         }
 
-        const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
+        const shiftKey = `${rangeStart.getTime()}|${rangeEnd.getTime()}`;
+        const shiftElapsedMs = shiftElapsedCache.has(shiftKey)
+          ? shiftElapsedCache.get(shiftKey)
+          : computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
+        shiftElapsedCache.set(shiftKey, shiftElapsedMs);
 
+        const downtimeMs = Math.max(shiftElapsedMs - record.runtimeMs, 0);
         const availability =
-          windowMs > 0
-            ? Math.min(Math.max(record.runtimeMs / windowMs, 0), 1)
+          shiftElapsedMs > 0
+            ? Math.min(Math.max(record.runtimeMs / shiftElapsedMs, 0), 1)
             : 0;
         const totalOutput = record.totalCounts + record.totalMisfeeds;
         const throughput =
@@ -325,7 +332,15 @@ module.exports = function (server) {
             ? new Date(record.timeRange.end)
             : chicagoTime;
 
-          const performance = buildPerformanceFromMachineRecord(record);
+          const shiftElapsedMs = computeShiftElapsedMs(
+            activeShifts,
+            sessionStart,
+            sessionEnd
+          );
+          const performance = buildPerformanceFromMachineRecord(
+            record,
+            shiftElapsedMs
+          );
           const machineItems = machineItemsBySerial.get(serial) || [];
           const itemSummary = buildItemSummaryFromRecords(
             machineItems,
