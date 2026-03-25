@@ -137,13 +137,16 @@ getItemsSummary(start: string, end: string, serial?: number) {
     return this.http.get(`${this.apiUrl}/analytics/machines-group-summary-daily-cached`, { params });
   }
 
-  getMachineItemSessionsSummary(start: string, end: string, serial?: number): Observable<any> {
+  getMachineItemSessionsSummary(start: string, end: string, serial?: number, shiftId?: string | null): Observable<any> {
     let params = new HttpParams()
       .set('start', start)
       .set('end', end);
 
     if (serial) {
       params = params.set('serial', serial.toString());
+    }
+    if (shiftId) {
+      params = params.set('shiftId', shiftId);
     }
 
     // return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary-cache`, { params });
