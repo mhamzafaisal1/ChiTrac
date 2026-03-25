@@ -776,9 +776,11 @@ async function getOperatorCachedDataForDays(db, completeDays, operatorId) {
  * @param {import("mongodb").Db} db
  * @param {Array<{start: Date, end: Date}>} partialDays
  * @param {string|number|undefined} operatorId  Optional operator filter
+ * @param {{ shiftId?: string }} [options] When shiftId is set, only operator sessions with matching shift._id
  */
-async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId) {
+async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId, options = {}) {
   const operators = [];
+  const shiftIdOpt = options.shiftId != null && options.shiftId !== "" ? String(options.shiftId) : null;
 
   // Helper to normalize operator name from either string or {first, surname} format
   const normalizeOperatorName = (name, opId) => {
@@ -803,6 +805,14 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId)
         { "timestamps.end": { $gt: partialDay.start } },
       ],
     };
+
+    if (shiftIdOpt) {
+      if (ObjectId.isValid(shiftIdOpt)) {
+        match["shift._id"] = { $in: [shiftIdOpt, new ObjectId(shiftIdOpt)] };
+      } else {
+        match["shift._id"] = shiftIdOpt;
+      }
+    }
 
     // Just get the sessions with the fields we need
     const sessions = await db

@@ -1,6 +1,15 @@
-import { Component, ChangeDetectionStrategy, inject, Output, EventEmitter } from '@angular/core';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  inject,
+  Output,
+  EventEmitter,
+  OnInit,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClientModule } from '@angular/common/http';
 
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -13,6 +22,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 
 import { DateTimeService } from '../../services/date-time.service';
+import { ShiftListItem, ShiftService } from '../../services/shift.service';
 
 @Component({
   selector: 'app-date-time-modal',
@@ -20,6 +30,7 @@ import { DateTimeService } from '../../services/date-time.service';
   providers: [provideNativeDateAdapter()],
   imports: [
     CommonModule,
+    HttpClientModule,
     FormsModule,
     MatFormFieldModule,
     MatInputModule,
@@ -35,17 +46,37 @@ import { DateTimeService } from '../../services/date-time.service';
   styleUrls: ['./date-time-modal.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DateTimeModalComponent {
+export class DateTimeModalComponent implements OnInit {
   private dateTimeService = inject(DateTimeService);
+  private shiftService = inject(ShiftService);
+  private cdr = inject(ChangeDetectorRef);
   @Output() closeModal = new EventEmitter<void>();
 
   startDateTime: Date = new Date(new Date().setHours(0, 0, 0, 0));
   endDateTime: Date = new Date();
   mode: string = 'live';
   selectedTimeframe: string = '';
+  shifts: ShiftListItem[] = [];
+  selectedShiftId: string | null = null;
+  shiftsLoadError: string | null = null;
 
   ngOnInit(): void {
     this.setLiveModeDefaults();
+    const existing = this.dateTimeService.getShiftId();
+    this.selectedShiftId = existing || null;
+
+    this.shiftService.getActiveShifts().subscribe({
+      next: (res) => {
+        this.shifts = res.shifts || [];
+        this.shiftsLoadError = null;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.shiftsLoadError = 'Could not load shifts';
+        this.shifts = [];
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   isDisabled(): boolean {
@@ -64,7 +95,19 @@ export class DateTimeModalComponent {
       this.startDateTime = start;
       this.endDateTime = now;
       this.selectedTimeframe = ''; // Clear timeframe selection when switching to live
+      this.selectedShiftId = null;
+      this.dateTimeService.setShiftId('');
     }
+  }
+
+  selectShift(shiftId: string): void {
+    this.selectedShiftId = shiftId;
+    this.cdr.markForCheck();
+  }
+
+  clearShiftFilter(): void {
+    this.selectedShiftId = null;
+    this.cdr.markForCheck();
   }
 
   onTimeframeSelect(timeframe: string): void {
@@ -82,18 +125,6 @@ export class DateTimeModalComponent {
     let end: Date;
 
     switch (timeframe) {
-      case 'current':
-        start = new Date(now.getTime() - 6 * 60 * 1000); // 6 minutes ago
-        end = now;
-        break;
-      case 'lastFifteen':
-        start = new Date(now.getTime() - 15 * 60 * 1000); // 15 minutes ago
-        end = now;
-        break;
-      case 'lastHour':
-        start = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
-        end = now;
-        break;
       case 'today':
         start = new Date(now);
         start.setHours(0, 0, 0, 0);
@@ -137,7 +168,8 @@ export class DateTimeModalComponent {
   confirm(): void {
     this.dateTimeService.setStartTime(this.startDateTime.toISOString());
     this.dateTimeService.setEndTime(this.endDateTime.toISOString());
-    this.dateTimeService.setLiveMode(false); 
+    this.dateTimeService.setLiveMode(false);
+    this.dateTimeService.setShiftId(this.selectedShiftId || '');
     this.dateTimeService.setConfirmed(true);
     this.dateTimeService.triggerConfirm();
     this.closeModal.emit();
