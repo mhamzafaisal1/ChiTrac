@@ -65,6 +65,8 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 #### Analytics Routes - Fault
 - [/api/alpha/analytics/fault-history](#apialphaanalyticsfault-history)
 - [/api/alpha/analytics/fault-sessions-history](#apialphaanalyticsfault-sessions-history)
+- [/api/alpha/analytics/fault-report-summary](#apialphaanalyticsfault-report-summary)
+- [/api/alpha/analytics/fault-report-detailed](#apialphaanalyticsfault-report-detailed)
 
 #### Analytics Routes - Dashboard
 - [/api/alpha/analytics/daily-dashboard/daily-counts](#apialphaanalyticsdaily-dashboarddaily-counts)
@@ -515,6 +517,49 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T08:00:00.000Z&e
 { "error": "Failed to fetch fault history" }
 ```
 
+### /api/alpha/analytics/fault-report-summary
+
+Returns a fault report **summary** across all machines: faults grouped by fault code. Uses the `fault-session` collection (sessions, no cache). Intended for the Fault Report UI (summary view).
+
+**Method:** `GET`
+
+**Query Parameters:**
+
+| Parameter | Type   | Required | Description        |
+|-----------|--------|----------|--------------------|
+| start     | string | Yes      | ISO start datetime |
+| end       | string | Yes      | ISO end datetime   |
+
+**Example:**
+```
+GET /api/alpha/analytics/fault-report-summary?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+```
+
+**Response:** `{ context: { start, end }, summaries: [{ code, name, count, totalDurationSeconds, formatted: { hours, minutes, seconds } }] }`
+
+---
+
+### /api/alpha/analytics/fault-report-detailed
+
+Returns a fault report **detailed** by machine then fault code. Uses the `fault-session` collection (sessions, no cache). Intended for the Fault Report UI (detailed view).
+
+**Method:** `GET`
+
+**Query Parameters:**
+
+| Parameter | Type   | Required | Description        |
+|-----------|--------|----------|--------------------|
+| start     | string | Yes      | ISO start datetime |
+| end       | string | Yes      | ISO end datetime   |
+
+**Example:**
+```
+GET /api/alpha/analytics/fault-report-detailed?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+```
+
+**Response:** `{ context: { start, end }, details: [{ machineSerial, machineName, code, name, count, totalDurationSeconds, formatted: { hours, minutes, seconds } }] }`
+
+---
 
 ### /api/alpha/analytics/machine-details
 
