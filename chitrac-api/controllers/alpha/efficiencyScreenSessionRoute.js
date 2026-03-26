@@ -689,7 +689,31 @@ module.exports = function (server) {
         .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
 
       const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
-      console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Status code: ${statusCode}`);
+      const configuredLaneCount =
+        Number(ticker.machine?.lanes) ||
+        Number(ticker.machine?.stations) ||
+        Number(ticker.lanes) ||
+        Number(ticker.program?.stations) ||
+        (Array.isArray(ticker.stations) ? ticker.stations.length : 0) ||
+        1;
+      const laneCount = Math.max(1, configuredLaneCount);
+
+      const operatorsByStation = new Map();
+      const unassignedOperators = [];
+      for (const op of onMachineOperators) {
+        const station = Number(op?.station);
+        if (Number.isFinite(station) && station >= 1 && station <= laneCount && !operatorsByStation.has(station)) {
+          operatorsByStation.set(station, op);
+        } else {
+          unassignedOperators.push(op);
+        }
+      }
+      const laneOperators = Array.from({ length: laneCount }, (_, idx) => {
+        const station = idx + 1;
+        return operatorsByStation.get(station) || unassignedOperators.shift() || null;
+      });
+
+      console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Rendering ${laneOperators.length} lanes. Status code: ${statusCode}`);
 
       const nowLuxon = DateTime.now();
 
@@ -704,14 +728,14 @@ module.exports = function (server) {
           '';
 
       const performanceData = await Promise.all(
-        onMachineOperators.map(async (op) => {
-          const operatorName = await resolveOperatorDisplayName(op, serialNum);
+        laneOperators.map(async (op) => {
+          const operatorName = op ? await resolveOperatorDisplayName(op, serialNum) : null;
 
           return {
             status: statusCode,
             fault: ticker.status?.name ?? 'Unknown',
             operator: operatorName,
-            operatorId: op.id,
+            operatorId: op?.id ?? null,
             machine: ticker.machine?.name || `Serial ${serialNum}`,
             timers: { on: 0, ready: 0 },
             displayTimers: { on: '', run: '' },
@@ -727,7 +751,7 @@ module.exports = function (server) {
       }
 
       // Running: compute performance directly from state + count collections
-      console.log(`[PERF] [${serialNum}] Machine RUNNING (state-based) - processing ${onMachineOperators.length} operators`);
+      console.log(`[PERF] [${serialNum}] Machine RUNNING (state-based) - processing ${laneOperators.length} lanes`);
       const runningStartTime = Date.now();
 
       const frames = {
@@ -875,17 +899,32 @@ module.exports = function (server) {
       }
 
       const performanceData = await Promise.all(
-        onMachineOperators.map(async (op, idx) => {
+        laneOperators.map(async (op, idx) => {
           const operatorStartTime = Date.now();
-          console.log(`[PERF] [${serialNum}] [STATE] Starting operator ${op.id} (${idx + 1}/${onMachineOperators.length})`);
+          console.log(`[PERF] [${serialNum}] [STATE] Starting lane ${idx + 1}/${laneOperators.length} operator=${op?.id ?? 'none'}`);
 
           const efficiencyObj = {};
           const oeeObj = {};
 
-          for (const frameKey of ['lastSixMinutes', 'lastFifteenMinutes', 'lastHour', 'today']) {
-            const { efficiency, oee } = await computeWindowFromStateAndCount(op.id, frameKey);
-            efficiencyObj[frameKey] = efficiency;
-            oeeObj[frameKey] = oee;
+          if (op?.id) {
+            for (const frameKey of ['lastSixMinutes', 'lastFifteenMinutes', 'lastHour', 'today']) {
+              const { efficiency, oee } = await computeWindowFromStateAndCount(op.id, frameKey);
+              efficiencyObj[frameKey] = efficiency;
+              oeeObj[frameKey] = oee;
+            }
+          } else {
+            for (const frameKey of ['lastSixMinutes', 'lastFifteenMinutes', 'lastHour', 'today']) {
+              efficiencyObj[frameKey] = {
+                value: 0,
+                label: frames[frameKey].label,
+                color: 'yellow'
+              };
+              oeeObj[frameKey] = {
+                value: 0,
+                label: frames[frameKey].label,
+                color: 'yellow'
+              };
+            }
           }
 
           const currentItemName =
@@ -893,18 +932,18 @@ module.exports = function (server) {
             (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
             '';
 
-          const operatorName = await resolveOperatorDisplayName(op, serialNum);
+          const operatorName = op ? await resolveOperatorDisplayName(op, serialNum) : null;
 
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
 
           const operatorTotalTime = Date.now() - operatorStartTime;
-          console.log(`[PERF] [${serialNum}] [STATE] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
+          console.log(`[PERF] [${serialNum}] [STATE] Lane ${idx + 1} COMPLETED - operator=${op?.id ?? 'none'} total=${operatorTotalTime}ms`);
 
           return {
             status: statusCodeForResponse,
             fault: ticker.status?.name ?? 'Unknown',
             operator: operatorName,
-            operatorId: op.id,
+            operatorId: op?.id ?? null,
             machine: ticker.machine?.name || `Serial ${serialNum}`,
             timers: { on: 0, ready: 0 },
             displayTimers: { on: '', run: '' },
