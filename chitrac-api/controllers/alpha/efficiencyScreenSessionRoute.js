@@ -62,22 +62,79 @@ module.exports = function (server) {
     const operatorId = Number(operator?.id);
     if (!Number.isFinite(operatorId) || operatorId <= 0) return 'Unknown';
 
-    const tickerName = normalizeOperatorName(operator?.name);
-    if (tickerName) return tickerName;
-
-    const machineFilter = { $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }] };
+    const machineSerial = Number(serialNum);
+    const machineSerialStr = String(serialNum);
 
     const recentCount = await db.collection(countCollectionName).findOne(
-      { 'operator.id': operatorId, ...machineFilter },
+      {
+        'operator.id': operatorId,
+        $or: [
+          { 'machine.serial': machineSerial },
+          { 'machine.serial': machineSerialStr },
+          { 'machine.id': machineSerial },
+          { 'machine.id': machineSerialStr }
+        ]
+      },
       {
         sort: { timestamp: -1 },
-        projection: { 'operator.name': 1 }
+        projection: {
+          'operator.name': 1,
+          'operator.id': 1,
+          'machine.serial': 1,
+          'machine.id': 1,
+          timestamp: 1
+        }
       }
     );
     const countName = normalizeOperatorName(recentCount?.operator?.name);
     if (countName) return countName;
 
     return `Operator ${operatorId}`;
+  }
+
+  async function buildOperatorNameMap(serialNum, laneOperators) {
+    const operatorIds = [...new Set(
+      laneOperators
+        .map(op => Number(op?.id))
+        .filter(id => Number.isFinite(id) && id > 0)
+    )];
+
+    if (!operatorIds.length) return new Map();
+
+    const machineSerial = Number(serialNum);
+    const machineSerialStr = String(serialNum);
+
+    const latestCounts = await db.collection(countCollectionName).aggregate([
+      {
+        $match: {
+          'operator.id': { $in: operatorIds },
+          $or: [
+            { 'machine.serial': machineSerial },
+            { 'machine.serial': machineSerialStr },
+            { 'machine.id': machineSerial },
+            { 'machine.id': machineSerialStr }
+          ]
+        }
+      },
+      { $sort: { timestamp: -1 } },
+      {
+        $group: {
+          _id: '$operator.id',
+          name: { $first: '$operator.name' }
+        }
+      }
+    ]).toArray();
+
+    const nameMap = new Map();
+    for (const row of latestCounts) {
+      const id = Number(row?._id);
+      const name = normalizeOperatorName(row?.name);
+      if (Number.isFinite(id) && id > 0 && name) {
+        nameMap.set(id, name);
+      }
+    }
+
+    return nameMap;
   }
 
   router.get('/analytics/machine-live-session-summary', async (req, res) => {
@@ -403,12 +460,13 @@ module.exports = function (server) {
         console.log(`[PERF] [${serialNum}] Machine NOT running - processing ${onMachineOperators.length} operators (non-running path)`);
         const notRunningStartTime = Date.now();
         
+        const operatorNameMap = await buildOperatorNameMap(serialNum, onMachineOperators);
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op, idx) => {
             const batchItemStartTime = Date.now();
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
             console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
-            const operatorName = await resolveOperatorDisplayName(op, serialNum);
+            const operatorName = operatorNameMap.get(Number(op.id)) || `Operator ${op.id}`;
             return {
               status: statusCode, // Use 'code' in API response for backward compatibility
               fault: ticker.status?.name ?? 'Unknown',
@@ -457,6 +515,7 @@ module.exports = function (server) {
         }
       }
 
+      const operatorNameMap = await buildOperatorNameMap(serialNum, onMachineOperators);
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op, idx) => {
           const operatorStartTime = Date.now();
@@ -596,7 +655,7 @@ module.exports = function (server) {
           const operatorTotalTime = Date.now() - operatorStartTime;
           console.log(`[PERF] [${serialNum}] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
 
-          const operatorName = await resolveOperatorDisplayName(op, serialNum);
+          const operatorName = operatorNameMap.get(Number(op.id)) || `Operator ${op.id}`;
 
           // Status schema uses 'id', but legacy code used 'code' - support both
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
@@ -727,9 +786,13 @@ module.exports = function (server) {
           (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
           '';
 
-      const performanceData = await Promise.all(
-        laneOperators.map(async (op) => {
-          const operatorName = op ? await resolveOperatorDisplayName(op, serialNum) : null;
+      const operatorNameMap = await buildOperatorNameMap(serialNum, laneOperators);
+      const performanceData = laneOperators.map((op) => {
+          const operatorId = Number(op?.id);
+          const operatorName =
+            op && Number.isFinite(operatorId) && operatorId > 0
+              ? (operatorNameMap.get(operatorId) || `Operator ${operatorId}`)
+              : null;
 
           return {
             status: statusCode,
@@ -743,8 +806,7 @@ module.exports = function (server) {
             oee: buildZeroEfficiencyPayload(),
             batch: { item: currentItemName, code: 10000001 }
           };
-        })
-      );
+        });
 
         console.log(`[PERF] [${serialNum}] Non-running state-based path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
         return res.json({ flipperData: performanceData });
@@ -898,6 +960,7 @@ module.exports = function (server) {
         };
       }
 
+      const operatorNameMap = await buildOperatorNameMap(serialNum, laneOperators);
       const performanceData = await Promise.all(
         laneOperators.map(async (op, idx) => {
           const operatorStartTime = Date.now();
@@ -932,7 +995,11 @@ module.exports = function (server) {
             (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
             '';
 
-          const operatorName = op ? await resolveOperatorDisplayName(op, serialNum) : null;
+          const operatorId = Number(op?.id);
+          const operatorName =
+            op && Number.isFinite(operatorId) && operatorId > 0
+              ? (operatorNameMap.get(operatorId) || `Operator ${operatorId}`)
+              : null;
 
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
 
