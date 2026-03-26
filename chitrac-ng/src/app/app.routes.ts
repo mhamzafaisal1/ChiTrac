@@ -10,6 +10,8 @@ import { AuthGuard } from './guards/auth.guard';
 import { MachineDashboardComponent } from './machine-dashboard/machine-dashboard.component';
 import { MachineReportComponent } from './reports/machine-report/machine-report.component';
 import { ShiftMachineReportComponent } from './reports/shift-machine-report/shift-machine-report.component';
+import { ShiftOperatorReportComponent } from './reports/shift-operator-report/shift-operator-report.component';
+import { ShiftItemReportComponent } from './reports/shift-item-report/shift-item-report.component';
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
 import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
@@ -52,6 +54,8 @@ export const routes: Routes = [
 	// Reports
 	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
 	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
+	{ path: 'ng/reports/shift-operator-report', component: ShiftOperatorReportComponent },
+	{ path: 'ng/reports/shift-item-report', component: ShiftItemReportComponent },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },
 	

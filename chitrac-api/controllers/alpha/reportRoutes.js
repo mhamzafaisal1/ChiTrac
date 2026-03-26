@@ -39,6 +39,21 @@ module.exports = function (server) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
+      const shiftIdRaw = req.query.shiftId;
+      let shiftId = null;
+      if (shiftIdRaw) {
+        let shiftObjectId;
+        try {
+          shiftObjectId = new ObjectId(String(shiftIdRaw));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        const shiftDoc = await db.collection("shift").findOne({ _id: shiftObjectId });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+        shiftId = String(shiftObjectId);
+      }
       
       // ========== FIX #1: Timezone-aware date handling ==========
       const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE });
@@ -155,7 +170,7 @@ module.exports = function (server) {
       let operatorMachineCache = [];
       let operatorItemCache = [];
       let sessionData = { operators: [] };
-      let useCache = completeDays.length > 0;
+      let useCache = completeDays.length > 0 && !shiftId;
       
       if (useCache) {
         const dateStrings = completeDays.map(d => d.dateStr);
@@ -195,13 +210,23 @@ module.exports = function (server) {
         // If cache is empty, fallback to sessions for entire range
         if (operatorMachineCache.length === 0 && operatorItemCache.length === 0) {
           console.log(`[OPERATOR-CACHE] Cache empty, falling back to sessions for entire range`);
-          sessionData = await getOperatorSessionDataForPartialDays(db,[{ start: exactStart, end: exactEnd }], operatorId);
+          sessionData = await getOperatorSessionDataForPartialDays(
+            db,
+            [{ start: exactStart, end: exactEnd }],
+            operatorId,
+            shiftId ? { shiftId } : {}
+          );
           console.log(`[OPERATOR-CACHE] Session fallback returned ${sessionData.operators.length} operators`);
         }
       } else {
         // No complete days, use sessions for entire range
         console.log(`[OPERATOR-CACHE] No complete days, using sessions for entire range`);
-        sessionData = await getOperatorSessionDataForPartialDays(db,[{ start: exactStart, end: exactEnd }], operatorId);
+        sessionData = await getOperatorSessionDataForPartialDays(
+          db,
+          [{ start: exactStart, end: exactEnd }],
+          operatorId,
+          shiftId ? { shiftId } : {}
+        );
         console.log(`[OPERATOR-CACHE] Sessions returned ${sessionData.operators.length} operators`);
       }
 
@@ -697,8 +722,67 @@ module.exports = function (server) {
       const { start, end } = parseAndValidateQueryParams(req);
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
+      const shiftIdRaw = req.query.shiftId;
+      let shiftId = null;
+      if (shiftIdRaw) {
+        let shiftObjectId;
+        try {
+          shiftObjectId = new ObjectId(String(shiftIdRaw));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        const shiftDoc = await db.collection("shift").findOne({ _id: shiftObjectId });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+        shiftId = String(shiftObjectId);
+      }
 
-      console.log(`[item-sessions-summary-daily-cache] Query start: ${exactStart.toISOString()}, end: ${exactEnd.toISOString()}`);
+      if (shiftId) {
+        const sessionData = await getItemSessionDataForPartialDays(
+          db,
+          [{ start: exactStart, end: exactEnd }],
+          { shiftId }
+        );
+        const resultsMap = new Map();
+        for (const item of sessionData.items) {
+          const itemId = String(item.itemId);
+          if (!resultsMap.has(itemId)) {
+            resultsMap.set(itemId, {
+              itemId: item.itemId,
+              name: item.itemName || "Unknown",
+              standard: item.itemStandard ?? 0,
+              count: 0,
+              workedSec: 0,
+            });
+          }
+          const acc = resultsMap.get(itemId);
+          acc.count += item.totalCounts || 0;
+          acc.workedSec += (item.workedTimeMs || 0) / 1000;
+        }
+
+        const normalizePPH = (std) => {
+          const n = Number(std) || 0;
+          return n > 0 && n < 60 ? n * 60 : n;
+        };
+
+        const results = Array.from(resultsMap.values()).map((entry) => {
+          const workedMs = Math.round(entry.workedSec * 1000);
+          const hours = workedMs / 3_600_000;
+          const pph = hours > 0 ? entry.count / hours : 0;
+          const stdPPH = normalizePPH(entry.standard);
+          const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
+          return {
+            itemName: entry.name,
+            workedTimeFormatted: formatDuration(workedMs),
+            count: entry.count,
+            pph: Math.round(pph * 100) / 100,
+            standard: entry.standard,
+            efficiency: Math.round(efficiencyPct * 100) / 100,
+          };
+        });
+        return res.json(results);
+      }
 
       // ---------- Timezone-aware date handling (same as machine report) ----------
       const startDt = DateTime.fromJSDate(exactStart, { zone: SYSTEM_TIMEZONE });

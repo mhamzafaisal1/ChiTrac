@@ -156,13 +156,16 @@ getItemsSummary(start: string, end: string, serial?: number, shiftId?: string | 
     return this.http.get(`${this.apiUrl}/analytics/machine-report-cache`, { params });
   }
 
-  getOperatorItemSessionsSummary(start: string, end: string, operatorId?: number): Observable<any> {
+  getOperatorItemSessionsSummary(start: string, end: string, operatorId?: number, shiftId?: string | null): Observable<any> {
     let params = new HttpParams()
       .set('start', start)
       .set('end', end);
 
     if (operatorId) {
       params = params.set('operatorId', operatorId.toString());
+    }
+    if (shiftId) {
+      params = params.set('shiftId', shiftId);
     }
 
     return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary-cache`, { params });

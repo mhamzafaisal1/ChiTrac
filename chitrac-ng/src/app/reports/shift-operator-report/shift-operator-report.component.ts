@@ -1,0 +1,304 @@
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { HttpClientModule } from '@angular/common/http';
+import { FormsModule } from '@angular/forms';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
+import { MatSelectModule } from '@angular/material/select';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+import { BaseTableComponent } from '../../components/base-table/base-table.component';
+import { DailyDashboardService } from '../../services/daily-dashboard.service';
+import { ShiftListItem, ShiftService } from '../../services/shift.service';
+
+@Component({
+  selector: 'app-shift-operator-report',
+  imports: [
+    CommonModule,
+    HttpClientModule,
+    FormsModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatButtonModule,
+    MatIconModule,
+    MatSlideToggleModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    MatSelectModule,
+    BaseTableComponent,
+  ],
+  providers: [provideNativeDateAdapter()],
+  templateUrl: './shift-operator-report.component.html',
+  styleUrls: ['./shift-operator-report.component.scss'],
+})
+export class ShiftOperatorReportComponent implements OnInit, OnDestroy {
+  startDate: Date | null = null;
+  endDate: Date | null = null;
+  shifts: ShiftListItem[] = [];
+  selectedShiftId: string | null = null;
+  selectedShift: ShiftListItem | null = null;
+  columns: string[] = [];
+  rows: any[] = [];
+  isDarkTheme = false;
+  isLoading = false;
+  isDownloading = false;
+  isDownloadingCsv = false;
+  showSummaryOnly = false;
+  shiftsLoadError: string | null = null;
+  private observer!: MutationObserver;
+
+  get displayedRows(): any[] {
+    if (this.showSummaryOnly) {
+      return this.rows.filter((row) => row['Item'] === 'TOTAL');
+    }
+    return this.rows;
+  }
+
+  constructor(
+    private dailyDashboardService: DailyDashboardService,
+    private shiftService: ShiftService
+  ) {}
+
+  ngOnInit(): void {
+    const end = new Date();
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    this.startDate = start;
+    this.endDate = end;
+
+    this.detectTheme();
+    this.observer = new MutationObserver(() => this.detectTheme());
+    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    this.shiftService.getActiveShifts().subscribe({
+      next: (res) => {
+        this.shifts = res.shifts || [];
+        this.shiftsLoadError = null;
+      },
+      error: () => {
+        this.shiftsLoadError = 'Could not load shifts';
+        this.shifts = [];
+      },
+    });
+  }
+
+  ngOnDestroy() {
+    if (this.observer) this.observer.disconnect();
+  }
+
+  detectTheme() {
+    this.isDarkTheme = document.body.classList.contains('dark-theme');
+  }
+
+  onShiftChange(): void {
+    this.selectedShift = this.shifts.find((s) => s._id === this.selectedShiftId) ?? null;
+  }
+
+  fetchAnalyticsData(): void {
+    if (!this.startDate || !this.endDate || !this.selectedShiftId) return;
+
+    this.isLoading = true;
+    this.isDownloading = false;
+    this.isDownloadingCsv = false;
+
+    const formattedStart = this.toQueryStartIso(this.startDate);
+    const formattedEnd = this.toQueryEndIso(this.endDate);
+
+    this.dailyDashboardService
+      .getOperatorItemSessionsSummary(formattedStart, formattedEnd, undefined, this.selectedShiftId)
+      .subscribe({
+        next: (data: any) => {
+          this.processTableData(data.results || []);
+          this.isLoading = false;
+        },
+        error: (error: any) => {
+          console.error('Error fetching operator item summary:', error);
+          this.isLoading = false;
+        }
+      });
+  }
+
+  private normalizeOperatorName(rawName: any, operatorId: number): string {
+    if (!rawName) return `Operator ${operatorId}`;
+    if (typeof rawName === 'object' && rawName !== null && 'first' in rawName) {
+      const nameObj = rawName as { first?: string; surname?: string };
+      const fullName = `${nameObj.first || ''} ${nameObj.surname || ''}`.trim();
+      return fullName || `Operator ${operatorId}`;
+    }
+    if (typeof rawName === 'string') {
+      return rawName.trim() || `Operator ${operatorId}`;
+    }
+    return `Operator ${operatorId}`;
+  }
+
+  private processTableData(results: any[]): void {
+    const formattedData: any[] = [];
+
+    results.forEach((operator: any) => {
+      const summary = operator.operatorSummary;
+      const operatorId = operator.operator.id;
+      const operatorName = this.normalizeOperatorName(operator.operator.name, operatorId);
+
+      formattedData.push({
+        Operator: operatorName,
+        Item: 'TOTAL',
+        'Total Time (Runtime)': `${summary.runtimeFormatted.hours}h ${summary.runtimeFormatted.minutes}m`,
+        'Total Count': summary.totalCount,
+        PPH: summary.pph,
+        Standard: summary.proratedStandard ? Number(summary.proratedStandard).toFixed(2) : 'N/A',
+        Efficiency: summary.efficiency !== null ? `${summary.efficiency}%` : 'N/A',
+      });
+
+      Object.values(summary.itemSummaries).forEach((item: any) => {
+        formattedData.push({
+          Operator: operatorName,
+          Item: item.name,
+          'Total Time (Runtime)': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
+          'Total Count': item.countTotal,
+          PPH: item.pph,
+          Standard: item.standard ? Number(item.standard).toFixed(2) : 'N/A',
+          Efficiency: item.efficiency !== null ? `${item.efficiency}%` : 'N/A',
+        });
+      });
+    });
+
+    this.columns = formattedData.length
+      ? Object.keys(formattedData[0])
+      : ['Operator', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+    this.rows = formattedData;
+  }
+
+  getEfficiencyClass(value: any, column: string): string {
+    if (column === 'Efficiency' && typeof value === 'string' && value.includes('%')) {
+      const num = parseInt(value.replace('%', ''), 10);
+      if (isNaN(num)) return '';
+      if (num >= 90) return 'green';
+      if (num >= 70) return 'yellow';
+      return 'red';
+    }
+    return '';
+  }
+
+  async downloadOperatorSummaryPdf(): Promise<void> {
+    if (!this.startDate || !this.endDate || !this.selectedShiftId) return;
+
+    this.isDownloading = true;
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const margin = 24;
+      let y = margin;
+
+      const rangeLabel = `${this.formatDateOnly(this.startDate)} -> ${this.formatDateOnly(this.endDate)}`;
+      const shiftLabel = this.selectedShift?.name ?? this.selectedShiftId;
+
+      doc.setFontSize(14);
+      doc.text('SHIFT OPERATOR REPORT', margin, y);
+      y += 18;
+      doc.setFontSize(10);
+      doc.text(`Shift: ${shiftLabel}`, margin, y);
+      y += 14;
+      doc.text(`Range: ${rangeLabel}`, margin, y);
+      y += 24;
+
+      const head = [['Operator/Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
+      const body = this.displayedRows.map((row) => [
+        `${row['Operator']} / ${row['Item']}`,
+        row['Total Time (Runtime)'],
+        row['Total Count'],
+        row['PPH'],
+        row['Standard'],
+        row['Efficiency'],
+      ]);
+
+      autoTable(doc, {
+        head,
+        body,
+        startY: y,
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [22, 160, 133], textColor: 255 },
+        columnStyles: { 0: { cellWidth: 180 } },
+        theme: 'striped',
+      });
+
+      const safe = (s: string) => s.replace(/[/\\?%*:|"<>]/g, '-');
+      doc.save(
+        `shift_operator_report_${safe(shiftLabel)}_${this.formatDateOnly(this.startDate)}_${this.formatDateOnly(this.endDate)}.pdf`
+      );
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      this.isDownloading = false;
+    }
+  }
+
+  downloadOperatorSummaryCsv(): void {
+    if (!this.rows.length || !this.columns.length) return;
+
+    this.isLoading = true;
+    this.isDownloadingCsv = true;
+
+    setTimeout(() => {
+      try {
+        const csvRows: string[] = [];
+        csvRows.push(this.columns.join(','));
+
+        for (const row of this.displayedRows) {
+          const rowData = this.columns.map((col) => {
+            const cell = row[col];
+            return typeof cell === 'string' && cell.includes(',')
+              ? `"${cell.replace(/"/g, '""')}"`
+              : cell;
+          });
+          csvRows.push(rowData.join(','));
+        }
+
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        const shiftPart = (this.selectedShift?.name ?? this.selectedShiftId ?? 'shift').replace(/[/\\?%*:|"<>]/g, '-');
+        link.setAttribute(
+          'download',
+          `shift_operator_report_${shiftPart}_${this.formatDateOnly(this.startDate!)}_${this.formatDateOnly(this.endDate!)}.csv`
+        );
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (error) {
+        console.error('Error generating CSV:', error);
+      } finally {
+        setTimeout(() => {
+          this.isLoading = false;
+          this.isDownloadingCsv = false;
+        }, 500);
+      }
+    }, 100);
+  }
+
+  private toQueryStartIso(d: Date): string {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    return x.toISOString();
+  }
+
+  private toQueryEndIso(d: Date): string {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    return x.toISOString();
+  }
+
+  private formatDateOnly(d: Date): string {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+}

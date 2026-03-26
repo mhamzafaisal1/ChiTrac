@@ -413,15 +413,43 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
   const shiftIdOpt = options.shiftId != null && options.shiftId !== "" ? String(options.shiftId) : null;
 
   for (const partialDay of partialDays) {
+    const serialNum = serial != null ? Number(serial) : null;
     // Query machine sessions for this partial day
     const match = {
-      ...(serial ? { "machine.serial": serial } : {}),
+      ...(Number.isFinite(serialNum)
+        ? {
+            $or: [
+              { "machine.serial": serialNum },
+              { "machine.id": serialNum },
+              { "machine.serial": String(serialNum) },
+              { "machine.id": String(serialNum) },
+            ],
+          }
+        : {}),
       "timestamps.start": { $lte: partialDay.end },
-      $or: [
-        { "timestamps.end": { $exists: false } },
-        { "timestamps.end": { $gte: partialDay.start } },
+      $and: [
+        {
+          $or: [
+            { "timestamps.end": { $exists: false } },
+            { "timestamps.end": { $gte: partialDay.start } },
+          ],
+        },
       ],
     };
+    if (match.$or && match.$and) {
+      // Normalize combined conditions when serial filter and time-overlap both use OR.
+      match.$and.push({ $or: match.$or });
+      delete match.$or;
+    } else if (!match.$and) {
+      match.$and = [
+        {
+          $or: [
+            { "timestamps.end": { $exists: false } },
+            { "timestamps.end": { $gte: partialDay.start } },
+          ],
+        },
+      ];
+    }
 
     if (shiftIdOpt) {
       if (ObjectId.isValid(shiftIdOpt)) {
@@ -454,11 +482,32 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
             timestamps: 1,
             machine: 1,
             operators: 1,
+            items: 1,
+            totalByItem: 1,
+            totalCount: 1,
             countsFiltered: {
               $map: {
                 input: {
                   $filter: {
-                    input: "$counts",
+                    input: {
+                      $cond: [
+                        { $isArray: "$counts" },
+                        "$counts",
+                        {
+                          $cond: [
+                            { $eq: [{ $type: "$counts" }, "object"] },
+                            {
+                              $map: {
+                                input: { $objectToArray: "$counts" },
+                                as: "kv",
+                                in: "$$kv.v",
+                              },
+                            },
+                            [],
+                          ],
+                        },
+                      ],
+                    },
                     as: "c",
                     cond: {
                       $and: [
@@ -490,7 +539,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
     // Process sessions to create machine totals (similar to original route logic)
     const grouped = new Map();
     for (const s of sessions) {
-      const key = s.machine?.serial;
+      const key = s.machine?.serial ?? s.machine?.id;
       if (!key) continue;
       if (!grouped.has(key)) {
         grouped.set(key, {
@@ -515,23 +564,49 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
       bucket.totalRuntimeMs += runtimeMs;
 
       const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
-      if (!counts.length) continue;
-
       const byItem = new Map();
-      for (const c of counts) {
-        const it = c.item || {};
-        const id = it.id;
-        if (id == null) continue;
-        if (!byItem.has(id)) {
+      if (counts.length) {
+        for (const c of counts) {
+          const it = c.item || {};
+          const id = it.id;
+          if (id == null) continue;
+          if (!byItem.has(id)) {
+            byItem.set(id, {
+              id,
+              name: it.name || "Unknown",
+              standard: Number(it.standard) || 0,
+              count: 0,
+            });
+          }
+          byItem.get(id).count += 1;
+        }
+      } else if (Array.isArray(s.totalByItem) && Array.isArray(s.items) && s.items.length) {
+        // Fallback for schema-adapted sessions where counts has no per-event timestamps.
+        s.items.forEach((it, idx) => {
+          const id = it?.id;
+          if (id == null) return;
+          const count = Number(s.totalByItem[idx]) || 0;
+          if (count <= 0) return;
           byItem.set(id, {
             id,
             name: it.name || "Unknown",
             standard: Number(it.standard) || 0,
-            count: 0,
+            count,
+          });
+        });
+      } else if (Number(s.totalCount) > 0) {
+        // Last-resort fallback: put all counts in first known item when available.
+        const first = Array.isArray(s.items) && s.items.length ? s.items[0] : null;
+        if (first?.id != null) {
+          byItem.set(first.id, {
+            id: first.id,
+            name: first.name || "Unknown",
+            standard: Number(first.standard) || 0,
+            count: Number(s.totalCount) || 0,
           });
         }
-        byItem.get(id).count += 1;
       }
+      if (!byItem.size) continue;
 
       const totalSessionItemCount = [...byItem.values()].reduce((s, it) => s + it.count, 0) || 1;
 
@@ -1026,103 +1101,104 @@ async function getItemCachedDataForDays(db, completeDays) {
  * @param {import("mongodb").Db} db
  * @param {Array<{start: Date, end: Date}>} partialDays
  */
-async function getItemSessionDataForPartialDays(db, partialDays) {
+async function getItemSessionDataForPartialDays(db, partialDays, options = {}) {
   const items = [];
-
-  // Get active machine serials
-  const activeSerials = await db
-    .collection(config.machineCollectionName || "machine")
-    .distinct("serial", { active: true });
+  const shiftIdOpt = options.shiftId != null && options.shiftId !== "" ? String(options.shiftId) : null;
+  const matchesShift = (shiftObj, expected) => {
+    if (!expected) return true;
+    if (!shiftObj || typeof shiftObj !== "object") return false;
+    const rawCandidates = [shiftObj._id, shiftObj.id];
+    return rawCandidates.some((v) => {
+      if (v == null) return false;
+      try {
+        return String(v) === expected;
+      } catch (_) {
+        return false;
+      }
+    });
+  };
 
   for (const partialDay of partialDays) {
-    for (const serial of activeSerials) {
-      // Clamp to actual running window per machine
-      const bookended = await getBookendedStatesAndTimeRange(db, serial, partialDay.start, partialDay.end);
-      if (!bookended) continue;
-      const { sessionStart, sessionEnd } = bookended;
+    const queryStart = partialDay.start;
+    const queryEnd = partialDay.end;
+    const itemSessionMatch = {
+      "timestamps.start": { $lt: queryEnd },
+      $or: [
+        { "timestamps.end": { $gt: queryStart } },
+        { "timestamps.end": { $exists: false } },
+        { "timestamps.end": null },
+      ],
+    };
+    const sessionsRaw = await db
+      .collection(config.itemSessionCollectionName || "item-session")
+      .find(itemSessionMatch)
+      .project({
+        _id: 0,
+        item: 1,
+        items: 1,
+        counts: 1,
+        totalCount: 1,
+        workTime: 1,
+        runtime: 1,
+        activeStations: 1,
+        operators: 1,
+        shift: 1,
+        timestamps: 1,
+        machine: 1,
+      })
+      .toArray();
+    const sessions = shiftIdOpt
+      ? sessionsRaw.filter((s) => matchesShift(s.shift, shiftIdOpt))
+      : sessionsRaw;
 
-      // Pull overlapping item-sessions
-      const sessions = await db
-        .collection(config.itemSessionCollectionName || "item-session")
-        .find({
-          "machine.serial": Number(serial),
-          "timestamps.start": { $lt: sessionEnd },
-          $or: [
-            { "timestamps.end": { $gt: sessionStart } },
-            { "timestamps.end": { $exists: false } },
-            { "timestamps.end": null },
-          ],
-        })
-        .project({
-          _id: 0,
-          item: 1,          // { id, name, standard }
-          items: 1,         // legacy single-item fallback
-          counts: 1,        // optional
-          totalCount: 1,    // optional rollup
-          workTime: 1,      // seconds
-          runtime: 1,       // seconds
-          activeStations: 1,
-          operators: 1,
-          timestamps: 1,
-        })
-        .toArray();
+    for (const s of sessions) {
+      const itm = s.item || (Array.isArray(s.items) && s.items.length === 1 ? s.items[0] : null);
+      if (!itm || itm.id == null) continue;
 
-      if (!sessions.length) continue;
+      const sessStart = s.timestamps?.start ? new Date(s.timestamps.start) : null;
+      const sessEnd = new Date(s.timestamps?.end || queryEnd);
+      if (!sessStart || Number.isNaN(sessStart)) continue;
 
-      for (const s of sessions) {
-        const itm = s.item || (Array.isArray(s.items) && s.items.length === 1 ? s.items[0] : null);
-        if (!itm || itm.id == null) continue;
+      const ovStart = sessStart > queryStart ? sessStart : queryStart;
+      const ovEnd = sessEnd < queryEnd ? sessEnd : queryEnd;
+      if (!(ovEnd > ovStart)) continue;
 
-        const sessStart = s.timestamps?.start ? new Date(s.timestamps.start) : null;
-        const sessEnd = new Date(s.timestamps?.end || sessionEnd);
-        if (!sessStart || Number.isNaN(sessStart)) continue;
+      const sessSec = Math.max(0, (sessEnd - sessStart) / 1000);
+      const ovSec = Math.max(0, (ovEnd - ovStart) / 1000);
+      if (sessSec === 0 || ovSec === 0) continue;
 
-        // Overlap with bookended window
-        const ovStart = sessStart > sessionStart ? sessStart : sessionStart;
-        const ovEnd = sessEnd < sessionEnd ? sessEnd : sessionEnd;
-        if (!(ovEnd > ovStart)) continue;
+      const stations = typeof s.activeStations === "number"
+        ? s.activeStations
+        : (Array.isArray(s.operators) ? s.operators.filter((o) => o && o.id !== -1).length : 0);
+      const baseWorkSec = typeof s.workTime === "number"
+        ? s.workTime
+        : typeof s.runtime === "number"
+          ? s.runtime * Math.max(1, stations || 0)
+          : 0;
+      const workedSec = baseWorkSec > 0 ? baseWorkSec * (ovSec / sessSec) : 0;
 
-        const sessSec = Math.max(0, (sessEnd - sessStart) / 1000);
-        const ovSec = Math.max(0, (ovEnd - ovStart) / 1000);
-        if (sessSec === 0 || ovSec === 0) continue;
-
-        // Worked time: prefer workTime, else runtime * stations; prorate by overlap
-        const stations = typeof s.activeStations === "number"
-          ? s.activeStations
-          : (Array.isArray(s.operators) ? s.operators.filter(o => o && o.id !== -1).length : 0);
-
-        const baseWorkSec = typeof s.workTime === "number"
-          ? s.workTime
-          : typeof s.runtime === "number"
-            ? s.runtime * Math.max(1, stations || 0)
-            : 0;
-
-        const workedSec = baseWorkSec > 0 ? baseWorkSec * (ovSec / sessSec) : 0;
-
-        // Counts in overlap: use explicit counts if present; else prorate totalCount
-        let countInWin = 0;
-        if (Array.isArray(s.counts) && s.counts.length) {
-          if (s.counts.length > 50000) {
-            countInWin = typeof s.totalCount === "number" ? Math.round(s.totalCount * (ovSec / sessSec)) : 0;
-          } else {
-            countInWin = s.counts.reduce((acc, c) => {
-              const t = new Date(c.timestamp);
-              const sameItem = !c.item?.id || c.item.id === itm.id;
-              return acc + (sameItem && t >= ovStart && t <= ovEnd ? 1 : 0);
-            }, 0);
-          }
-        } else if (typeof s.totalCount === "number") {
-          countInWin = Math.round(s.totalCount * (ovSec / sessSec));
+      let countInWin = 0;
+      if (Array.isArray(s.counts) && s.counts.length) {
+        if (s.counts.length > 50000) {
+          countInWin = typeof s.totalCount === "number" ? Math.round(s.totalCount * (ovSec / sessSec)) : 0;
+        } else {
+          countInWin = s.counts.reduce((acc, c) => {
+            const t = new Date(c.timestamp);
+            const sameItem = !c.item?.id || c.item.id === itm.id;
+            return acc + (sameItem && t >= ovStart && t <= ovEnd ? 1 : 0);
+          }, 0);
         }
-
-        items.push({
-          itemId: itm.id,
-          itemName: itm.name || "Unknown",
-          itemStandard: itm.standard ?? 0,
-          totalCounts: countInWin,
-          workedTimeMs: workedSec * 1000, // Convert to milliseconds
-        });
+      } else if (typeof s.totalCount === "number") {
+        countInWin = Math.round(s.totalCount * (ovSec / sessSec));
       }
+
+      items.push({
+        itemId: itm.id,
+        itemName: itm.name || "Unknown",
+        itemStandard: itm.standard ?? 0,
+        totalCounts: countInWin,
+        workedTimeMs: workedSec * 1000,
+      });
     }
   }
 

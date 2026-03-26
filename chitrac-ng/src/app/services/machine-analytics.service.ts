@@ -83,10 +83,14 @@ export class MachineAnalyticsService {
     });
   }
 
-  getItemSessionSummary(start: string, end: string): Observable<any> {
-    return this.http.get('/api/alpha/analytics/item-sessions-summary-daily-cache', {
-      params: { start, end }
-    });
+  getItemSessionSummary(start: string, end: string, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams()
+      .set('start', start)
+      .set('end', end);
+    if (shiftId) {
+      params = params.set('shiftId', shiftId);
+    }
+    return this.http.get('/api/alpha/analytics/item-sessions-summary-daily-cache', { params });
   }
 
   
