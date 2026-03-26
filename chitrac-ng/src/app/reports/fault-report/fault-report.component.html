@@ -1,0 +1,75 @@
+<div class="dashboard-container" [class.dark-mode]="isDarkTheme">
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">
+        {{ isDownloading ? "Downloading PDF..." : isDownloadingCsv ? "Downloading CSV..." : "Fetching data..." }}
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <app-date-time-picker
+      label="Start Time"
+      [(value)]="startTime"
+    ></app-date-time-picker>
+    <app-date-time-picker
+      label="End Time"
+      [(value)]="endTime"
+    ></app-date-time-picker>
+
+    <div class="report-mode-toggle">
+      <span class="toggle-label" style="margin-right: 12px;">Detailed</span>
+      <mat-slide-toggle
+        [(ngModel)]="showSummaryOnly"
+        (change)="onReportModeChange()"
+        color="primary">
+      </mat-slide-toggle>
+      <span class="toggle-label" style="margin-left: 12px;">Summary</span>
+    </div>
+
+    <div class="button-group">
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="fetchFaultReport()"
+        [disabled]="!startTime || !endTime || isLoading"
+      >
+        <mat-icon>refresh</mat-icon>
+        {{ isLoading && !isDownloading && !isDownloadingCsv ? "Loading..." : "Fetch Data" }}
+      </button>
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="downloadPdf()"
+        [disabled]="!rows.length || isLoading"
+      >
+        <mat-icon>picture_as_pdf</mat-icon>
+        {{ isLoading && isDownloading ? "Downloading..." : "Download Fault Report PDF" }}
+      </button>
+
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="downloadCsv()"
+        [disabled]="!rows.length || isLoading"
+      >
+        <mat-icon>table_chart</mat-icon>
+        {{ isLoading && isDownloadingCsv ? "Downloading..." : "Download CSV" }}
+      </button>
+    </div>
+  </div>
+
+  <div class="table-container" [class.loading]="isLoading">
+    <base-table
+      *ngIf="rows.length"
+      [class.dark]="isDarkTheme"
+      [class.light]="!isDarkTheme"
+      [columns]="columns"
+      [rows]="displayedRows"
+      [getCellClass]="getEfficiencyClass.bind(this)"
+      style="height:93%; border-radius: 4px;"
+    >
+    </base-table>
+  </div>
+</div>

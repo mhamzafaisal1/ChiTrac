@@ -2,6 +2,7 @@
 const express = require("express");
 const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
 const config = require("../../modules/config");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getOperatorsSummaryRealTime,
   buildItemSummaryFromCache,
@@ -30,6 +31,9 @@ module.exports = function (server) {
       const today = new Date();
       const chicagoTime = new Date(today.toLocaleString("en-US", { timeZone: "America/Chicago" }));
       const dateStr = chicagoTime.toISOString().split("T")[0];
+
+      // Load shifts once per request (used to make availability/downtime shift-aware).
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
 
       logger.info(`[operatorSessions] Fetching daily cached operators summary for date: ${dateStr}, operatorId: ${operatorId || "all"}`);
 
@@ -171,25 +175,32 @@ module.exports = function (server) {
       const results = Array.from(operatorMap.values()).map((operatorData) => {
         const { runtime, downtime, output } = operatorData.metrics;
 
-        let windowMs = 0;
+        let rangeStart = null;
+        let rangeEnd = null;
+
         if (operatorData.timeRange && operatorData.timeRange.start && operatorData.timeRange.end) {
           try {
             const startDate = new Date(operatorData.timeRange.start);
             const endDate = new Date(operatorData.timeRange.end);
             if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && endDate > startDate) {
-              windowMs = endDate.getTime() - startDate.getTime();
+              rangeStart = startDate;
+              rangeEnd = endDate;
             }
           } catch (e) {
             logger.warn(`[operatorSessions] Invalid timeRange for operator ${operatorData.operator.id}:`, e);
           }
         }
 
-        if (windowMs <= 0) {
-          const defaultStart = new Date(`${dateStr}T06:00:00.000Z`);
-          windowMs = Math.max(0, chicagoTime.getTime() - defaultStart.getTime());
+        if (!rangeStart || !rangeEnd) {
+          // Keep legacy fallback when timeRange is missing/invalid.
+          rangeStart = new Date(`${dateStr}T06:00:00.000Z`);
+          rangeEnd = chicagoTime;
         }
 
-        const availability = windowMs > 0 ? runtime.total / windowMs : 0;
+        const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
+        downtime.total = Math.max(shiftElapsedMs - runtime.total, 0);
+
+        const availability = shiftElapsedMs > 0 ? runtime.total / shiftElapsedMs : 0;
         const throughput =
           output.totalCount + output.misfeedCount > 0
             ? output.totalCount / (output.totalCount + output.misfeedCount)

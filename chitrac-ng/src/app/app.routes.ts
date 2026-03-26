@@ -14,6 +14,7 @@ import { ShiftOperatorReportComponent } from './reports/shift-operator-report/sh
 import { ShiftItemReportComponent } from './reports/shift-item-report/shift-item-report.component';
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
+import { FaultReportComponent } from './reports/fault-report/fault-report.component';
 import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
 import { BlanketBlastertwoEfficiencyScreen } from './efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
@@ -58,6 +59,7 @@ export const routes: Routes = [
 	{ path: 'ng/reports/shift-item-report', component: ShiftItemReportComponent },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },
+	{ path: 'ng/reports/fault-report', component: FaultReportComponent },
 	
 	// Production/Efficiency Screens
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },
