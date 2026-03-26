@@ -1,7 +1,9 @@
 const express = require("express");
+const { ObjectId } = require("mongodb");
 const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
 const config = require("../../modules/config");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const { getSessionDataForPartialDays } = require("../../utils/reportFunctions");
 const {
   getMachinesSummaryRealTime,
   buildLatestTickerMap,
@@ -25,6 +27,102 @@ module.exports = function (server) {
   router.get("/machines-summary-daily-cached", async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      if (req.query.shiftId) {
+        let shiftOid;
+        try {
+          shiftOid = new ObjectId(String(req.query.shiftId));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        const shiftDoc = await db.collection("shift").findOne({ _id: shiftOid });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+        const sessionData = await getSessionDataForPartialDays(
+          db,
+          [{ start, end }],
+          serial,
+          { shiftId: String(shiftOid) }
+        );
+        const machineSerials = [
+          ...new Set((sessionData.machines || []).map((m) => Number(m.machineSerial))),
+        ].filter((n) => Number.isFinite(n));
+        const tickers = machineSerials.length
+          ? await db
+              .collection(config.stateTickerCollectionName)
+              .find({ "machine.id": { $in: machineSerials } })
+              .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
+              .toArray()
+          : [];
+        const latestTickers = new Map();
+        tickers.forEach((ticker) => {
+          const id = Number(ticker.machine?.id);
+          const ts = new Date(ticker.timestamp || 0);
+          const existing = latestTickers.get(id);
+          if (!existing || ts > new Date(existing.timestamp || 0)) {
+            latestTickers.set(id, ticker);
+          }
+        });
+        const statusMap = new Map();
+        for (const [id, ticker] of latestTickers) {
+          const statusId = ticker.status?.id ?? ticker.status?.code ?? 0;
+          statusMap.set(id, {
+            code: statusId,
+            name: ticker.status?.name || "Unknown",
+            color: ticker.status?.softrolColor || "None",
+          });
+        }
+        const data = (sessionData.machines || []).map((record) => {
+          const serialNum = Number(record.machineSerial);
+          const currentStatus = statusMap.get(serialNum) || {
+            code: 0,
+            name: "Unknown",
+          };
+          const runtimeMs = record.runtimeMs || 0;
+          const totalCounts = record.totalCounts || 0;
+          const workedMs = record.workedTimeMs || 0;
+          const efficiency = runtimeMs > 0 ? Math.min(workedMs / (runtimeMs * 4), 1) : 0;
+          const availability = 1;
+          const throughput = 1;
+          const oee = availability * throughput * efficiency;
+          return {
+            machine: {
+              serial: serialNum,
+              name: record.machineName || `Serial ${serialNum}`,
+            },
+            currentStatus,
+            metrics: {
+              runtime: {
+                total: runtimeMs,
+                formatted: formatDuration(runtimeMs),
+              },
+              downtime: {
+                total: 0,
+                formatted: formatDuration(0),
+              },
+              output: {
+                totalCount: totalCounts,
+                misfeedCount: 0,
+              },
+              performance: {
+                availability: { value: availability, percentage: "100.00" },
+                throughput: { value: throughput, percentage: "100.00" },
+                efficiency: {
+                  value: efficiency,
+                  percentage: (efficiency * 100).toFixed(2),
+                },
+                oee: {
+                  value: oee,
+                  percentage: (oee * 100).toFixed(2),
+                },
+              },
+            },
+            timeRange: { start, end },
+          };
+        });
+        return res.json(data);
+      }
 
       const today = new Date();
       const chicagoTime = new Date(
@@ -224,6 +322,86 @@ module.exports = function (server) {
         ? serialParam
         : null;
 
+      if (req.query.shiftId && machineSerialFilter != null) {
+        let shiftOid;
+        try {
+          shiftOid = new ObjectId(String(req.query.shiftId));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        const shiftDoc = await db.collection("shift").findOne({ _id: shiftOid });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+        const { start, end, serial } = parseAndValidateQueryParams(req);
+        const sessionData = await getSessionDataForPartialDays(
+          db,
+          [{ start, end }],
+          serial,
+          { shiftId: String(shiftOid) }
+        );
+        const record =
+          (sessionData.machines || []).find(
+            (m) => Number(m.machineSerial) === machineSerialFilter
+          ) || null;
+        if (!record) {
+          return res.json([]);
+        }
+        const tickerSerialFilter = [
+          machineSerialFilter,
+          String(machineSerialFilter),
+        ];
+        const stateTickerData = await db
+          .collection(config.stateTickerCollectionName)
+          .find({
+            $or: [
+              { "machine.serial": { $in: tickerSerialFilter } },
+              { "machine.id": { $in: tickerSerialFilter } },
+            ],
+          })
+          .toArray();
+        const tickerMap = buildLatestTickerMap(stateTickerData);
+        const latestTicker = tickerMap.get(machineSerialFilter);
+        const runtimeMs = record.runtimeMs || 0;
+        const totalCounts = record.totalCounts || 0;
+        const performance = buildPerformanceFromMachineRecord({
+          machineSerial: machineSerialFilter,
+          machineName: record.machineName,
+          runtimeMs,
+          workedTimeMs: record.workedTimeMs || 0,
+          totalCounts,
+          totalMisfeeds: 0,
+          pausedTimeMs: 0,
+          faultTimeMs: 0,
+          totalTimeCreditMs: record.workedTimeMs || 0,
+          timeRange: { start, end },
+        });
+        return res.json([
+          {
+            machine: {
+              serial: machineSerialFilter,
+              name: record.machineName || `Serial ${machineSerialFilter}`,
+            },
+            currentStatus: latestTicker?.status || {
+              code: 0,
+              name: "Unknown",
+            },
+            performance,
+            itemSummary: {
+              machineSummary: { totalCount: totalCounts, misfeedCount: 0 },
+              itemSummaries: {},
+            },
+            itemHourlyStack: [],
+            faultData: { faultSummaries: [], faultCycles: [] },
+            operatorEfficiency: [],
+            currentOperators: await buildCurrentOperators(db, machineSerialFilter),
+            timestamp: new Date(),
+            sessionStart: start,
+            sessionEnd: end,
+          },
+        ]);
+      }
+
       const today = new Date();
       const chicagoTime = new Date(
         today.toLocaleString("en-US", { timeZone: "America/Chicago" })
@@ -395,6 +573,240 @@ module.exports = function (server) {
       res
         .status(500)
         .json({ error: "Failed to fetch machine dashboard daily cache" });
+    }
+  });
+
+  // GET /api/alpha/analytics/machine-summary-timeframe
+  // Timeframe-based machine list; optional shiftId uses session aggregation (same shape as shift branch on machines-summary-daily-cached).
+  router.get("/machine-summary-timeframe", async (req, res) => {
+    try {
+      if (!req.query.timeframe) {
+        return res.status(400).json({ error: "timeframe is required" });
+      }
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      if (req.query.shiftId) {
+        let shiftOid;
+        try {
+          shiftOid = new ObjectId(String(req.query.shiftId));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        const shiftDoc = await db.collection("shift").findOne({ _id: shiftOid });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+        const sessionData = await getSessionDataForPartialDays(
+          db,
+          [{ start, end }],
+          serial,
+          { shiftId: String(shiftOid) }
+        );
+        const machineSerials = [
+          ...new Set((sessionData.machines || []).map((m) => Number(m.machineSerial))),
+        ].filter((n) => Number.isFinite(n));
+        const tickers = machineSerials.length
+          ? await db
+              .collection(config.stateTickerCollectionName)
+              .find({ "machine.id": { $in: machineSerials } })
+              .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
+              .toArray()
+          : [];
+        const latestTickers = new Map();
+        tickers.forEach((ticker) => {
+          const id = Number(ticker.machine?.id);
+          const ts = new Date(ticker.timestamp || 0);
+          const existing = latestTickers.get(id);
+          if (!existing || ts > new Date(existing.timestamp || 0)) {
+            latestTickers.set(id, ticker);
+          }
+        });
+        const statusMap = new Map();
+        for (const [id, ticker] of latestTickers) {
+          const statusId = ticker.status?.id ?? ticker.status?.code ?? 0;
+          statusMap.set(id, {
+            code: statusId,
+            name: ticker.status?.name || "Unknown",
+            color: ticker.status?.softrolColor || "None",
+          });
+        }
+        const data = (sessionData.machines || []).map((record) => {
+          const serialNum = Number(record.machineSerial);
+          const currentStatus = statusMap.get(serialNum) || {
+            code: 0,
+            name: "Unknown",
+          };
+          const runtimeMs = record.runtimeMs || 0;
+          const totalCounts = record.totalCounts || 0;
+          const workedMs = record.workedTimeMs || 0;
+          const efficiency = runtimeMs > 0 ? Math.min(workedMs / (runtimeMs * 4), 1) : 0;
+          const availability = 1;
+          const throughput = 1;
+          const oee = availability * throughput * efficiency;
+          return {
+            machine: {
+              serial: serialNum,
+              name: record.machineName || `Serial ${serialNum}`,
+            },
+            currentStatus,
+            metrics: {
+              runtime: {
+                total: runtimeMs,
+                formatted: formatDuration(runtimeMs),
+              },
+              downtime: {
+                total: 0,
+                formatted: formatDuration(0),
+              },
+              output: {
+                totalCount: totalCounts,
+                misfeedCount: 0,
+              },
+              performance: {
+                availability: { value: availability, percentage: "100.00" },
+                throughput: { value: throughput, percentage: "100.00" },
+                efficiency: {
+                  value: efficiency,
+                  percentage: (efficiency * 100).toFixed(2),
+                },
+                oee: {
+                  value: oee,
+                  percentage: (oee * 100).toFixed(2),
+                },
+              },
+            },
+            timeRange: { start, end },
+          };
+        });
+        return res.json(data);
+      }
+
+      return await getMachinesSummaryRealTimeHandler(req, res);
+    } catch (err) {
+      if (
+        err.message.includes("Start and end dates are required") ||
+        err.message.includes("start/startTime and end/endTime are required") ||
+        err.message.includes("Invalid date format") ||
+        err.message.includes("Start date must be before end date") ||
+        err.message.includes("Unsupported timeframe")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+      logger.error(`[machineSessions] Error in machine-summary-timeframe:`, err);
+      return res.status(500).json({ error: "Failed to fetch machine summary" });
+    }
+  });
+
+  // GET /api/alpha/analytics/machine-dashboard-cached
+  // Timeframe-based single-machine dashboard payload from sessions (optional shiftId).
+  router.get("/machine-dashboard-cached", async (req, res) => {
+    try {
+      if (!req.query.timeframe) {
+        return res.status(400).json({ error: "timeframe is required" });
+      }
+      const serialParam =
+        typeof req.query.serial !== "undefined"
+          ? Number.parseInt(req.query.serial, 10)
+          : null;
+      if (!Number.isFinite(serialParam)) {
+        return res.status(400).json({ error: "serial is required" });
+      }
+
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+
+      const sessionOpts = {};
+      if (req.query.shiftId) {
+        let shiftOid;
+        try {
+          shiftOid = new ObjectId(String(req.query.shiftId));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        const shiftDoc = await db.collection("shift").findOne({ _id: shiftOid });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+        sessionOpts.shiftId = String(shiftOid);
+      }
+
+      const sessionData = await getSessionDataForPartialDays(
+        db,
+        [{ start, end }],
+        serial || serialParam,
+        sessionOpts
+      );
+      const record =
+        (sessionData.machines || []).find(
+          (m) => Number(m.machineSerial) === serialParam
+        ) || null;
+      if (!record) {
+        return res.json([]);
+      }
+
+      const tickerSerialFilter = [serialParam, String(serialParam)];
+      const stateTickerData = await db
+        .collection(config.stateTickerCollectionName)
+        .find({
+          $or: [
+            { "machine.serial": { $in: tickerSerialFilter } },
+            { "machine.id": { $in: tickerSerialFilter } },
+          ],
+        })
+        .toArray();
+      const tickerMap = buildLatestTickerMap(stateTickerData);
+      const latestTicker = tickerMap.get(serialParam);
+      const runtimeMs = record.runtimeMs || 0;
+      const totalCounts = record.totalCounts || 0;
+      const performance = buildPerformanceFromMachineRecord({
+        machineSerial: serialParam,
+        machineName: record.machineName,
+        runtimeMs,
+        workedTimeMs: record.workedTimeMs || 0,
+        totalCounts,
+        totalMisfeeds: 0,
+        pausedTimeMs: 0,
+        faultTimeMs: 0,
+        totalTimeCreditMs: record.workedTimeMs || 0,
+        timeRange: { start, end },
+      });
+      return res.json([
+        {
+          machine: {
+            serial: serialParam,
+            name: record.machineName || `Serial ${serialParam}`,
+          },
+          currentStatus: latestTicker?.status || {
+            code: 0,
+            name: "Unknown",
+          },
+          performance,
+          itemSummary: {
+            machineSummary: { totalCount: totalCounts, misfeedCount: 0 },
+            itemSummaries: {},
+          },
+          itemHourlyStack: [],
+          faultData: { faultSummaries: [], faultCycles: [] },
+          operatorEfficiency: [],
+          currentOperators: await buildCurrentOperators(db, serialParam),
+          timestamp: new Date(),
+          sessionStart: start,
+          sessionEnd: end,
+        },
+      ]);
+    } catch (err) {
+      if (
+        err.message.includes("Start and end dates are required") ||
+        err.message.includes("start/startTime and end/endTime are required") ||
+        err.message.includes("Invalid date format") ||
+        err.message.includes("Start date must be before end date") ||
+        err.message.includes("Unsupported timeframe")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
+      logger.error(`[machineSessions] Error in machine-dashboard-cached:`, err);
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch machine dashboard (timeframe)" });
     }
   });
 

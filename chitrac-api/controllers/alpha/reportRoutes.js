@@ -1,4 +1,5 @@
 const express = require("express");
+const { ObjectId } = require("mongodb");
 const { parseAndValidateQueryParams, formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { DateTime } = require("luxon");
 const {
@@ -15,6 +16,23 @@ module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
   const logger = server.logger;
+
+  router.get("/shifts", async (req, res) => {
+    try {
+      const shifts = await db
+        .collection("shift")
+        .find({ active: true })
+        .sort({ name: 1 })
+        .project({ name: 1, startTime: 1, endTime: 1, activeDays: 1, active: 1 })
+        .toArray();
+      res.json({
+        shifts: shifts.map((s) => ({ ...s, _id: String(s._id) })),
+      });
+    } catch (err) {
+      logger.error("[shifts] list failed", err);
+      res.status(500).json({ error: "Failed to list shifts" });
+    }
+  });
 
   // Cached version of operator-item-sessions-summary using totals-daily collection
   router.get("/analytics/operator-item-sessions-summary-cache", async (req, res) => {
@@ -909,55 +927,97 @@ module.exports = function (server) {
       const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day');
       const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day');
 
-      const dateStrings = [];
-      let currentDate = startDt;
-      while (currentDate <= endDt) {
-        dateStrings.push(currentDate.toISODate());
-        currentDate = currentDate.plus({ days: 1 });
-      }
-
-      const cacheCollection = db.collection('totals-daily');
-
-      // Query cache for machine and machine-item records
-      const cacheQuery = {
-        $or: [
-          { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
-          { date: { $in: dateStrings } }
-        ],
-        entityType: { $in: ['machine', 'machine-item'] }
-      };
-      if (serial) cacheQuery.machineSerial = parseInt(serial);
-
-      const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
-
+      const shiftIdRaw = req.query.shiftId;
       let machineRecords;
       let machineItemRecords;
+      let responseTimeRange;
 
-      if (cacheDocs.length > 0) {
-        // Split by entity type when cache data is available
-        machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
-        machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
-      } else {
-        // If cache is missing for the requested range, fall back to live session data
-        const partialDay = {
-          start,
-          end,
-        };
+      if (shiftIdRaw) {
+        let shiftDoc;
+        let shiftId;
+        try {
+          shiftId = new ObjectId(String(shiftIdRaw));
+          shiftDoc = await db.collection("shift").findOne({ _id: shiftId });
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
 
-        const sessionData = await getSessionDataForPartialDays(db,[partialDay], serial);
+        const partialDay = { start, end };
+
+        const sessionData = await getSessionDataForPartialDays(db, [partialDay], serial, {
+          shiftId: String(shiftId),
+        });
+
         machineRecords = sessionData.machines || [];
         machineItemRecords = sessionData.machineItems || [];
 
-        // If there is still no data, return an empty result set
+        responseTimeRange = {
+          start: start.toISOString(),
+          end: end.toISOString(),
+        };
+
         if (!machineRecords.length && !machineItemRecords.length) {
           return res.json({
-            timeRange: {
-              start: start.toISOString(),
-              end: end.toISOString(),
-            },
+            timeRange: responseTimeRange,
             results: [],
           });
         }
+      } else {
+        const dateStrings = [];
+        let currentDate = startDt;
+        while (currentDate <= endDt) {
+          dateStrings.push(currentDate.toISODate());
+          currentDate = currentDate.plus({ days: 1 });
+        }
+
+        const cacheCollection = db.collection('totals-daily');
+
+        // Query cache for machine and machine-item records
+        const cacheQuery = {
+          $or: [
+            { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
+            { date: { $in: dateStrings } }
+          ],
+          entityType: { $in: ['machine', 'machine-item'] }
+        };
+        if (serial) cacheQuery.machineSerial = parseInt(serial, 10);
+
+        const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
+
+        if (cacheDocs.length > 0) {
+          // Split by entity type when cache data is available
+          machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
+          machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
+        } else {
+          // If cache is missing for the requested range, fall back to live session data
+          const partialDay = {
+            start,
+            end,
+          };
+
+          const sessionData = await getSessionDataForPartialDays(db, [partialDay], serial);
+          machineRecords = sessionData.machines || [];
+          machineItemRecords = sessionData.machineItems || [];
+
+          // If there is still no data, return an empty result set
+          if (!machineRecords.length && !machineItemRecords.length) {
+            return res.json({
+              timeRange: {
+                start: start.toISOString(),
+                end: end.toISOString(),
+              },
+              results: [],
+            });
+          }
+        }
+
+        responseTimeRange = {
+          start: startDt.toUTC().toJSDate().toISOString(),
+          end: endDt.plus({ days: 1 }).toUTC().toJSDate().toISOString(),
+        };
       }
 
       // Aggregate machines by serial across all dates
@@ -1110,10 +1170,7 @@ module.exports = function (server) {
       }
 
       res.json({
-        timeRange: {
-          start: startDt.toUTC().toJSDate().toISOString(),
-          end: endDt.plus({ days: 1 }).toUTC().toJSDate().toISOString()
-        },
+        timeRange: responseTimeRange,
         results,
       });
     } catch (error) {

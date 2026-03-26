@@ -114,35 +114,42 @@ export class MachineAnalyticsService {
     return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-sessions`, { params });
   }
 
-  getMachineSummary(start: string, end: string): Observable<any> {
-    const params = new HttpParams()
+  getMachineSummary(start: string, end: string, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams()
       .set('start', start)
       .set('end', end);
-  
+    if (shiftId) {
+      params = params.set('shiftId', shiftId);
+    }
     return this.http.get(`${this.apiUrl}/analytics/machines-summary-daily-cached`, { params });
   }
 
-  getMachineSummaryWithTimeframe(timeframe: string): Observable<any> {
-    const params = new HttpParams()
-      .set('timeframe', timeframe);
-  
+  getMachineSummaryWithTimeframe(timeframe: string, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams().set('timeframe', timeframe);
+    if (shiftId) {
+      params = params.set('shiftId', shiftId);
+    }
     return this.http.get(`${this.apiUrl}/analytics/machine-summary-timeframe`, { params });
   }
 
-  getMachineDetails(start: string, end: string, serial: number): Observable<any> {
-    const params = new HttpParams()
+  getMachineDetails(start: string, end: string, serial: number, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams()
       .set('start', start)
       .set('end', end)
       .set('serial', serial.toString());
-  
+    if (shiftId) {
+      params = params.set('shiftId', shiftId);
+    }
     return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-daily-cached`, { params });
   }
 
-  getMachineDetailsWithTimeframe(timeframe: string, serial: number): Observable<any> {
-    const params = new HttpParams()
+  getMachineDetailsWithTimeframe(timeframe: string, serial: number, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams()
       .set('timeframe', timeframe)
       .set('serial', serial.toString());
-  
+    if (shiftId) {
+      params = params.set('shiftId', shiftId);
+    }
     return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-cached`, { params });
   }
   

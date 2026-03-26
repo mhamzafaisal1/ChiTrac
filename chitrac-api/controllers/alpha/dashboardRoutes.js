@@ -6,8 +6,14 @@
 //   GET /analytics/daily/top-operators-cache
 //   GET /analytics/machines-group-summary-daily-cached
 const express = require("express");
+const { ObjectId } = require("mongodb");
 const { DateTime } = require("luxon");
 const { parseAndValidateQueryParams, formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
+const config = require("../../modules/config");
+const {
+  getSessionDataForPartialDays,
+  getOperatorSessionDataForPartialDays,
+} = require("../../utils/reportFunctions");
 const {
   splitTimeRangeForHybrid,
   computeMachineResults,
@@ -40,7 +46,26 @@ const {
   resolveBatchItemFromSessions,
   buildZeroEfficiencyPayload,
 } = require("../../utils/sessionFunctions");
-const config = require("../../modules/config");
+
+async function resolveShiftIdString(req, db) {
+  const raw = req.query.shiftId;
+  if (!raw) return null;
+  let oid;
+  try {
+    oid = new ObjectId(String(raw));
+  } catch (e) {
+    const err = new Error("Invalid shiftId");
+    err.statusCode = 400;
+    throw err;
+  }
+  const doc = await db.collection("shift").findOne({ _id: oid });
+  if (!doc) {
+    const err = new Error("Shift not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  return String(oid);
+}
 
 module.exports = function (server) {
   const router = express.Router();
@@ -58,6 +83,68 @@ module.exports = function (server) {
       const { start, end, serial } = parseAndValidateQueryParams(req);
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
+
+      if (req.query.shiftId) {
+        let shiftIdStr;
+        try {
+          shiftIdStr = await resolveShiftIdString(req, db);
+        } catch (e) {
+          const code = e.statusCode || 400;
+          return res.status(code).json({ error: e.message });
+        }
+        const sessionData = await getSessionDataForPartialDays(
+          db,
+          [{ start, end }],
+          serial ? parseInt(serial, 10) : undefined,
+          { shiftId: shiftIdStr }
+        );
+        const machineSerials = [
+          ...new Set((sessionData.machines || []).map((m) => Number(m.machineSerial))),
+        ].filter((n) => Number.isFinite(n));
+        const tickers = machineSerials.length
+          ? await db
+              .collection(config.stateTickerCollectionName)
+              .find({ "machine.id": { $in: machineSerials } })
+              .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
+              .toArray()
+          : [];
+        const latestTickers = new Map();
+        tickers.forEach((ticker) => {
+          const id = Number(ticker.machine?.id);
+          const ts = new Date(ticker.timestamp || 0);
+          const existing = latestTickers.get(id);
+          if (!existing || ts > new Date(existing.timestamp || 0)) {
+            latestTickers.set(id, ticker);
+          }
+        });
+        const statusMap = new Map();
+        for (const [id, ticker] of latestTickers) {
+          statusMap.set(id, {
+            code: ticker.status?.code ?? ticker.status?.id ?? 0,
+            name: ticker.status?.name || "Unknown",
+            color: ticker.status?.softrolColor || "None",
+          });
+        }
+        const machineResults = (sessionData.machines || []).map((record) => {
+          const serialNum = Number(record.machineSerial);
+          const st = statusMap.get(serialNum) || { code: 0, name: "Unknown" };
+          const runtimeMs = record.runtimeMs || 0;
+          const totalCounts = record.totalCounts || 0;
+          return {
+            machine: { serial: serialNum, name: record.machineName || "Unknown" },
+            currentStatus: st,
+            performance: {
+              output: { totalCount: totalCounts },
+              oee: { percentage: 0 },
+              runtime: { formatted: formatDuration(runtimeMs) },
+            },
+          };
+        });
+        return res.json({
+          timeRange: { start, end, total: formatDuration(Date.now() - started) },
+          machineResults,
+        });
+      }
 
       const today = new Date();
       const todayDateStr = today.toISOString().split("T")[0];
@@ -183,6 +270,43 @@ module.exports = function (server) {
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
+      if (req.query.shiftId) {
+        let shiftIdStr;
+        try {
+          shiftIdStr = await resolveShiftIdString(req, db);
+        } catch (e) {
+          const code = e.statusCode || 400;
+          return res.status(code).json({ error: e.message });
+        }
+        const sessionData = await getOperatorSessionDataForPartialDays(
+          db,
+          [{ start, end }],
+          undefined,
+          { shiftId: shiftIdStr }
+        );
+        const operatorResults = (sessionData.operators || []).map((bucket) => ({
+          operator: {
+            id: bucket.operatorId,
+            name: { first: bucket.operatorName, surname: "" },
+          },
+          currentStatus: { code: 0, name: "Unknown" },
+          metrics: {
+            runtime: {
+              total: bucket.runtimeMs,
+              formatted: formatDuration(bucket.runtimeMs),
+            },
+            performance: {
+              efficiency: { value: 0, percentage: "0.00" },
+            },
+          },
+          countByItem: {},
+        }));
+        return res.json({
+          timeRange: { start, end, total: formatDuration(Date.now() - started) },
+          operatorResults,
+        });
+      }
+
       const today = new Date();
       const todayDateStr = today.toISOString().split("T")[0];
       const startDateStr = exactStart.toISOString().split("T")[0];
@@ -287,6 +411,39 @@ module.exports = function (server) {
       const { start, end, serial } = parseAndValidateQueryParams(req);
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
+
+      if (req.query.shiftId) {
+        let shiftIdStr;
+        try {
+          shiftIdStr = await resolveShiftIdString(req, db);
+        } catch (e) {
+          const code = e.statusCode || 400;
+          return res.status(code).json({ error: e.message });
+        }
+        const sessionData = await getSessionDataForPartialDays(
+          db,
+          [{ start, end }],
+          serial ? parseInt(serial, 10) : undefined,
+          { shiftId: shiftIdStr }
+        );
+        const byName = new Map();
+        for (const mi of sessionData.machineItems || []) {
+          const name = mi.itemName || "Unknown";
+          byName.set(name, (byName.get(name) || 0) + (mi.totalCounts || 0));
+        }
+        const items = Array.from(byName.entries()).map(([itemName, count]) => ({
+          itemName,
+          count,
+          pph: 0,
+          standard: 0,
+          efficiency: 0,
+          workedTimeFormatted: formatDuration(0),
+        }));
+        return res.json({
+          timeRange: { start, end, total: formatDuration(Date.now() - started) },
+          items,
+        });
+      }
 
       const today = new Date();
       const todayDateStr = today.toISOString().split("T")[0];

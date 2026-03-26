@@ -69,4 +69,16 @@ export class DateTimeService {
   getLiveMode(): boolean {
     return this.liveModeSubject.getValue();
   }
+
+  /** Empty string = no shift filter (all data). */
+  private shiftIdSubject = new BehaviorSubject<string>("");
+  shiftId$ = this.shiftIdSubject.asObservable();
+
+  setShiftId(id: string | null | undefined) {
+    this.shiftIdSubject.next(id ? String(id) : "");
+  }
+
+  getShiftId(): string {
+    return this.shiftIdSubject.getValue();
+  }
 }
