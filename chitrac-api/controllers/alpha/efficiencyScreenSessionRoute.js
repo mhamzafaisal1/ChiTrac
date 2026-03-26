@@ -17,6 +17,8 @@ module.exports = function (server) {
   const db = server.db;
   const logger = server.logger;
   const config = require('../../modules/config');
+  const stateTickerCollectionName = config.stateTickerCollectionName || 'stateTicker';
+  const countCollectionName = config.countCollectionName || 'count';
   const {
     round2,
     projectSessionForPerf,
@@ -35,6 +37,49 @@ module.exports = function (server) {
     zeroEff
   } = require('../../utils/sessionFunctions');
 
+  function normalizeOperatorName(rawName) {
+    if (!rawName) return '';
+    if (typeof rawName === 'string') return rawName.trim();
+    if (typeof rawName === 'object') {
+      const first =
+        rawName.first ||
+        rawName.firstName ||
+        rawName.givenName ||
+        '';
+      const last =
+        rawName.surname ||
+        rawName.last ||
+        rawName.lastName ||
+        rawName.familyName ||
+        '';
+      const full = `${first} ${last}`.trim();
+      if (full) return full;
+    }
+    return '';
+  }
+
+  async function resolveOperatorDisplayName(operator, serialNum) {
+    const operatorId = Number(operator?.id);
+    if (!Number.isFinite(operatorId) || operatorId <= 0) return 'Unknown';
+
+    const tickerName = normalizeOperatorName(operator?.name);
+    if (tickerName) return tickerName;
+
+    const machineFilter = { $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }] };
+
+    const recentCount = await db.collection(countCollectionName).findOne(
+      { 'operator.id': operatorId, ...machineFilter },
+      {
+        sort: { timestamp: -1 },
+        projection: { 'operator.name': 1 }
+      }
+    );
+    const countName = normalizeOperatorName(recentCount?.operator?.name);
+    if (countName) return countName;
+
+    return `Operator ${operatorId}`;
+  }
+
   router.get('/analytics/machine-live-session-summary', async (req, res) => {
   const routeStartTime = Date.now();
   
@@ -49,7 +94,7 @@ module.exports = function (server) {
     console.log(`[PERF] [${serialNum}] Fetching ticker...`);
     const tickerStartTime = Date.now();
     
-    const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
+    const ticker = await db.collection(stateTickerCollectionName)
       .findOne(
         { 'machine.id': serialNum },
         {
@@ -94,7 +139,7 @@ module.exports = function (server) {
 
     // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
     const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
-      .filter(op => op && op.id !== -1)
+      .filter(op => op && Number(op.id) > 0)
       .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
     
     // Status schema uses 'id', but legacy code used 'code' - support both
@@ -133,9 +178,7 @@ module.exports = function (server) {
             .filter(Boolean);
           const batchItemStr = [...new Set(batchItem)].join(' + ');
 
-          const operatorName = op.name?.first && op.name?.surname
-            ? `${op.name.first} ${op.name.surname}`
-            : (op.name || 'Unknown');
+          const operatorName = await resolveOperatorDisplayName(op, serialNum);
           return {
             status: ticker.status?.code ?? 0,
             fault: ticker.status?.name ?? 'Unknown',
@@ -251,9 +294,7 @@ module.exports = function (server) {
         const operatorTotalTime = Date.now() - operatorStartTime;
         console.log(`[PERF] [${serialNum}] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
 
-        const operatorName = op.name?.first && op.name?.surname
-          ? `${op.name.first} ${op.name.surname}`
-          : (op.name || 'Unknown');
+        const operatorName = await resolveOperatorDisplayName(op, serialNum);
 
         // Status schema uses 'id', but legacy code used 'code' - support both
         const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
@@ -367,9 +408,7 @@ module.exports = function (server) {
             const batchItemStartTime = Date.now();
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
             console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
-            const operatorName = op.name?.first && op.name?.surname
-              ? `${op.name.first} ${op.name.surname}`
-              : (op.name || 'Unknown');
+            const operatorName = await resolveOperatorDisplayName(op, serialNum);
             return {
               status: statusCode, // Use 'code' in API response for backward compatibility
               fault: ticker.status?.name ?? 'Unknown',
@@ -557,9 +596,7 @@ module.exports = function (server) {
           const operatorTotalTime = Date.now() - operatorStartTime;
           console.log(`[PERF] [${serialNum}] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
 
-          const operatorName = op.name?.first && op.name?.surname
-            ? `${op.name.first} ${op.name.surname}`
-            : (op.name || 'Unknown');
+          const operatorName = await resolveOperatorDisplayName(op, serialNum);
 
           // Status schema uses 'id', but legacy code used 'code' - support both
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
@@ -604,7 +641,7 @@ module.exports = function (server) {
       console.log(`[PERF] [${serialNum}] Fetching ticker...`);
       const tickerStartTime = Date.now();
 
-      const ticker = await db.collection(config.stateTickerCollectionName || 'stateTicker')
+      const ticker = await db.collection(stateTickerCollectionName)
         .findOne(
           { $or: [{ 'machine.id': serialNum }, { 'machine.serial': serialNum }] },
           {
@@ -648,7 +685,7 @@ module.exports = function (server) {
 
       // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
       const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
-        .filter(op => op && op.id !== -1)
+        .filter(op => op && Number(op.id) > 0)
         .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
 
       const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
@@ -666,10 +703,9 @@ module.exports = function (server) {
           (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
           '';
 
-        const performanceData = onMachineOperators.map(op => {
-          const operatorName = op.name?.first && op.name?.surname
-            ? `${op.name.first} ${op.name.surname}`
-            : (op.name || 'Unknown');
+      const performanceData = await Promise.all(
+        onMachineOperators.map(async (op) => {
+          const operatorName = await resolveOperatorDisplayName(op, serialNum);
 
           return {
             status: statusCode,
@@ -683,7 +719,8 @@ module.exports = function (server) {
             oee: buildZeroEfficiencyPayload(),
             batch: { item: currentItemName, code: 10000001 }
           };
-        });
+        })
+      );
 
         console.log(`[PERF] [${serialNum}] Non-running state-based path completed in ${Date.now() - notRunningStartTime}ms. Total route time: ${Date.now() - routeStartTime}ms`);
         return res.json({ flipperData: performanceData });
@@ -856,9 +893,7 @@ module.exports = function (server) {
             (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
             '';
 
-          const operatorName = op.name?.first && op.name?.surname
-            ? `${op.name.first} ${op.name.surname}`
-            : (op.name || 'Unknown');
+          const operatorName = await resolveOperatorDisplayName(op, serialNum);
 
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
 
@@ -995,9 +1030,7 @@ module.exports = function (server) {
             const batchItemStartTime = Date.now();
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
             console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
-            const operatorName = op.name?.first && op.name?.surname
-              ? `${op.name.first} ${op.name.surname}`
-              : (op.name || 'Unknown');
+            const operatorName = await resolveOperatorDisplayName(op, serialNum);
             return {
               status: statusCode, // Use 'code' in API response for backward compatibility
               fault: ticker.status?.name ?? 'Unknown',
@@ -1185,9 +1218,7 @@ module.exports = function (server) {
           const operatorTotalTime = Date.now() - operatorStartTime;
           console.log(`[PERF] [${serialNum}] Operator ${op.id} COMPLETED - Total time: ${operatorTotalTime}ms`);
 
-          const operatorName = op.name?.first && op.name?.surname
-            ? `${op.name.first} ${op.name.surname}`
-            : (op.name || 'Unknown');
+          const operatorName = await resolveOperatorDisplayName(op, serialNum);
 
           // Status schema uses 'id', but legacy code used 'code' - support both
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
