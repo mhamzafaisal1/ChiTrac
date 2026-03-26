@@ -291,7 +291,7 @@ function constructor(server) {
         machineSerialFilter,
         String(machineSerialFilter),
       ];
-      const [tickerDoc, faultSessionDoc, machineItemRecords] = await Promise.all([
+      const [tickerDoc, openFaultSessionDoc, machineItemRecords] = await Promise.all([
         tickerColl.findOne({
           $or: [
             { "machine.serial": { $in: tickerSerialFilter } },
@@ -328,23 +328,6 @@ function constructor(server) {
           })
           .toArray(),
       ]);
-
-      // If no open fault session, get most recent fault session for this machine
-      let faultDoc = faultSessionDoc;
-      if (!faultDoc) {
-        faultDoc = await faultSessionColl
-          .find({
-            $or: [
-              { "machine.serial": machineSerialFilter },
-              { "machine.id": machineSerialFilter },
-            ],
-          })
-          .sort({ "timestamps.start": -1 })
-          .limit(1)
-          .toArray()
-          .then((arr) => arr[0])
-          .catch(() => null);
-      }
 
       const ticker = tickerDoc;
       if (!ticker) {
@@ -428,9 +411,9 @@ function constructor(server) {
       const statusName = status.name || "Unknown";
       const statusColor = status.softrolColor || "Gray";
 
-      let fault = { code: 0, name: "None" };
-      if (faultDoc) {
-        const startState = faultDoc.states?.start ?? faultDoc.startState;
+      let fault;
+      if (openFaultSessionDoc) {
+        const startState = openFaultSessionDoc.states?.start ?? openFaultSessionDoc.startState;
         const faultStatus = startState?.status;
         if (faultStatus) {
           fault = {
@@ -448,7 +431,6 @@ function constructor(server) {
             machineRecord?.machineName ||
             `Serial ${machineSerialFilter}`,
         },
-        fault,
         status: {
           code: statusCode,
           name: statusName,
@@ -460,6 +442,10 @@ function constructor(server) {
         operators,
         items,
       };
+
+      if (fault) {
+        overview.fault = fault;
+      }
 
       res.json(overview);
     } catch (err) {
