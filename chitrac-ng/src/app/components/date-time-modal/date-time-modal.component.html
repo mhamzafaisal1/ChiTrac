@@ -49,36 +49,27 @@
     </mat-radio-group>
     
     <div class="timeframe-section">
+      <h4>Shift filter</h4>
+      <p class="shift-hint" *ngIf="shiftsLoadError">{{ shiftsLoadError }}</p>
+      <div class="timeframe-buttons shift-buttons">
+        <button
+          mat-stroked-button
+          [class.selected]="!selectedShiftId"
+          (click)="clearShiftFilter()"
+          [disabled]="mode === 'live'">
+          All data (no shift)
+        </button>
+        <button
+          *ngFor="let s of shifts"
+          mat-stroked-button
+          [class.selected]="selectedShiftId === s._id"
+          (click)="selectShift(s._id)"
+          [disabled]="mode === 'live'">
+          {{ s.name || 'Shift' }}
+        </button>
+      </div>
       <h4>Quick Select</h4>
       <div class="timeframe-buttons">
-        <button 
-          mat-stroked-button 
-          [class.selected]="selectedTimeframe === 'current'"
-          (click)="onTimeframeSelect('current')"
-          [disabled]="mode === 'live'">
-          Current (6 min)
-        </button>
-        <button 
-          mat-stroked-button 
-          [class.selected]="selectedTimeframe === 'lastFifteen'"
-          (click)="onTimeframeSelect('lastFifteen')"
-          [disabled]="mode === 'live'">
-          Last 15 Min
-        </button>
-        <button 
-          mat-stroked-button 
-          [class.selected]="selectedTimeframe === 'lastHour'"
-          (click)="onTimeframeSelect('lastHour')"
-          [disabled]="mode === 'live'">
-          Last Hour
-        </button>
-        <!-- <button 
-          mat-stroked-button 
-          [class.selected]="selectedTimeframe === 'today'"
-          (click)="onTimeframeSelect('today')"
-          [disabled]="mode === 'live'">
-          Today
-        </button> -->
         <button 
           mat-stroked-button 
           [class.selected]="selectedTimeframe === 'thisWeek'"

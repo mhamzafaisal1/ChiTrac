@@ -1,20 +1,50 @@
-const { formatDuration } = require("./time");
-const { getBookendedStatesAndTimeRange } = require("./bookendingBuilder");
-const { getValidCounts, getMisfeedCounts, groupCountsByItem } = require("./count");
-const { extractAllCyclesFromStates } = require("./state");
+const { DateTime, Interval } = require("luxon");
+const { formatDuration, createPaddedTimeRange, getHourlyIntervals, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require("./time");
+const { calculateEfficiency, calculateOEE, calculateOperatorTimes } = require('./analytics');
+const { getValidCounts, getMisfeedCounts, groupCountsByItem, groupCountsByOperatorAndMachine, getCountsForMachine } = require("./count");
+const {
+  extractAllCyclesFromStates,
+  fetchStatesForMachine,
+  getAllMachinesFromStates,
+  groupStatesByOperator,
+  fetchAllStates,
+  groupStatesByMachine,
+  getAllMachinesFromStatesForOEE,
+  fetchStatesForMachineForOEE
+} = require("./state");
 const {
   buildMachinePerformance,
   buildMachineItemSummary,
   buildItemHourlyStack,
   buildFaultData,
-  buildOperatorEfficiency
-} = require("./machineDashboardBuilder");
+  buildOperatorEfficiency,
+  fetchGroupedAnalyticsData,
+  getBookendedStatesAndTimeRange,
+} = require("./machineFunctions");
 const {
   buildOperatorPerformance,
   buildOperatorCountByItem
-} = require("./operatorDashboardBuilder");
-const { fetchGroupedAnalyticsData } = require("./fetchData");
+} = require("./operatorFunctions");
 const config = require("../modules/config");
+
+// Used by daily-dashboard (6 charts) route: machines-group-summary-daily-cached
+const MACHINE_GROUP_DEPARTMENTS = [
+  "Small Piece Folder",
+  "Large Piece Ironer",
+  "Blanket Blaster",
+  "Small Piece Ironer",
+];
+
+/** Previous calendar day (YYYY-MM-DD) for "yesterday" in same timezone context. Used by machines-group-summary-daily-cached. */
+function previousDateStr(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() - 1);
+  const yy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
 
 function buildItemStackRelative(rows, startDate, endDate) {
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -846,6 +876,617 @@ async function computeItemResultsForPartialDays(db, partialDays, serial) {
   return allResults;
 }
 
+// --- Functions consolidated from dailyDashboardBuilder.js ---
+
+async function buildMachineOEE(db, start, end) {
+  try {
+    const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+    const totalWindowMs = new Date(paddedEnd) - new Date(paddedStart);
+
+    // Use OEE-specific functions that handle timestamps.create
+    const machines = await getAllMachinesFromStatesForOEE(db, paddedStart, paddedEnd);
+    const results = [];
+
+    for (const machine of machines) {
+      const states = await fetchStatesForMachineForOEE(db, machine.serial, paddedStart, paddedEnd);
+      if (!states.length) continue;
+
+      const cycles = extractAllCyclesFromStates(states, start, end);
+      const workedTimeMs = cycles.running.reduce((sum, c) => sum + c.duration, 0);
+      const totalRuntime = cycles.running.reduce((sum, c) => sum + c.duration, 0) +
+                         cycles.paused.reduce((sum, c) => sum + c.duration, 0) +
+                         cycles.fault.reduce((sum, c) => sum + c.duration, 0);
+      const oee = (workedTimeMs / totalRuntime) * 100;
+
+      results.push({
+        serial: machine.serial,
+        name: states[0].machine?.name || 'Unknown',
+        oee: +oee.toFixed(2)
+      });
+    }
+
+    // Sort descending
+    results.sort((a, b) => b.oee - a.oee);
+
+    return results;
+  } catch (error) {
+    console.error('Error in buildMachineOEE:', error);
+    throw error;
+  }
+}
+
+async function buildDailyItemHourlyStack(db, start, end) {
+  try {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      throw new Error('Invalid date range provided');
+    }
+
+    const pipeline = [
+      {
+        $match: {
+          $or: [
+            { timestamp: { $gte: startDate, $lte: endDate } },
+            { "timestamps.create": { $gte: startDate, $lte: endDate } }
+          ],
+          misfeed: { $ne: true },
+          'operator.id': { $exists: true, $ne: -1 }
+        }
+      },
+      {
+        $project: {
+          itemName: { $ifNull: ["$item.name", "Unknown"] },
+          hour: {
+            $hour: {
+              date: { $ifNull: ["$timestamp", "$timestamps.create"] },
+              timezone: "America/Chicago"
+            }  // Use timezone-aware hour extraction, handle both timestamp formats
+          }
+
+        }
+      },
+      {
+        $group: {
+          _id: { hour: "$hour", itemName: "$itemName" },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { "_id.itemName": 1, "_id.hour": 1 } // Ensure stable order by item
+      },
+      {
+        $group: {
+          _id: "$_id.itemName",
+          hourlyCounts: {
+            $push: {
+              hour: "$_id.hour",
+              count: "$count"
+            }
+          }
+        }
+      },
+      {
+        $sort: { "_id": 1 } // Final sort by item name
+      }
+    ];
+
+    const results = await db.collection('count').aggregate(pipeline).toArray();
+
+    const hourSet = new Set();
+    const items = {};
+
+    for (const result of results) {
+      const itemName = result._id;
+      items[itemName] = {};
+
+      for (const entry of result.hourlyCounts) {
+        hourSet.add(entry.hour);
+        items[itemName][entry.hour] = entry.count;
+      }
+    }
+
+    const hours = Array.from(hourSet).sort((a, b) => a - b);
+
+    const finalizedItems = {};
+    const sortedItemNames = Object.keys(items).sort(); // JS-side sorting for extra safety
+    for (const itemName of sortedItemNames) {
+      const hourCounts = items[itemName];
+      finalizedItems[itemName] = hours.map(h => hourCounts[h] || 0);
+    }
+
+    if (hours.length === 0) {
+      return {
+        title: "No data",
+        data: { hours: [], items: {} }
+      };
+    }
+
+    return {
+      title: "Item Counts by Hour (All Machines)",
+      data: {
+        hours,
+        items: finalizedItems
+      }
+    };
+
+  } catch (error) {
+    console.error('Error in buildDailyItemHourlyStack:', error);
+    throw error;
+  }
+}
+
+async function buildTopOperatorEfficiency(db, start, end) {
+  const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+
+  const [counts, states] = await Promise.all([
+    db.collection('count').aggregate([
+      {
+        $match: {
+          timestamp: { $gte: paddedStart, $lte: paddedEnd },
+          'operator.id': { $exists: true, $ne: -1 },
+          misfeed: { $ne: true }
+        }
+      },
+      {
+        $group: {
+          _id: '$operator.id',
+          name: { $first: '$operator.name' },
+          items: {
+            $push: {
+              item: '$item',
+              timestamp: '$timestamp'
+            }
+          },
+          totalCount: { $sum: 1 }
+        }
+      }
+    ]).toArray(),
+    fetchAllStates(db, paddedStart, paddedEnd)
+  ]);
+
+  if (!counts.length || !states.length) {
+    return [];
+  }
+
+  const groupedStates = groupStatesByOperator(states);
+  const operatorData = [];
+
+  for (const count of counts) {
+    const operatorId = parseInt(count._id);
+    const name = count.name || 'Unknown';
+    const stateGroup = groupedStates[operatorId]?.states || [];
+
+    const validCounts = count.items.map(entry => ({
+      item: entry.item,
+      timestamp: entry.timestamp,
+      misfeed: false
+    }));
+
+    const totalCount = validCounts.length;
+    const runtime = calculateOperatorTimes(stateGroup, paddedStart, paddedEnd).runtime;
+    const efficiency = calculateEfficiency(runtime, totalCount, validCounts);
+
+    operatorData.push({
+      id: operatorId,
+      name,
+      efficiency: +(efficiency * 100).toFixed(2),
+      metrics: {
+        runtime: {
+          total: runtime,
+          formatted: formatDuration(runtime)
+        },
+        output: {
+          totalCount,
+          validCount: totalCount,
+          misfeedCount: 0
+        }
+      }
+    });
+  }
+
+  return operatorData
+    .sort((a, b) => b.efficiency - a.efficiency)
+    .slice(0, 10);
+}
+
+// buildPlantwideMetricsByHour with machine-sessions version
+async function buildPlantwideMetricsByHour(db, start, end) {
+
+  const msColl = db.collection(config.machineSessionCollectionName);
+
+  const wStart = new Date(start);
+  const wEnd = new Date(end);
+
+  // hour slots [start,end) using Luxon with SYSTEM_TIMEZONE
+  const startDT = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf("hour");
+  const endDT = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf("hour");
+  const intervals = Interval
+    .fromDateTimes(startDT, endDT)
+    .splitBy({ hours: 1 })
+    .map(iv => ({
+      start: iv.start.toJSDate(),
+      end: iv.end.toJSDate(),
+      hourDT: iv.start // Keep Luxon DateTime for timezone-aware hour extraction
+    }));
+
+  // Get total number of active machines for plantwide availability calculation
+  const totalActiveMachines = await db.collection(config.machineCollectionName)
+    .countDocuments({ active: true });
+
+  // machines that ran today (overlapped any session) - used for querying data
+  // Try both machine.serial and machine.id for backward compatibility
+  const serialsFromSerial = await msColl.distinct("machine.serial", {
+    "timestamps.start": { $lt: wEnd },
+    $or: [
+      { "timestamps.end": { $gt: wStart } },
+      { "timestamps.end": { $exists: false } },
+      { "timestamps.end": null }
+    ]
+  });
+
+  const serialsFromId = await msColl.distinct("machine.id", {
+    "timestamps.start": { $lt: wEnd },
+    $or: [
+      { "timestamps.end": { $gt: wStart } },
+      { "timestamps.end": { $exists: false } },
+      { "timestamps.end": null }
+    ]
+  });
+
+  // Combine and deduplicate - these are machines with sessions (used for data queries)
+  const machineSerials = [...new Set([...serialsFromSerial, ...serialsFromId])].filter(Boolean);
+
+  const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+  const overlapFactor = (sStart, sEnd, wStart, wEnd) => {
+    if (!sStart) return { factor: 0 };
+    const ss = new Date(sStart);
+    const se = new Date(sEnd || wEnd);
+    const os = ss > wStart ? ss : wStart;
+    const oe = se < wEnd ? se : wEnd;
+    const ov = Math.max(0, (oe - os) / 1000);
+    const full = Math.max(0, (se - ss) / 1000);
+    return { factor: full > 0 ? ov / full : 0 };
+  };
+  const calcOEE = (a, e, t) => a * e * t;
+
+  const hourlyMetrics = [];
+
+  for (const iv of intervals) {
+    const slotSec = (iv.end - iv.start) / 1000;
+
+    // per-machine queries in parallel for this hour
+    const machineRows = await Promise.all(machineSerials.map(async (serial) => {
+      const sessions = await msColl.find({
+        $and: [
+          {
+            $or: [
+              { "machine.serial": serial },
+              { "machine.id": serial }
+            ]
+          },
+          { "timestamps.start": { $lt: iv.end } },
+          {
+            $or: [
+              { "timestamps.end": { $gt: iv.start } },
+              { "timestamps.end": { $exists: false } },
+              { "timestamps.end": null }
+            ]
+          }
+        ]
+      })
+      .project({
+        _id: 0,
+        timestamps: 1,
+        runtime: 1, workTime: 1, totalTimeCredit: 1,
+        totalCount: 1, misfeedCount: 1,
+        'metrics.timers.run': 1, 'metrics.timers.worked': 1, 'metrics.totals.timeCredit': 1,
+        'metrics.totals.counts.valid': 1, 'metrics.totals.counts.misfeed': 1
+      })
+      .toArray();
+
+      if (!sessions.length) return null;
+
+      let runtimeSec = 0, workSec = 0, creditSec = 0, valid = 0, mis = 0;
+
+      for (const s of sessions) {
+        const { factor } = overlapFactor(s.timestamps?.start, s.timestamps?.end, iv.start, iv.end);
+        if (factor <= 0) continue;
+
+        // Try new structure first (metrics), then fall back to old structure
+        const runtime = s.metrics?.timers?.run || s.runtime || 0;
+        const worked = s.metrics?.timers?.worked || s.workTime || 0;
+        const timeCredit = s.metrics?.totals?.timeCredit || s.totalTimeCredit || 0;
+        const validCount = s.metrics?.totals?.counts?.valid || s.totalCount || 0;
+        const misfeedCount = s.metrics?.totals?.counts?.misfeed || s.misfeedCount || 0;
+
+        runtimeSec += safe(runtime)      * factor;
+        workSec    += safe(worked)       * factor;
+        creditSec  += safe(timeCredit)   * factor;
+        valid      += safe(validCount)   * factor;
+        mis        += safe(misfeedCount) * factor;
+      }
+
+      if (runtimeSec <= 0 && workSec <= 0 && (valid + mis) <= 0) return null;
+
+      const availability = slotSec > 0 ? (runtimeSec / slotSec) : 0;
+      const efficiency   = workSec  > 0 ? (creditSec / workSec) : 0;
+      const throughput   = (valid + mis) > 0 ? (valid / (valid + mis)) : 0;
+      const oee          = calcOEE(availability, efficiency, throughput);
+
+      return { runtimeSec, workSec, creditSec, valid, mis, availability, efficiency, throughput, oee };
+    }));
+
+    // aggregate plantwide (runtime-weighted)
+    let totalRuntime = 0, totalWorkSec = 0, totalCreditSec = 0, totalValid = 0, totalMis = 0;
+
+    for (const r of machineRows) {
+      if (!r) continue;
+      totalRuntime  += r.runtimeSec;
+      totalWorkSec  += r.workSec;
+      totalCreditSec += r.creditSec;
+      totalValid    += r.valid;
+      totalMis      += r.mis;
+    }
+
+    // Extract hour in SYSTEM_TIMEZONE
+    const hourInTimezone = iv.hourDT.hour; // Use Luxon DateTime to get hour in correct timezone
+
+    // Calculate plantwide availability: total runtime / (total active machines * hour duration)
+    const totalPossibleSec = totalActiveMachines * slotSec;
+    const availability = totalPossibleSec > 0 ? (totalRuntime / totalPossibleSec) * 100 : 0;
+
+    // Calculate efficiency from aggregated work time and time credit
+    const efficiency = totalWorkSec > 0 ? (totalCreditSec / totalWorkSec) * 100 : 0;
+
+    // Calculate throughput from aggregated counts
+    const throughput = (totalValid + totalMis) > 0 ? (totalValid / (totalValid + totalMis)) * 100 : 0;
+
+    // Calculate OEE = Availability * Efficiency * Throughput (all as ratios 0-1)
+    const availRatio = availability / 100;
+    const effRatio = efficiency / 100;
+    const thruRatio = throughput / 100;
+    const oee = +( (availRatio * effRatio * thruRatio) * 100 ).toFixed(2);
+
+    // Include all hours in the range, even if metrics are all zero
+    hourlyMetrics.push({
+      hour: hourInTimezone,
+      availability: +(availability.toFixed(2)),
+      efficiency: +(efficiency.toFixed(2)),
+      throughput: +(throughput.toFixed(2)),
+      oee
+    });
+  }
+
+  return hourlyMetrics;
+}
+
+// buildPlantwideMetricsByHour from hourly-totals cache
+async function buildPlantwideMetricsByHourFromCache(db, start, end) {
+  const wStart = new Date(start);
+  const wEnd = new Date(end);
+
+  // hour slots [start,end) using Luxon with SYSTEM_TIMEZONE
+  const startDT = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf("hour");
+  const endDT = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf("hour");
+  const intervals = Interval
+    .fromDateTimes(startDT, endDT)
+    .splitBy({ hours: 1 })
+    .map(iv => ({
+      start: iv.start.toJSDate(),
+      end: iv.end.toJSDate(),
+      hourDT: iv.start // Keep Luxon DateTime for timezone-aware hour extraction
+    }));
+
+  // Get total number of active machines for plantwide availability calculation
+  const totalActiveMachines = await db.collection(config.machineCollectionName)
+    .countDocuments({ active: true });
+
+  // Get date strings for the time range
+  const dateStrs = [];
+  let currentDate = startDT.startOf('day');
+  const endDate = endDT.startOf('day');
+  while (currentDate <= endDate) {
+    dateStrs.push(currentDate.toFormat('yyyy-LL-dd'));
+    currentDate = currentDate.plus({ days: 1 });
+  }
+
+  // Query all machine hourly records from hourly-totals for the date range
+  const machineHourlyRecords = await db.collection('hourly-totals')
+    .find({
+      entityType: 'machine',
+      date: { $in: dateStrs }
+    })
+    .toArray();
+
+  if (machineHourlyRecords.length === 0) {
+    // Return empty metrics for all hours
+    return intervals.map(iv => ({
+      hour: iv.hourDT.hour,
+      availability: 0,
+      efficiency: 0,
+      throughput: 0,
+      oee: 0
+    }));
+  }
+
+  const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
+
+  // Group records by date-hour combination and aggregate across all machines
+  const hourlyDataMap = new Map();
+
+  // Initialize all intervals (date-hour combinations)
+  for (const iv of intervals) {
+    const dateStr = iv.hourDT.toFormat('yyyy-LL-dd');
+    const hour = iv.hourDT.hour;
+    const key = `${dateStr}-${hour}`;
+    hourlyDataMap.set(key, {
+      hour,
+      totalRuntimeMs: 0,
+      totalWorkedTimeMs: 0,
+      totalTimeCreditMs: 0,
+      totalCounts: 0,
+      totalMisfeeds: 0,
+      machineCount: 0
+    });
+  }
+
+  // Aggregate metrics by date-hour from hourly records
+  for (const record of machineHourlyRecords) {
+    const key = `${record.date}-${record.hour}`;
+    if (!hourlyDataMap.has(key)) {
+      // Skip hours outside the requested range
+      continue;
+    }
+
+    const hourData = hourlyDataMap.get(key);
+    hourData.totalRuntimeMs += safe(record.runtimeMs || 0);
+    hourData.totalWorkedTimeMs += safe(record.workedTimeMs || 0);
+    hourData.totalTimeCreditMs += safe(record.totalTimeCreditMs || 0);
+    hourData.totalCounts += safe(record.totalCounts || 0);
+    hourData.totalMisfeeds += safe(record.totalMisfeeds || 0);
+    hourData.machineCount += 1;
+  }
+
+  // Calculate plantwide metrics for each hour
+  const hourlyMetrics = [];
+  const hourSlotSec = 3600; // 1 hour in seconds
+
+  for (const iv of intervals) {
+    const dateStr = iv.hourDT.toFormat('yyyy-LL-dd');
+    const hour = iv.hourDT.hour;
+    const key = `${dateStr}-${hour}`;
+    const hourData = hourlyDataMap.get(key);
+
+    if (!hourData || hourData.machineCount === 0) {
+      // No data for this hour
+      hourlyMetrics.push({
+        hour,
+        availability: 0,
+        efficiency: 0,
+        throughput: 0,
+        oee: 0
+      });
+      continue;
+    }
+
+    // Calculate plantwide availability: total runtime / (total active machines * hour duration)
+    const totalPossibleRuntimeMs = totalActiveMachines * hourSlotSec * 1000;
+    const availability = totalPossibleRuntimeMs > 0
+      ? (hourData.totalRuntimeMs / totalPossibleRuntimeMs) * 100
+      : 0;
+
+    // Calculate efficiency: total time credit / total worked time
+    const totalWorkedTimeSec = hourData.totalWorkedTimeMs / 1000;
+    const totalTimeCreditSec = hourData.totalTimeCreditMs / 1000;
+    const efficiency = totalWorkedTimeSec > 0
+      ? (totalTimeCreditSec / totalWorkedTimeSec) * 100
+      : 0;
+
+    // Calculate throughput: valid counts / total counts
+    const totalOutput = hourData.totalCounts + hourData.totalMisfeeds;
+    const throughput = totalOutput > 0
+      ? (hourData.totalCounts / totalOutput) * 100
+      : 0;
+
+    // Calculate OEE = Availability * Efficiency * Throughput (all as ratios 0-1)
+    const availRatio = availability / 100;
+    const effRatio = efficiency / 100;
+    const thruRatio = throughput / 100;
+    const oee = +((availRatio * effRatio * thruRatio) * 100).toFixed(2);
+
+    hourlyMetrics.push({
+      hour,
+      availability: +(availability.toFixed(2)),
+      efficiency: +(efficiency.toFixed(2)),
+      throughput: +(throughput.toFixed(2)),
+      oee
+    });
+  }
+
+  return hourlyMetrics;
+}
+
+async function buildDailyMachineStatus(db, start, end) {
+  const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+  const machines = await getAllMachinesFromStates(db, paddedStart, paddedEnd);
+  const results = [];
+
+  for (const machine of machines) {
+    const states = await fetchStatesForMachine(db, machine.serial, paddedStart, paddedEnd);
+    if (!states.length) continue;
+
+    const cycles = extractAllCyclesFromStates(states, start, end);
+    results.push({
+      serial: machine.serial,
+      name: states[0].machine?.name || "Unknown",
+      runningMs: cycles.running.reduce((sum, c) => sum + c.duration, 0),
+      pausedMs: cycles.paused.reduce((sum, c) => sum + c.duration, 0),
+      faultedMs: cycles.fault.reduce((sum, c) => sum + c.duration, 0)
+    });
+  }
+
+  return results;
+}
+
+async function buildDailyCountTotals(db, _start, end) {
+  try {
+    const endDate = new Date(end);
+    const startDate = new Date(endDate);
+    startDate.setDate(endDate.getDate() - 27); // include 28 total days including endDate
+    startDate.setHours(0, 0, 0, 0); // set to 12:00 AM
+
+    const pipeline = [
+      {
+        $match: {
+          timestamp: { $gte: startDate, $lte: endDate },
+          misfeed: { $ne: true },
+          'operator.id': { $exists: true, $ne: -1 }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$timestamp" },
+            month: { $month: "$timestamp" },
+            day: { $dayOfMonth: "$timestamp" }
+          },
+          count: { $sum: 1 },
+          date: { $first: "$timestamp" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          date: {
+            $dateFromParts: {
+              year: "$_id.year",
+              month: "$_id.month",
+              day: "$_id.day"
+            }
+          },
+          count: 1
+        }
+      },
+      {
+        $sort: { date: 1 }
+      }
+    ];
+
+    const results = await db.collection('count').aggregate(pipeline).toArray();
+
+    return results.map(entry => ({
+      date: entry.date.toISOString().split('T')[0],
+      count: entry.count
+    }));
+
+  } catch (error) {
+    console.error('Error in buildDailyCountTotals:', error);
+    throw error;
+  }
+}
+
 // --- Functions extracted from dailyDashboardSessionRoutesSplit.js ---
 
 async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd, logger) {
@@ -945,15 +1586,49 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
         ]
       }).toArray();
 
+      // Group sessions by machine, then compute union of time ranges to avoid
+      // double-counting duplicate sessions (e.g. from concurrent simulator workers).
+      const sessionsByMachine = new Map();
       for (const s of pausedSessions) {
         const machineId = s.machine?.id ?? s.machine?.serial;
         if (machineId == null) continue;
         const sStart = s.timestamps?.start ? new Date(s.timestamps.start) : null;
-        const sEnd = s.timestamps?.end ? new Date(s.timestamps.end) : dayEndDate;
         if (!sStart) continue;
-        const { ovSec } = _sessionOverlap(sStart, sEnd, dayStartDate, dayEndDate);
+        const sEnd = s.timestamps?.end ? new Date(s.timestamps.end) : dayEndDate;
         const key = String(machineId);
-        pausedMsByMachine.set(key, (pausedMsByMachine.get(key) || 0) + Math.round(ovSec * 1000));
+        if (!sessionsByMachine.has(key)) sessionsByMachine.set(key, []);
+        sessionsByMachine.get(key).push({ start: sStart, end: sEnd });
+      }
+
+      for (const [key, ranges] of sessionsByMachine) {
+        // Clamp each range to [dayStartDate, dayEndDate] and sort by start
+        const clamped = ranges
+          .map(r => ({
+            start: r.start < dayStartDate ? dayStartDate : r.start,
+            end: r.end > dayEndDate ? dayEndDate : r.end
+          }))
+          .filter(r => r.start < r.end)
+          .sort((a, b) => a.start - b.start);
+
+        // Merge overlapping ranges (union)
+        let unionMs = 0;
+        let mergeEnd = null;
+        let mergeStart = null;
+        for (const r of clamped) {
+          if (mergeStart === null) {
+            mergeStart = r.start;
+            mergeEnd = r.end;
+          } else if (r.start <= mergeEnd) {
+            if (r.end > mergeEnd) mergeEnd = r.end;
+          } else {
+            unionMs += mergeEnd - mergeStart;
+            mergeStart = r.start;
+            mergeEnd = r.end;
+          }
+        }
+        if (mergeStart !== null) unionMs += mergeEnd - mergeStart;
+
+        pausedMsByMachine.set(key, unionMs);
       }
     }
 
@@ -961,8 +1636,10 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
       const runningMs = total.runtimeMs || 0;
       const faultedMs = total.faultTimeMs || 0;
       const serialKey = String(total.machineSerial);
-      const pausedMs = pausedMsByMachine.get(serialKey) || 0;
-      const offlineMs = Math.max(0, windowMs - runningMs - faultedMs - pausedMs);
+      // Cap pausedMs so running + faulted + paused never exceeds the window
+      const maxDowntimeMs = Math.max(0, windowMs - runningMs - faultedMs);
+      const pausedMs = Math.min(pausedMsByMachine.get(serialKey) || 0, maxDowntimeMs);
+      const offlineMs = Math.max(0, maxDowntimeMs - pausedMs);
 
       return {
         serial: total.machineSerial,
@@ -1317,7 +1994,237 @@ async function buildItemTotalsFromCache(db, dayStart, dayEnd, logger) {
   }
 }
 
-const dailyDashboardBuilder = require("./dailyDashboardBuilder");
+// --- Functions moved from demoFlipperBuilder.js (formerly utils/demoFlipperBuilder.js) ---
+// Used for live operator efficiency summary and flipper-style outputs (per-operator efficiency for 6m, 15m, 1h, today).
+
+async function buildLiveOperatorEfficiencySummary(states, counts, start, end, serial) {
+  const relevantCounts = counts.filter(
+    (c) =>
+      c.machine?.serial === serial &&
+      c.operator?.id &&
+      new Date(c.timestamp) >= start &&
+      new Date(c.timestamp) <= end
+  );
+
+  const groupedCounts = groupCountsByOperatorAndMachine(relevantCounts);
+  const operatorIds = new Set(relevantCounts.map((c) => c.operator.id));
+  const operatorSummaries = [];
+
+  const now = new Date();
+  const inputDate = new Date(end);
+
+  const buildWindow = (minutesAgo) => {
+    const start = new Date(
+      inputDate.getFullYear(),
+      inputDate.getMonth(),
+      inputDate.getDate(),
+      now.getHours(),
+      now.getMinutes() - minutesAgo,
+      now.getSeconds()
+    );
+    const end = new Date(
+      inputDate.getFullYear(),
+      inputDate.getMonth(),
+      inputDate.getDate(),
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds()
+    );
+    return { start, end };
+  };
+
+  const timeWindows = {
+    last6Min: buildWindow(6),
+    last15Min: buildWindow(15),
+    lastHour: buildWindow(60),
+    allDay: { start, end }
+  };
+
+  for (const operatorId of operatorIds) {
+    const key = `${operatorId}-${serial}`;
+    const group = groupedCounts[key];
+    if (!group || !group.validCounts.length) continue;
+
+    const validCounts = group.validCounts;
+    const misfeedCounts = group.misfeedCounts || [];
+    const totalCounts = [...validCounts, ...misfeedCounts];
+    const efficiencies = {};
+
+    for (const [windowName, window] of Object.entries(timeWindows)) {
+      const windowValidCounts = validCounts.filter(
+        (c) => new Date(c.timestamp) >= window.start && new Date(c.timestamp) <= window.end
+      );
+      const windowMisfeedCounts = misfeedCounts.filter(
+        (c) => new Date(c.timestamp) >= window.start && new Date(c.timestamp) <= window.end
+      );
+      const windowTotalCounts = [...windowValidCounts, ...windowMisfeedCounts];
+
+      const windowStates = states.filter(
+        (s) =>
+          s.machine?.serial === serial &&
+          new Date(s.timestamp) >= window.start &&
+          new Date(s.timestamp) <= window.end
+      );
+
+      const runningCycles = extractAllCyclesFromStates(windowStates, window.start, window.end).running;
+      const runtimeMs = runningCycles.reduce((sum, cycle) => sum + cycle.duration, 0);
+
+      const efficiency = calculateEfficiency(runtimeMs, windowTotalCounts.length, windowValidCounts);
+
+      efficiencies[windowName] = Math.round(efficiency * 10000) / 100;
+    }
+
+    const relevantStates = states
+      .filter(
+        (s) =>
+          s.machine?.serial === serial &&
+          Array.isArray(s.operators) &&
+          s.operators.some((op) => op?.id === operatorId)
+      )
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    const mostRecent = relevantStates[0];
+    const statusCode = mostRecent?.status?.code ?? 0;
+    const statusName = mostRecent?.status?.name ?? "Unknown";
+
+    const allDayValidCounts = validCounts.filter(
+      (c) => new Date(c.timestamp) >= start && new Date(c.timestamp) <= end
+    );
+
+    const itemNamesSet = new Set(allDayValidCounts.map((c) => c.item?.name).filter(Boolean));
+    const itemsRunning = Array.from(itemNamesSet).join(", ");
+
+    const operatorInfo = validCounts[0]?.operator || { id: operatorId, name: "Unknown" };
+
+    operatorSummaries.push({
+      status: statusCode,
+      fault: statusName,
+      operator: operatorInfo.name,
+      operatorId: operatorInfo.id,
+      machine: mostRecent?.machine?.name || "Unknown",
+      timers: { on: 0, ready: 0 },
+      displayTimers: { on: "", run: "" },
+      efficiency: {
+        lastFiveMinutes: {
+          value: efficiencies.last6Min || efficiencies.last15Min || 0,
+          label: "Current",
+          color: "#008000"
+        },
+        lastFifteenMinutes: {
+          value: efficiencies.last15Min || 0,
+          label: "15 mins",
+          color: "#008000"
+        },
+        lastHour: {
+          value: efficiencies.lastHour || 0,
+          label: "1 hr",
+          color: "#F89406"
+        },
+        today: {
+          value: efficiencies.allDay || 0,
+          label: "Today",
+          color: "#FF0000"
+        }
+      },
+      batch: {
+        item: itemsRunning || "Unknown"
+      }
+    });
+  }
+
+  return operatorSummaries;
+}
+
+async function getMostRecentStateForMachine(db, serial, dateStr) {
+  const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
+
+  const now = new Date();
+  const currentTimeOfDay = now.toISOString().split('T')[1];
+  const endOfDay = new Date(`${dateStr}T${currentTimeOfDay}`);
+
+  const query = {
+    timestamp: { $gte: startOfDay, $lte: endOfDay },
+    "machine.serial": parseInt(serial)
+  };
+
+  const state = await db.collection("stateTicker")
+    .find(query)
+    .sort({ timestamp: -1 })
+    .limit(1)
+    .project({
+      timestamp: 1,
+      'machine.serial': 1,
+      'machine.name': 1,
+      'program': 1,
+      'status.code': 1,
+      'status.name': 1,
+      'status.softrolColor': 1,
+      'operators': 1,
+      'program': 1,
+      'items': 1
+    })
+    .toArray();
+
+  return state[0] || null;
+}
+
+function buildInitialFlipperOutputs(recentState) {
+  if (!recentState || !Array.isArray(recentState.operators)) return [];
+
+  const machineName = recentState.machine?.name || `Serial ${recentState.machine?.serial}`;
+  const statusCode = recentState.status?.code ?? 0;
+  const faultName = recentState.status?.name ?? "Unknown";
+  const serial = recentState.machine?.serial;
+
+  const outputs = [];
+  for (const operator of recentState.operators) {
+    if (operator.id === -1) continue;
+
+    const shouldSkip = (serial === 67801 || serial === 67802) && operator.station === 2;
+    if (shouldSkip) continue;
+
+    outputs.push({
+      status: statusCode,
+      fault: faultName,
+      operatorId: operator.id,
+      machine: machineName
+    });
+  }
+
+  return outputs;
+}
+
+async function computeEfficiencyForWindow(db, serial, operatorId, windowStart, windowEnd) {
+  const allCounts = await getCountsForMachine(db, parseInt(serial), windowStart, windowEnd, operatorId);
+  const grouped = groupCountsByOperatorAndMachine(allCounts);
+  const key = `${operatorId}-${serial}`;
+
+  const valid = grouped[key]?.validCounts || [];
+
+  const machineStates = await fetchStatesForMachine(db, parseInt(serial), windowStart, windowEnd);
+  const operatorStates = machineStates.filter((s) =>
+    s.operators?.some((op) => Number(op.id) === Number(operatorId))
+  );
+
+  const runningCycles = extractAllCyclesFromStates(operatorStates, windowStart, windowEnd).running;
+  const runtimeMs = runningCycles.reduce((sum, c) => sum + c.duration, 0);
+
+  const efficiencyValue = calculateEfficiency(runtimeMs, valid.length, valid);
+
+  return {
+    value: Math.round(efficiencyValue * 100),
+    color:
+      efficiencyValue >= 0.9 ? "#008000" :
+      efficiencyValue >= 0.7 ? "#F89406" : "#FF0000"
+  };
+}
+
+function filterByTimeWindow(dataArray, start, end) {
+  return dataArray.filter((entry) => {
+    const ts = new Date(entry.timestamp);
+    return ts >= start && ts <= end;
+  });
+}
 
 module.exports = {
   buildItemStackRelative,
@@ -1332,12 +2239,13 @@ module.exports = {
   combineMachineResults,
   combineOperatorResults,
   combineItemResults,
-  buildMachineOEE: dailyDashboardBuilder.buildMachineOEE,
-  buildDailyItemHourlyStack: dailyDashboardBuilder.buildDailyItemHourlyStack,
-  buildTopOperatorEfficiency: dailyDashboardBuilder.buildTopOperatorEfficiency,
-  buildDailyMachineStatus: dailyDashboardBuilder.buildDailyMachineStatus,
-  buildPlantwideMetricsByHour: dailyDashboardBuilder.buildPlantwideMetricsByHour,
-  buildDailyCountTotals: dailyDashboardBuilder.buildDailyCountTotals,
+  buildMachineOEE,
+  buildDailyItemHourlyStack,
+  buildTopOperatorEfficiency,
+  buildDailyMachineStatus,
+  buildPlantwideMetricsByHour,
+  buildPlantwideMetricsByHourFromCache,
+  buildDailyCountTotals,
   computeMachineResults,
   computeItemSummaries,
   computeOperatorResults,
@@ -1356,5 +2264,14 @@ module.exports = {
   buildCountTotalsFromDailyTotals,
   buildTopOperatorEfficiencyFromCache,
   buildItemHourlyStackFromCache,
-  buildItemTotalsFromCache
+  buildItemTotalsFromCache,
+  parseAndValidateQueryParams,
+  previousDateStr,
+  MACHINE_GROUP_DEPARTMENTS,
+  // From demoFlipperBuilder.js
+  buildLiveOperatorEfficiencySummary,
+  getMostRecentStateForMachine,
+  buildInitialFlipperOutputs,
+  computeEfficiencyForWindow,
+  filterByTimeWindow,
 };

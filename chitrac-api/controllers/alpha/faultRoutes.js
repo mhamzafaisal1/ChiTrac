@@ -277,5 +277,250 @@ module.exports = function faultHistoryRoute(server) {
     }
   });
 
+  /**
+   * Fault report: summary across all machines, grouped by fault code.
+   * Uses fault-session collection (sessions, no cache).
+   * Query params: start, end (required).
+   */
+  router.get("/analytics/fault-report-summary", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      const match = {
+        "timestamps.start": { $lte: endDate },
+        $or: [
+          { "timestamps.end": { $exists: false } },
+          { "timestamps.end": { $gte: startDate } },
+        ],
+      };
+
+      const raw = await db
+        .collection(config.faultSessionCollectionName)
+        .aggregate([
+          { $match: match },
+          {
+            $addFields: {
+              ovStart: {
+                $cond: [
+                  { $gt: ["$timestamps.start", startDate] },
+                  "$timestamps.start",
+                  startDate,
+                ],
+              },
+              ovEnd: {
+                $let: {
+                  vars: {
+                    effectiveEnd: {
+                      $ifNull: [
+                        "$timestamps.end",
+                        {
+                          $min: [
+                            { $add: ["$timestamps.start", 5 * 60 * 1000] },
+                            endDate,
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                  in: {
+                    $cond: [
+                      { $gt: ["$$effectiveEnd", endDate] },
+                      endDate,
+                      "$$effectiveEnd",
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          { $match: { $expr: { $lt: ["$ovStart", "$ovEnd"] } } },
+          {
+            $project: {
+              code: { $ifNull: ["$states.start.status.id", "$startState.status.code"] },
+              name: { $ifNull: ["$states.start.status.name", "$startState.status.name"] },
+              ovStart: 1,
+              ovEnd: 1,
+            },
+          },
+        ])
+        .toArray();
+
+      const summaryMap = new Map();
+      for (const r of raw) {
+        const code = r.code ?? null;
+        const name = r.name ?? "Fault";
+        const key = `${code}|${name}`;
+        const durSec = Math.max(0, Math.floor((r.ovEnd - r.ovStart) / 1000));
+        const prev = summaryMap.get(key) || {
+          code,
+          name,
+          count: 0,
+          totalDurationSeconds: 0,
+        };
+        prev.count += 1;
+        prev.totalDurationSeconds += durSec;
+        summaryMap.set(key, prev);
+      }
+
+      const summaries = Array.from(summaryMap.values()).map((s) => {
+        const t = s.totalDurationSeconds;
+        return {
+          code: s.code,
+          name: s.name,
+          count: s.count,
+          totalDurationSeconds: t,
+          formatted: {
+            hours: Math.floor(t / 3600),
+            minutes: Math.floor((t % 3600) / 60),
+            seconds: t % 60,
+          },
+        };
+      });
+
+      return res.json({
+        context: { start: startDate, end: endDate },
+        summaries,
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to fetch fault report summary" });
+    }
+  });
+
+  /**
+   * Fault report: detailed by machine then fault code.
+   * Uses fault-session collection (sessions, no cache).
+   * Query params: start, end (required).
+   */
+  router.get("/analytics/fault-report-detailed", async (req, res) => {
+    try {
+      const { start, end } = parseAndValidateQueryParams(req);
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      const match = {
+        "timestamps.start": { $lte: endDate },
+        $or: [
+          { "timestamps.end": { $exists: false } },
+          { "timestamps.end": { $gte: startDate } },
+        ],
+      };
+
+      const raw = await db
+        .collection(config.faultSessionCollectionName)
+        .aggregate([
+          { $match: match },
+          {
+            $addFields: {
+              ovStart: {
+                $cond: [
+                  { $gt: ["$timestamps.start", startDate] },
+                  "$timestamps.start",
+                  startDate,
+                ],
+              },
+              ovEnd: {
+                $let: {
+                  vars: {
+                    effectiveEnd: {
+                      $ifNull: [
+                        "$timestamps.end",
+                        {
+                          $min: [
+                            { $add: ["$timestamps.start", 5 * 60 * 1000] },
+                            endDate,
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                  in: {
+                    $cond: [
+                      { $gt: ["$$effectiveEnd", endDate] },
+                      endDate,
+                      "$$effectiveEnd",
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          { $match: { $expr: { $lt: ["$ovStart", "$ovEnd"] } } },
+          {
+            $project: {
+              machine: 1,
+              code: { $ifNull: ["$states.start.status.id", "$startState.status.code"] },
+              name: { $ifNull: ["$states.start.status.name", "$startState.status.name"] },
+              ovStart: 1,
+              ovEnd: 1,
+            },
+          },
+        ])
+        .toArray();
+
+      // Normalize machine serial/name
+      raw.forEach((r) => {
+        if (r.machine && !r.machine.serial && r.machine.id) {
+          r.machine.serial = r.machine.id;
+        }
+      });
+
+      const byMachine = new Map();
+      for (const r of raw) {
+        const serial = r.machine?.serial ?? r.machine?.id ?? "Unknown";
+        const machineName = r.machine?.name ?? `Machine ${serial}`;
+        const code = r.code ?? null;
+        const name = r.name ?? "Fault";
+        const key = `${serial}|${machineName}`;
+        if (!byMachine.has(key)) {
+          byMachine.set(key, { serial, machineName, byFault: new Map() });
+        }
+        const machineEntry = byMachine.get(key);
+        const faultKey = `${code}|${name}`;
+        const durSec = Math.max(0, Math.floor((r.ovEnd - r.ovStart) / 1000));
+        const prev = machineEntry.byFault.get(faultKey) || {
+          code,
+          name,
+          count: 0,
+          totalDurationSeconds: 0,
+        };
+        prev.count += 1;
+        prev.totalDurationSeconds += durSec;
+        machineEntry.byFault.set(faultKey, prev);
+      }
+
+      const details = [];
+      for (const { serial, machineName, byFault } of byMachine.values()) {
+        for (const s of byFault.values()) {
+          const t = s.totalDurationSeconds;
+          details.push({
+            machineSerial: serial,
+            machineName,
+            code: s.code,
+            name: s.name,
+            count: s.count,
+            totalDurationSeconds: t,
+            formatted: {
+              hours: Math.floor(t / 3600),
+              minutes: Math.floor((t % 3600) / 60),
+              seconds: t % 60,
+            },
+          });
+        }
+      }
+
+      return res.json({
+        context: { start: startDate, end: endDate },
+        details,
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to fetch fault report detailed" });
+    }
+  });
+
   return router;
 };
+

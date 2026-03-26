@@ -4,7 +4,7 @@
  */
 const config = require("../modules/config");
 const { formatDuration } = require("./time");
-const { getBookendedStatesAndTimeRange } = require("./bookendingBuilder");
+const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
 
 /**
  * Split a time range into complete days and partial days for hybrid cache/session queries.

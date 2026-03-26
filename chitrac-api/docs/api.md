@@ -65,6 +65,8 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 #### Analytics Routes - Fault
 - [/api/alpha/analytics/fault-history](#apialphaanalyticsfault-history)
 - [/api/alpha/analytics/fault-sessions-history](#apialphaanalyticsfault-sessions-history)
+- [/api/alpha/analytics/fault-report-summary](#apialphaanalyticsfault-report-summary)
+- [/api/alpha/analytics/fault-report-detailed](#apialphaanalyticsfault-report-detailed)
 
 #### Analytics Routes - Dashboard
 - [/api/alpha/analytics/daily-dashboard/daily-counts](#apialphaanalyticsdaily-dashboarddaily-counts)
@@ -515,6 +517,49 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T08:00:00.000Z&e
 { "error": "Failed to fetch fault history" }
 ```
 
+### /api/alpha/analytics/fault-report-summary
+
+Returns a fault report **summary** across all machines: faults grouped by fault code. Uses the `fault-session` collection (sessions, no cache). Intended for the Fault Report UI (summary view).
+
+**Method:** `GET`
+
+**Query Parameters:**
+
+| Parameter | Type   | Required | Description        |
+|-----------|--------|----------|--------------------|
+| start     | string | Yes      | ISO start datetime |
+| end       | string | Yes      | ISO end datetime   |
+
+**Example:**
+```
+GET /api/alpha/analytics/fault-report-summary?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+```
+
+**Response:** `{ context: { start, end }, summaries: [{ code, name, count, totalDurationSeconds, formatted: { hours, minutes, seconds } }] }`
+
+---
+
+### /api/alpha/analytics/fault-report-detailed
+
+Returns a fault report **detailed** by machine then fault code. Uses the `fault-session` collection (sessions, no cache). Intended for the Fault Report UI (detailed view).
+
+**Method:** `GET`
+
+**Query Parameters:**
+
+| Parameter | Type   | Required | Description        |
+|-----------|--------|----------|--------------------|
+| start     | string | Yes      | ISO start datetime |
+| end       | string | Yes      | ISO end datetime   |
+
+**Example:**
+```
+GET /api/alpha/analytics/fault-report-detailed?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+```
+
+**Response:** `{ context: { start, end }, details: [{ machineSerial, machineName, code, name, count, totalDurationSeconds, formatted: { hours, minutes, seconds } }] }`
+
+---
 
 ### /api/alpha/analytics/machine-details
 
@@ -859,6 +904,89 @@ GET /api/alpha/analytics/operator-item-sessions-summary?operatorId=135790&start=
 All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.
 
 ### /api/alpha/sample/machineOverview
+
+Returns a comprehensive machine overview snapshot for a single machine using **today’s** date in the `America/Chicago` timezone. Data is sourced from the `totals-daily` cache, state ticker, and fault-session collections and is intended primarily as a sample/utility route for dashboards.
+
+**Method:** GET  
+**Auth:** Same as other /api/alpha routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label  | Type    | Required | Description |
+|--------|---------|----------|-------------|
+| serial | Integer | No       | Machine serial to fetch. If omitted, the service will automatically select a machine using the latest ticker entry and return its overview. |
+
+**Behavior Notes:**
+
+- If `serial` is provided, the service attempts to resolve today’s `totals-daily` record for that machine; if none exists, it falls back to the latest ticker entry for that serial.
+- If `serial` is omitted, the service finds the first available ticker entry and uses that machine’s serial.
+- If no matching machine/ticker can be resolved, the service returns a `500` error with `"Failed to fetch machine overview data"`.
+- Fault information is taken from the most recent open fault-session for the machine, or the most recent closed fault-session when no open session exists.
+
+**Data Format:**
+```json
+{
+  "machineInfo": {
+    "serial": 63520,
+    "name": "Flipper 1"
+  },
+  "fault": {
+    "code": 3,
+    "name": "Stop"
+  },
+  "status": {
+    "code": 3,
+    "name": "Stop",
+    "color": "Red"
+  },
+  "timeOnTask": 360,
+  "onTime": 360,
+  "totalCount": 216,
+  "operators": [
+    {
+      "id": 117811,
+      "name": "Shaun White",
+      "pace": 600,
+      "timeOnTask": 360,
+      "count": 60,
+      "efficiency": 96,
+      "station": 1,
+      "tasks": [
+        {
+          "name": "Pool Towel",
+          "standard": 625
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": 4,
+      "count": 600
+    }
+  ]
+}
+```
+
+**Example Requests:**
+```http
+GET /api/alpha/sample/machineOverview
+GET /api/alpha/sample/machineOverview?serial=63520
+```
+
+**Error Responses:**
+
+**500 Internal Server Error**
+```json
+{
+  "error": "Failed to fetch machine overview data"
+}
+```
+
+**Versioning & Stability:**
+
+Route path and response shape are Alpha and may evolve. New fields will be additive; existing fields will maintain types and semantics.
 
 ---
 

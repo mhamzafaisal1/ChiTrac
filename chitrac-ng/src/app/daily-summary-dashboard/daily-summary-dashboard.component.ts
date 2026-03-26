@@ -137,6 +137,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
         // Reset endTime to now
         this.endTime = this.pollingService.updateEndTimestampToNow();
         this.dateTimeService.setEndTime(this.endTime);
+        this.dateTimeService.setShiftId("");
 
         // Initial data fetch
         this.fetchData().subscribe();
@@ -191,7 +192,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.machinePollSub = this.pollingService.poll(
       () => { tick(); return this.dailyDashboardService
-        .getMachinesSummary(this.startTime, this.endTime)
+        .getMachinesSummary(this.startTime, this.endTime, undefined, this.dateTimeService.getShiftId() || undefined)
         .pipe(
           tap((r:any)=> this.updateMachines(r)),
           catchError(err => { console.error('machines poll', err); return of(null); }),
@@ -201,7 +202,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.operatorPollSub = this.pollingService.poll(
       () => { tick(); return this.dailyDashboardService
-        .getOperatorsSummary(this.startTime, this.endTime)
+        .getOperatorsSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId() || undefined)
         .pipe(
           tap((r:any)=> this.updateOperators(r)),
           catchError(err => { console.error('operators poll', err); return of(null); }),
@@ -211,7 +212,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.itemPollSub = this.pollingService.poll(
       () => { tick(); return this.dailyDashboardService
-        .getItemsSummary(this.startTime, this.endTime)
+        .getItemsSummary(this.startTime, this.endTime, undefined, this.dateTimeService.getShiftId() || undefined)
         .pipe(
           tap((r:any)=> this.updateItems(r)),
           catchError(err => { console.error('items poll', err); return of(null); }),
@@ -274,10 +275,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
   
+    const shiftId = this.dateTimeService.getShiftId() || undefined;
     return forkJoin({
-      machines: this.dailyDashboardService.getMachinesSummary(formattedStart, formattedEnd),
-      operators: this.dailyDashboardService.getOperatorsSummary(formattedStart, formattedEnd),
-      items: this.dailyDashboardService.getItemsSummary(formattedStart, formattedEnd),
+      machines: this.dailyDashboardService.getMachinesSummary(formattedStart, formattedEnd, undefined, shiftId),
+      operators: this.dailyDashboardService.getOperatorsSummary(formattedStart, formattedEnd, shiftId),
+      items: this.dailyDashboardService.getItemsSummary(formattedStart, formattedEnd, undefined, shiftId),
     }).pipe(
       takeUntil(this.destroy$),
       tap({
@@ -356,7 +358,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
     
-    this.machineAnalyticsService.getMachineDetails(formattedStart, formattedEnd, serial)
+    this.machineAnalyticsService.getMachineDetails(formattedStart, formattedEnd, serial, this.dateTimeService.getShiftId() || undefined)
       .subscribe({
         next: (machineDetails: any) => {
           // machineDetails is an array, get the first item

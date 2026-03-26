@@ -18,6 +18,7 @@ const {
   getStateCollectionName,
   getCountCollectionName,
 } = require("../../utils/time");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   fetchStatesForMachine,
   fetchStatesForOperator,
@@ -69,18 +70,16 @@ const {
   buildMachineOEE,
   buildDailyItemHourlyStack,
   buildTopOperatorEfficiency,
-} = require("../../utils/dailyDashboardBuilder");
+} = require("../../utils/dashboardFunctions");
 
 const { buildSoftrolCycleSummary } = require("../../utils/miscFunctions");
-const {
-  getBookendedStatesAndTimeRange,
-} = require("../../utils/bookendingBuilder");
 const {
   groupRecordsBySerial,
   buildPerformanceFromMachineRecord,
   buildItemSummaryFromRecords,
+  buildCurrentOperatorsFromTicker: buildCurrentOperators,
+  getBookendedStatesAndTimeRange,
 } = require("../../utils/machineFunctions");
-const { buildCurrentOperators } = require("../../utils/machineDashboardBuilder");
 
 module.exports = function (server) {
   return constructor(server);
@@ -99,21 +98,7 @@ function constructor(server) {
   const operatorRoutes = require("./operatorRoutes")(server);
   router.use("/", operatorRoutes);
 
-  // Import daily dashboard-related routes
-  const dailyDashboardRoutes = require("./dailyDashboardRoutes")(server);
-  router.use("/", dailyDashboardRoutes);
-
-  // Import daily sessions dashboard-related routes
-  const dailyDashboardSessionRoutes = require("./dailyDashboardSessionRoutes")(server);
-  router.use("/", dailyDashboardSessionRoutes);
-
-  // Import daily dashboard session routes (split)
-  const dailyDashboardSessionRoutesSplit = require("./dailyDashboardSessionRoutesSplit")(server);
-  router.use("/", dailyDashboardSessionRoutesSplit);
-
-  // Import dashboard sessions routes
-  const dashboardSessionsRoutes = require("./dashboardSessionsRoutes")(server);
-  router.use("/", dashboardSessionsRoutes);
+  // Import daily dashboard-related routes (legacy sessions routes removed)
 
   // Import misc-related routes
   const miscRoutes = require("./miscRoutes")(server);
@@ -123,37 +108,17 @@ function constructor(server) {
   const levelTwoDashboardRoutes = require("./level-twoRoutes")(server);
   router.use("/analytics", levelTwoDashboardRoutes);
 
-  // Import machine sessions routes
-  const machineSessionsRoutes = require("./machineSessions")(server);
-  router.use("/", machineSessionsRoutes);
+  // Import report routes (cached machine/operator/item summaries)
+  const reportRoutes = require("./reportRoutes")(server);
+  router.use("/", reportRoutes);
 
-  // Import operator sessions routes
-  const operatorSessionsRoutes = require("./operatorSessions")(server);
-  router.use("/", operatorSessionsRoutes);
+  // Import item routes (cached + hybrid analytics)
+  const itemRoutes = require("./itemRoutes")(server);
+  router.use("/", itemRoutes);
 
-  // Import efficiency screen (sessions-powered) routes
-  const efficiencyScreenSessionRoutes = require("./efficiencyScreenSessionRoute")(server);
-  router.use("/", efficiencyScreenSessionRoutes);
-
-  // Import reports (sessions-powered) routes
-  const reportsSessionRoutes = require("./reportsSessionRoutes")(server);
-  router.use("/", reportsSessionRoutes);
-
-  // Import item sessions (sessions-powered) routes
-  const itemSessionsRoutes = require("./itemSessions")(server);
-  router.use("/", itemSessionsRoutes);
-
-  // Import fault session routes
-  const faultSessionRoutes = require("./faultSessionRoutes")(server);
-  router.use("/", faultSessionRoutes);
-
-  // Import machine-details routes
-  const machineDetailsRoutes = require("./machineDetails.js")(server);
-  router.use("/", machineDetailsRoutes);
-
-  // Import operator-details routes
-  const operatorDetailsRoutes = require("./operatorDetails")(server);
-  router.use("/", operatorDetailsRoutes);
+  // Import fault routes
+  const faultRoutes = require("./faultRoutes")(server);
+  router.use("/", faultRoutes);
 
   //Import dashboard-related routes
   const dashboardRoutes = require("./dashboardRoutes")(server);
@@ -1650,6 +1615,10 @@ function constructor(server) {
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
 
+      // Load shift definitions once; used to make availability/downtime denominators shift-aware.
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedTotalMs = computeShiftElapsedMs(activeShifts, start, end);
+
       let states;
       let groupedStates;
 
@@ -1712,7 +1681,7 @@ function constructor(server) {
         );
 
         // Calculate metrics for this machine
-        const totalQueryMs = new Date(end) - new Date(start);
+        const totalQueryMs = shiftElapsedTotalMs;
         const runtimeMs = runningCycles.reduce(
           (total, cycle) => total + cycle.duration,
           0
@@ -2158,6 +2127,9 @@ function constructor(server) {
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
 
+      // Load shifts once; used to make availability/OEE shift-aware.
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+
       if (!serial) {
         return res.status(400).json({ error: "Machine serial is required" });
       }
@@ -2246,9 +2218,14 @@ function constructor(server) {
             };
           }
 
-          // Calculate OEE for this hour
-          const hourDuration = interval.end - interval.start;
-          const availability = (totalRuntime / hourDuration) * 100;
+          // Calculate OEE for this hour (shift-aware denominator)
+          const shiftElapsedMs = computeShiftElapsedMs(
+            activeShifts,
+            interval.start,
+            interval.end
+          );
+          const availability =
+            shiftElapsedMs > 0 ? (totalRuntime / shiftElapsedMs) * 100 : 0;
 
           const avgEfficiency =
             Object.values(operatorMetrics).length > 0

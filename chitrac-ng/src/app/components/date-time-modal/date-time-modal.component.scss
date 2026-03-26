@@ -52,6 +52,16 @@
 
     .timeframe-section {
       margin-top: 1rem;
+
+      .shift-hint {
+        margin: 0 0 0.5rem 0;
+        font-size: 0.8rem;
+        color: var(--mat-form-field-error-text-color, #f44336);
+      }
+
+      .shift-buttons {
+        margin-bottom: 1rem;
+      }
       
       h4 {
         margin: 0 0 0.75rem 0;
