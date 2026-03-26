@@ -18,6 +18,7 @@ const {
   getStateCollectionName,
   getCountCollectionName,
 } = require("../../utils/time");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   fetchStatesForMachine,
   fetchStatesForOperator,
@@ -1628,6 +1629,10 @@ function constructor(server) {
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
 
+      // Load shift definitions once; used to make availability/downtime denominators shift-aware.
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedTotalMs = computeShiftElapsedMs(activeShifts, start, end);
+
       let states;
       let groupedStates;
 
@@ -1690,7 +1695,7 @@ function constructor(server) {
         );
 
         // Calculate metrics for this machine
-        const totalQueryMs = new Date(end) - new Date(start);
+        const totalQueryMs = shiftElapsedTotalMs;
         const runtimeMs = runningCycles.reduce(
           (total, cycle) => total + cycle.duration,
           0
@@ -2136,6 +2141,9 @@ function constructor(server) {
       // Step 2: Create padded time range
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
 
+      // Load shifts once; used to make availability/OEE shift-aware.
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+
       if (!serial) {
         return res.status(400).json({ error: "Machine serial is required" });
       }
@@ -2224,9 +2232,14 @@ function constructor(server) {
             };
           }
 
-          // Calculate OEE for this hour
-          const hourDuration = interval.end - interval.start;
-          const availability = (totalRuntime / hourDuration) * 100;
+          // Calculate OEE for this hour (shift-aware denominator)
+          const shiftElapsedMs = computeShiftElapsedMs(
+            activeShifts,
+            interval.start,
+            interval.end
+          );
+          const availability =
+            shiftElapsedMs > 0 ? (totalRuntime / shiftElapsedMs) * 100 : 0;
 
           const avgEfficiency =
             Object.values(operatorMetrics).length > 0

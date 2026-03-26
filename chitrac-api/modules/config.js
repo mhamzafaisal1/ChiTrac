@@ -57,4 +57,8 @@ module.exports = {
   // Softrol API Settings
   // Enable/disable Softrol API routes and documentation (default: false)
   softrol: process.env.SOFTROL === 'true',
+
+  // Milnor API Settings
+  // Enable/disable Milnor API routes and documentation (default: false)
+  milnor: process.env.MILNOR === 'true',
 };

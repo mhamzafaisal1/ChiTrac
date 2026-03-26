@@ -1,6 +1,6 @@
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const ajv = new Ajv();
+const ajv = new Ajv({ strictSchema: false });
 addFormats(ajv);
 
 // Import related schemas
@@ -14,7 +14,9 @@ const schema = {
     'active',
     'timestamps',
     'shiftTime',
-    'breaks'
+    'breaks',
+    'startTime',
+    'endTime'
   ],
   properties: {
     _id: {
@@ -41,6 +43,57 @@ const schema = {
         ...breakSchema.schema
       },
       description: 'Array of schema valid breakObjects. None are required, if none are present, property should be an empty array, not null or undefined.'
+    },
+    startTime: {
+      type: 'object',
+      required: ['hour', 'minute'],
+      properties: {
+        hour: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 23,
+          description: 'Hour component (0–23) of the time this shift starts each day.'
+        },
+        minute: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 59,
+          description: 'Minute component (0–59) of the time this shift starts each day.'
+        }
+      },
+      additionalProperties: false,
+      description: 'The time of day (HH:MM) when this shift begins, applicable to any day.'
+    },
+    endTime: {
+      type: 'object',
+      required: ['hour', 'minute'],
+      properties: {
+        hour: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 23,
+          description: 'Hour component (0–23) of the time this shift ends each day.'
+        },
+        minute: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 59,
+          description: 'Minute component (0–59) of the time this shift ends each day.'
+        }
+      },
+      additionalProperties: false,
+      description: 'The time of day (HH:MM) when this shift ends, applicable to any day.'
+    },
+    activeDays: {
+      type: 'array',
+      maxItems: 7,
+      items: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 7,
+        description: 'ISO day of week integer: 1 = Monday, 7 = Sunday.'
+      },
+      description: 'Array of ISO day-of-week integers representing the days this shift is active. 1 = Monday, 7 = Sunday.'
     },
     name: {
       type: 'string',
