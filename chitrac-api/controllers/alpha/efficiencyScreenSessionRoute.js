@@ -3,11 +3,9 @@
 const express = require('express');
 const { DateTime } = require('luxon');
 const {
-  groupStatesByOperatorAndSerial,
   getCompletedCyclesForOperator,
 } = require('../../utils/state');
 const {
-  groupCountsByOperatorAndMachine,
   groupCountsByItem,
 } = require('../../utils/count');
 const { createPaddedTimeRange } = require('../../utils/time');
@@ -101,13 +99,30 @@ module.exports = function (server) {
 
     if (!operatorIds.length) return new Map();
 
+    const nameMap = new Map();
+    const operatorRows = await db.collection('operators')
+      .find(
+        { code: { $in: operatorIds }, active: { $ne: false } },
+        { projection: { code: 1, name: 1 } }
+      )
+      .toArray();
+    for (const row of operatorRows) {
+      const id = Number(row?.code);
+      const name = normalizeOperatorName(row?.name);
+      if (Number.isFinite(id) && id > 0 && name) {
+        nameMap.set(id, name);
+      }
+    }
+
+    const unresolvedIds = operatorIds.filter(id => !nameMap.has(id));
+    if (!unresolvedIds.length) return nameMap;
+
     const machineSerial = Number(serialNum);
     const machineSerialStr = String(serialNum);
-
     const latestCounts = await db.collection(countCollectionName).aggregate([
       {
         $match: {
-          'operator.id': { $in: operatorIds },
+          'operator.id': { $in: unresolvedIds },
           $or: [
             { 'machine.serial': machineSerial },
             { 'machine.serial': machineSerialStr },
@@ -124,8 +139,6 @@ module.exports = function (server) {
         }
       }
     ]).toArray();
-
-    const nameMap = new Map();
     for (const row of latestCounts) {
       const id = Number(row?._id);
       const name = normalizeOperatorName(row?.name);
@@ -430,6 +443,8 @@ module.exports = function (server) {
           fault: 'Offline',
           operator: null,
           operatorId: null,
+          station: 1,
+          machineSerial: serialNum,
           machine: machineName,
           timers: { on: 0, ready: 0 },
           displayTimers: { on: '', run: '' },
@@ -787,7 +802,7 @@ module.exports = function (server) {
           '';
 
       const operatorNameMap = await buildOperatorNameMap(serialNum, laneOperators);
-      const performanceData = laneOperators.map((op) => {
+      const performanceData = laneOperators.map((op, idx) => {
           const operatorId = Number(op?.id);
           const operatorName =
             op && Number.isFinite(operatorId) && operatorId > 0
@@ -799,6 +814,8 @@ module.exports = function (server) {
             fault: ticker.status?.name ?? 'Unknown',
             operator: operatorName,
             operatorId: op?.id ?? null,
+            station: Number(op?.station) || idx + 1,
+            machineSerial: Number(ticker.machine?.serial ?? ticker.machine?.id ?? serialNum),
             machine: ticker.machine?.name || `Serial ${serialNum}`,
             timers: { on: 0, ready: 0 },
             displayTimers: { on: '', run: '' },
@@ -837,17 +854,27 @@ module.exports = function (server) {
         return Math.max(0, clampedEnd - clampedStart);
       }
 
-      async function computeWindowFromStateAndCount(operatorId, frameKey) {
+      async function computeWindowFromStateAndCount(operatorId, station, frameKey) {
         const frame = frames[frameKey];
         const windowStart = frame.start.toJSDate();
         const windowEnd = nowLuxon.toJSDate();
         const { paddedStart, paddedEnd } = createPaddedTimeRange(windowStart, windowEnd);
+        const normalizedOperatorId = Number(operatorId);
+        const normalizedStation = Number(station);
+        const hasStation = Number.isFinite(normalizedStation) && normalizedStation > 0;
+        const operatorIdCandidates = [normalizedOperatorId, String(normalizedOperatorId)].filter(
+          (v, idx, arr) => Number.isFinite(normalizedOperatorId) && arr.indexOf(v) === idx
+        );
+        const operatorMatcher =
+          operatorIdCandidates.length > 1
+            ? { $in: operatorIdCandidates }
+            : operatorIdCandidates[0];
 
         // 1) Fetch states from "state" (same as operator-item-states-summary)
         const stateQuery = {
           timestamp: { $gte: paddedStart, $lte: paddedEnd },
           $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }],
-          'operators.id': operatorId
+          'operators.id': operatorMatcher
         };
         let allStates = await db
           .collection(stateCollectionName)
@@ -858,15 +885,49 @@ module.exports = function (server) {
           if (s.machine && s.machine.id != null && s.machine.serial == null) {
             s.machine = { ...s.machine, serial: s.machine.id };
           }
+          if (Array.isArray(s.operators)) {
+            s.operators = s.operators.map(op => {
+              const maybeNumericId = Number(op?.id);
+              if (Number.isFinite(maybeNumericId) && op?.id !== maybeNumericId) {
+                return { ...op, id: maybeNumericId };
+              }
+              return op;
+            });
+          }
           if (s.status && typeof s.status.code !== 'number' && typeof s.status.id === 'number') {
             s.status = { ...s.status, code: s.status.id };
           }
           return s;
         });
 
-        const groupedStates = groupStatesByOperatorAndSerial(allStates);
-        const key = `${operatorId}-${serialNum}`;
-        const states = groupedStates[key]?.states || [];
+        const dedupedStates = [];
+        const seenStateKeys = new Set();
+        for (const stateDoc of allStates) {
+          const timestamp = stateDoc?.timestamp ? new Date(stateDoc.timestamp).toISOString() : '';
+          const statusCode = stateDoc?.status?.code ?? stateDoc?.status?.id ?? '';
+          const machineSerial = stateDoc?.machine?.serial ?? stateDoc?.machine?.id ?? '';
+          const operatorSignature = Array.isArray(stateDoc?.operators)
+            ? stateDoc.operators
+                .map(op => `${Number(op?.id)}:${Number(op?.station)}`)
+                .sort()
+                .join('|')
+            : '';
+          const dedupeKey = `${timestamp}|${statusCode}|${machineSerial}|${operatorSignature}`;
+          if (seenStateKeys.has(dedupeKey)) continue;
+          seenStateKeys.add(dedupeKey);
+          dedupedStates.push(stateDoc);
+        }
+
+        const states = dedupedStates.filter(stateDoc => {
+          if (!Array.isArray(stateDoc?.operators)) return false;
+          return stateDoc.operators.some(op => {
+            const opId = Number(op?.id);
+            const opStation = Number(op?.station);
+            if (opId !== normalizedOperatorId) return false;
+            if (hasStation) return opStation === normalizedStation;
+            return true;
+          });
+        });
         const sortedStates = [...states].sort(
           (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
@@ -882,12 +943,7 @@ module.exports = function (server) {
           const lastState = sortedStates[sortedStates.length - 1];
           const lastCode = lastState.status?.code ?? lastState.status?.id;
           if (lastCode === 1) {
-            let runStart = new Date(lastState.timestamp).getTime();
-            for (let i = sortedStates.length - 2; i >= 0; i--) {
-              const c = sortedStates[i].status?.code ?? sortedStates[i].status?.id;
-              if (c !== 1) break;
-              runStart = new Date(sortedStates[i].timestamp).getTime();
-            }
+            const runStart = new Date(lastState.timestamp).getTime();
             const openCycle = { start: new Date(runStart), end: windowEnd };
             runtimeMs += clampCycleToWindow(openCycle, windowStart, windowEnd);
           }
@@ -899,36 +955,68 @@ module.exports = function (server) {
         const countQuery = {
           timestamp: { $gte: windowStart, $lte: windowEnd },
           $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }],
-          'operator.id': operatorId
+          'operator.id': operatorMatcher
         };
-        const allCounts = await db
+        if (hasStation) {
+          countQuery.station = normalizedStation;
+        }
+        const allCountsRaw = await db
           .collection(countCollectionName)
           .find(countQuery)
           .toArray();
-        const groupedCounts = groupCountsByOperatorAndMachine(allCounts);
-        const validCounts = groupedCounts[key]?.validCounts || [];
-        const misfeedCounts = groupedCounts[key]?.misfeedCounts || [];
+        const allCounts = allCountsRaw.map(c => {
+          const next = { ...c };
+          if (next.machine && next.machine.id != null && next.machine.serial == null) {
+            next.machine = { ...next.machine, serial: next.machine.id };
+          }
+          if (next.operator && next.operator.id != null) {
+            const maybeNumericId = Number(next.operator.id);
+            if (Number.isFinite(maybeNumericId) && next.operator.id !== maybeNumericId) {
+              next.operator = { ...next.operator, id: maybeNumericId };
+            }
+          }
+          return next;
+        });
+        const dedupedCounts = [];
+        const seenCountKeys = new Set();
+        for (const countDoc of allCounts) {
+          const ts = countDoc?.timestamp ? new Date(countDoc.timestamp).toISOString() : '';
+          const opId = Number(countDoc?.operator?.id);
+          const serial = Number(countDoc?.machine?.serial ?? countDoc?.machine?.id);
+          const stationVal = Number(countDoc?.station ?? countDoc?.lane ?? 0);
+          const itemId = Number(countDoc?.item?.id ?? 0);
+          const misfeed = countDoc?.misfeed ? 1 : 0;
+          const dedupeKey = `${ts}|${opId}|${serial}|${stationVal}|${itemId}|${misfeed}`;
+          if (seenCountKeys.has(dedupeKey)) continue;
+          seenCountKeys.add(dedupeKey);
+          dedupedCounts.push(countDoc);
+        }
+
+        const validCounts = dedupedCounts.filter(c => !c.misfeed);
+        const misfeedCounts = dedupedCounts.filter(c => !!c.misfeed);
 
         const pairTotalCounts = validCounts.length;
         const itemMap = groupCountsByItem(validCounts);
 
-        // Prorated standard: weighted average of item.standard by count (operator-item-states-summary logic)
-        let proratedStandard = 0;
+        // Standards are seconds-per-piece, so convert to expected pieces-per-hour.
+        let proratedExpectedPph = 0;
         if (pairTotalCounts > 0) {
           for (const group of Object.values(itemMap)) {
             if (!Array.isArray(group) || !group.length) continue;
             const first = group[0];
-            const standard = Number(first.item?.standard) || 0;
+            const standardSecPerPiece = Number(first.item?.standard) || 0;
+            if (standardSecPerPiece <= 0) continue;
+            const expectedPph = 3600 / standardSecPerPiece;
             const weight = group.length / pairTotalCounts;
-            proratedStandard += weight * standard;
+            proratedExpectedPph += weight * expectedPph;
           }
         }
 
-        // Efficiency = (totalCount per hour) / proratedStandard (operator report formula)
+        // Efficiency = actual PPH / expected PPH.
         const hours = runtimeMs / 3600000;
         const operatorPph = hours > 0 ? pairTotalCounts / hours : 0;
         const efficiencyRatio =
-          proratedStandard > 0 ? operatorPph / proratedStandard : 0;
+          proratedExpectedPph > 0 ? operatorPph / proratedExpectedPph : 0;
 
         const windowSec = (windowEnd.getTime() - windowStart.getTime()) / 1000;
         const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
@@ -971,7 +1059,7 @@ module.exports = function (server) {
 
           if (op?.id) {
             for (const frameKey of ['lastSixMinutes', 'lastFifteenMinutes', 'lastHour', 'today']) {
-              const { efficiency, oee } = await computeWindowFromStateAndCount(op.id, frameKey);
+              const { efficiency, oee } = await computeWindowFromStateAndCount(op.id, op?.station, frameKey);
               efficiencyObj[frameKey] = efficiency;
               oeeObj[frameKey] = oee;
             }
@@ -1011,6 +1099,8 @@ module.exports = function (server) {
             fault: ticker.status?.name ?? 'Unknown',
             operator: operatorName,
             operatorId: op?.id ?? null,
+            station: Number(op?.station) || idx + 1,
+            machineSerial: Number(ticker.machine?.serial ?? ticker.machine?.id ?? serialNum),
             machine: ticker.machine?.name || `Serial ${serialNum}`,
             timers: { on: 0, ready: 0 },
             displayTimers: { on: '', run: '' },

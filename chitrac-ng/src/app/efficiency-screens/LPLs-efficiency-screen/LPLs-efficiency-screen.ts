@@ -50,27 +50,7 @@ export class LPLsEfficiencyScreenComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (responses) => {
-          // Combine all operators from both machines into a single lanes array
-          this.lanes = [];
-          
-          responses.forEach((response) => {
-            const flipperData = response?.flipperData || [];
-            const latestFaultStart = response?.latestFaultStart ?? null;
-            if (flipperData.length > 0) {
-              this.lanes.push(...flipperData.map((item: any) => ({ ...item, latestFaultStart })));
-            }
-          });
-
-          this.lanes.sort((a, b) => {
-            const machineA = a.machine || '';
-            const machineB = b.machine || '';
-            if (machineA !== machineB) {
-              return machineA.localeCompare(machineB);
-            }
-            const operatorA = a.operator || '';
-            const operatorB = b.operator || '';
-            return operatorA.localeCompare(operatorB);
-          });
+          this.lanes = this.normalizeAndSortLanes(responses);
 
           console.log(`Fetched data for ${this.lanes.length} LPL operators (expected 6)`);
           this.isLoading = false;
@@ -113,28 +93,8 @@ export class LPLsEfficiencyScreenComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (responses: any[]) => {
-          // Combine all operators from both machines into a single lanes array
-          // Wait for all calls to complete before showing lanes
-          this.lanes = [];
-          
-          responses.forEach((response) => {
-            const flipperData = response?.flipperData || [];
-            const latestFaultStart = response?.latestFaultStart ?? null;
-            if (flipperData.length > 0) {
-              this.lanes.push(...flipperData.map((item: any) => ({ ...item, latestFaultStart })));
-            }
-          });
-
-          this.lanes.sort((a, b) => {
-            const machineA = a.machine || '';
-            const machineB = b.machine || '';
-            if (machineA !== machineB) {
-              return machineA.localeCompare(machineB);
-            }
-            const operatorA = a.operator || '';
-            const operatorB = b.operator || '';
-            return operatorA.localeCompare(operatorB);
-          });
+          // Wait for all calls to complete before showing lanes.
+          this.lanes = this.normalizeAndSortLanes(responses);
 
           console.log(`Updated ${this.lanes.length} LPL lanes (expected 6)`);
           this.isLoading = false;
@@ -144,6 +104,43 @@ export class LPLsEfficiencyScreenComponent implements OnInit, OnDestroy {
           this.isLoading = false;
         }
       });
+  }
+
+  private normalizeAndSortLanes(responses: any[]): any[] {
+    const lanes: any[] = [];
+    responses.forEach((response) => {
+      const flipperData = response?.flipperData || [];
+      const latestFaultStart = response?.latestFaultStart ?? null;
+      if (flipperData.length > 0) {
+        lanes.push(...flipperData.map((item: any) => ({ ...item, latestFaultStart })));
+      }
+    });
+
+    return lanes.sort((a, b) => {
+      const machineOrderDiff = this.machineOrderValue(a) - this.machineOrderValue(b);
+      if (machineOrderDiff !== 0) return machineOrderDiff;
+
+      const stationA = Number(a?.station) || 0;
+      const stationB = Number(b?.station) || 0;
+      if (stationA !== stationB) return stationA - stationB;
+
+      const operatorA = String(a?.operator || '');
+      const operatorB = String(b?.operator || '');
+      return operatorA.localeCompare(operatorB);
+    });
+  }
+
+  private machineOrderValue(lane: any): number {
+    const machineName = String(lane?.machine || '');
+    const lplMatch = machineName.match(/LPL\s*(\d+)/i);
+    if (lplMatch) {
+      const n = Number(lplMatch[1]);
+      if (Number.isFinite(n)) return -n;
+    }
+
+    const serial = Number(lane?.machineSerial);
+    if (Number.isFinite(serial)) return -serial;
+    return Number.MAX_SAFE_INTEGER;
   }
 
   ngOnDestroy() {
