@@ -59,35 +59,12 @@ module.exports = function (server) {
   async function resolveOperatorDisplayName(operator, serialNum) {
     const operatorId = Number(operator?.id);
     if (!Number.isFinite(operatorId) || operatorId <= 0) return 'Unknown';
-
-    const machineSerial = Number(serialNum);
-    const machineSerialStr = String(serialNum);
-
-    const recentCount = await db.collection(countCollectionName).findOne(
-      {
-        'operator.id': operatorId,
-        $or: [
-          { 'machine.serial': machineSerial },
-          { 'machine.serial': machineSerialStr },
-          { 'machine.id': machineSerial },
-          { 'machine.id': machineSerialStr }
-        ]
-      },
-      {
-        sort: { timestamp: -1 },
-        projection: {
-          'operator.name': 1,
-          'operator.id': 1,
-          'machine.serial': 1,
-          'machine.id': 1,
-          timestamp: 1
-        }
-      }
+    const operatorRow = await db.collection('operator').findOne(
+      { code: operatorId, active: { $ne: false } },
+      { projection: { code: 1, name: 1 } }
     );
-    const countName = normalizeOperatorName(recentCount?.operator?.name);
-    if (countName) return countName;
-
-    return `Operator ${operatorId}`;
+    const operatorName = normalizeOperatorName(operatorRow?.name);
+    return operatorName || `Operator ${operatorId}`;
   }
 
   async function buildOperatorNameMap(serialNum, laneOperators) {
@@ -100,7 +77,7 @@ module.exports = function (server) {
     if (!operatorIds.length) return new Map();
 
     const nameMap = new Map();
-    const operatorRows = await db.collection('operators')
+    const operatorRows = await db.collection('operator')
       .find(
         { code: { $in: operatorIds }, active: { $ne: false } },
         { projection: { code: 1, name: 1 } }
@@ -108,39 +85,6 @@ module.exports = function (server) {
       .toArray();
     for (const row of operatorRows) {
       const id = Number(row?.code);
-      const name = normalizeOperatorName(row?.name);
-      if (Number.isFinite(id) && id > 0 && name) {
-        nameMap.set(id, name);
-      }
-    }
-
-    const unresolvedIds = operatorIds.filter(id => !nameMap.has(id));
-    if (!unresolvedIds.length) return nameMap;
-
-    const machineSerial = Number(serialNum);
-    const machineSerialStr = String(serialNum);
-    const latestCounts = await db.collection(countCollectionName).aggregate([
-      {
-        $match: {
-          'operator.id': { $in: unresolvedIds },
-          $or: [
-            { 'machine.serial': machineSerial },
-            { 'machine.serial': machineSerialStr },
-            { 'machine.id': machineSerial },
-            { 'machine.id': machineSerialStr }
-          ]
-        }
-      },
-      { $sort: { timestamp: -1 } },
-      {
-        $group: {
-          _id: '$operator.id',
-          name: { $first: '$operator.name' }
-        }
-      }
-    ]).toArray();
-    for (const row of latestCounts) {
-      const id = Number(row?._id);
       const name = normalizeOperatorName(row?.name);
       if (Number.isFinite(id) && id > 0 && name) {
         nameMap.set(id, name);
@@ -773,36 +717,55 @@ module.exports = function (server) {
       const laneCount = Math.max(1, configuredLaneCount);
 
       const operatorsByStation = new Map();
-      const unassignedOperators = [];
       for (const op of onMachineOperators) {
         const station = Number(op?.station);
         if (Number.isFinite(station) && station >= 1 && station <= laneCount && !operatorsByStation.has(station)) {
           operatorsByStation.set(station, op);
-        } else {
-          unassignedOperators.push(op);
         }
       }
       const laneOperators = Array.from({ length: laneCount }, (_, idx) => {
         const station = idx + 1;
-        return operatorsByStation.get(station) || unassignedOperators.shift() || null;
+        return operatorsByStation.get(station) || null;
       });
 
       console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Rendering ${laneOperators.length} lanes. Status code: ${statusCode}`);
 
       const nowLuxon = DateTime.now();
+      const currentItemName =
+        ticker.item?.name ||
+        (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
+        '';
+      const operatorNameMap = await buildOperatorNameMap(serialNum, laneOperators);
+      const machineSerialForResponse = Number(ticker.machine?.serial ?? ticker.machine?.id ?? serialNum);
+      const machineNameForResponse = ticker.machine?.name || `Serial ${serialNum}`;
+
+      function buildOfflineLanePayload(station) {
+        return {
+          status: -1,
+          fault: 'Offline',
+          operator: null,
+          operatorId: null,
+          station,
+          machineSerial: machineSerialForResponse,
+          machine: machineNameForResponse,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: buildZeroEfficiencyPayload(),
+          batch: { item: '', code: 0 }
+        };
+      }
 
       // If machine is NOT running, mirror behavior with 0% efficiency/OEE but use ticker for batch
       if (statusCode !== 1) {
         console.log(`[PERF] [${serialNum}] Machine NOT running (state-based) - processing ${onMachineOperators.length} operators`);
         const notRunningStartTime = Date.now();
 
-        const currentItemName =
-          ticker.item?.name ||
-          (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
-          '';
+        const performanceData = laneOperators.map((op, idx) => {
+          if (!op?.id) {
+            return buildOfflineLanePayload(idx + 1);
+          }
 
-      const operatorNameMap = await buildOperatorNameMap(serialNum, laneOperators);
-      const performanceData = laneOperators.map((op, idx) => {
           const operatorId = Number(op?.id);
           const operatorName =
             op && Number.isFinite(operatorId) && operatorId > 0
@@ -815,8 +778,8 @@ module.exports = function (server) {
             operator: operatorName,
             operatorId: op?.id ?? null,
             station: Number(op?.station) || idx + 1,
-            machineSerial: Number(ticker.machine?.serial ?? ticker.machine?.id ?? serialNum),
-            machine: ticker.machine?.name || `Serial ${serialNum}`,
+            machineSerial: machineSerialForResponse,
+            machine: machineNameForResponse,
             timers: { on: 0, ready: 0 },
             displayTimers: { on: '', run: '' },
             efficiency: buildZeroEfficiencyPayload(),
@@ -842,69 +805,60 @@ module.exports = function (server) {
 
       const stateCollectionName = 'state';
       const countCollectionName = 'count';
+      const machineStateFilter = {
+        $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }]
+      };
+      const earliestWindowStart = frames.today.start.toJSDate();
+      const windowEnd = nowLuxon.toJSDate();
 
-      // Clamp cycle to window and return duration in ms (same idea as operator-item-states-summary)
-      function clampCycleToWindow(cycle, windowStart, windowEnd) {
-        const start = new Date(cycle.start).getTime();
-        const end = new Date(cycle.end).getTime();
-        const wStart = new Date(windowStart).getTime();
-        const wEnd = new Date(windowEnd).getTime();
-        const clampedStart = Math.max(start, wStart);
-        const clampedEnd = Math.min(end, wEnd);
-        return Math.max(0, clampedEnd - clampedStart);
+      function normalizeStateDoc(stateDoc) {
+        const next = { ...stateDoc };
+        if (next.machine && next.machine.id != null && next.machine.serial == null) {
+          next.machine = { ...next.machine, serial: next.machine.id };
+        }
+        if (Array.isArray(next.operators)) {
+          next.operators = next.operators.map(op => {
+            const maybeNumericId = Number(op?.id);
+            const maybeNumericStation = Number(op?.station);
+            return {
+              ...op,
+              id: Number.isFinite(maybeNumericId) ? maybeNumericId : op?.id,
+              station: Number.isFinite(maybeNumericStation) ? maybeNumericStation : op?.station
+            };
+          });
+        } else {
+          next.operators = [];
+        }
+        if (next.status && typeof next.status.code !== 'number' && typeof next.status.id === 'number') {
+          next.status = { ...next.status, code: next.status.id };
+        }
+        return next;
       }
 
-      async function computeWindowFromStateAndCount(operatorId, station, frameKey) {
-        const frame = frames[frameKey];
-        const windowStart = frame.start.toJSDate();
-        const windowEnd = nowLuxon.toJSDate();
-        const { paddedStart, paddedEnd } = createPaddedTimeRange(windowStart, windowEnd);
-        const normalizedOperatorId = Number(operatorId);
-        const normalizedStation = Number(station);
-        const hasStation = Number.isFinite(normalizedStation) && normalizedStation > 0;
-        const operatorIdCandidates = [normalizedOperatorId, String(normalizedOperatorId)].filter(
-          (v, idx, arr) => Number.isFinite(normalizedOperatorId) && arr.indexOf(v) === idx
-        );
-        const operatorMatcher =
-          operatorIdCandidates.length > 1
-            ? { $in: operatorIdCandidates }
-            : operatorIdCandidates[0];
+      function normalizeCountDoc(countDoc) {
+        const next = { ...countDoc };
+        if (next.machine && next.machine.id != null && next.machine.serial == null) {
+          next.machine = { ...next.machine, serial: next.machine.id };
+        }
+        if (next.operator && next.operator.id != null) {
+          const maybeNumericId = Number(next.operator.id);
+          if (Number.isFinite(maybeNumericId)) {
+            next.operator = { ...next.operator, id: maybeNumericId };
+          }
+        }
+        const normalizedStation = Number(next.station ?? next.lane);
+        if (Number.isFinite(normalizedStation) && normalizedStation > 0) {
+          next.station = normalizedStation;
+        }
+        return next;
+      }
 
-        // 1) Fetch states from "state" (same as operator-item-states-summary)
-        const stateQuery = {
-          timestamp: { $gte: paddedStart, $lte: paddedEnd },
-          $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }],
-          'operators.id': operatorMatcher
-        };
-        let allStates = await db
-          .collection(stateCollectionName)
-          .find(stateQuery)
-          .project({ timestamp: 1, status: 1, machine: 1, program: 1, operators: 1 })
-          .toArray();
-        allStates = allStates.map(s => {
-          if (s.machine && s.machine.id != null && s.machine.serial == null) {
-            s.machine = { ...s.machine, serial: s.machine.id };
-          }
-          if (Array.isArray(s.operators)) {
-            s.operators = s.operators.map(op => {
-              const maybeNumericId = Number(op?.id);
-              if (Number.isFinite(maybeNumericId) && op?.id !== maybeNumericId) {
-                return { ...op, id: maybeNumericId };
-              }
-              return op;
-            });
-          }
-          if (s.status && typeof s.status.code !== 'number' && typeof s.status.id === 'number') {
-            s.status = { ...s.status, code: s.status.id };
-          }
-          return s;
-        });
-
+      function dedupeStateDocs(stateDocs) {
         const dedupedStates = [];
         const seenStateKeys = new Set();
-        for (const stateDoc of allStates) {
+        for (const stateDoc of stateDocs) {
           const timestamp = stateDoc?.timestamp ? new Date(stateDoc.timestamp).toISOString() : '';
-          const statusCode = stateDoc?.status?.code ?? stateDoc?.status?.id ?? '';
+          const stateStatusCode = stateDoc?.status?.code ?? stateDoc?.status?.id ?? '';
           const machineSerial = stateDoc?.machine?.serial ?? stateDoc?.machine?.id ?? '';
           const operatorSignature = Array.isArray(stateDoc?.operators)
             ? stateDoc.operators
@@ -912,74 +866,20 @@ module.exports = function (server) {
                 .sort()
                 .join('|')
             : '';
-          const dedupeKey = `${timestamp}|${statusCode}|${machineSerial}|${operatorSignature}`;
+          const dedupeKey = `${timestamp}|${stateStatusCode}|${machineSerial}|${operatorSignature}`;
           if (seenStateKeys.has(dedupeKey)) continue;
           seenStateKeys.add(dedupeKey);
           dedupedStates.push(stateDoc);
         }
-
-        const states = dedupedStates.filter(stateDoc => {
-          if (!Array.isArray(stateDoc?.operators)) return false;
-          return stateDoc.operators.some(op => {
-            const opId = Number(op?.id);
-            const opStation = Number(op?.station);
-            if (opId !== normalizedOperatorId) return false;
-            if (hasStation) return opStation === normalizedStation;
-            return true;
-          });
-        });
-        const sortedStates = [...states].sort(
+        return dedupedStates.sort(
           (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
+      }
 
-        const runCycles = getCompletedCyclesForOperator(states);
-        let runtimeMs = runCycles.reduce(
-          (acc, cycle) => acc + clampCycleToWindow(cycle, windowStart, windowEnd),
-          0
-        );
-
-        // Open cycle: if machine is still in Run at end of window, extend last run to windowEnd (we're in running path)
-        if (sortedStates.length > 0) {
-          const lastState = sortedStates[sortedStates.length - 1];
-          const lastCode = lastState.status?.code ?? lastState.status?.id;
-          if (lastCode === 1) {
-            const runStart = new Date(lastState.timestamp).getTime();
-            const openCycle = { start: new Date(runStart), end: windowEnd };
-            runtimeMs += clampCycleToWindow(openCycle, windowStart, windowEnd);
-          }
-        }
-
-        const runtimeSec = runtimeMs / 1000;
-
-        // 2) Fetch counts from "count" (same as operator-item-states-summary)
-        const countQuery = {
-          timestamp: { $gte: windowStart, $lte: windowEnd },
-          $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }],
-          'operator.id': operatorMatcher
-        };
-        if (hasStation) {
-          countQuery.station = normalizedStation;
-        }
-        const allCountsRaw = await db
-          .collection(countCollectionName)
-          .find(countQuery)
-          .toArray();
-        const allCounts = allCountsRaw.map(c => {
-          const next = { ...c };
-          if (next.machine && next.machine.id != null && next.machine.serial == null) {
-            next.machine = { ...next.machine, serial: next.machine.id };
-          }
-          if (next.operator && next.operator.id != null) {
-            const maybeNumericId = Number(next.operator.id);
-            if (Number.isFinite(maybeNumericId) && next.operator.id !== maybeNumericId) {
-              next.operator = { ...next.operator, id: maybeNumericId };
-            }
-          }
-          return next;
-        });
+      function dedupeCountDocs(countDocs) {
         const dedupedCounts = [];
         const seenCountKeys = new Set();
-        for (const countDoc of allCounts) {
+        for (const countDoc of countDocs) {
           const ts = countDoc?.timestamp ? new Date(countDoc.timestamp).toISOString() : '';
           const opId = Number(countDoc?.operator?.id);
           const serial = Number(countDoc?.machine?.serial ?? countDoc?.machine?.id);
@@ -991,15 +891,102 @@ module.exports = function (server) {
           seenCountKeys.add(dedupeKey);
           dedupedCounts.push(countDoc);
         }
+        return dedupedCounts.sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      }
 
-        const validCounts = dedupedCounts.filter(c => !c.misfeed);
-        const misfeedCounts = dedupedCounts.filter(c => !!c.misfeed);
+      function stateHasOperatorAtStation(stateDoc, operatorId, station) {
+        return Array.isArray(stateDoc?.operators) && stateDoc.operators.some(op => (
+          Number(op?.id) === operatorId &&
+          Number(op?.station) === station
+        ));
+      }
 
-        // Mirror session-summary math: efficiencyRatio = timeCreditSec / runtimeSec.
+      const previousStateRaw = await db
+        .collection(stateCollectionName)
+        .findOne(
+          {
+            ...machineStateFilter,
+            timestamp: { $lt: earliestWindowStart }
+          },
+          {
+            sort: { timestamp: -1 },
+            projection: { timestamp: 1, status: 1, machine: 1, program: 1, operators: 1 }
+          }
+        );
+
+      const allStatesRaw = await db
+        .collection(stateCollectionName)
+        .find({
+          ...machineStateFilter,
+          timestamp: { $gte: earliestWindowStart, $lte: windowEnd }
+        })
+        .project({ timestamp: 1, status: 1, machine: 1, program: 1, operators: 1 })
+        .toArray();
+
+      const machineStates = dedupeStateDocs(
+        [
+          ...(previousStateRaw ? [normalizeStateDoc(previousStateRaw)] : []),
+          ...allStatesRaw.map(normalizeStateDoc)
+        ]
+      );
+
+      const allCountsRaw = await db
+        .collection(countCollectionName)
+        .find({
+          ...machineStateFilter,
+          timestamp: { $gte: earliestWindowStart, $lte: windowEnd }
+        })
+        .toArray();
+      const machineCounts = dedupeCountDocs(allCountsRaw.map(normalizeCountDoc));
+
+      async function computeWindowFromStateAndCount(operatorId, station, frameKey) {
+        const frame = frames[frameKey];
+        const windowStart = frame.start.toJSDate();
+        const normalizedOperatorId = Number(operatorId);
+        const normalizedStation = Number(station);
+        if (!Number.isFinite(normalizedOperatorId) || normalizedOperatorId <= 0) {
+          return {
+            efficiency: { value: 0, label: frame.label, color: 'yellow' },
+            oee: { value: 0, label: frame.label, color: 'yellow' }
+          };
+        }
+
+        let runtimeMs = 0;
+        for (let i = 0; i < machineStates.length; i += 1) {
+          const stateDoc = machineStates[i];
+          const stateTime = new Date(stateDoc.timestamp);
+          if (stateTime >= windowEnd) break;
+
+          const nextStateTime = i + 1 < machineStates.length
+            ? new Date(machineStates[i + 1].timestamp)
+            : windowEnd;
+          const intervalStart = new Date(Math.max(stateTime.getTime(), windowStart.getTime()));
+          const intervalEnd = new Date(Math.min(nextStateTime.getTime(), windowEnd.getTime()));
+          if (intervalEnd <= intervalStart) continue;
+
+          const laneActiveInState = stateHasOperatorAtStation(stateDoc, normalizedOperatorId, normalizedStation);
+          const stateStatusCode = stateDoc?.status?.code ?? stateDoc?.status?.id ?? 0;
+          if (laneActiveInState && stateStatusCode === 1) {
+            runtimeMs += intervalEnd.getTime() - intervalStart.getTime();
+          }
+        }
+
+        const runtimeSec = runtimeMs / 1000;
+        const countsInWindow = machineCounts.filter(countDoc => {
+          const countTime = countDoc?.timestamp ? new Date(countDoc.timestamp) : null;
+          if (!countTime || countTime < windowStart || countTime > windowEnd) return false;
+          return (
+            Number(countDoc?.operator?.id) === normalizedOperatorId &&
+            Number(countDoc?.station ?? countDoc?.lane) === normalizedStation
+          );
+        });
+
+        const validCounts = countsInWindow.filter(c => !c.misfeed);
+        const misfeedCounts = countsInWindow.filter(c => !!c.misfeed);
         const totalTimeCreditSec = calculateTotalTimeCredit(validCounts);
-        const efficiencyRatio =
-          runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
-
+        const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
         const windowSec = (windowEnd.getTime() - windowStart.getTime()) / 1000;
         const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
         const validCount = validCounts.length;
@@ -1007,10 +994,8 @@ module.exports = function (server) {
         const throughput =
           validCount + misfeedCount > 0 ? validCount / (validCount + misfeedCount) : 0;
         const efficiencyPct = Math.round(efficiencyRatio * 100);
-
         const oeeVal = availability * efficiencyRatio * throughput;
         const oeePct = Math.round(oeeVal * 100);
-
         const color =
           efficiencyRatio >= 0.9 ? 'green' :
           efficiencyRatio >= 0.7 ? 'orange' :
@@ -1030,7 +1015,6 @@ module.exports = function (server) {
         };
       }
 
-      const operatorNameMap = await buildOperatorNameMap(serialNum, laneOperators);
       const performanceData = await Promise.all(
         laneOperators.map(async (op, idx) => {
           const operatorStartTime = Date.now();
@@ -1046,24 +1030,8 @@ module.exports = function (server) {
               oeeObj[frameKey] = oee;
             }
           } else {
-            for (const frameKey of ['lastSixMinutes', 'lastFifteenMinutes', 'lastHour', 'today']) {
-              efficiencyObj[frameKey] = {
-                value: 0,
-                label: frames[frameKey].label,
-                color: 'yellow'
-              };
-              oeeObj[frameKey] = {
-                value: 0,
-                label: frames[frameKey].label,
-                color: 'yellow'
-              };
-            }
+            return buildOfflineLanePayload(idx + 1);
           }
-
-          const currentItemName =
-            ticker.item?.name ||
-            (Array.isArray(ticker.program?.items) && ticker.program.items[0]?.name) ||
-            '';
 
           const operatorId = Number(op?.id);
           const operatorName =
@@ -1082,8 +1050,8 @@ module.exports = function (server) {
             operator: operatorName,
             operatorId: op?.id ?? null,
             station: Number(op?.station) || idx + 1,
-            machineSerial: Number(ticker.machine?.serial ?? ticker.machine?.id ?? serialNum),
-            machine: ticker.machine?.name || `Serial ${serialNum}`,
+            machineSerial: machineSerialForResponse,
+            machine: machineNameForResponse,
             timers: { on: 0, ready: 0 },
             displayTimers: { on: '', run: '' },
             efficiency: efficiencyObj,
