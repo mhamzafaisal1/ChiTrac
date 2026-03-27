@@ -427,6 +427,8 @@ module.exports = function (server) {
         return res.json([]);
       }
 
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+
       const machineSerials = machineTotals
         .map((record) => Number(record.machineSerial))
         .filter((serial) => Number.isFinite(serial));
