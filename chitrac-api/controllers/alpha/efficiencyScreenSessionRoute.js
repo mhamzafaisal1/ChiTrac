@@ -995,28 +995,10 @@ module.exports = function (server) {
         const validCounts = dedupedCounts.filter(c => !c.misfeed);
         const misfeedCounts = dedupedCounts.filter(c => !!c.misfeed);
 
-        const pairTotalCounts = validCounts.length;
-        const itemMap = groupCountsByItem(validCounts);
-
-        // Standards are seconds-per-piece, so convert to expected pieces-per-hour.
-        let proratedExpectedPph = 0;
-        if (pairTotalCounts > 0) {
-          for (const group of Object.values(itemMap)) {
-            if (!Array.isArray(group) || !group.length) continue;
-            const first = group[0];
-            const standardSecPerPiece = Number(first.item?.standard) || 0;
-            if (standardSecPerPiece <= 0) continue;
-            const expectedPph = 3600 / standardSecPerPiece;
-            const weight = group.length / pairTotalCounts;
-            proratedExpectedPph += weight * expectedPph;
-          }
-        }
-
-        // Efficiency = actual PPH / expected PPH.
-        const hours = runtimeMs / 3600000;
-        const operatorPph = hours > 0 ? pairTotalCounts / hours : 0;
+        // Mirror session-summary math: efficiencyRatio = timeCreditSec / runtimeSec.
+        const totalTimeCreditSec = calculateTotalTimeCredit(validCounts);
         const efficiencyRatio =
-          proratedExpectedPph > 0 ? operatorPph / proratedExpectedPph : 0;
+          runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
 
         const windowSec = (windowEnd.getTime() - windowStart.getTime()) / 1000;
         const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
