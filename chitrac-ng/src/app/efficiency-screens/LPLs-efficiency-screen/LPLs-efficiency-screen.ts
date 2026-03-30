@@ -117,7 +117,8 @@ export class LPLsEfficiencyScreenComponent implements OnInit, OnDestroy {
     });
 
     return lanes.sort((a, b) => {
-      const machineOrderDiff = this.machineOrderValue(a) - this.machineOrderValue(b);
+      // Higher LPL# first so left→right is LPL2, LPL1 (stations stay ascending within each machine)
+      const machineOrderDiff = this.machineOrderValue(b) - this.machineOrderValue(a);
       if (machineOrderDiff !== 0) return machineOrderDiff;
 
       const stationA = Number(a?.station) || 0;
