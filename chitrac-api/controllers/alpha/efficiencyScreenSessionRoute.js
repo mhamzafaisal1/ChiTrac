@@ -56,6 +56,28 @@ module.exports = function (server) {
     return '';
   }
 
+  function isIncludedOperatorId(rawId) {
+    const numericId = Number(rawId);
+    if (Number.isFinite(numericId)) return numericId > 0;
+    if (rawId == null) return false;
+    return String(rawId).trim().startsWith('9');
+  }
+
+  function operatorIdStartsWithNine(rawId) {
+    if (rawId == null) return false;
+    return String(rawId).trim().startsWith('9');
+  }
+
+  function preferNinePrefixOperators(operators) {
+    const ninePrefixOperators = operators.filter(op => operatorIdStartsWithNine(op?.id));
+    return ninePrefixOperators.length > 0 ? ninePrefixOperators : operators;
+  }
+
+  function describeOperatorForDebug(op) {
+    if (!op) return 'null-operator';
+    return `id=${op.id ?? 'null'} station=${op.station ?? 'null'}`;
+  }
+
   async function resolveOperatorDisplayName(operator, serialNum) {
     const operatorId = Number(operator?.id);
     if (!Number.isFinite(operatorId) || operatorId <= 0) return 'Unknown';
@@ -64,7 +86,7 @@ module.exports = function (server) {
       { projection: { code: 1, name: 1 } }
     );
     const operatorName = normalizeOperatorName(operatorRow?.name);
-    return operatorName || `Operator ${operatorId}`;
+    return operatorName || String(operatorId);
   }
 
   async function buildOperatorNameMap(serialNum, laneOperators) {
@@ -152,9 +174,9 @@ module.exports = function (server) {
     }
 
     // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
-    const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
-      .filter(op => op && Number(op.id) > 0)
-      .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
+    const onMachineOperators = preferNinePrefixOperators((Array.isArray(ticker.operators) ? ticker.operators : [])
+      .filter(op => op && isIncludedOperatorId(op.id))
+      .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2)));
     
     // Status schema uses 'id', but legacy code used 'code' - support both
     const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
@@ -425,7 +447,7 @@ module.exports = function (server) {
             const batchItemStartTime = Date.now();
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
             console.log(`[PERF] [${serialNum}] Operator ${op.id} batch item resolved in ${Date.now() - batchItemStartTime}ms`);
-            const operatorName = operatorNameMap.get(Number(op.id)) || `Operator ${op.id}`;
+            const operatorName = operatorNameMap.get(Number(op.id)) || String(op.id);
             return {
               status: statusCode, // Use 'code' in API response for backward compatibility
               fault: ticker.status?.name ?? 'Unknown',
@@ -655,14 +677,16 @@ module.exports = function (server) {
       }
 
       const serialNum = Number(serial);
+      const stateCollectionName = 'state';
       console.log(`[PERF] [${serialNum}] Route START - daily/machine-live-state-summary`);
-      console.log(`[PERF] [${serialNum}] Fetching ticker...`);
-      const tickerStartTime = Date.now();
+      console.log(`[PERF] [${serialNum}] Fetching latest state...`);
+      const stateStartTime = Date.now();
 
-      const ticker = await db.collection(stateTickerCollectionName)
+      const ticker = await db.collection(stateCollectionName)
         .findOne(
           { $or: [{ 'machine.id': serialNum }, { 'machine.serial': serialNum }] },
           {
+            sort: { timestamp: -1 },
             projection: {
               timestamp: 1,
               machine: 1,
@@ -674,7 +698,7 @@ module.exports = function (server) {
           }
         );
 
-      console.log(`[PERF] [${serialNum}] Ticker query completed in ${Date.now() - tickerStartTime}ms`);
+      console.log(`[PERF] [${serialNum}] Latest state query completed in ${Date.now() - stateStartTime}ms`);
 
       // No ticker: Offline - but still return flipperData structure
       if (!ticker) {
@@ -702,9 +726,27 @@ module.exports = function (server) {
       }
 
       // Build list of active operators from ticker (skip dummies; preserve existing station 2 skip for 67801/67802)
-      const onMachineOperators = (Array.isArray(ticker.operators) ? ticker.operators : [])
-        .filter(op => op && Number(op.id) > 0)
-        .filter(op => !([67801, 67802].includes(serialNum) && op.station === 2));
+      const rawTickerOperators = Array.isArray(ticker.operators) ? ticker.operators : [];
+      const validIdOperators = rawTickerOperators.filter(op => (
+        op &&
+        Number.isFinite(Number(op.id)) &&
+        Number(op.id) !== 0 &&
+        Number(op.id) !== -1
+      ));
+      const onMachineOperators = validIdOperators.filter(
+        op => !([67801, 67802].includes(serialNum) && op.station === 2)
+      );
+      console.log(
+        `[DEBUG] [${serialNum}] [daily/machine-live-state-summary] ` +
+        `operators raw=${rawTickerOperators.length} validId=${validIdOperators.length} ` +
+        `final=${onMachineOperators.length}`
+      );
+      console.log(
+        `[DEBUG] [${serialNum}] [daily/machine-live-state-summary] rawOperators=${rawTickerOperators.map(describeOperatorForDebug).join(' | ') || 'none'}`
+      );
+      console.log(
+        `[DEBUG] [${serialNum}] [daily/machine-live-state-summary] finalOperators=${onMachineOperators.map(describeOperatorForDebug).join(' | ') || 'none'}`
+      );
 
       const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
       const configuredLaneCount =
@@ -727,6 +769,9 @@ module.exports = function (server) {
         const station = idx + 1;
         return operatorsByStation.get(station) || null;
       });
+      console.log(
+        `[DEBUG] [${serialNum}] [daily/machine-live-state-summary] laneOperators=${laneOperators.map(describeOperatorForDebug).join(' | ') || 'none'}`
+      );
 
       console.log(`[PERF] [${serialNum}] Found ${onMachineOperators.length} operators. Rendering ${laneOperators.length} lanes. Status code: ${statusCode}`);
 
@@ -769,7 +814,7 @@ module.exports = function (server) {
           const operatorId = Number(op?.id);
           const operatorName =
             op && Number.isFinite(operatorId) && operatorId > 0
-              ? (operatorNameMap.get(operatorId) || `Operator ${operatorId}`)
+              ? (operatorNameMap.get(operatorId) || String(operatorId))
               : null;
 
           return {
@@ -803,7 +848,6 @@ module.exports = function (server) {
         today: { start: nowLuxon.startOf('day'), label: 'All Day' }
       };
 
-      const stateCollectionName = 'state';
       const countCollectionName = 'count';
       const machineStateFilter = {
         $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }]
@@ -1036,7 +1080,7 @@ module.exports = function (server) {
           const operatorId = Number(op?.id);
           const operatorName =
             op && Number.isFinite(operatorId) && operatorId > 0
-              ? (operatorNameMap.get(operatorId) || `Operator ${operatorId}`)
+              ? (operatorNameMap.get(operatorId) || String(operatorId))
               : null;
 
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;

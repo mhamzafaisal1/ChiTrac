@@ -135,11 +135,11 @@ export class LPLsEfficiencyScreenComponent implements OnInit, OnDestroy {
     const lplMatch = machineName.match(/LPL\s*(\d+)/i);
     if (lplMatch) {
       const n = Number(lplMatch[1]);
-      if (Number.isFinite(n)) return -n;
+      if (Number.isFinite(n)) return n;
     }
 
     const serial = Number(lane?.machineSerial);
-    if (Number.isFinite(serial)) return -serial;
+    if (Number.isFinite(serial)) return serial;
     return Number.MAX_SAFE_INTEGER;
   }
 
