@@ -677,6 +677,321 @@ module.exports = function (server) {
       }
 
       const serialNum = Number(serial);
+      const machineFilter = {
+        $or: [{ 'machine.serial': serialNum }, { 'machine.id': serialNum }]
+      };
+
+      // Live ticker: most recent state record that has a status field.
+      // Many state records are program-only heartbeats with no status — skip those.
+      const ticker = await db.collection('state').findOne(
+        { ...machineFilter, status: { $exists: true, $ne: null } },
+        {
+          sort: { timestamp: -1 },
+          projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 }
+        }
+      );
+
+      if (!ticker) {
+        const machineConfig = await db.collection('machines').findOne(
+          { serial: serialNum },
+          { projection: { name: 1 } }
+        );
+        return res.json({
+          flipperData: [{
+            status: -1,
+            fault: 'Offline',
+            operator: null,
+            operatorId: null,
+            station: 1,
+            machineSerial: serialNum,
+            machine: machineConfig?.name || `Serial ${serialNum}`,
+            timers: { on: 0, ready: 0 },
+            displayTimers: { on: '', run: '' },
+            efficiency: buildZeroEfficiencyPayload(),
+            oee: buildZeroEfficiencyPayload(),
+            batch: { item: '', code: 0 }
+          }]
+        });
+      }
+
+      const statusCode = ticker.status?.code ?? ticker.status?.id ?? 0;
+      const machineSerial = Number(ticker.machine?.serial ?? ticker.machine?.id ?? serialNum);
+      const machineName = ticker.machine?.name || `Serial ${serialNum}`;
+
+      // Build per-station operator list from ticker
+      const rawOperators = Array.isArray(ticker.operators) ? ticker.operators : [];
+      const validOperators = rawOperators.filter(op =>
+        op &&
+        Number.isFinite(Number(op.id)) &&
+        Number(op.id) !== 0 &&
+        Number(op.id) !== -1
+      );
+
+      const laneCount = Math.max(1,
+        Number(ticker.machine?.lanes) ||
+        Number(ticker.machine?.stations) ||
+        Number(ticker.program?.stations) ||
+        1
+      );
+
+      const operatorsByStation = new Map();
+      for (const op of validOperators) {
+        const station = Number(op.station);
+        if (Number.isFinite(station) && station >= 1 && station <= laneCount && !operatorsByStation.has(station)) {
+          operatorsByStation.set(station, op);
+        }
+      }
+
+      const laneOperators = Array.from({ length: laneCount }, (_, idx) =>
+        operatorsByStation.get(idx + 1) || null
+      );
+
+      // Build operator name map (single DB round-trip for all operator IDs)
+      const operatorIds = [...new Set(
+        laneOperators.filter(Boolean).map(op => Number(op.id)).filter(id => Number.isFinite(id) && id > 0)
+      )];
+      const nameMap = new Map();
+      if (operatorIds.length > 0) {
+        const rows = await db.collection('operator')
+          .find({ code: { $in: operatorIds }, active: { $ne: false } }, { projection: { code: 1, name: 1 } })
+          .toArray();
+        for (const row of rows) {
+          const name = normalizeOperatorName(row?.name);
+          if (name) nameMap.set(Number(row.code), name);
+        }
+      }
+
+      function getOperatorDisplayName(op) {
+        if (!op) return null;
+        const id = Number(op.id);
+        return nameMap.get(id) || String(op.id);
+      }
+
+      function buildOfflineLanePayload(station) {
+        return {
+          status: -1,
+          fault: 'Offline',
+          operator: null,
+          operatorId: null,
+          station,
+          machineSerial,
+          machine: machineName,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: buildZeroEfficiencyPayload(),
+          batch: { item: '', code: 0 }
+        };
+      }
+
+      function buildZeroLanePayload(station, op, itemName) {
+        return {
+          status: statusCode,
+          fault: ticker.status?.name ?? 'Unknown',
+          operator: getOperatorDisplayName(op),
+          operatorId: op?.id ?? null,
+          station,
+          machineSerial,
+          machine: machineName,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: buildZeroEfficiencyPayload(),
+          batch: { item: itemName || '', code: 0 }
+        };
+      }
+
+      // Machine not running (timeout code=0/2, fault code>2) → zero efficiency
+      if (statusCode !== 1) {
+        const todayStart = DateTime.now().startOf('day').toJSDate();
+
+        // Single count query to get latest item name per operator/station
+        const countsForItems = await db.collection('count')
+          .find({ ...machineFilter, timestamp: { $gte: todayStart } })
+          .project({ 'operator.id': 1, station: 1, lane: 1, 'item.name': 1, timestamp: 1 })
+          .sort({ timestamp: -1 })
+          .toArray();
+
+        function getLatestItemNameNotRunning(operatorId, station) {
+          const match = countsForItems.find(c =>
+            Number(c.operator?.id) === operatorId &&
+            Number(c.station ?? c.lane) === station
+          );
+          return match?.item?.name || '';
+        }
+
+        const performanceData = laneOperators.map((op, idx) => {
+          const station = idx + 1;
+          if (!op) return buildOfflineLanePayload(station);
+          return buildZeroLanePayload(station, op, getLatestItemNameNotRunning(Number(op.id), Number(op.station)));
+        });
+
+        console.log(`[machine-live-state-summary] [${serialNum}] Not running (code=${statusCode}). Total: ${Date.now() - routeStartTime}ms`);
+        return res.json({ flipperData: performanceData });
+      }
+
+      // Machine running → compute efficiency from status-bearing state records + counts
+      const nowLuxon = DateTime.now();
+      const frames = {
+        lastSixMinutes: { start: nowLuxon.minus({ minutes: 6 }), label: 'Last 6 Mins' },
+        lastFifteenMinutes: { start: nowLuxon.minus({ minutes: 15 }), label: 'Last 15 Mins' },
+        lastHour: { start: nowLuxon.minus({ hours: 1 }), label: 'Last Hour' },
+        today: { start: nowLuxon.startOf('day'), label: 'All Day' }
+      };
+      const windowEnd = nowLuxon.toJSDate();
+      const todayStart = frames.today.start.toJSDate();
+
+      // Fetch in parallel: last status-bearing state before today, all status-bearing states today, all counts today
+      const [prevStatusState, todayStatusStates, allCounts] = await Promise.all([
+        db.collection('state').findOne(
+          { ...machineFilter, status: { $exists: true, $ne: null }, timestamp: { $lt: todayStart } },
+          { sort: { timestamp: -1 }, projection: { timestamp: 1, status: 1, operators: 1 } }
+        ),
+        db.collection('state')
+          .find(
+            { ...machineFilter, status: { $exists: true, $ne: null }, timestamp: { $gte: todayStart, $lte: windowEnd } },
+            { projection: { timestamp: 1, status: 1, operators: 1 } }
+          )
+          .sort({ timestamp: 1 })
+          .toArray(),
+        db.collection('count')
+          .find({ ...machineFilter, timestamp: { $gte: todayStart, $lte: windowEnd } })
+          .toArray()
+      ]);
+
+      // Build a chronological array of status-bearing state entries only.
+      // Each entry is valid for the interval from its timestamp until the next entry.
+      // Program-only heartbeat records (no status field) are intentionally excluded
+      // to avoid falsely crediting zero-runtime intervals between them.
+      const statusStates = [
+        ...(prevStatusState ? [prevStatusState] : []),
+        ...todayStatusStates
+      ].map(s => ({
+        timestamp: new Date(s.timestamp),
+        code: s.status?.code ?? s.status?.id ?? 0,
+        operators: Array.isArray(s.operators) ? s.operators : []
+      })).sort((a, b) => a.timestamp - b.timestamp);
+
+      function computeRuntime(operatorId, station, windowStart) {
+        let runtimeMs = 0;
+        for (let i = 0; i < statusStates.length; i++) {
+          const entry = statusStates[i];
+          if (entry.timestamp >= windowEnd) break;
+
+          const nextTime = i + 1 < statusStates.length
+            ? statusStates[i + 1].timestamp
+            : windowEnd;
+
+          const intervalStart = new Date(Math.max(entry.timestamp.getTime(), windowStart.getTime()));
+          const intervalEnd = new Date(Math.min(nextTime.getTime(), windowEnd.getTime()));
+          if (intervalEnd <= intervalStart) continue;
+
+          const operatorAtStation = entry.operators.some(op =>
+            Number(op.id) === operatorId && Number(op.station) === station
+          );
+          if (entry.code === 1 && operatorAtStation) {
+            runtimeMs += intervalEnd.getTime() - intervalStart.getTime();
+          }
+        }
+        return runtimeMs / 1000;
+      }
+
+      function computeWindowEfficiency(operatorId, station, frameKey) {
+        const frame = frames[frameKey];
+        const windowStart = frame.start.toJSDate();
+        const windowSec = (windowEnd.getTime() - windowStart.getTime()) / 1000;
+        const runtimeSec = computeRuntime(operatorId, station, windowStart);
+
+        const countsInWindow = allCounts.filter(c => {
+          const t = c.timestamp ? new Date(c.timestamp) : null;
+          if (!t || t < windowStart || t > windowEnd) return false;
+          return (
+            Number(c.operator?.id) === operatorId &&
+            Number(c.station ?? c.lane) === station
+          );
+        });
+
+        const validCounts = countsInWindow.filter(c => !c.misfeed);
+        const misfeedCounts = countsInWindow.filter(c => !!c.misfeed);
+        const totalTimeCreditSec = calculateTotalTimeCredit(validCounts);
+
+        const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+        const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+        const throughput = (validCounts.length + misfeedCounts.length) > 0
+          ? validCounts.length / (validCounts.length + misfeedCounts.length)
+          : 0;
+
+        const efficiencyPct = Math.round(efficiencyRatio * 100);
+        const oeePct = Math.round(availability * efficiencyRatio * throughput * 100);
+        const color = efficiencyRatio >= 0.9 ? 'green' : efficiencyRatio >= 0.7 ? 'orange' : 'yellow';
+
+        return {
+          efficiency: { value: efficiencyPct, label: frame.label, color },
+          oee: { value: oeePct, label: frame.label, color }
+        };
+      }
+
+      function getLatestItemName(operatorId, station) {
+        return allCounts
+          .filter(c =>
+            Number(c.operator?.id) === operatorId &&
+            Number(c.station ?? c.lane) === station
+          )
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]?.item?.name || '';
+      }
+
+      const performanceData = laneOperators.map((op, idx) => {
+        const station = idx + 1;
+        if (!op) return buildOfflineLanePayload(station);
+
+        const operatorId = Number(op.id);
+        const stationNum = Number(op.station);
+        const efficiencyObj = {};
+        const oeeObj = {};
+
+        for (const frameKey of ['lastSixMinutes', 'lastFifteenMinutes', 'lastHour', 'today']) {
+          const { efficiency, oee } = computeWindowEfficiency(operatorId, stationNum, frameKey);
+          efficiencyObj[frameKey] = efficiency;
+          oeeObj[frameKey] = oee;
+        }
+
+        return {
+          status: statusCode,
+          fault: ticker.status?.name ?? 'Unknown',
+          operator: getOperatorDisplayName(op),
+          operatorId: op.id,
+          station: stationNum,
+          machineSerial,
+          machine: machineName,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: '', run: '' },
+          efficiency: efficiencyObj,
+          oee: oeeObj,
+          batch: { item: getLatestItemName(operatorId, stationNum), code: 0 }
+        };
+      });
+
+      console.log(`[machine-live-state-summary] [${serialNum}] Running. Total: ${Date.now() - routeStartTime}ms`);
+      return res.json({ flipperData: performanceData });
+    } catch (err) {
+      console.error(`[machine-live-state-summary] [${req.query.serial || 'unknown'}] ERROR:`, err);
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DEAD CODE BELOW — kept as reference until route is verified in production
+  if (false) { // eslint-disable-line no-constant-condition
+  router.get('/analytics/daily/machine-live-state-summary--OLD', async (req, res) => {
+    const routeStartTime = Date.now();
+
+    try {
+      const { serial } = req.query;
+      if (!serial) {
+        return res.status(400).json({ error: 'Missing serial' });
+      }
+
+      const serialNum = Number(serial);
       const stateCollectionName = 'state';
       console.log(`[PERF] [${serialNum}] Route START - daily/machine-live-state-summary`);
       console.log(`[PERF] [${serialNum}] Fetching latest state...`);
@@ -1113,6 +1428,7 @@ module.exports = function (server) {
       return res.status(500).json({ error: 'Internal server error' });
     }
   });
+  } // end dead-code block
 
 
   router.get('/machines/spf', async (req, res) => {
