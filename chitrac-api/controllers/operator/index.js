@@ -205,11 +205,18 @@ function constructor(server) {
   router.get('/operator/config/xml', getOperatorXML);
   router.get('/operator/config', getOperator);
   router.get('/operator/new-id', getNewOperatorId);
+  // /api/operator/... mount (same handlers; alpha mount keeps /operator/* paths)
+  router.get('/config/xml', getOperatorXML);
+  router.get('/config', getOperator);
+  router.get('/new-id', getNewOperatorId);
 
   // Protected routes - require JWT token
   router.post('/operator/config', verifyJwtMiddleware, createOperator);
   router.put('/operator/config/:id', verifyJwtMiddleware, upsertOperator);
   router.delete('/operator/config/:id', verifyJwtMiddleware, deleteOperator);
+  router.post('/config', verifyJwtMiddleware, createOperator);
+  router.put('/config/:id', verifyJwtMiddleware, upsertOperator);
+  router.delete('/config/:id', verifyJwtMiddleware, deleteOperator);
 
   // Operator analytics routes are defined below in this controller
 

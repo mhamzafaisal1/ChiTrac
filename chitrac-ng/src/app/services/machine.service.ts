@@ -8,7 +8,8 @@ import { HttpClient, HttpParams } from '@angular/common/http';
     providedIn: 'root'
 })
 export class MachineService {
-    private apiUrl = '/api/alpha';
+    private machineApiUrl = '/api/machine';
+    private alphaApiUrl = '/api/alpha';
     constructor(private http: HttpClient) { }
 
     getMachinesSummary(start: string, end: string): Observable<any> {
@@ -16,7 +17,7 @@ export class MachineService {
           .set('start', start)
           .set('end', end);
       
-        return this.http.get(`${this.apiUrl}/analytics/machines-summary-daily-cached`, { params });
+        return this.http.get(`${this.machineApiUrl}/analytics/machines-summary-daily-cached`, { params });
       }
 
       getMachineDetails(start: string, end: string, serial: number): Observable<any> {
@@ -25,14 +26,14 @@ export class MachineService {
           .set('end', end)
           .set('serial', serial.toString());
       
-        return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-daily-cached`, { params });
+        return this.http.get(`${this.machineApiUrl}/analytics/machine-dashboard-daily-cached`, { params });
       }
 
       getMachineSummaryWithTimeframe(timeframe: string): Observable<any> {
         const params = new HttpParams()
           .set('timeframe', timeframe);
       
-        return this.http.get(`${this.apiUrl}/analytics/machine-summary-timeframe`, { params });
+        return this.http.get(`${this.alphaApiUrl}/analytics/machine-summary-timeframe`, { params });
       }
     
     
@@ -42,7 +43,7 @@ export class MachineService {
           .set('timeframe', timeframe)
           .set('serial', serial.toString());
       
-        return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-cached`, { params });
+        return this.http.get(`${this.alphaApiUrl}/analytics/machine-dashboard-cached`, { params });
       }
       
 }

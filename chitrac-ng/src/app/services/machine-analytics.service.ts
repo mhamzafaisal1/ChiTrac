@@ -7,11 +7,13 @@ import { Observable } from 'rxjs';
 })
 export class MachineAnalyticsService {
   private apiUrl = '/api/alpha';
+  private machineApiUrl = '/api/machine';
+  private reportsApiUrl = '/api/reports';
 
   constructor(private http: HttpClient) {}
 
   getMachines(): Observable<any> {
-    return this.http.get('/api/alpha/machines');
+    return this.http.get(`${this.machineApiUrl}/machines/config`);
   }
 
   getMachineHourlyStates(machineSerial: string, endTime: string): Observable<any> {
@@ -84,7 +86,7 @@ export class MachineAnalyticsService {
   }
 
   getItemSessionSummary(start: string, end: string): Observable<any> {
-    return this.http.get('/api/alpha/analytics/item-sessions-summary-daily-cache', {
+    return this.http.get(`${this.reportsApiUrl}/analytics/item-sessions-summary-daily-cache`, {
       params: { start, end }
     });
   }
@@ -121,7 +123,7 @@ export class MachineAnalyticsService {
     if (shiftId) {
       params = params.set('shiftId', shiftId);
     }
-    return this.http.get(`${this.apiUrl}/analytics/machines-summary-daily-cached`, { params });
+    return this.http.get(`${this.machineApiUrl}/analytics/machines-summary-daily-cached`, { params });
   }
 
   getMachineSummaryWithTimeframe(timeframe: string, shiftId?: string | null): Observable<any> {
@@ -140,7 +142,7 @@ export class MachineAnalyticsService {
     if (shiftId) {
       params = params.set('shiftId', shiftId);
     }
-    return this.http.get(`${this.apiUrl}/analytics/machine-dashboard-daily-cached`, { params });
+    return this.http.get(`${this.machineApiUrl}/analytics/machine-dashboard-daily-cached`, { params });
   }
 
   getMachineDetailsWithTimeframe(timeframe: string, serial: number, shiftId?: string | null): Observable<any> {

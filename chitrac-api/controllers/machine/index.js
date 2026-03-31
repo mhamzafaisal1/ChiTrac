@@ -50,6 +50,22 @@ function constructor(server) {
 		}
 	}
 
+	async function getSpfMachines(req, res, next) {
+		try {
+			const machines = await collection
+				.find({
+					$or: [{ name: { $regex: /^SPF/i } }, { type: "SPF" }],
+					active: { $ne: false },
+				})
+				.project({ serial: 1, name: 1, active: 1 })
+				.sort({ name: 1 })
+				.toArray();
+			res.json(machines);
+		} catch (error) {
+			next(error);
+		}
+	}
+
 	// async function createMachine(req, res, next) {
 	// 	try {
 	// 	  const machine = req.body;
@@ -206,6 +222,7 @@ function constructor(server) {
 	/** GET routes */
 	router.get('/machines/config/xml', getMachineXML);
 	router.get('/machines/config', getMachine);
+	router.get("/machines/spf", getSpfMachines);
 
 	/** POST routes */
 	router.post('/machines/config', machineValidator, createMachine);
@@ -220,9 +237,12 @@ function constructor(server) {
 
   const getMachinesSummaryRealTimeHandler = getMachinesSummaryRealTime(db, logger, config);
 
-  // GET /api/alpha/analytics/machines-summary-daily-cached
+  // GET /api/alpha/analytics/machines-summary-daily-cached (legacy)
+  // GET /api/machine/analytics/machines-summary-daily-cached (controller route)
   // Returns daily machine summary from totals-daily cache; falls back to real-time if no cache.
-  router.get("/machines-summary-daily-cached", async (req, res) => {
+  router.get(
+    ["/machines-summary-daily-cached", "/analytics/machines-summary-daily-cached"],
+    async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
 
@@ -404,11 +424,15 @@ function constructor(server) {
       );
       return await getMachinesSummaryRealTimeHandler(req, res);
     }
-  });
+    }
+  );
 
-  // GET /api/alpha/analytics/machine-dashboard-daily-cached
+  // GET /api/alpha/analytics/machine-dashboard-daily-cached (legacy)
+  // GET /api/machine/analytics/machine-dashboard-daily-cached (controller route)
   // Returns machine dashboard from totals-daily and hourly-totals cache.
-  router.get("/machine-dashboard-daily-cached", async (req, res) => {
+  router.get(
+    ["/machine-dashboard-daily-cached", "/analytics/machine-dashboard-daily-cached"],
+    async (req, res) => {
     try {
       const serialParam =
         typeof req.query.serial !== "undefined"
@@ -582,7 +606,8 @@ function constructor(server) {
         .status(500)
         .json({ error: "Failed to fetch machine dashboard daily cache" });
     }
-  });
+    }
+  );
 
 
 	return router;
