@@ -19,7 +19,7 @@ export interface ItemAnalyticsRow {
   providedIn: 'root'
 })
 export class ItemService {
-  private apiUrl = '/api/alpha';
+  private apiUrl = '/api/item';
   constructor(private http: HttpClient) {}
 
   getItemAnalytics(startTime: string, endTime: string): Observable<ItemAnalyticsRow[]> {

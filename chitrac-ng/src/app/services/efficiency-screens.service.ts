@@ -6,18 +6,20 @@ import { Observable } from 'rxjs';
   providedIn: 'root'
 })
 export class EfficiencyScreensService {
+  private dashboardApiUrl = '/api/dashboard';
+
   constructor(private http: HttpClient) { }
 
   getLiveEfficiencySummary(serial: number): Observable<any> {
     const params = new HttpParams()
       .set('serial', serial.toString());
-    return this.http.get('/api/alpha/analytics/daily/machine-live-session-summary', { params });
+    return this.http.get(`${this.dashboardApiUrl}/analytics/daily/machine-live-session-summary`, { params });
   }
 
   getMachineLiveEfficiencySummary(serial: number): Observable<{ flipperData: any[] }> {
     const params = new HttpParams().set('serial', String(serial));
     return this.http.get<{ flipperData: any[] }>(
-      '/api/alpha/analytics/machine-live-session-summary/machine',
+      `${this.dashboardApiUrl}/analytics/machine-live-session-summary/machine`,
       { params }
     );
   }
@@ -26,10 +28,10 @@ export class EfficiencyScreensService {
     const params = new HttpParams()
       .set('serial', serial.toString())
       .set('station', station.toString());
-    return this.http.get('/api/alpha/analytics/machine-live-session-summary/operator', { params });
+    return this.http.get(`${this.dashboardApiUrl}/analytics/machine-live-session-summary/operator`, { params });
   }
 
   getSPFMachines(): Observable<any[]> {
-    return this.http.get<any[]>('/api/alpha/machines/spf');
+    return this.http.get<any[]>('/api/machine/machines/spf');
   }
 }

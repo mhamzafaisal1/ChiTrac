@@ -158,18 +158,23 @@ function constructor(server) {
 	router.get('/item/config/xml', getItemXML);
 	router.get('/item/config', getItem);
 	router.get('/item/new-id', getNewItemId);
+	// /api/item/... mount (same handlers; alpha mount keeps /item/* paths)
+	router.get('/config/xml', getItemXML);
+	router.get('/config', getItem);
+	router.get('/new-id', getNewItemId);
 
 	/** PUT routes */
 	// router.put('/items/config/:id', upsertItem);
 	// router.put('/item/config/:id', upsertItem);
 	router.post('/item/config', itemValidator, upsertItem);
 	router.put('/item/config/:id', itemValidator, upsertItem);
-
-
+	router.post('/config', itemValidator, upsertItem);
+	router.put('/config/:id', itemValidator, upsertItem);
 
 	/** DELETE routes */
 	router.delete('/items/config/:id', deleteItem);
 	router.delete('/item/config/:id', deleteItem);
+	router.delete('/config/:id', deleteItem);
 
 
 	// Item Routes 

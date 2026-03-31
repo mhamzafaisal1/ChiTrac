@@ -6,7 +6,8 @@ import { Observable } from 'rxjs';
   providedIn: 'root'
 })
 export class OperatorService {
-    private apiUrl = '/api/alpha';
+    private apiUrl = '/api/operator';
+    private alphaUrl = '/api/alpha';
   constructor(private http: HttpClient) { }
 
   getOperatorSummary(startTime: string, endTime: string): Observable<any> {
@@ -23,7 +24,7 @@ export class OperatorService {
       .set('end', end)
       .set('operatorId', operatorId.toString());
   
-    return this.http.get('/api/alpha/analytics/operator-details-cached', { params });
+    return this.http.get(`${this.apiUrl}/analytics/operator-details-cached`, { params });
   }
 
   
@@ -33,7 +34,7 @@ export class OperatorService {
       .set('end', end)
       .set('operatorId', operatorId.toString());
   
-    return this.http.get('/api/alpha/analytics/operator-machine-summary', { params });
+    return this.http.get(`${this.apiUrl}/analytics/operator-machine-summary`, { params });
   }
   
 
@@ -41,7 +42,7 @@ export class OperatorService {
     const params = new HttpParams()
       .set('timeframe', timeframe);
 
-    return this.http.get('/api/alpha/analytics/operator-summary-timeframe', { params });
+    return this.http.get(`${this.alphaUrl}/analytics/operator-summary-timeframe`, { params });
   }
 
   
@@ -51,6 +52,6 @@ export class OperatorService {
       .set('end', end)
       .set('operatorId', operatorId.toString());
   
-    return this.http.get('/api/alpha/analytics/operator-dashboard', { params });
+    return this.http.get(`${this.alphaUrl}/analytics/operator-dashboard`, { params });
   }
 }
