@@ -2,7 +2,7 @@
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
-import { DailyDashboardService } from '../../services/daily-dashboard.service';
+import { DashboardService } from '../../services/dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
@@ -49,7 +49,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   ];
 
   constructor(
-    private dailyDashboardService: DailyDashboardService,
+    private dashboardService: DashboardService,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService
   ) {
@@ -127,7 +127,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
 
   private pollOnce(): Observable<any> {
     this.endTime = this.pollingService.updateEndTimestampToNow();
-    return this.dailyDashboardService.getItemTotalsByType(this.startTime, this.endTime)
+    return this.dashboardService.getItemTotalsByType(this.startTime, this.endTime)
       .pipe(tap(this.consumeResponse('poll')));
   }
 
@@ -149,7 +149,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   private fetchOnce(): Observable<any> {
     if (!this.startTime || !this.endTime) return new Observable();
     this.isLoading = true;
-    return this.dailyDashboardService.getItemTotalsByType(this.startTime, this.endTime)
+    return this.dashboardService.getItemTotalsByType(this.startTime, this.endTime)
       .pipe(
         takeUntil(this.destroy$),
         tap(this.consumeResponse('once')),

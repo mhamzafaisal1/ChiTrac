@@ -22,14 +22,13 @@ import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
 import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-fault-history.component';
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
 import { BaseTableComponent } from "../components/base-table/base-table.component";
-import { MachineAnalyticsService } from '../services/machine-analytics.service';
-
+import { MachineService } from '../services/machine.service';
 import { OperatorCountbyitemChartComponent } from "../operator-countbyitem-chart/operator-countbyitem-chart.component";
 import { getStatusDot } from '../../utils/status-utils';
-import { DailyDashboardService } from '../services/daily-dashboard.service';
+import { DashboardService } from '../services/dashboard.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
-import { OperatorAnalyticsService } from '../services/operator-analytics.service';
+import { OperatorService } from '../services/operator.service';
 
 @Component({
     selector: "app-daily-summary-dashboard",
@@ -81,13 +80,13 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   constructor(
     private renderer: Renderer2,
     private elRef: ElementRef,
-    private dailyDashboardService: DailyDashboardService,
+    private dashboardService: DashboardService,
     private dialog: MatDialog,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
     private cdr: ChangeDetectorRef,
-    private machineAnalyticsService: MachineAnalyticsService,
-    private operatorAnalyticsService: OperatorAnalyticsService
+    private machineService: MachineService,
+    private operatorService: OperatorService
   ) {}
 
   ngOnInit(): void {
@@ -542,7 +541,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
     
-    this.operatorAnalyticsService.getOperatorInfo(formattedStart, formattedEnd, operatorId)
+    this.operatorService.getOperatorDetails(formattedStart, formattedEnd, operatorId)
       .subscribe({
         next: (operatorDetails: any) => {
           // Format operator name if it's an object

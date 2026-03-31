@@ -16,7 +16,7 @@ import { MatDialog } from "@angular/material/dialog";
 import { Subject, tap, takeUntil } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
-import { MachineAnalyticsService } from "../services/machine-analytics.service";
+import { MachineService } from "../services/machine.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
@@ -97,7 +97,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
 
   constructor(
-    private analyticsService: MachineAnalyticsService,
+    private machineService: MachineService,
     private renderer: Renderer2,
     private elRef: ElementRef,
     private dialog: MatDialog,

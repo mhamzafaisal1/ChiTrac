@@ -54,7 +54,7 @@ export type FaultHistoryInclude = 'cycles' | 'summaries' | 'both';
 @Injectable({
   providedIn: 'root'
 })
-export class FaultHistoryService {
+export class FaultService {
   private apiUrl = '/api/alpha';
 
   constructor(private http: HttpClient) { }

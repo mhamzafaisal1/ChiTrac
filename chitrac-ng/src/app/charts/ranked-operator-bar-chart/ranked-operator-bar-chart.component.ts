@@ -2,7 +2,7 @@
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
-import { DailyDashboardService } from '../../services/daily-dashboard.service';
+import { DashboardService } from '../../services/dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
@@ -45,7 +45,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private cdr = inject(ChangeDetectorRef);
 
   constructor(
-    private dailyDashboardService: DailyDashboardService,
+    private dashboardService: DashboardService,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService
   ) {
@@ -133,7 +133,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
   private pollOnce(): Observable<any> {
     this.endTime = this.pollingService.updateEndTimestampToNow();
-    return this.dailyDashboardService.getDailyTopOperators(this.startTime, this.endTime)
+    return this.dashboardService.getDailyTopOperators(this.startTime, this.endTime)
       .pipe(tap(this.consumeResponse('poll')));
   }
 
@@ -159,7 +159,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private fetchOnce(): Observable<any> {
     if (!this.startTime || !this.endTime) return new Observable();
     this.isLoading = true;
-    return this.dailyDashboardService.getDailyTopOperators(this.startTime, this.endTime)
+    return this.dashboardService.getDailyTopOperators(this.startTime, this.endTime)
       .pipe(
         takeUntil(this.destroy$),
         tap(this.consumeResponse('once')),

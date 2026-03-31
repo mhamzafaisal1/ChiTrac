@@ -7,7 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
 
-import { OperatorCountbyitemService } from '../services/operator-countbyitem.service';
+import { OperatorService } from '../services/operator.service';
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
@@ -61,7 +61,7 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
   private observer!: MutationObserver;
 
   constructor(
-    private countByItemService: OperatorCountbyitemService,
+    private operatorService: OperatorService,
     private renderer: Renderer2,
     private elRef: ElementRef
   ) {}
@@ -256,13 +256,19 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
     this.loading = true;
     this.error = null;
 
-    this.countByItemService.getOperatorCountByItem(this.startTime, this.endTime, this.operatorId)
+    const formattedStart = new Date(this.startTime).toISOString();
+    const formattedEnd = new Date(this.endTime).toISOString();
+
+    this.operatorService
+      .getOperatorDetails(formattedStart, formattedEnd, this.operatorId!)
       .subscribe({
-        next: (data) => {
-          this.chartConfig = this.transformDataToCartesianConfig(data.data, data.operator?.name);
+        next: (details: any) => {
+          const countByItemData = details?.countByItem;
+          const operatorName = details?.operator?.name;
+          this.chartConfig = this.transformDataToCartesianConfig(countByItemData, operatorName);
           this.loading = false;
         },
-        error: (err) => {
+        error: (err: any) => {
           this.error = 'Failed to fetch data. Please try again.';
           this.loading = false;
           console.error('Error fetching operator count by item data:', err);

@@ -11,8 +11,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
-import { OperatorSummaryService } from '../../services/operator-summary.service';
-import { DailyDashboardService } from '../../services/daily-dashboard.service';
+import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 
 interface OperatorSummaryRow {
@@ -64,10 +63,9 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   }
 
   constructor(
-    private operatorSummaryService: OperatorSummaryService,
+    private reportsService: ReportsService,
     private renderer: Renderer2,
-    private elRef: ElementRef,
-    private dailyDashboardService: DailyDashboardService
+    private elRef: ElementRef
   ) {}
 
   ngOnInit(): void {
@@ -106,16 +104,15 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
 
-    // Fetch the detailed summary for the table
-    this.dailyDashboardService.getOperatorItemSessionsSummary(formattedStart, formattedEnd).subscribe({
+    // Fetch the operator report for the table
+    this.reportsService.getOperatorReport(formattedStart, formattedEnd).subscribe({
       next: (data: any) => {
-        // Process table data from the results
-        this.processTableData(data.results);
-        
+        const results = data?.results ?? (Array.isArray(data) ? data : []);
+        this.processTableData(results);
         this.isLoading = false;
       },
       error: (error: any) => {
-        console.error('Error fetching operator item summary:', error);
+        console.error('Error fetching operator report:', error);
         this.isLoading = false;
       }
     });

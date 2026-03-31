@@ -1,18 +1,4 @@
 <div class="chart-container" [class.dark-mode]="isDarkTheme">
-  <div class="controls" *ngIf="!isModal">
-    <app-date-time-picker [(value)]="startTime" label="Start Time"></app-date-time-picker>
-    <app-date-time-picker [(value)]="endTime" label="End Time"></app-date-time-picker>
-    <mat-form-field>
-      <mat-label>Operator ID</mat-label>
-      <input matInput type="number" [(ngModel)]="operatorId" placeholder="Enter operator ID" style="margin-top: 8px;">
-    </mat-form-field>
-    <div class="button-group">
-      <button mat-flat-button color="primary" (click)="fetchData()" [disabled]="!startTime || !endTime">
-        Fetch Data
-      </button>
-    </div>
-  </div>
-
   <div class="chart-content">
     <div class="loading-overlay" *ngIf="loading">
       <div class="loading-content">

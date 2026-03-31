@@ -18,7 +18,8 @@ export interface ItemAnalyticsRow {
 @Injectable({
   providedIn: 'root'
 })
-export class ItemAnalyticsService {
+export class ItemService {
+  private apiUrl = '/api/alpha';
   constructor(private http: HttpClient) {}
 
   getItemAnalytics(startTime: string, endTime: string): Observable<ItemAnalyticsRow[]> {
@@ -26,6 +27,6 @@ export class ItemAnalyticsService {
       .set('start', startTime)
       .set('end', endTime);
 
-    return this.http.get<ItemAnalyticsRow[]>('/api/alpha/analytics/items-summary-daily-cache', { params });
+    return this.http.get<ItemAnalyticsRow[]>(`${this.apiUrl}/analytics/items-summary-daily-cache`, { params });
   }
 }

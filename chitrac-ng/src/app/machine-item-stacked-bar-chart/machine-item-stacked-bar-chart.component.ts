@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
-import { MachineAnalyticsService } from '../services/machine-analytics.service';
+import { MachineService } from '../services/machine.service';
 
 @Component({
     selector: 'app-machine-item-stacked-bar-chart',
@@ -38,7 +38,7 @@ export class MachineItemStackedBarChartComponent implements OnInit, AfterViewIni
   error = '';
   isDarkTheme = false;
 
-  constructor(private analyticsService: MachineAnalyticsService) {
+  constructor(private machineService: MachineService) {
     console.log('MachineItemStackedBarChart: Component constructor called');
     console.log('MachineItemStackedBarChart: Constructor margin values:', {
       marginTop: this.marginTop,
@@ -168,9 +168,10 @@ export class MachineItemStackedBarChartComponent implements OnInit, AfterViewIni
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
 
-    this.analyticsService.getMachineItemHourlyStack(formattedStart, formattedEnd, this.machineSerial!).subscribe({
+    this.machineService.getMachineDetails(formattedStart, formattedEnd, this.machineSerial!).subscribe({
       next: (response) => {
-        this.chartConfig = this.transformDataToCartesianConfig(response);
+        const machineData = Array.isArray(response) ? response[0] : response;
+        this.chartConfig = this.transformDataToCartesianConfig(machineData?.itemHourlyStack);
         this.loading = false;
       },
       error: (err) => {

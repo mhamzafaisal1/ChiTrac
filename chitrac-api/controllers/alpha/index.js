@@ -81,21 +81,219 @@ const {
   getBookendedStatesAndTimeRange,
 } = require("../../utils/machineFunctions");
 
-module.exports = function (server) {
+const xml = require("xml2js");
+
+function alphaController(server) {
   return constructor(server);
-};
+}
+
+function registerMachineXmlRoutes(app, server) {
+  function xmlArrayBuilder(rootLabel, array, excludeHeader, callback) {
+    const arrayBuilder = new xml.Builder({
+      renderOpts: { pretty: false },
+      headless: true,
+      rootName: rootLabel,
+    });
+    let returnString;
+    if (excludeHeader) {
+      returnString = `<${rootLabel}s>`;
+    } else {
+      returnString = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><${rootLabel}s>`;
+    }
+
+    array.forEach((element) => {
+      returnString += arrayBuilder.buildObject(element);
+    });
+    returnString += `</${rootLabel}s>`;
+    if (callback) {
+      return callback(returnString);
+    }
+    return returnString;
+  }
+
+  app.get("/api/machine/levelone/multilaneDemo/xml", (req, res, next) => {
+    res.set("Content-Type", "text/xml");
+
+    const machineJSON = {
+      fault: {
+        code: 3,
+        name: "Stop",
+      },
+    };
+
+    const lanesJSON = [
+      {
+        operator: {
+          id: null,
+          name: "None Entered",
+        },
+        task: {
+          id: 24,
+          name: "BarMop",
+        },
+        pace: {
+          standard: 1380,
+          current: 0,
+        },
+        timeOnTask: 0,
+        totalCount: 0,
+        efficiency: 0,
+      },
+      {
+        operator: {
+          id: null,
+          name: "None Entered",
+        },
+        task: {
+          id: 24,
+          name: "BarMop",
+        },
+        pace: {
+          standard: 1380,
+          current: 0,
+        },
+        timeOnTask: 0,
+        totalCount: 0,
+        efficiency: 0,
+      },
+      {
+        operator: {
+          id: null,
+          name: "None Entered",
+        },
+        task: {
+          id: 24,
+          name: "BarMop",
+        },
+        pace: {
+          standard: 1380,
+          current: 0,
+        },
+        timeOnTask: 0,
+        totalCount: 0,
+        efficiency: 0,
+      },
+      {
+        operator: {
+          id: null,
+          name: "None Entered",
+        },
+        task: {
+          id: 24,
+          name: "BarMop",
+        },
+        pace: {
+          standard: 1380,
+          current: 0,
+        },
+        timeOnTask: 0,
+        totalCount: 0,
+        efficiency: 0,
+      },
+    ];
+
+    const levelOneBuilder = new xml.Builder({
+      renderOpts: { pretty: false },
+      rootName: "levelOne",
+    });
+    let xmlString = levelOneBuilder.buildObject(machineJSON);
+    const splitArray = xmlString.split("</levelOne>");
+    xmlString = splitArray[0];
+    xmlString += xmlArrayBuilder("lane", lanesJSON, true);
+    xmlString += "</levelOne>";
+
+    res.send(xmlString);
+  });
+
+  app.get("/api/machine/levelone/:serialNumber/xml", (req, res, next) => {
+    res.set("Content-Type", "text/xml");
+
+    const jsonPackage = {
+      operator: {
+        id: null,
+        name: "None Entered",
+      },
+      task: {
+        id: 24,
+        name: "BarMop",
+      },
+      pace: {
+        standard: 1380,
+        current: 0,
+      },
+      timeOnTask: 0,
+      totalCount: 0,
+      efficiency: 0,
+      fault: {
+        code: 3,
+        name: "Stop",
+      },
+    };
+
+    const levelOneBuilder = new xml.Builder({
+      renderOpts: { pretty: false },
+      rootName: "levelOne",
+    });
+    const xmlString = levelOneBuilder.buildObject(jsonPackage);
+
+    res.send(xmlString);
+  });
+
+  app.get("/api/machine/leveltwo/:serialNumber/xml", (req, res, next) => {
+    res.set("Content-Type", "text/xml");
+
+    const jsonPackage = {
+      timers: {
+        run: 63,
+        down: 0,
+        total: 63,
+      },
+      programNumber: 2,
+      item: {
+        id: 1,
+        name: "Incontinent Pad",
+      },
+      currentStats: {
+        pace: 640,
+        count: 284,
+      },
+      totals: {
+        in: 2493,
+        out: 2384,
+        thru: 95.63,
+        faults: 3,
+        jams: 14,
+      },
+      availability: 86.55,
+      oee: 68.47,
+      operatorEfficiency: 68.47,
+    };
+
+    const levelTwoBuilder = new xml.Builder({
+      renderOpts: { pretty: false },
+      rootName: "levelTwo",
+    });
+    const xmlString = levelTwoBuilder.buildObject(jsonPackage);
+
+    res.send(xmlString);
+  });
+}
+
+alphaController.registerMachineXmlRoutes = registerMachineXmlRoutes;
+
+module.exports = alphaController;
 
 function constructor(server) {
   const db = server.db;
   const logger = server.logger;
   const passport = server.passport;
 
-  // Import machine-related routes
-  const machineRoutes = require("./machineRoutes")(server);
+  // Import machine-related routes from machine controller (analytics + config)
+  const machineRoutes = require("../machine")(server);
   router.use("/analytics", machineRoutes);
 
-  // Import operator-related routes
-  const operatorRoutes = require("./operatorRoutes")(server);
+  // Import operator-related routes from operator controller (analytics + config)
+  const operatorRoutes = require("../operator")(server);
   router.use("/", operatorRoutes);
 
   // Import daily dashboard-related routes (legacy sessions routes removed)
@@ -108,20 +306,20 @@ function constructor(server) {
   const levelTwoDashboardRoutes = require("./level-twoRoutes")(server);
   router.use("/analytics", levelTwoDashboardRoutes);
 
-  // Import report routes (cached machine/operator/item summaries)
-  const reportRoutes = require("./reportRoutes")(server);
+  // Import report routes from reports controller (cached machine/operator/item summaries)
+  const reportRoutes = require("../reports")(server);
   router.use("/", reportRoutes);
 
-  // Import item routes (cached + hybrid analytics)
-  const itemRoutes = require("./itemRoutes")(server);
+  // Import item routes from item controller (cached + hybrid analytics)
+  const itemRoutes = require("../item")(server);
   router.use("/", itemRoutes);
 
-  // Import fault routes
-  const faultRoutes = require("./faultRoutes")(server);
+  // Import fault routes from fault controller
+  const faultRoutes = require("../fault")(server);
   router.use("/", faultRoutes);
 
-  //Import dashboard-related routes
-  const dashboardRoutes = require("./dashboardRoutes")(server);
+  // Import dashboard-related routes from dashboard controller
+  const dashboardRoutes = require("../dashboard")(server);
   router.use("/", dashboardRoutes);
 
   router.get("/timestamp", (req, res, next) => {
@@ -3609,474 +3807,6 @@ function constructor(server) {
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  router.get("/analytics/item-dashboard-summary-agg", async (req, res) => {
-    try {
-      const { start, end } = parseAndValidateQueryParams(req);
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-
-      // Aggregation pipeline
-      const pipeline = [
-        {
-          $match: {
-            timestamp: { $gte: startDate, $lte: endDate },
-            misfeed: { $ne: true }, // Only valid counts
-            "item.id": { $ne: null },
-          },
-        },
-        {
-          $group: {
-            _id: "$item.id",
-            itemName: { $first: "$item.name" },
-            standard: { $first: "$item.standard" },
-            count: { $sum: 1 },
-            minTimestamp: { $min: "$timestamp" },
-            maxTimestamp: { $max: "$timestamp" },
-            operatorIds: { $addToSet: "$operator.id" },
-          },
-        },
-        {
-          $addFields: {
-            workedTimeMs: {
-              $subtract: ["$maxTimestamp", "$minTimestamp"],
-            },
-            totalOperators: { $size: "$operatorIds" },
-          },
-        },
-        {
-          $addFields: {
-            // Approximate worked time by multiplying by number of unique operators (if >0)
-            workedTimeMs: {
-              $cond: [
-                { $gt: ["$totalOperators", 0] },
-                { $multiply: ["$workedTimeMs", "$totalOperators"] },
-                "$workedTimeMs",
-              ],
-            },
-            standard: { $ifNull: ["$standard", 666] },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            itemId: "$_id",
-            itemName: 1,
-            standard: 1,
-            count: 1,
-            workedTimeMs: 1,
-            pph: {
-              $cond: [
-                { $gt: ["$workedTimeMs", 0] },
-                {
-                  $divide: ["$count", { $divide: ["$workedTimeMs", 3600000] }],
-                },
-                0,
-              ],
-            },
-            efficiency: {
-              $cond: [
-                { $gt: ["$standard", 0] },
-                {
-                  $multiply: [
-                    {
-                      $divide: [
-                        {
-                          $cond: [
-                            { $gt: ["$workedTimeMs", 0] },
-                            {
-                              $divide: [
-                                "$count",
-                                { $divide: ["$workedTimeMs", 3600000] },
-                              ],
-                            },
-                            0,
-                          ],
-                        },
-                        "$standard",
-                      ],
-                    },
-                    100,
-                  ],
-                },
-                0,
-              ],
-            },
-          },
-        },
-        {
-          $sort: { itemName: 1 },
-        },
-      ];
-
-      const results = await db
-        .collection("count")
-        .aggregate(pipeline)
-        .toArray();
-
-      // Format workedTimeMs to match the old API (use formatDuration)
-      const formattedResults = results.map((entry) => ({
-        ...entry,
-        workedTimeFormatted: formatDuration(entry.workedTimeMs),
-        pph: Math.round(entry.pph * 100) / 100,
-        efficiency: Math.round(entry.efficiency * 100) / 100,
-      }));
-
-      res.json(formattedResults);
-    } catch (err) {
-      logger.error(`Error in ${req.method} ${req.url}:`, err);
-      res
-        .status(500)
-        .json({ error: "Failed to generate item dashboard summary (agg)" });
-    }
-  });
-
-  // Aggregated operator dashboard route
-  router.get("/analytics/operator-dashboard-agg", async (req, res) => {
-    try {
-      const { start, end } = parseAndValidateQueryParams(req);
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-
-      // Aggregation pipeline
-      const pipeline = [
-        {
-          $match: {
-            timestamp: { $gte: startDate, $lte: endDate },
-            "operator.id": { $ne: null },
-          },
-        },
-        {
-          $addFields: {
-            isMisfeed: { $cond: [{ $eq: ["$misfeed", true] }, 1, 0] },
-            isValid: { $cond: [{ $ne: ["$misfeed", true] }, 1, 0] },
-          },
-        },
-        {
-          $group: {
-            _id: "$operator.id",
-            operatorName: { $first: "$operator.name" },
-            totalCount: { $sum: 1 },
-            validCount: { $sum: "$isValid" },
-            misfeedCount: { $sum: "$isMisfeed" },
-            minTimestamp: { $min: "$timestamp" },
-            maxTimestamp: { $max: "$timestamp" },
-            items: {
-              $push: {
-                id: "$item.id",
-                name: "$item.name",
-                standard: "$item.standard",
-                misfeed: "$misfeed",
-                timestamp: "$timestamp",
-              },
-            },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            operatorId: "$_id",
-            operatorName: 1,
-            totalCount: 1,
-            validCount: 1,
-            misfeedCount: 1,
-            minTimestamp: 1,
-            maxTimestamp: 1,
-            items: 1,
-          },
-        },
-      ];
-
-      const operatorResults = await db
-        .collection("count")
-        .aggregate(pipeline)
-        .toArray();
-
-      // For each operator, further aggregate items in JS (for PPH, efficiency, etc.)
-      const results = operatorResults.map((op) => {
-        // Group items by id
-        const itemMap = {};
-        for (const record of op.items) {
-          if (!record.id) continue;
-          if (!itemMap[record.id]) {
-            itemMap[record.id] = {
-              itemId: record.id,
-              itemName: record.name,
-              standard: record.standard || 666,
-              count: 0,
-              misfeed: 0,
-              timestamps: [],
-            };
-          }
-          itemMap[record.id].count++;
-          if (record.misfeed) itemMap[record.id].misfeed++;
-          itemMap[record.id].timestamps.push(record.timestamp);
-        }
-        // Calculate per-item stats
-        const itemSummary = Object.values(itemMap).map((item) => {
-          const minTs = item.timestamps.length
-            ? Math.min(...item.timestamps.map((ts) => new Date(ts).getTime()))
-            : 0;
-          const maxTs = item.timestamps.length
-            ? Math.max(...item.timestamps.map((ts) => new Date(ts).getTime()))
-            : 0;
-          const workedTimeMs = maxTs > minTs ? maxTs - minTs : 0;
-          const hours = workedTimeMs / 3600000;
-          const pph = hours > 0 ? item.count / hours : 0;
-          const efficiency =
-            item.standard > 0 ? (pph / item.standard) * 100 : 0;
-          return {
-            itemId: item.itemId,
-            itemName: item.itemName,
-            count: item.count,
-            misfeed: item.misfeed,
-            workedTimeFormatted: formatDuration(workedTimeMs),
-            pph: Math.round(pph * 100) / 100,
-            standard: item.standard,
-            efficiency: Math.round(efficiency * 100) / 100,
-          };
-        });
-        return {
-          operator: {
-            id: op.operatorId,
-            name: op.operatorName || "Unknown",
-          },
-          totalCount: op.totalCount,
-          validCount: op.validCount,
-          misfeedCount: op.misfeedCount,
-          workedTimeFormatted: formatDuration(
-            new Date(op.maxTimestamp) - new Date(op.minTimestamp)
-          ),
-          itemSummary,
-        };
-      });
-
-      res.json(results);
-    } catch (err) {
-      logger.error("Error in /analytics/operator-dashboard-agg route:", err);
-      res
-        .status(500)
-        .json({ error: "Failed to fetch operator dashboard data (agg)" });
-    }
-  });
-
-  // Aggregated operator performance route
-  router.get("/analytics/operator-performance-agg", async (req, res) => {
-    try {
-      // Step 1: Parse and validate query parameters
-      const { start, end, operatorId } = parseAndValidateQueryParams(req);
-
-      // Step 2: Create padded time range
-      const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
-
-      let states;
-      let groupedStates;
-
-      if (operatorId) {
-        // If operatorId provided, get states for just that operator
-        states = await fetchStatesForOperator(
-          db,
-          operatorId,
-          paddedStart,
-          paddedEnd
-        );
-        // Create a single group for this operator
-        groupedStates = {
-          [operatorId]: {
-            operator: {
-              id: operatorId,
-              name: await getOperatorNameFromCount(db, operatorId),
-            },
-            states: states,
-          },
-        };
-      } else {
-        // If no operatorId, get all states and group them by operator
-        const allStates = await fetchStatesForOperator(
-          db,
-          null,
-          paddedStart,
-          paddedEnd
-        );
-        groupedStates = groupStatesByOperator(allStates);
-
-        // Update operator names for all groups
-        for (const [opId, group] of Object.entries(groupedStates)) {
-          group.operator.name = await getOperatorNameFromCount(db, opId);
-        }
-      }
-
-      // Step 3: Get all operator IDs for count query
-      const operatorIds = Object.keys(groupedStates).map((id) => parseInt(id));
-
-      // Use aggregation to get count stats per operator
-      const countAgg = await db
-        .collection("count")
-        .aggregate([
-          {
-            $match: {
-              "operator.id": { $in: operatorIds },
-              timestamp: { $gte: new Date(start), $lte: new Date(end) },
-            },
-          },
-          {
-            $group: {
-              _id: "$operator.id",
-              operatorName: { $first: "$operator.name" },
-              totalCount: { $sum: 1 },
-              validCount: {
-                $sum: { $cond: [{ $ne: ["$misfeed", true] }, 1, 0] },
-              },
-              misfeedCount: {
-                $sum: { $cond: [{ $eq: ["$misfeed", true] }, 1, 0] },
-              },
-              allCounts: { $push: "$$ROOT" },
-            },
-          },
-        ])
-        .toArray();
-      const operatorCounts = {};
-      for (const agg of countAgg) {
-        operatorCounts[agg._id] = {
-          counts: agg.allCounts,
-          validCounts: agg.allCounts.filter((c) => !c.misfeed),
-          misfeedCounts: agg.allCounts.filter((c) => c.misfeed),
-          totalCount: agg.totalCount,
-          validCount: agg.validCount,
-          misfeedCount: agg.misfeedCount,
-        };
-      }
-
-      // Step 4: Process each operator's data in parallel
-      const operatorResults = await Promise.all(
-        Object.entries(groupedStates).map(async ([operatorId, group]) => {
-          const states = group.states;
-
-          // Skip if no states found for this operator
-          if (!states.length) return null;
-
-          // Get counts for this operator
-          const counts = operatorCounts[parseInt(operatorId)];
-          if (!counts) return null;
-
-          // Process count statistics using the new utility function
-          const stats = processCountStatistics(counts.counts);
-
-          // Calculate metrics for this operator
-          const totalQueryMs = new Date(end) - new Date(start);
-          const {
-            runtime: runtimeMs,
-            pausedTime: pausedTimeMs,
-            faultTime: faultTimeMs,
-          } = calculateOperatorTimes(states, start, end);
-
-          const piecesPerHour = calculatePiecesPerHour(stats.total, runtimeMs);
-          const efficiency = calculateEfficiency(
-            runtimeMs,
-            stats.total,
-            counts.validCounts
-          );
-
-          // Get current status for this operator
-          const currentState = states[states.length - 1] || {};
-
-          // Format response for this operator
-          return {
-            operator: {
-              id: parseInt(operatorId),
-              name: group.operator.name || "Unknown",
-            },
-            currentStatus: {
-              code: currentState.status?.code || 0,
-              name: currentState.status?.name || "Unknown",
-            },
-            metrics: {
-              runtime: {
-                total: runtimeMs,
-                formatted: formatDuration(runtimeMs),
-              },
-              pausedTime: {
-                total: pausedTimeMs,
-                formatted: formatDuration(pausedTimeMs),
-              },
-              faultTime: {
-                total: faultTimeMs,
-                formatted: formatDuration(faultTimeMs),
-              },
-              output: {
-                totalCount: stats.total,
-                misfeedCount: stats.misfeeds,
-                validCount: stats.valid,
-              },
-              performance: {
-                piecesPerHour: {
-                  value: piecesPerHour,
-                  formatted: Math.round(piecesPerHour).toString(),
-                },
-                efficiency: {
-                  value: efficiency,
-                  percentage: (efficiency * 100).toFixed(2) + "%",
-                },
-              },
-            },
-            timeRange: {
-              start: start,
-              end: end,
-              total: formatDuration(totalQueryMs),
-            },
-          };
-        })
-      );
-
-      // Filter out null results and send response
-      res.json(operatorResults.filter((result) => result !== null));
-    } catch (error) {
-      logger.error(`Error in ${req.method} ${req.url}:`, error);
-      res
-        .status(500)
-        .json({ error: "Failed to fetch operator performance metrics (agg)" });
-    }
-  });
-
-  // Machine Sessions route for machine Dashboard
-
-  router.get("/analytics/machine-sessions-summary", async (req, res) => {
-    try {
-      //Get the time range from the query params
-
-      const { start, end } = parseAndValidateQueryParams(req);
-      const queryStart = new Date(start);
-      let queryEnd = new Date(end);
-      const now = new Date();
-      if (queryEnd > now) queryEnd = now;
-
-      // Active machines set
-      const activeSerials = new Set(
-        await db.collection("machine").distinct("serial", { active: true })
-      );
-
-      // Pull tickers for active machines only
-      const tickers = await db
-        .collection(config.stateTickerCollectionName)
-        .find({ "machine.serial": { $in: [...activeSerials] } })
-        .project({ _id: 0 })
-        .toArray();
-
-
-
-      res.json({
-        message: "Machine Sessions Summary",
-        activeSerials: Array.from(activeSerials),
-        tickers: tickers,
-      });
-    } catch (error) {
-      logger.error(`Error in ${req.method} ${req.url}:`, error);
-
-      res
-        .status(500)
-        .json({ error: "Failed to fetch machine sessions summary" });
     }
   });
 

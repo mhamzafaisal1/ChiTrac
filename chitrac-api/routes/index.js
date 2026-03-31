@@ -1,4 +1,3 @@
-const xml = require('xml2js');
 const path = require('path');
 const express = require('express');
 
@@ -10,7 +9,9 @@ function init(app, server) {
     const statusRoutes = require('../controllers/status')(server);
     const softrolRoutes = require('../controllers/softrol')(server);
     const milnorRoutes = require('../controllers/milnor')(server);
-    const alphaRoutes = require('../controllers/alpha')(server);
+    const alphaController = require('../controllers/alpha');
+    const alphaRoutes = alphaController(server);
+    alphaController.registerMachineXmlRoutes(app, server);
     const bikoRoutes = require('../controllers/biko')(server);
     const authRoutes = require('../controllers/auth')(server);
     const passportRoutes = require('../controllers/passport')(server);

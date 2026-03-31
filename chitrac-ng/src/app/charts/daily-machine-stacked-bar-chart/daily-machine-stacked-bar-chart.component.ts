@@ -2,7 +2,7 @@
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
-import { DailyDashboardService } from '../../services/daily-dashboard.service';
+import { DashboardService } from '../../services/dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable, EMPTY } from 'rxjs';
@@ -59,7 +59,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   private cdr = inject(ChangeDetectorRef);
 
   constructor(
-    private dailyDashboardService: DailyDashboardService,
+    private dashboardService: DashboardService,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService
   ) {
@@ -142,7 +142,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
 
   private pollOnce(): Observable<any> {
     this.endTime = this.pollingService.updateEndTimestampToNow();
-    return this.dailyDashboardService.getDailyMachineStatusFast(this.startTime, this.endTime, this.serial)
+    return this.dashboardService.getDailyMachineStatus(this.startTime, this.endTime, this.serial)
       .pipe(tap(this.consumeResponse('poll')));
   }
 
@@ -168,7 +168,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   private fetchOnce(): Observable<any> {
     if (!this.startTime || !this.endTime) return EMPTY;
     this.isLoading = true;
-    return this.dailyDashboardService.getDailyMachineStatusFast(this.startTime, this.endTime, this.serial)
+    return this.dashboardService.getDailyMachineStatus(this.startTime, this.endTime, this.serial)
       .pipe(
         takeUntil(this.destroy$),
         tap(this.consumeResponse('once')),
