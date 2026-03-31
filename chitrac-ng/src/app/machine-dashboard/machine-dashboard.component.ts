@@ -198,8 +198,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
-            return this.analyticsService
-              .getMachineSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId() || undefined)
+            return this.machineService
+              .getMachinesSummary(this.startTime, this.endTime)
               .pipe(
                 tap((data: any) => {
                   const responses = Array.isArray(data) ? data : [data];
@@ -264,8 +264,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.analyticsService
-        .getMachineSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId() || undefined)
+      this.machineService
+        .getMachineSummaryWithTimeframe(timeframe)
         .subscribe({
         next: (data: any) => {
           const responses = Array.isArray(data) ? data : [data];
@@ -342,7 +342,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           this.rows = formattedData;
           this.isLoading = false;
         },
-        error: (err) => {
+        error: (err: unknown) => {
           console.error("Error fetching dashboard data:", err);
           this.rows = [];
           this.isLoading = false;
@@ -355,8 +355,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         return;
       }
       
-      this.analyticsService
-        .getMachineSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId() || undefined)
+      this.machineService
+        .getMachinesSummary(this.startTime, this.endTime)
         .subscribe({
           next: (data: any) => {
             const responses = Array.isArray(data) ? data : [data];
@@ -433,7 +433,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             this.rows = formattedData;
             this.isLoading = false;
           },
-          error: (err) => {
+          error: (err: unknown) => {
             console.error("Error fetching dashboard data:", err);
             this.rows = [];
             this.isLoading = false;
@@ -521,8 +521,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.analyticsService
-        .getMachineDetailsWithTimeframe(timeframe, machineSerial, this.dateTimeService.getShiftId() || undefined)
+      this.machineService
+        .getMachineDetailsWithTimeframe(timeframe, machineSerial)
         .subscribe({
         next: (res: any[]) => {
           const machineData = res[0]; // <-- FIX HERE
@@ -661,7 +661,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             if (this.selectedRow === row) this.selectedRow = null;
           });
         },
-        error: (err) => {
+        error: (err: unknown) => {
           console.error(
             `Error loading detailed modal data for machine ${machineSerial}:`,
             err
@@ -670,8 +670,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       });
     } else {
       // Fallback to date-based API call
-      this.analyticsService
-        .getMachineDetails(this.startTime, this.endTime, machineSerial, this.dateTimeService.getShiftId() || undefined)
+      this.machineService
+        .getMachineDetails(this.startTime, this.endTime, machineSerial)
         .subscribe({
           next: (res: any[]) => {
             const machineData = res[0]; // <-- FIX HERE
@@ -811,7 +811,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               if (this.selectedRow === row) this.selectedRow = null;
             });
           },
-          error: (err) => {
+          error: (err: unknown) => {
             console.error(
               `Error loading detailed modal data for machine ${machineSerial}:`,
               err
