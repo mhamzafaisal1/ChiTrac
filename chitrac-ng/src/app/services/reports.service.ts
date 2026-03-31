@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
   providedIn: 'root'
 })
 export class ReportsService {
-  private apiUrl = '/api/alpha';
+  private apiUrl = '/api/reports';
 
   constructor(private http: HttpClient) { }
 

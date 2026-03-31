@@ -55,7 +55,7 @@ export type FaultHistoryInclude = 'cycles' | 'summaries' | 'both';
   providedIn: 'root'
 })
 export class FaultService {
-  private apiUrl = '/api/alpha';
+  private apiUrl = '/api/fault';
 
   constructor(private http: HttpClient) { }
 

@@ -39,10 +39,13 @@ const {
 } = require("../../utils/dashboardFunctions");
 const {
   projectSessionForPerf,
+  projectMachineForPerf,
   queryOperatorTimeframes,
+  queryMachineTimeframes,
   extractCountsFromSessions,
   getValidAndMisfeedCountsInWindow,
   sumWindowWithCounts,
+  sumWindowMachine,
   resolveBatchItemFromSessions,
   buildZeroEfficiencyPayload,
 } = require("../../utils/sessionFunctions");
@@ -1250,6 +1253,275 @@ module.exports = function (server) {
       );
 
       return res.json({ flipperData: performanceData });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Per-station operator efficiency (efficiency screen column widget).
+  // GET /api/dashboard/analytics/machine-live-session-summary/operator
+  // Query: ?serial=&station=
+  // ---------------------------------------------------------------------------
+  router.get("/analytics/machine-live-session-summary/operator", async (req, res) => {
+    try {
+      const { serial, station } = req.query;
+      if (!serial || !station) {
+        return res.status(400).json({ error: "Missing serial or station" });
+      }
+      const serialNum = Number(serial);
+      const stationNum = Number(station);
+
+      const ticker = await db
+        .collection(config.stateTickerCollectionName || "stateTicker")
+        .findOne(
+          { "machine.id": serialNum },
+          { projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 } }
+        );
+
+      if (!ticker) {
+        const machineConfig = await db.collection("machines").findOne(
+          { serial: serialNum },
+          { projection: { name: 1 } }
+        );
+        const machineName = machineConfig?.name || `Serial ${serialNum}`;
+        return res.json({
+          status: -1,
+          fault: "Offline",
+          operator: null,
+          machine: machineName,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: "", run: "" },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: buildZeroEfficiencyPayload(),
+          batch: { item: "", code: 10000001 },
+        });
+      }
+
+      const blockedStation = [67801, 67802].includes(serialNum) && stationNum === 2;
+      const operator = (Array.isArray(ticker.operators) ? ticker.operators : []).find(
+        (op) => op && op.station === stationNum
+      );
+      const hasOperator = !!operator && operator.id !== -1 && !blockedStation;
+      const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
+
+      if (!hasOperator) {
+        if (statusCode !== 1) {
+          return res.json({
+            status: statusCode,
+            fault: ticker.status?.name ?? "Unknown",
+            operator: null,
+            machine: ticker.machine?.name || `Serial ${serialNum}`,
+            timers: { on: 0, ready: 0 },
+            displayTimers: { on: "", run: "" },
+            efficiency: buildZeroEfficiencyPayload(),
+            oee: buildZeroEfficiencyPayload(),
+            batch: { item: "", code: 10000001 },
+          });
+        }
+
+        const now = DateTime.now();
+        const frames = {
+          lastSixMinutes: { start: now.minus({ minutes: 6 }), label: "Last 6 Mins" },
+          lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: "Last 15 Mins" },
+          lastHour: { start: now.minus({ hours: 1 }), label: "Last Hour" },
+          today: { start: now.startOf("day"), label: "All Day" },
+        };
+
+        let results = await queryMachineTimeframes(db, serialNum, frames);
+        if (Object.values(results).some((arr) => arr.length === 0)) {
+          const open = await db
+            .collection(config.machineSessionCollectionName || "machine-session")
+            .findOne(
+              {
+                $or: [{ "machine.id": serialNum }, { "machine.serial": serialNum }],
+                "timestamps.end": { $exists: false },
+              },
+              { sort: { "timestamps.start": -1 }, projection: projectMachineForPerf() }
+            );
+          if (open) {
+            for (const k of Object.keys(results)) results[k] = [open];
+          }
+        }
+
+        const effObj = {};
+        for (const [key, arr] of Object.entries(results)) {
+          const { start, label } = frames[key];
+          const { runtimeSec, timeCreditSec } = sumWindowMachine(arr, start, now);
+          const eff = runtimeSec > 0 ? Math.round((timeCreditSec / runtimeSec) * 100) : 0;
+          effObj[key] = {
+            value: eff,
+            label,
+            color: eff >= 90 ? "green" : eff >= 70 ? "orange" : "yellow",
+          };
+        }
+
+        const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
+        return res.json({
+          status: statusCodeForResponse,
+          fault: ticker.status?.name ?? "Unknown",
+          operator: null,
+          machine: ticker.machine?.name || `Serial ${serialNum}`,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: "", run: "" },
+          efficiency: effObj,
+          oee: buildZeroEfficiencyPayload(),
+          batch: { item: "", code: 10000001 },
+        });
+      }
+
+      if (statusCode !== 1) {
+        const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
+        const operatorName =
+          operator.name?.first && operator.name?.surname
+            ? `${operator.name.first} ${operator.name.surname}`
+            : operator.name || "Unknown";
+        return res.json({
+          status: statusCode,
+          fault: ticker.status?.name ?? "Unknown",
+          operator: operatorName,
+          operatorId: operator.id,
+          machine: ticker.machine?.name || `Serial ${serialNum}`,
+          timers: { on: 0, ready: 0 },
+          displayTimers: { on: "", run: "" },
+          efficiency: buildZeroEfficiencyPayload(),
+          oee: buildZeroEfficiencyPayload(),
+          batch: { item: batchItem, code: 10000001 },
+        });
+      }
+
+      const now = DateTime.now();
+      const todayDateStr = now.toFormat("yyyy-MM-dd");
+      const shortFrames = {
+        lastSixMinutes: { start: now.minus({ minutes: 6 }), label: "Last 6 Mins" },
+        lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: "Last 15 Mins" },
+        lastHour: { start: now.minus({ hours: 1 }), label: "Last Hour" },
+      };
+      const shortFramesWithToday = {
+        ...shortFrames,
+        today: { start: now.startOf("day"), label: "All Day" },
+      };
+
+      let results = await queryOperatorTimeframes(db, serialNum, operator.id, shortFramesWithToday, logger);
+
+      const hasEmpty = Object.values({
+        lastSixMinutes: results.lastSixMinutes,
+        lastFifteenMinutes: results.lastFifteenMinutes,
+        lastHour: results.lastHour,
+      }).some((arr) => arr.length === 0);
+
+      if (hasEmpty) {
+        const open = await db
+          .collection(config.operatorSessionCollectionName)
+          .findOne(
+            {
+              "operator.id": operator.id,
+              $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }],
+              "timestamps.end": { $exists: false },
+            },
+            { sort: { "timestamps.start": -1 }, projection: projectSessionForPerf() }
+          );
+        if (open) {
+          results.lastSixMinutes = [open];
+          results.lastFifteenMinutes = [open];
+          results.lastHour = [open];
+        }
+      }
+
+      const efficiencyObj = {};
+      const oeeObj = {};
+
+      for (const [key, arr] of Object.entries({
+        lastSixMinutes: results.lastSixMinutes,
+        lastFifteenMinutes: results.lastFifteenMinutes,
+        lastHour: results.lastHour,
+      })) {
+        const { start, label } = shortFrames[key];
+        const windowStart = new Date(start.toISO());
+        const windowEnd = new Date(now.toISO());
+
+        const counts = extractCountsFromSessions(arr, windowStart, windowEnd, operator.id, serialNum);
+        const { runtimeSec, totalTimeCreditSec } = sumWindowWithCounts(arr, counts, start, now);
+        const eff = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+
+        efficiencyObj[key] = {
+          value: Math.round(eff * 100),
+          label,
+          color: eff >= 0.9 ? "green" : eff >= 0.7 ? "orange" : "yellow",
+        };
+
+        const { validCount, misfeedCount } = getValidAndMisfeedCountsInWindow(
+          arr,
+          windowStart,
+          windowEnd,
+          operator.id,
+          serialNum
+        );
+        const windowSec = (now.toMillis() - start.toMillis()) / 1000;
+        const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+        const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
+        const throughput = validCount + misfeedCount > 0 ? validCount / (validCount + misfeedCount) : 0;
+        const oeeVal = availability * efficiencyRatio * throughput;
+        oeeObj[key] = {
+          value: Math.round(oeeVal * 100),
+          label,
+          color: oeeVal >= 0.9 ? "green" : oeeVal >= 0.7 ? "orange" : "yellow",
+        };
+      }
+
+      const dailyTotal = await db.collection("totals-daily").findOne({
+        entityType: "operator-machine",
+        machineSerial: serialNum,
+        date: todayDateStr,
+        operatorId: operator.id,
+      });
+
+      let todayEfficiency = 0;
+      let todayOee = 0;
+      if (dailyTotal && dailyTotal.runtimeMs > 0) {
+        const runtimeSec = dailyTotal.runtimeMs / 1000;
+        const timeCreditSec = (dailyTotal.totalTimeCreditMs || 0) / 1000;
+        todayEfficiency = timeCreditSec / runtimeSec;
+        const windowMs = now.toMillis() - now.startOf("day").toMillis();
+        const availability = windowMs > 0 ? dailyTotal.runtimeMs / windowMs : 0;
+        const totalCounts = dailyTotal.totalCounts || 0;
+        const totalMisfeeds = dailyTotal.totalMisfeeds || 0;
+        const throughput =
+          totalCounts + totalMisfeeds > 0 ? totalCounts / (totalCounts + totalMisfeeds) : 0;
+        todayOee = availability * todayEfficiency * throughput;
+      }
+
+      efficiencyObj.today = {
+        value: Math.round(todayEfficiency * 100),
+        label: "All Day",
+        color: todayEfficiency >= 0.9 ? "green" : todayEfficiency >= 0.7 ? "orange" : "yellow",
+      };
+      oeeObj.today = {
+        value: Math.round(todayOee * 100),
+        label: "All Day",
+        color: todayOee >= 0.9 ? "green" : todayOee >= 0.7 ? "orange" : "yellow",
+      };
+
+      const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
+      const operatorName =
+        operator.name?.first && operator.name?.surname
+          ? `${operator.name.first} ${operator.name.surname}`
+          : operator.name || "Unknown";
+      const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
+
+      return res.json({
+        status: statusCodeForResponse,
+        fault: ticker.status?.name ?? "Unknown",
+        operator: operatorName,
+        operatorId: operator.id,
+        machine: ticker.machine?.name || `Serial ${serialNum}`,
+        timers: { on: 0, ready: 0 },
+        displayTimers: { on: "", run: "" },
+        efficiency: efficiencyObj,
+        oee: oeeObj,
+        batch: { item: batchItem, code: 10000001 },
+      });
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       return res.status(500).json({ error: "Internal server error" });

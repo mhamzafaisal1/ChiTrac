@@ -17,6 +17,9 @@ function init(app, server) {
     const passportRoutes = require('../controllers/passport')(server);
     const historyRoutes = require('../controllers/history')(server);
     const utilitiesRoutes = require('../controllers/utilities')(server);
+    const dashboardRoutes = require('../controllers/dashboard')(server);
+    const faultRoutes = require('../controllers/fault')(server);
+    const reportRoutes = require('../controllers/reports')(server);
 
 
     app.get('/docs/api', (req, res, next) => {
@@ -277,9 +280,12 @@ function init(app, server) {
     app.use(['/ng/*', '/'], express.static(path.join(server.appRoot.path, 'ng/browser/')));
     
 
-    app.use('/api', machineRoutes);
-    app.use('/api', itemRoutes);
-    app.use('/api', operatorRoutes);
+    app.use('/api/machine', machineRoutes);
+    app.use('/api/item', itemRoutes);
+    app.use('/api/operator', operatorRoutes);
+    app.use('/api/dashboard', dashboardRoutes);
+    app.use('/api/fault', faultRoutes);
+    app.use('/api/reports', reportRoutes);
     app.use('/api', statusRoutes);
 
 
