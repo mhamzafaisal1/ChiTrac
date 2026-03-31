@@ -190,8 +190,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     };
 
     this.machinePollSub = this.pollingService.poll(
-      () => { tick(); return this.dailyDashboardService
-        .getMachinesSummary(this.startTime, this.endTime, undefined, this.dateTimeService.getShiftId() || undefined)
+      () => { tick(); return this.dashboardService
+        .getMachinesSummary(this.startTime, this.endTime)
         .pipe(
           tap((r:any)=> this.updateMachines(r)),
           catchError(err => { console.error('machines poll', err); return of(null); }),
@@ -200,8 +200,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       this.POLLING_INTERVAL, this.destroy$, false, false).subscribe();
 
     this.operatorPollSub = this.pollingService.poll(
-      () => { tick(); return this.dailyDashboardService
-        .getOperatorsSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId() || undefined)
+      () => { tick(); return this.dashboardService
+        .getOperatorsSummary(this.startTime, this.endTime)
         .pipe(
           tap((r:any)=> this.updateOperators(r)),
           catchError(err => { console.error('operators poll', err); return of(null); }),
@@ -210,8 +210,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       this.OP_POLL, this.destroy$, false, false).subscribe();
 
     this.itemPollSub = this.pollingService.poll(
-      () => { tick(); return this.dailyDashboardService
-        .getItemsSummary(this.startTime, this.endTime, undefined, this.dateTimeService.getShiftId() || undefined)
+      () => { tick(); return this.dashboardService
+        .getItemsSummary(this.startTime, this.endTime)
         .pipe(
           tap((r:any)=> this.updateItems(r)),
           catchError(err => { console.error('items poll', err); return of(null); }),
@@ -274,11 +274,10 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
   
-    const shiftId = this.dateTimeService.getShiftId() || undefined;
     return forkJoin({
-      machines: this.dailyDashboardService.getMachinesSummary(formattedStart, formattedEnd, undefined, shiftId),
-      operators: this.dailyDashboardService.getOperatorsSummary(formattedStart, formattedEnd, shiftId),
-      items: this.dailyDashboardService.getItemsSummary(formattedStart, formattedEnd, undefined, shiftId),
+      machines: this.dashboardService.getMachinesSummary(formattedStart, formattedEnd),
+      operators: this.dashboardService.getOperatorsSummary(formattedStart, formattedEnd),
+      items: this.dashboardService.getItemsSummary(formattedStart, formattedEnd),
     }).pipe(
       takeUntil(this.destroy$),
       tap({
@@ -357,7 +356,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
     
-    this.machineAnalyticsService.getMachineDetails(formattedStart, formattedEnd, serial, this.dateTimeService.getShiftId() || undefined)
+    this.machineService.getMachineDetails(formattedStart, formattedEnd, serial)
       .subscribe({
         next: (machineDetails: any) => {
           // machineDetails is an array, get the first item
@@ -444,7 +443,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
             }
           });
         },
-        error: (err) => {
+        error: (err: unknown) => {
           console.error('Error fetching machine details:', err);
           // Fallback to using cached data even if it's empty
           const faultSummaries = fullMachineData.faultData?.faultSummaries || [];
@@ -592,7 +591,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
             }
           });
         },
-        error: (err) => {
+        error: (err: unknown) => {
           console.error('Error fetching operator details:', err);
           // Fallback to using cached data even if it doesn't have countByItem
           const dialogRef = this.dialog.open(ModalWrapperComponent, {
