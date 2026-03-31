@@ -62,11 +62,19 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 #### Analytics Routes - Fault
 - [/api/alpha/analytics/fault-history](#apialphaanalyticsfault-history)
 - [/api/alpha/analytics/fault-sessions-history](#apialphaanalyticsfault-sessions-history)
+- [/api/alpha/analytics/fault-report-summary](#apialphaanalyticsfault-report-summary)
+- [/api/alpha/analytics/fault-report-detailed](#apialphaanalyticsfault-report-detailed)
 
 #### Analytics Routes - Dashboard
 - [/api/alpha/analytics/daily-dashboard/daily-counts](#apialphaanalyticsdaily-dashboarddaily-counts)
 - [/api/alpha/analytics/daily-dashboard/full](#apialphaanalyticsdaily-dashboardfull)
 - [/api/alpha/analytics/daily-summary-dashboard](#apialphaanalyticsdaily-summary-dashboard)
+
+#### Reports (Angular / HTML table data)
+- [/api/alpha/shifts](#apialphashifts)
+- [/api/alpha/analytics/machine-report-cache](#apialphaanalyticsmachine-report-cache)
+- [/api/alpha/analytics/operator-item-sessions-summary-cache](#apialphaanalyticsoperator-item-sessions-summary-cache)
+- [/api/alpha/analytics/item-sessions-summary-daily-cache](#apialphaanalyticsitem-sessions-summary-daily-cache)
 
 #### Test Routes
 - [/api/alpha/historic-data-test](#apialphahistoric-data-test)
@@ -613,6 +621,49 @@ GET /api/alpha/analytics/fault-sessions-history?start=2025-05-01T08:00:00.000Z&e
 { "error": "Failed to fetch fault history" }
 ```
 
+### /api/alpha/analytics/fault-report-summary
+
+Returns a fault report **summary** across all machines: faults grouped by fault code. Uses the `fault-session` collection (sessions, no cache). Intended for the Fault Report UI (summary view).
+
+**Method:** `GET`
+
+**Query Parameters:**
+
+| Parameter | Type   | Required | Description        |
+|-----------|--------|----------|--------------------|
+| start     | string | Yes      | ISO start datetime |
+| end       | string | Yes      | ISO end datetime   |
+
+**Example:**
+```
+GET /api/alpha/analytics/fault-report-summary?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+```
+
+**Response:** `{ context: { start, end }, summaries: [{ code, name, count, totalDurationSeconds, formatted: { hours, minutes, seconds } }] }`
+
+---
+
+### /api/alpha/analytics/fault-report-detailed
+
+Returns a fault report **detailed** by machine then fault code. Uses the `fault-session` collection (sessions, no cache). Intended for the Fault Report UI (detailed view).
+
+**Method:** `GET`
+
+**Query Parameters:**
+
+| Parameter | Type   | Required | Description        |
+|-----------|--------|----------|--------------------|
+| start     | string | Yes      | ISO start datetime |
+| end       | string | Yes      | ISO end datetime   |
+
+**Example:**
+```
+GET /api/alpha/analytics/fault-report-detailed?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+```
+
+**Response:** `{ context: { start, end }, details: [{ machineSerial, machineName, code, name, count, totalDurationSeconds, formatted: { hours, minutes, seconds } }] }`
+
+---
 
 ### /api/alpha/analytics/machine-details
 
@@ -807,6 +858,298 @@ GET /api/alpha/analytics/machine-item-sessions-summary?start=2025-05-01T12:00:00
 **Versioning & Stability:**
 
 All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.
+
+### /api/alpha/shifts
+
+Lists **active** shift definitions from the `shift` collection, sorted by name. Used by the shift-scoped machine report UI to populate the shift selector.
+
+**Method:** GET  
+**Auth:** Same as other `/api/alpha` routes  
+**Idempotent:** Yes
+
+**Query Parameters:** None.
+
+**Data Format:**
+```json
+{
+  "shifts": [
+    {
+      "_id": "674a1b2c3d4e5f6789012345",
+      "name": "Day",
+      "startTime": { "hour": 6, "minute": 0 },
+      "endTime": { "hour": 14, "minute": 30 },
+      "activeDays": [1, 2, 3, 4, 5],
+      "active": true
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | string | Shift document id (stringified for JSON). |
+| `name` | string | Shift display name. |
+| `startTime` / `endTime` | object | Local start/end time of shift (hour, minute). |
+| `activeDays` | array | Days shift applies (convention is implementation-specific). |
+| `active` | boolean | Only active shifts are returned. |
+
+**Example Request:**
+```
+GET /api/alpha/shifts
+```
+
+**Error Responses:**
+
+**500 Internal Server Error**
+```json
+{ "error": "Failed to list shifts" }
+```
+
+**Versioning & Stability:** Alpha; additive changes only where possible.
+
+---
+
+### /api/alpha/analytics/machine-report-cache
+
+JSON payload for the **Machine Report** and **Shift Machine Report** Angular tables. Primarily uses the `totals-daily` cache (`entityType` `machine` and `machine-item`), with session-based fallback when cache is empty for the requested window. When **`shiftId`** is present, data is computed from sessions for that shift and time window instead of daily cache.
+
+This route is separate from [`/api/alpha/analytics/machine-item-sessions-summary`](#apialphaanalyticsmachine-item-sessions-summary) (session-centric, different aggregation). Integrators mirroring the HTML report should call this path.
+
+**Method:** GET  
+**Auth:** Same as other `/api/alpha` routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 datetime | Yes | Window start. Parsed with server timezone rules; end may be clamped to now. |
+| end | ISO 8601 datetime | Yes | Window end. |
+| serial | integer | No | Limit to one machine serial. |
+| shiftId | string | No | MongoDB ObjectId of a shift. When set, uses session data clipped to the window for that shift (see [`/api/alpha/shifts`](#apialphashifts)). |
+
+**Behavior notes:**
+
+- Time handling uses **`America/Chicago`** for normalization where applicable; **`end`** is not extended past server “now”.
+- Without **`shiftId`**: full calendar days in range are read from `totals-daily` when available; otherwise the service falls back to **`getSessionDataForPartialDays`** for the same `start`/`end`.
+- With **`shiftId`**: validates the id and loads the shift; **`404`** if missing, **`400`** if the id is not a valid ObjectId.
+- **`itemSummaries`** includes a synthetic **`Total`** row (key `"Total"`) plus per-item rows keyed by **item id** (numeric). Per-item **runtime** used for PPH is allocated proportionally by count across items on that machine.
+
+**Data Format:**
+```json
+{
+  "timeRange": {
+    "start": "2025-05-01T05:00:00.000Z",
+    "end": "2025-05-02T05:00:00.000Z"
+  },
+  "results": [
+    {
+      "machine": {
+        "name": "SPF1",
+        "serial": 67808
+      },
+      "machineSummary": {
+        "totalCount": 1200,
+        "workedTimeMs": 14400000,
+        "workedTimeFormatted": { "hours": 4, "minutes": 0 },
+        "runtimeMs": 14400000,
+        "runtimeFormatted": { "hours": 4, "minutes": 0 },
+        "pph": 300.0,
+        "proratedStandard": 580.25,
+        "efficiency": 51.7,
+        "itemSummaries": {
+          "Total": {
+            "name": "Total",
+            "standard": 580.25,
+            "countTotal": 1200,
+            "workedTimeFormatted": { "hours": 4, "minutes": 0 },
+            "pph": 300.0,
+            "efficiency": 51.7
+          },
+          "4": {
+            "name": "Pool Towel",
+            "standard": 625,
+            "countTotal": 800,
+            "workedTimeFormatted": { "hours": 2, "minutes": 40 },
+            "pph": 300.0,
+            "efficiency": 48.0
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+| Path | Type | Description |
+|------|------|-------------|
+| `timeRange.start` / `end` | string | ISO timestamps describing the reported window (exact bounds depend on cache vs shift mode). |
+| `results[].machine` | object | `name`, `serial`. |
+| `results[].machineSummary` | object | Aggregates for the machine; `efficiency` is a **percentage** (0–100 scale). |
+| `results[].machineSummary.itemSummaries` | object | Map: special key `Total`, then item ids as string keys. Each value: `name`, `standard`, `countTotal`, `workedTimeFormatted` (`hours`, `minutes`), `pph`, `efficiency` (%). |
+
+**Example Requests:**
+```
+GET /api/alpha/analytics/machine-report-cache?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+GET /api/alpha/analytics/machine-report-cache?start=2025-05-01T12:00:00.000Z&end=2025-05-01T18:00:00.000Z&serial=67808
+GET /api/alpha/analytics/machine-report-cache?start=2025-05-01T12:00:00.000Z&end=2025-05-01T18:00:00.000Z&shiftId=674a1b2c3d4e5f6789012345
+```
+
+**Error Responses:**
+
+**400 Bad Request**
+```json
+{ "error": "Invalid shiftId" }
+```
+
+**404 Not Found**
+```json
+{ "error": "Shift not found" }
+```
+
+**500 Internal Server Error**
+```json
+{ "error": "Failed to generate machine report from cache" }
+```
+
+**Versioning & Stability:** Alpha; fields may be extended. Integrators should tolerate unknown keys.
+
+---
+
+### /api/alpha/analytics/operator-item-sessions-summary-cache
+
+JSON payload for the **Operator Report** Angular table. Uses `totals-daily` (`operator-machine`, `operator-item`) for complete days with hybrid/session fill-in for partial ranges; empty cache for a range may fall back to sessions. Shape aligns with the non-cache operator summary where possible, but **`sessions`** is always an **empty array** in this variant.
+
+Related session-based route: [`/api/alpha/analytics/operator-item-sessions-summary`](#apialphaanalyticsoperator-item-sessions-summary).
+
+**Method:** GET  
+**Auth:** Same as other `/api/alpha` routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 datetime | Yes | Window start. |
+| end | ISO 8601 datetime | Yes | Window end. |
+| operatorId | integer | No | Restrict to one operator. |
+
+**Behavior notes:**
+
+- Timezone-aware day splitting uses **`America/Chicago`**.
+- Item rows under **`itemSummaries`** are keyed by a **normalized item name** (lowercase, trimmed); values expose display `name` in original casing.
+- Operators with **zero** total production count are omitted from **`results`**.
+- **`operatorSummary.efficiency`** and **`itemSummaries[*].efficiency`** are **percentages** (PPH vs prorated standard, scaled to a 0–100+ style number and rounded); either may be `null` when standard is missing or zero.
+
+**Data Format:**
+```json
+{
+  "timeRange": {
+    "start": "2025-05-01T05:00:00.000Z",
+    "end": "2025-05-02T05:00:00.000Z"
+  },
+  "results": [
+    {
+      "operator": { "id": 117811, "name": "Shaun White" },
+      "sessions": [],
+      "operatorSummary": {
+        "totalCount": 950,
+        "workedTimeMs": 12600000,
+        "workedTimeFormatted": { "hours": 3, "minutes": 30 },
+        "runtimeMs": 13000000,
+        "runtimeFormatted": { "hours": 3, "minutes": 36 },
+        "pph": 271.43,
+        "proratedStandard": 600.0,
+        "efficiency": 45.24,
+        "itemSummaries": {
+          "pool towel": {
+            "name": "Pool Towel",
+            "standard": 625.0,
+            "countTotal": 600,
+            "workedTimeFormatted": { "hours": 2, "minutes": 0 },
+            "pph": 300.0,
+            "efficiency": 48.0
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+**Example Request:**
+```
+GET /api/alpha/analytics/operator-item-sessions-summary-cache?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+GET /api/alpha/analytics/operator-item-sessions-summary-cache?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z&operatorId=117811
+```
+
+**Error Responses:**
+
+**500 Internal Server Error**
+```json
+{ "error": "Failed to generate cached operator item summary" }
+```
+
+**Versioning & Stability:** Alpha; additive changes preferred.
+
+---
+
+### /api/alpha/analytics/item-sessions-summary-daily-cache
+
+JSON **array** for the **Item Report** Angular table: one object per item id after aggregation across the window. Uses `totals-daily` with `entityType: item` and `source: simulator` for cacheable windows; longer ranges may use a hybrid of cache + sessions; partial **past** days may use sessions only.
+
+Related session-based route: [`/api/alpha/analytics/item-sessions-summary`](#apialphaanalyticsitem-sessions-summary).
+
+**Method:** GET  
+**Auth:** Same as other `/api/alpha` routes  
+**Idempotent:** Yes
+
+**Query Parameters:**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| start | ISO 8601 datetime | Yes | Window start. |
+| end | ISO 8601 datetime | Yes | Window end. |
+
+**Behavior notes:**
+
+- Standards: values in **`standard`** may be PPH or PPM; the service normalizes small numeric standards (treating values below 60 as PPM→PPH) when computing **`efficiency`**.
+- **`efficiency`** in each row is a **percentage** (0–100 scale, rounded).
+
+**Data Format:** top-level JSON array:
+```json
+[
+  {
+    "itemName": "Pool Towel",
+    "workedTimeFormatted": { "hours": 3, "minutes": 45 },
+    "count": 1240,
+    "pph": 330.67,
+    "standard": 625,
+    "efficiency": 52.91
+  }
+]
+```
+
+Empty window / no data:
+```json
+[]
+```
+
+**Example Request:**
+```
+GET /api/alpha/analytics/item-sessions-summary-daily-cache?start=2025-05-01T00:00:00.000Z&end=2025-05-02T00:00:00.000Z
+```
+
+**Error Responses:**
+
+**500 Internal Server Error**
+```json
+{ "error": "Failed to generate daily cached item summary" }
+```
+
+**Versioning & Stability:** Alpha; additive changes preferred.
+
+---
 
 ### /api/alpha/analytics/item-sessions-summary
 

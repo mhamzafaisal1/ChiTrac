@@ -9,8 +9,10 @@ import { ItemAnalyticsDashboardComponent } from './item-analytics-dashboard/item
 import { AuthGuard } from './guards/auth.guard';
 import { MachineDashboardComponent } from './machine-dashboard/machine-dashboard.component';
 import { MachineReportComponent } from './reports/machine-report/machine-report.component';
+import { ShiftMachineReportComponent } from './reports/shift-machine-report/shift-machine-report.component';
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
+import { FaultReportComponent } from './reports/fault-report/fault-report.component';
 import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
 import { BlanketBlastertwoEfficiencyScreen } from './efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
@@ -50,8 +52,10 @@ export const routes: Routes = [
 	
 	// Reports
 	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
+	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },
+	{ path: 'ng/reports/fault-report', component: FaultReportComponent },
 	
 	// Production/Efficiency Screens
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },

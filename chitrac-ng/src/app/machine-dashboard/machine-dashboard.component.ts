@@ -147,6 +147,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           start.setHours(0, 0, 0, 0);
           this.startTime = this.formatDateForInput(start);
           this.endTime = this.pollingService.updateEndTimestampToNow();
+          this.dateTimeService.setShiftId("");
 
           this.fetchAnalyticsData();
           this.setupPolling();
@@ -197,8 +198,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
-            return this.machineService
-              .getMachinesSummary(this.startTime, this.endTime)
+            return this.analyticsService
+              .getMachineSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId() || undefined)
               .pipe(
                 tap((data: any) => {
                   const responses = Array.isArray(data) ? data : [data];
@@ -263,8 +264,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.machineService
-        .getMachineSummaryWithTimeframe(timeframe)
+      this.analyticsService
+        .getMachineSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId() || undefined)
         .subscribe({
         next: (data: any) => {
           const responses = Array.isArray(data) ? data : [data];
@@ -354,8 +355,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         return;
       }
       
-      this.machineService
-        .getMachinesSummary(this.startTime, this.endTime)
+      this.analyticsService
+        .getMachineSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId() || undefined)
         .subscribe({
           next: (data: any) => {
             const responses = Array.isArray(data) ? data : [data];
@@ -520,8 +521,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.machineService
-        .getMachineDetailsWithTimeframe(timeframe, machineSerial)
+      this.analyticsService
+        .getMachineDetailsWithTimeframe(timeframe, machineSerial, this.dateTimeService.getShiftId() || undefined)
         .subscribe({
         next: (res: any[]) => {
           const machineData = res[0]; // <-- FIX HERE
@@ -669,8 +670,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       });
     } else {
       // Fallback to date-based API call
-      this.machineService
-        .getMachineDetails(this.startTime, this.endTime, machineSerial)
+      this.analyticsService
+        .getMachineDetails(this.startTime, this.endTime, machineSerial, this.dateTimeService.getShiftId() || undefined)
         .subscribe({
           next: (res: any[]) => {
             const machineData = res[0]; // <-- FIX HERE

@@ -1,5 +1,6 @@
 const { DateTime, Interval } = require("luxon");
 const { formatDuration, createPaddedTimeRange, getHourlyIntervals, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require("./time");
+const { loadActiveShifts, computeShiftElapsedMs } = require("./shiftElapsed");
 const { calculateEfficiency, calculateOEE, calculateOperatorTimes } = require('./analytics');
 const { getValidCounts, getMisfeedCounts, groupCountsByItem, groupCountsByOperatorAndMachine, getCountsForMachine } = require("./count");
 const {
@@ -1492,6 +1493,8 @@ async function buildDailyCountTotals(db, _start, end) {
 async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd, logger) {
   try {
     const dateStr = dayStart.toISOString().split('T')[0];
+    const activeShifts = await loadActiveShifts(db);
+    const shiftWindowMs = computeShiftElapsedMs(activeShifts, dayStart, dayEnd, SYSTEM_TIMEZONE);
 
     const cacheRecords = await db
       .collection("totals-daily")
@@ -1509,12 +1512,15 @@ async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd, logger) {
     }
 
     const rows = cacheRecords.map((record) => {
-      const timeRange = record.buildRange || record.timeRange;
       let windowMs = 0;
-      if (timeRange && timeRange.start && timeRange.end) {
-        windowMs = new Date(timeRange.end) - new Date(timeRange.start);
-      } else {
-        windowMs = dayEnd - dayStart;
+      if (shiftWindowMs > 0) windowMs = shiftWindowMs;
+      else {
+        const timeRange = record.buildRange || record.timeRange;
+        if (timeRange && timeRange.start && timeRange.end) {
+          windowMs = new Date(timeRange.end) - new Date(timeRange.start);
+        } else {
+          windowMs = dayEnd - dayStart;
+        }
       }
 
       const availability =
@@ -1559,7 +1565,9 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
     const dateStr = dayStart.toISOString().split('T')[0];
     const dayStartDate = new Date(dayStart);
     const dayEndDate = new Date(dayEnd);
-    const windowMs = dayEndDate - dayStartDate;
+    const activeShifts = await loadActiveShifts(db);
+    const shiftWindowMs = computeShiftElapsedMs(activeShifts, dayStartDate, dayEndDate, SYSTEM_TIMEZONE);
+    const windowMs = shiftWindowMs > 0 ? shiftWindowMs : (dayEndDate - dayStartDate);
 
     const dailyTotals = await db.collection('totals-daily').find({
       entityType: 'machine',

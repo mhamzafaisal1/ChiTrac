@@ -1,0 +1,90 @@
+<div class="dashboard-container" [class.dark-mode]="isDarkTheme">
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">
+        {{ isDownloading ? "Downloading PDF..." : isDownloadingCsv ? "Downloading CSV..." : "Fetching data..." }}
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <mat-form-field appearance="outline" class="date-field">
+      <mat-label>Start date</mat-label>
+      <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+      <mat-datepicker #startPicker></mat-datepicker>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="date-field">
+      <mat-label>End date</mat-label>
+      <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+      <mat-datepicker #endPicker></mat-datepicker>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="shift-select">
+      <mat-label>Shift</mat-label>
+      <mat-select [(ngModel)]="selectedShiftId" (ngModelChange)="onShiftChange()">
+        <mat-option *ngFor="let s of shifts" [value]="s._id">
+          {{ s.name || ('Shift ' + s._id) }}
+        </mat-option>
+      </mat-select>
+      <mat-hint *ngIf="shiftsLoadError">{{ shiftsLoadError }}</mat-hint>
+    </mat-form-field>
+
+    <div class="report-mode-toggle">
+      <span class="toggle-label" style="margin-right: 12px;">Detailed</span>
+      <mat-slide-toggle [(ngModel)]="showSummaryOnly" color="primary"></mat-slide-toggle>
+      <span class="toggle-label" style="margin-left: 12px;">Summary</span>
+    </div>
+
+    <div class="button-group">
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="fetchAnalyticsData()"
+        [disabled]="!startDate || !endDate || !selectedShiftId || isLoading"
+      >
+        <mat-icon>refresh</mat-icon>
+        {{ isLoading && !isDownloading && !isDownloadingCsv ? "Loading..." : "Fetch Data" }}
+      </button>
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="downloadMachineItemSummaryPdf()"
+        [disabled]="!rows.length || isLoading"
+      >
+        <mat-icon>picture_as_pdf</mat-icon>
+        {{
+          isLoading && isDownloading
+            ? "Downloading..."
+            : "Download Machine Item Summary PDF"
+        }}
+      </button>
+
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="downloadMachineItemSummaryCsv()"
+        [disabled]="!rows.length || isLoading"
+      >
+        <mat-icon>table_chart</mat-icon>
+        {{ isLoading && isDownloadingCsv ? "Downloading..." : "Download CSV" }}
+      </button>
+    </div>
+  </div>
+
+  <div class="table-container" [class.loading]="isLoading">
+    <base-table
+      *ngIf="rows.length"
+      [class.dark]="isDarkTheme"
+      [class.light]="!isDarkTheme"
+      [columns]="columns"
+      [rows]="displayedRows"
+      [getCellClass]="getEfficiencyClass.bind(this)"
+      style="height:93%; border-radius: 4px;"
+    >
+    </base-table>
+  </div>
+</div>

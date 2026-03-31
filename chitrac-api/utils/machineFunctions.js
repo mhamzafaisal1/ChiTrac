@@ -698,27 +698,31 @@ async function getActiveMachineSerials(db, start, end) {
     return tickerMap;
   }
 
-  function buildPerformanceFromMachineRecord(record) {
+  function buildPerformanceFromMachineRecord(record, shiftElapsedMsOverride = null) {
     const runtimeMs = safeNumber(record.runtimeMs);
     const pausedMs = safeNumber(record.pausedTimeMs);
     const faultMs = safeNumber(record.faultTimeMs);
-    const downtimeMs = pausedMs + faultMs;
+    const downtimeWallClockMs = pausedMs + faultMs;
     const workedTimeMs = safeNumber(record.workedTimeMs);
     const timeCreditMs = safeNumber(record.totalTimeCreditMs);
     const totalCounts = safeNumber(record.totalCounts);
     const totalMisfeeds = safeNumber(record.totalMisfeeds);
     const totalOutput = totalCounts + totalMisfeeds;
 
-    const windowMs =
+    const windowMsWallClock =
       record.timeRange?.start && record.timeRange?.end
         ? Math.max(
             0,
             new Date(record.timeRange.end) - new Date(record.timeRange.start)
           )
-        : runtimeMs + downtimeMs;
+        : runtimeMs + downtimeWallClockMs;
 
+    const totalQueryMs =
+      typeof shiftElapsedMsOverride === "number" ? shiftElapsedMsOverride : windowMsWallClock;
+
+    const downtimeMs = Math.max(totalQueryMs - runtimeMs, 0);
     const availability =
-      windowMs > 0 ? Math.min(Math.max(runtimeMs / windowMs, 0), 1) : 0;
+      totalQueryMs > 0 ? Math.min(Math.max(runtimeMs / totalQueryMs, 0), 1) : 0;
     const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
     const efficiency =
       workedTimeMs > 0 ? Math.min(Math.max(timeCreditMs / workedTimeMs, 0), 1) : 0;
