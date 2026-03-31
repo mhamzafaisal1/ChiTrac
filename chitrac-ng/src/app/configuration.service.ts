@@ -80,18 +80,18 @@ export class ConfigurationService {
 
   /** ✅ Machine */
   public getMachineConfigs(): Observable<MachineConfig[]> {
-    return this.http.get<MachineConfig[]>('/api/machines/config');
+    return this.http.get<MachineConfig[]>('/api/machine/machines/config');
   }
 
   public postMachineConfig(machine: MachineConfig): Observable<MachineConfig> {
-    return this.http.post<MachineConfig>('/api/machines/config', machine);
+    return this.http.post<MachineConfig>('/api/machine/machines/config', machine);
   }
 
   public putMachineConfig(machine: MachineConfig): Observable<MachineConfig> {
-    return this.http.put<MachineConfig>(`/api/machines/config/${machine._id}`, machine);
+    return this.http.put<MachineConfig>(`/api/machine/machines/config/${machine._id}`, machine);
   }
 
   public deleteMachineConfig(_id: string): Observable<MachineConfig> {
-    return this.http.delete<MachineConfig>(`/api/machines/config/${_id}`);
+    return this.http.delete<MachineConfig>(`/api/machine/machines/config/${_id}`);
   }
 }

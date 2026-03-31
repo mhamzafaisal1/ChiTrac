@@ -15,7 +15,7 @@ export interface ShiftListItem {
   providedIn: 'root',
 })
 export class ShiftService {
-  private apiUrl = '/api/alpha';
+  private apiUrl = '/api/reports';
 
   constructor(private http: HttpClient) {}
 

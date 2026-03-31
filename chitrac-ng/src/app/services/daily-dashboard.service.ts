@@ -6,7 +6,9 @@ import { Observable } from 'rxjs';
   providedIn: 'root'
 })
 export class DailyDashboardService {
-  private apiUrl = '/api/alpha';
+  private apiUrl = '/api/dashboard';
+  private faultApiUrl = '/api/fault';
+  private reportsApiUrl = '/api/reports';
 
   constructor(private http: HttpClient) { }
 
@@ -45,7 +47,7 @@ export class DailyDashboardService {
   /** ✅ New consolidated route for entire dashboard */
   getFullDailyDashboard(start: string, end: string): Observable<any> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get('/api/alpha/analytics/daily-sessions-dashboard', { params });
+    return this.http.get(`${this.apiUrl}/analytics/daily-sessions-dashboard`, { params });
   }
 
   /** ✅ New summary dashboard route for machines, operators, and items */
@@ -153,7 +155,7 @@ getItemsSummary(start: string, end: string, serial?: number, shiftId?: string | 
     }
 
     // return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary-cache`, { params });
-    return this.http.get(`${this.apiUrl}/analytics/machine-report-cache`, { params });
+    return this.http.get(`${this.reportsApiUrl}/analytics/machine-report-cache`, { params });
   }
 
   getOperatorItemSessionsSummary(start: string, end: string, operatorId?: number): Observable<any> {
@@ -165,18 +167,18 @@ getItemsSummary(start: string, end: string, serial?: number, shiftId?: string | 
       params = params.set('operatorId', operatorId.toString());
     }
 
-    return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary-cache`, { params });
+    return this.http.get(`${this.reportsApiUrl}/analytics/operator-item-sessions-summary-cache`, { params });
   }
 
   /** Fault report: summary across all machines by fault code (uses fault-session, no cache) */
   getFaultReportSummary(start: string, end: string): Observable<{ context: any; summaries: any[] }> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get<{ context: any; summaries: any[] }>(`${this.apiUrl}/analytics/fault-report-summary`, { params });
+    return this.http.get<{ context: any; summaries: any[] }>(`${this.faultApiUrl}/analytics/fault-report-summary`, { params });
   }
 
   /** Fault report: detailed by machine then fault code (uses fault-session, no cache) */
   getFaultReportDetailed(start: string, end: string): Observable<{ context: any; details: any[] }> {
     const params = new HttpParams().set('start', start).set('end', end);
-    return this.http.get<{ context: any; details: any[] }>(`${this.apiUrl}/analytics/fault-report-detailed`, { params });
+    return this.http.get<{ context: any; details: any[] }>(`${this.faultApiUrl}/analytics/fault-report-detailed`, { params });
   }
 }
