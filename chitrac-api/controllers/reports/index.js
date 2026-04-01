@@ -1,4 +1,5 @@
 const express = require("express");
+const nodemailer = require("nodemailer");
 const { ObjectId } = require("mongodb");
 const { parseAndValidateQueryParams, formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { DateTime } = require("luxon");
@@ -11,6 +12,13 @@ const {
   getItemDailyCachedDataForDays,
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
+
+function isValidMachineReportRecipientEmail(s) {
+  if (typeof s !== "string") return false;
+  const t = s.trim();
+  if (!t || t.length > 254) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+}
 
 module.exports = function (server) {
   const router = express.Router();
@@ -1178,5 +1186,109 @@ module.exports = function (server) {
       res.status(500).json({ error: "Failed to generate machine report from cache" });
     }
   });
+
+  /** POST body: { to, pdfBase64, start, end, summaryOnly } — PDF is client-generated to match the download. */
+  router.post("/analytics/machine-report-email", async (req, res) => {
+    console.log("[machine-report-email] hit POST /analytics/machine-report-email");
+    try {
+      const { to, pdfBase64, start, end, summaryOnly } = req.body || {};
+      console.log("[machine-report-email] body keys:", Object.keys(req.body || {}), {
+        to: typeof to === "string" ? to : typeof to,
+        pdfBase64Chars: typeof pdfBase64 === "string" ? pdfBase64.length : null,
+        start,
+        end,
+        summaryOnly,
+      });
+
+      if (!isValidMachineReportRecipientEmail(to)) {
+        console.log("[machine-report-email] bail: invalid recipient email");
+        return res.status(400).json({ error: "Invalid email address" });
+      }
+      if (typeof pdfBase64 !== "string" || pdfBase64.length === 0) {
+        console.log("[machine-report-email] bail: missing pdfBase64");
+        return res.status(400).json({ error: "Missing PDF payload" });
+      }
+
+      let pdfBuffer;
+      try {
+        pdfBuffer = Buffer.from(pdfBase64, "base64");
+      } catch (e) {
+        console.log("[machine-report-email] bail: base64 decode threw", e?.message || e);
+        return res.status(400).json({ error: "Invalid PDF encoding" });
+      }
+      if (!pdfBuffer.length || pdfBuffer.length > 25 * 1024 * 1024) {
+        console.log("[machine-report-email] bail: bad pdf size", pdfBuffer.length);
+        return res.status(400).json({ error: "Invalid or oversized PDF" });
+      }
+      if (pdfBuffer.slice(0, 5).toString() !== "%PDF-") {
+        console.log("[machine-report-email] bail: not a PDF signature");
+        return res.status(400).json({ error: "Attachment is not a PDF" });
+      }
+      console.log("[machine-report-email] pdf ok bytes=", pdfBuffer.length);
+
+      const host = process.env.SMTP_HOST || "smtp.gmail.com";
+      const port = parseInt(process.env.SMTP_PORT || "465", 10);
+      const secure = process.env.SMTP_SECURE !== "false";
+      const user = process.env.SMTP_USER;
+      const pass = process.env.SMTP_PASS;
+      if (!user || !pass) {
+        console.log("[machine-report-email] bail: SMTP_USER/SMTP_PASS not set");
+        logger.warn("[machine-report-email] SMTP_USER or SMTP_PASS is not set");
+        return res
+          .status(503)
+          .json({ error: "Email is not configured on the server" });
+      }
+
+      const fromEmail = process.env.SMTP_FROM_EMAIL || user;
+      const fromName = process.env.SMTP_FROM_NAME || "ChiTrac Machine Report";
+
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: { user, pass },
+      });
+
+      const safeStart = String(start ?? "")
+        .replace(/[^\w.\-:+TZ]/g, "_")
+        .slice(0, 48);
+      const safeEnd = String(end ?? "")
+        .replace(/[^\w.\-:+TZ]/g, "_")
+        .slice(0, 48);
+      const filename = `machine_report_${safeStart}_${safeEnd}${
+        summaryOnly ? "_summary" : ""
+      }.pdf`;
+      console.log("[machine-report-email] sending mail", {
+        host,
+        port,
+        secure,
+        to: to.trim(),
+        filename,
+      });
+
+      await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: to.trim(),
+        subject: "ChiTrac Machine Report",
+        text: "Attached is the machine report for the selected period.",
+        html: "<p>Attached is the machine report for the selected period.</p>",
+        attachments: [
+          {
+            filename,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+
+      console.log("[machine-report-email] sendMail finished ok");
+      res.json({ ok: true });
+    } catch (err) {
+      console.log("[machine-report-email] exception", err?.message || err);
+      logger.error("[machine-report-email] send failed", err);
+      res.status(500).json({ error: "Failed to send email" });
+    }
+  });
+
   return router;
 };

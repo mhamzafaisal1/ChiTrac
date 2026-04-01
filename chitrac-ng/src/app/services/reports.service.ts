@@ -41,4 +41,25 @@ export class ReportsService {
       params: { start, end }
     });
   }
+
+  emailMachineReport(payload: {
+    to: string;
+    pdfBase64: string;
+    start: string;
+    end: string;
+    summaryOnly: boolean;
+  }): Observable<{ ok: boolean }> {
+    console.log('[machine-report][email] ReportsService.emailMachineReport POST', {
+      url: `${this.apiUrl}/analytics/machine-report-email`,
+      to: payload.to,
+      start: payload.start,
+      end: payload.end,
+      summaryOnly: payload.summaryOnly,
+      pdfBase64Length: payload.pdfBase64?.length ?? 0,
+    });
+    return this.http.post<{ ok: boolean }>(
+      `${this.apiUrl}/analytics/machine-report-email`,
+      payload
+    );
+  }
 }

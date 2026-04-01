@@ -1,0 +1,26 @@
+<div class="email-report-modal">
+  <h2 class="title">Email machine report</h2>
+  <p class="hint">A PDF matching the current view (including Detailed or Summary mode) will be sent.</p>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>Recipient email</mat-label>
+    <input
+      matInput
+      type="email"
+      name="recipientEmail"
+      [(ngModel)]="email"
+      (ngModelChange)="validationMessage = ''"
+      autocomplete="email"
+      (keydown.enter)="send()"
+    />
+  </mat-form-field>
+
+  <p class="error" *ngIf="validationMessage">{{ validationMessage }}</p>
+
+  <div class="actions">
+    <button mat-button type="button" (click)="cancel()">Cancel</button>
+    <button mat-flat-button color="primary" type="button" (click)="send()">
+      Send
+    </button>
+  </div>
+</div>

@@ -37,7 +37,7 @@ function constructor(config) {
 		if (!authUrl.includes('?')) {
 			authUrl += `?authSource=${authSource}`;
 		} else {
-			authUrl += `&authSource=${authSource}`;
+			authUrl += `&authSource=${authSource}`;	
 		}
 	}
 	
