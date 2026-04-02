@@ -18,6 +18,7 @@ import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { ModalWrapperComponent } from '../../components/modal-wrapper-component/modal-wrapper-component.component';
 import { MachineReportEmailModalComponent } from './machine-report-email-modal.component';
+import { UserService, UserWithEmailRow } from '../../user.service';
 
 @Component({
     selector: 'app-machine-report',
@@ -50,6 +51,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isDownloadingCsv: boolean = false;
   isEmailing: boolean = false;
   showSummaryOnly: boolean = false;
+  reportEmailUsers: UserWithEmailRow[] = [];
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
@@ -62,7 +64,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   constructor(
     private reportsService: ReportsService,
     private dialog: MatDialog,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private userService: UserService
   ) {}
 
   ngOnInit(): void {
@@ -79,6 +82,16 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       this.detectTheme();
     });
     this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    this.userService.getUsersWithEmail().subscribe({
+      next: (users) => {
+        this.reportEmailUsers = users;
+      },
+      error: (err) => {
+        console.warn('[machine-report][email] getUsersWithEmail failed', err?.status, err?.error ?? err);
+        this.reportEmailUsers = [];
+      },
+    });
   }
 
   ngOnDestroy() {
@@ -246,7 +259,10 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       .open(ModalWrapperComponent, {
         width: '440px',
         maxWidth: '95vw',
-        data: { component: MachineReportEmailModalComponent },
+        data: {
+          component: MachineReportEmailModalComponent,
+          usersWithEmail: this.reportEmailUsers,
+        },
         panelClass: this.isDarkTheme ? ['dark-theme'] : undefined,
       })
       .afterClosed()

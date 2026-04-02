@@ -2,6 +2,19 @@
   <h2 class="title">Email machine report</h2>
   <p class="hint">A PDF matching the current view (including Detailed or Summary mode) will be sent.</p>
 
+  <mat-form-field *ngIf="showUserDropdown" appearance="outline" class="full-width">
+    <mat-label>Send to user</mat-label>
+    <mat-select
+      [(ngModel)]="selectedUserId"
+      (ngModelChange)="validationMessage = ''"
+      name="reportUserSelect"
+    >
+      <mat-option [value]="null">— Choose user —</mat-option>
+      <mat-option *ngFor="let u of usersWithEmail" [value]="u._id">{{ u.local.username }}</mat-option>
+    </mat-select>
+    <mat-hint>Selected user’s email overrides the field below.</mat-hint>
+  </mat-form-field>
+
   <mat-form-field appearance="outline" class="full-width">
     <mat-label>Recipient email</mat-label>
     <input

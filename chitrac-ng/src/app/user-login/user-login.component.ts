@@ -1,7 +1,7 @@
 import { Component, inject, model, OnInit, EventEmitter, Output, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 
 /*** rxjs Imports */
 import { Subscription, timer } from 'rxjs';
@@ -25,7 +25,8 @@ import { UserService } from '../user.service';
         FormsModule,
         ReactiveFormsModule,
         MatButtonModule,
-        MatIconModule
+        MatIconModule,
+        RouterLink
     ],
     templateUrl: './user-login.component.html',
     styleUrl: './user-login.component.scss'

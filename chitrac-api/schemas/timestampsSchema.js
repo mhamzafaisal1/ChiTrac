@@ -41,6 +41,12 @@ const schema = {
       type: 'string',
       format: 'date-time',
       description: 'Optional timestamp of when an object/document was made inactive. Should only exist if and when an object/document is made inactive.'
+    },
+    expires: {
+      type: 'string',
+      format: 'date-time',
+      description:
+        'Optional time after which the document may be treated as expired (application logic) and/or removed (e.g. MongoDB TTL index on this path). ISO 8601 date-time.'
     }
   },
   additionalProperties: false
@@ -57,9 +63,10 @@ const utils = {
    * @param {string} [start] - Optional timestamp for start
    * @param {string} [end] - Optional timestamp for end
    * @param {string} [inactive] - Optional timestamp for inactive
+   * @param {string} [expires] - Optional expiration date-time (TTL-friendly path e.g. timestamps.expires)
    * @returns {object} Timestamps object with the specified properties
    */
-  stampInit: (create, start = null, end = null, inactive = null) => {
+  stampInit: (create, start = null, end = null, inactive = null, expires = null) => {
     const timestamps = {
       create,
       active: create,
@@ -76,6 +83,10 @@ const utils = {
 
     if (inactive !== null) {
       timestamps.inactive = inactive;
+    }
+
+    if (expires !== null) {
+      timestamps.expires = expires;
     }
 
     // Validate against schema before returning
@@ -184,6 +195,26 @@ const utils = {
     };
 
     // Validate against schema before returning
+    const valid = validate(updatedTimestamps);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    return updatedTimestamps;
+  },
+
+  /**
+   * Set or replace the expires timestamp (optional TTL anchor)
+   * @param {object} timestampsObjectToStamp - Required existing timestamps object to update
+   * @param {string} expiresTimestamp - Required ISO 8601 date-time for expiration
+   * @returns {object} New timestamps object with expires
+   */
+  stampExpires: (timestampsObjectToStamp, expiresTimestamp) => {
+    const updatedTimestamps = {
+      ...timestampsObjectToStamp,
+      expires: expiresTimestamp
+    };
+
     const valid = validate(updatedTimestamps);
     if (!valid) {
       throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);

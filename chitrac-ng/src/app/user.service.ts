@@ -1,11 +1,31 @@
 /** Angular imports */
 import { Injectable } from '@angular/core';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 /** Other module imports */
 import { map } from 'rxjs/operators';
 import { BehaviorSubject, Observable } from 'rxjs';
+
+export interface UserWithEmailRow {
+  _id: string;
+  emailAddress: string;
+  local: { username: string };
+}
+
+/** Response from GET /api/passport/user/resetPassword/:token (password removed). */
+export interface PasswordResetVerifyResponse {
+  username?: string;
+  emailAddress?: string;
+  _id?: string;
+}
+
+export interface PasswordResetSubmitUser {
+  _id: string;
+  local: { username: string };
+  emailAddress: string;
+  newPassword: string;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -24,13 +44,38 @@ export class UserService {
   }
 
   public postUserRegister(user: any) {
-    // Return the full API response so callers can surface messages (success/error) to the user
     return this.http.post<any>('/api/passport/user/register', user).pipe(map(x => x));
+  }
+
+  /** POST body: { emailAddress } */
+  public requestPasswordReset(emailAddress: string) {
+    return this.http.post<{ ok?: boolean; message?: string }>(
+      '/api/passport/user/requestPasswordReset',
+      { emailAddress }
+    );
+  }
+
+  /**
+   * Verify reset JWT from email link path or ?token= query.
+   * GET /api/passport/user/resetPassword/:token
+   */
+  public verifyPasswordResetToken(token: string) {
+    const enc = encodeURIComponent(token);
+    return this.http.get<PasswordResetVerifyResponse>(
+      `/api/passport/user/resetPassword/${enc}`
+    );
+  }
+
+  /** POST body: { user: { _id, local: { username }, emailAddress, newPassword } } */
+  public postPasswordReset(userPayload: PasswordResetSubmitUser) {
+    return this.http.post<{ ok?: boolean; message?: string }>(
+      '/api/passport/user/resetPassword',
+      { user: userPayload }
+    );
   }
 
   public postUserLogin(user: any) {
     return this.http.post<any>('/api/passport/user/login', user).pipe(map(x => {
-      // store user details and jwt token in local storage to keep user logged in between page refreshes
       if (x.user && x.token) {
         const userWithToken = { ...x.user, token: x.token };
         localStorage.setItem('user', JSON.stringify(userWithToken));
@@ -48,7 +93,6 @@ export class UserService {
 
   public getCurrentUser() {
     return this.http.get<any>('/api/passport/user').pipe(map(x => {
-      // store user details and jwt token in local storage to keep user logged in between page refreshes
       if (x.user) {
         localStorage.setItem('user', JSON.stringify(x.user));
         this.userSubject.next(x.user);
@@ -64,7 +108,6 @@ export class UserService {
 
   public logout() {
     return this.http.get<{username: string}>('/api/passport/user/logout').pipe(map(x => {
-      // store user details and jwt token in local storage to keep user logged in between page refreshes
       localStorage.setItem('user', JSON.stringify({ username: null }));
       localStorage.removeItem('token');
       this.userSubject.next({ username: null });
@@ -75,8 +118,21 @@ export class UserService {
   public getToken(): string | null {
     return localStorage.getItem('token');
   }
+
+  public getUsersWithEmail(): Observable<UserWithEmailRow[]> {
+    const token = this.getToken();
+    let headers = new HttpHeaders();
+    if (token) {
+      headers = headers.set('Authorization', `Bearer ${token}`);
+    }
+    return this.http
+      .get<{ users: UserWithEmailRow[] }>('/api/passport/users/hasEmail', { headers })
+      .pipe(map((r) => r.users ?? []));
+  }
 }
 
 export class User {
   username: string;
+  emailAddress?: string;
+  _id?: string;
 }

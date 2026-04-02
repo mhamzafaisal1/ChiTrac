@@ -25,6 +25,9 @@
       <a mat-list-item (click)="openMenu('reports')">
         <mat-icon>bar_chart</mat-icon><span class="menu-item">Reports</span>
       </a>
+      <a mat-list-item *ngIf="!user.username" routerLink="/ng/settings/user/forgotPassword" (click)="closeMenu()">
+        <mat-icon>lock_reset</mat-icon><span class="menu-item">Forgot password</span>
+      </a>
       <a mat-list-item *ngIf="user.username" (click)="openMenu('settings')">
         <mat-icon>settings</mat-icon><span class="menu-item">Settings</span>
       </a>
@@ -139,6 +142,9 @@
       </a>
       <a mat-list-item routerLink="/ng/settings/server-logs" (click)="closeMenu()">
         <mat-icon>description</mat-icon><span>Server Logs</span>
+      </a>
+      <a mat-list-item routerLink="/ng/settings/root/users/register" (click)="closeMenu()">
+        <mat-icon>person_add</mat-icon><span>User registration</span>
       </a>
       <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>

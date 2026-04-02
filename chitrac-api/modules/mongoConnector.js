@@ -27,8 +27,8 @@ function constructor(config) {
 		
 		// Insert credentials into the connection string with authSource
 		// Format: mongodb://username:password@host:port/database?authSource=admin
-		authUrl = `mongodb://${encodedUsername}:${encodedPassword}@${urlWithoutScheme}?directConnection=true&authSource=admin`;
-		// authUrl = `mongodb://localhost:27017/chitrac`;
+		// authUrl = `mongodb://${encodedUsername}:${encodedPassword}@${urlWithoutScheme}?directConnection=true&authSource=admin`;
+		authUrl = `mongodb://localhost:27017/chitrac`;
 		console.log('MongoDB connection string:', authUrl.replace(/:[^:@]+@/, ':****@')); // Log without password
 	} else {
 		// If format is unexpected, just append credentials before @
@@ -37,7 +37,7 @@ function constructor(config) {
 		if (!authUrl.includes('?')) {
 			authUrl += `?authSource=${authSource}`;
 		} else {
-			authUrl += `&authSource=${authSource}`;	
+			authUrl += `&authSource=${authSource}`;
 		}
 	}
 	
