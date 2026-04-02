@@ -205,26 +205,19 @@ function constructor(server) {
   router.get('/operator/config/xml', getOperatorXML);
   router.get('/operator/config', getOperator);
   router.get('/operator/new-id', getNewOperatorId);
-  // /api/operator/... mount (same handlers; alpha mount keeps /operator/* paths)
-  router.get('/config/xml', getOperatorXML);
-  router.get('/config', getOperator);
-  router.get('/new-id', getNewOperatorId);
 
   // Protected routes - require JWT token
   router.post('/operator/config', verifyJwtMiddleware, createOperator);
   router.put('/operator/config/:id', verifyJwtMiddleware, upsertOperator);
   router.delete('/operator/config/:id', verifyJwtMiddleware, deleteOperator);
-  router.post('/config', verifyJwtMiddleware, createOperator);
-  router.put('/config/:id', verifyJwtMiddleware, upsertOperator);
-  router.delete('/config/:id', verifyJwtMiddleware, deleteOperator);
 
   // Operator analytics routes are defined below in this controller
 
   const getOperatorsSummaryRealTimeHandler = getOperatorsSummaryRealTime(db, logger, config);
 
-  // GET /api/alpha/analytics/operators-summary-daily-cached
+  // GET /api/operator/analytics/operators-summary-daily-cached
   // Returns daily operator summary from totals-daily cache; falls back to real-time if no cache.
-  router.get("/analytics/operators-summary-daily-cached", async (req, res) => {
+  router.get("/operator/analytics/operators-summary-daily-cached", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
@@ -468,9 +461,9 @@ function constructor(server) {
     }
   });
 
-  // GET /api/alpha/analytics/operator-details-cached
+  // GET /api/operator/analytics/operator-details-cached
   // Returns operator details built entirely from cache (totals-daily + hourly-totals).
-  router.get("/analytics/operator-details-cached", async (req, res) => {
+  router.get("/operator/analytics/operator-details-cached", async (req, res) => {
     try {
       const { start, end, operatorId, serial, tz = "America/Chicago" } = req.query;
 
@@ -542,9 +535,9 @@ function constructor(server) {
     }
   });
 
-  // GET /api/alpha/analytics/operator-machine-summary
+  // GET /api/operator/analytics/operator-machine-summary
   // Aggregates operator sessions by machine with totals, items, and fault overlap count.
-  router.get("/analytics/operator-machine-summary", async (req, res) => {
+  router.get("/operator/analytics/operator-machine-summary", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = Number(req.query.operatorId);

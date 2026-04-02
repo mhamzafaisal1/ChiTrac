@@ -32,6 +32,6 @@ export class EfficiencyScreensService {
   }
 
   getSPFMachines(): Observable<any[]> {
-    return this.http.get<any[]>('/api/machine/machines/spf');
+    return this.http.get<any[]>('/api/machine/spf');
   }
 }
