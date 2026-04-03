@@ -3,8 +3,6 @@ import { OperatorGridComponent } from './operator-grid/operator-grid.component';
 import { ItemGridComponent } from './item-grid/item-grid.component';
 import { UserLoginComponent } from './user-login/user-login.component';
 import { UserRegisterComponent } from './user-register/user-register.component';
-import { PasswordResetComponent } from './password-reset/password-reset.component';
-import { ForgotPasswordComponent } from './forgot-password/forgot-password.component';
 import { OperatorAnalyticsDashboardComponent } from './operator-analytics-dashboard/operator-analytics-dashboard.component';
 import { DailySummaryDashboardComponent } from './daily-summary-dashboard/daily-summary-dashboard.component';
 import { ItemAnalyticsDashboardComponent } from './item-analytics-dashboard/item-analytics-dashboard.component';
@@ -39,9 +37,6 @@ export const routes: Routes = [
 	{ path: 'ng/settings/machines', component: MachineGridComponent },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
-	{ path: 'ng/settings/user/resetPassword/:token', component: PasswordResetComponent },
-	{ path: 'ng/settings/user/resetPassword', component: PasswordResetComponent },
-	{ path: 'ng/settings/user/forgotPassword', component: ForgotPasswordComponent },
 	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
 	
 	// Login/Auth

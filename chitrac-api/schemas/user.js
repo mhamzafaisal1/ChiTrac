@@ -1,7 +1,5 @@
 const Ajv = require('ajv');
-const addFormats = require('ajv-formats');
 const ajv = new Ajv();
-addFormats(ajv);
 const bcrypt = require('bcrypt');
 
 // Import related schemas
@@ -42,11 +40,6 @@ const schema = {
       ...humanNamesSchema.schema,
       description: 'Schema valid human name object'
     },
-    emailAddress: {
-      type: 'string',
-      format: 'email',
-      description: 'Optional email address for this user'
-    },
     local: {
       type: 'object',
       required: ['username', 'password'],
@@ -78,23 +71,6 @@ const schema = {
       },
       additionalProperties: false,
       description: 'Object containing any combination of three optional string child properties: area, category, department'
-    },
-    resetToken: {
-      type: 'object',
-      required: ['timestamps', 'token'],
-      properties: {
-        timestamps: {
-          ...timestampsSchema.schema,
-          description: 'Schema-valid timestamps for the password-reset token lifecycle'
-        },
-        token: {
-          type: 'string',
-          minLength: 1,
-          description: 'JWT string issued for password reset verification'
-        }
-      },
-      additionalProperties: false,
-      description: 'Optional password-reset token; when present, timestamps and token are both required'
     }
   },
   additionalProperties: false
@@ -112,10 +88,9 @@ const utils = {
    * @param {string} username - Required string value of user's desired username
    * @param {string} password - Required string value of the password (will be encrypted)
    * @param {object} [groups] - Optional parent object to the potential children Strings of 'area', 'category', or 'department'
-   * @param {string|null} [emailAddress] - Optional RFC 5322-style email address
    * @returns {object} Validated user object
    */
-  initUser: (id, name, username, password, groups = null, emailAddress = null) => {
+  initUser: (id, name, username, password, groups = null) => {
     // Initialize timestamps using timestamps utils
     const now = new Date().toISOString();
     const timestamps = timestampsSchema.utils.stampInit(now);
@@ -139,9 +114,6 @@ const utils = {
     // Add optional properties if provided
     if (groups !== null) {
       userObject.groups = groups;
-    }
-    if (emailAddress !== null && emailAddress !== undefined && emailAddress !== '') {
-      userObject.emailAddress = emailAddress;
     }
 
     // Validate against schema before returning

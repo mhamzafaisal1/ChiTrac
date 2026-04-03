@@ -60,6 +60,8 @@ server.config = config;
 server.db = db;
 server.logDb = logDb;
 server.logger = logger;
+/** Holds scheduled job handles (e.g. alpha testing job scheduler). */
+server.scheduledJobs = {};
 
 server.defaults = {
     machine: require('./defaults/machine').machine,

@@ -9,7 +9,6 @@ var LocalStrategy = require('passport-local').Strategy;
 
 const bcrypt = require('bcryptjs');
 const ObjectId = require('mongodb').ObjectId;
-const { parseOptionalEmail, isEmailTaken } = require('../modules/userEmail');
 
 // expose this function to our app using module.exports
 module.exports = function(passport, server) {
@@ -58,13 +57,6 @@ module.exports = function(passport, server) {
         // User.findOne wont fire unless data is sent back
         process.nextTick(async function() {
             try {
-                const parsedEmail = parseOptionalEmail(req.body.emailAddress);
-                if (!parsedEmail.ok) {
-                    return callback(null, false, req.flash('messages', parsedEmail.message));
-                }
-                if (parsedEmail.email !== null && await isEmailTaken(userCollection, parsedEmail.email)) {
-                    return callback(null, false, req.flash('messages', 'That email address is already in use.'));
-                }
                 const userFind = await userCollection.find({ 'local.username': username }).toArray();
                 if (userFind.length) {
                     return callback(null, false, req.flash('messages', 'That username is already taken.'));
@@ -85,8 +77,8 @@ module.exports = function(passport, server) {
 					const salt = bcrypt.genSaltSync(10);
 					const hash = bcrypt.hashSync(password, salt);
 					newUser.local.password = hash;
-                    if (parsedEmail.email !== null) {
-                        newUser.emailAddress = parsedEmail.email;
+                    if (req.body.email) {
+                        newUser.email = req.body.email
                     }
                     if (req.body.role) {
                         newUser.role = req.body.role

@@ -1,12 +1,97 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const config = require("../../modules/config");
-const makeJwtVerifyMiddleware = require("../../middleware/jwtVerify");
 
 module.exports = function (server) {
   const router = express.Router();
   const logger = server.logger;
-  const verifyJwtMiddleware = makeJwtVerifyMiddleware(server);
+
+  function extractToken(req) {
+    const authHeader = req.headers["authorization"] || req.headers["Authorization"];
+    if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7).trim();
+    if (typeof req.query?.token === "string") return req.query.token;
+    if (typeof req.body?.token === "string") return req.body.token;
+    return null;
+  }
+
+  function verifyJwtMiddleware(req, res, next) {
+    // Check if API token check is disabled via environment variable
+    if (config.enableApiTokenCheck === false) {
+      logger?.debug?.("API token check is disabled - bypassing authentication");
+      req.tokenPayload = { bypassed: true };
+      return next();
+    }
+
+    try {
+      const token = extractToken(req);
+      if (!token) return res.status(401).json({ valid: false, error: "Missing token" });
+      const secret = config.jwtSecret;
+      if (!secret) {
+        logger?.warn?.("JWT secret not configured (config.jwtSecret)");
+        return res.status(500).json({ valid: false, error: "Server config error" });
+      }
+      
+      const decoded = jwt.verify(token, secret);
+      
+      // Check if it's a permanent token
+      if (decoded.type === 'permanent') {
+        // For permanent tokens, verify they exist in database and are active
+        verifyPermanentToken(req, res, next, token, decoded);
+      } else {
+        // Regular session token
+        req.tokenPayload = decoded;
+        next();
+      }
+    } catch (err) {
+      return res.status(401).json({ valid: false, error: "Invalid token" });
+    }
+  }
+
+  async function verifyPermanentToken(req, res, next, token, decoded) {
+    try {
+      const db = server.db;
+      const authTokensCollection = db.collection('auth-tokens');
+      const bcrypt = require('bcryptjs');
+
+      // Find token in database
+      const tokenDoc = await authTokensCollection.findOne({
+        name: decoded.name,
+        createdBy: decoded.createdBy,
+        isActive: true
+      });
+
+      if (!tokenDoc) {
+        return res.status(401).json({ valid: false, error: "Token not found or inactive" });
+      }
+
+      // Verify the token matches the stored hash
+      const isValidToken = await bcrypt.compare(token, tokenDoc.hashedToken);
+      if (!isValidToken) {
+        return res.status(401).json({ valid: false, error: "Invalid token" });
+      }
+
+      // Update usage statistics
+      await authTokensCollection.updateOne(
+        { _id: tokenDoc._id },
+        { 
+          $set: { lastUsed: new Date() },
+          $inc: { usageCount: 1 }
+        }
+      );
+
+      // Set token payload for the request
+      req.tokenPayload = {
+        ...decoded,
+        tokenId: tokenDoc._id,
+        tokenName: tokenDoc.name
+      };
+
+      next();
+    } catch (err) {
+      logger?.error?.("Error verifying permanent token:", err);
+      return res.status(401).json({ valid: false, error: "Token verification failed" });
+    }
+  }
 
   router.get("/tokenTest", verifyJwtMiddleware, (req, res) => {
     res.json({ valid: true, payload: req.tokenPayload });

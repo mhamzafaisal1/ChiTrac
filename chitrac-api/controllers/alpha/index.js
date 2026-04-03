@@ -82,6 +82,8 @@ const {
 } = require("../../utils/machineFunctions");
 
 const xml = require("xml2js");
+const schedule = require("node-schedule");
+const { sendScheduledJobTestEmail } = require("../../modules/sendScheduledJobTestEmail");
 
 function alphaController(server) {
   return constructor(server);
@@ -3807,6 +3809,92 @@ function constructor(server) {
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/alpha/testing/jobScheduler
+   * Query (all optional, but at least one required): minute, hour, dayOfMonth, month, dayOfWeek
+   * Builds 6-field cron: second minute hour dom month dow — second fixed to *; omitted fields *.
+   */
+  router.get("/testing/jobScheduler", async (req, res) => {
+    const q = req.query || {};
+    const pick = (name) => {
+      const v = q[name];
+      if (v === undefined || v === null) return null;
+      const s = String(v).trim();
+      return s === "" ? null : s;
+    };
+    const minute = pick("minute");
+    const hour = pick("hour");
+    const dayOfMonth = pick("dayOfMonth");
+    const month = pick("month");
+    const dayOfWeek = pick("dayOfWeek");
+
+    const hasAny = [minute, hour, dayOfMonth, month, dayOfWeek].some(
+      (x) => x !== null
+    );
+    if (!hasAny) {
+      return res.status(400).json({
+        error:
+          "At least one query parameter is required: minute, hour, dayOfMonth, month, or dayOfWeek.",
+      });
+    }
+
+    const sec = "*";
+    const m = minute ?? "*";
+    const h = hour ?? "*";
+    const dom = dayOfMonth ?? "*";
+    const mon = month ?? "*";
+    const dow = dayOfWeek ?? "*";
+    const cronExpr = `${sec} ${m} ${h} ${dom} ${mon} ${dow}`;
+
+    const JOB_KEY = "jobSchedulerTest";
+    if (!server.scheduledJobs) {
+      server.scheduledJobs = {};
+    }
+    const existing = server.scheduledJobs[JOB_KEY];
+    if (existing && typeof existing.cancel === "function") {
+      try {
+        existing.cancel();
+      } catch (cancelErr) {
+        logger.warn(
+          `[${JOB_KEY}] cancel previous job:`,
+          cancelErr?.message || cancelErr
+        );
+      }
+    }
+    server.scheduledJobs[JOB_KEY] = null;
+
+    try {
+      const job = schedule.scheduleJob(cronExpr, async () => {
+        try {
+          await sendScheduledJobTestEmail();
+          logger.info(`[${JOB_KEY}] fired; notification email sent`);
+        } catch (runErr) {
+          logger.error(`[${JOB_KEY}] run failed:`, runErr);
+        }
+      });
+
+      if (!job) {
+        return res.status(400).json({
+          error: "Could not create schedule (invalid cron expression?).",
+          cron: cronExpr,
+        });
+      }
+
+      server.scheduledJobs[JOB_KEY] = job;
+      return res.json({
+        ok: true,
+        cron: cronExpr,
+        message: "Job scheduled.",
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      return res.status(400).json({
+        error: err?.message || "Invalid cron expression or scheduling failed.",
+        cron: cronExpr,
+      });
     }
   });
 

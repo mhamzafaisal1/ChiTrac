@@ -14,12 +14,6 @@
     <mat-error *ngIf="userRegistrationFormGroup.get('password')?.hasError('minlength') && userRegistrationFormGroup.get('password')?.touched">Password must be at least 6 characters</mat-error>
   </mat-form-field>
   <br />
-  <mat-form-field appearance="fill" class="full-width">
-    <mat-label>Email (optional)</mat-label>
-    <input matInput type="email" formControlName="emailAddress" autocomplete="email" />
-    <mat-error *ngIf="userRegistrationFormGroup.get('emailAddress')?.hasError('email') && userRegistrationFormGroup.get('emailAddress')?.touched">Enter a valid email address</mat-error>
-  </mat-form-field>
-  <br />
   <div class="actions">
     <button type="submit" mat-flat-button color="primary" [disabled]="!userRegistrationFormGroup.valid">Register</button>
   </div>

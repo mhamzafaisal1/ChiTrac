@@ -1,6 +1,6 @@
 import { Component, inject, model, OnInit, EventEmitter, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators, AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
+import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 
 /*** rxjs Imports */
@@ -13,16 +13,6 @@ import { MatInputModule } from '@angular/material/input';
 
 /*** Service Imports */
 import { UserService } from '../user.service';
-
-function optionalEmailValidator(): ValidatorFn {
-  return (control: AbstractControl): ValidationErrors | null => {
-    const raw = control.value;
-    if (raw == null || String(raw).trim() === '') {
-      return null;
-    }
-    return Validators.email(new FormControl(String(raw).trim()));
-  };
-}
 
 @Component({
     selector: 'app-user-register',
@@ -43,8 +33,7 @@ export class UserRegisterComponent {
 
   user: any = {
     username: null,
-    password: null,
-    emailAddress: null as string | null
+    password: null
   };
   error: any = null;
 
@@ -73,7 +62,7 @@ export class UserRegisterComponent {
           this.router.navigateByUrl(returnUrl);
         },
         error: (err: any) => {
-          const message = err?.error?.error || err?.error?.message || err?.message || 'Failed to create user.';
+          const message = err?.error?.message || err?.message || 'Failed to create user.';
           alert(message);
           this.error = message;
         }
@@ -85,7 +74,6 @@ export class UserRegisterComponent {
     this.userRegistrationFormGroup = new FormGroup({
       username: new FormControl(this.user.username, [Validators.required, Validators.minLength(4)]),
       password: new FormControl(this.user.password, [Validators.required, Validators.minLength(6)]),
-      emailAddress: new FormControl(this.user.emailAddress, [optionalEmailValidator()])
     });
 
     if (this.error) this.userRegistrationFormGroup.markAsDirty();
@@ -96,8 +84,6 @@ export class UserRegisterComponent {
     ).subscribe(res => {
       this.user.username = res.username;
       this.user.password = res.password;
-      const e = res.emailAddress;
-      this.user.emailAddress = e != null && String(e).trim() !== '' ? String(e).trim() : null;
     });
   };
 
