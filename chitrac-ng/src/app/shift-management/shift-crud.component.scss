@@ -1,0 +1,84 @@
+.shift-crud-page {
+  width: min(1000px, 92%);
+  margin: 1rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.section mat-button-toggle-group {
+  width: fit-content;
+  align-self: flex-start;
+  display: inline-flex;
+}
+
+.top-form-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.top-form-row mat-form-field {
+  min-width: 280px;
+}
+
+.active-flag {
+  min-width: 110px;
+}
+
+.shift-time-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 320px));
+  gap: 1rem;
+}
+
+.breaks-layout {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 1rem;
+  min-height: 280px;
+}
+
+.break-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.break-table-wrap {
+  border: 1px solid var(--theme-color-outline-variant, #d0d0d0);
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 320px;
+}
+
+table {
+  width: 100%;
+}
+
+.mat-mdc-row {
+  cursor: pointer;
+}
+
+.selected-row {
+  background-color: var(--theme-color-secondary-container) !important;
+}
+
+.mat-mdc-row:nth-child(even) {
+  background-color: var(--theme-color-surface-bright);
+}
+
+.mat-mdc-row:hover {
+  background-color: var(--theme-color-secondary-middle) !important;
+}
+
+.save-row {
+  display: flex;
+  justify-content: flex-end;
+}
