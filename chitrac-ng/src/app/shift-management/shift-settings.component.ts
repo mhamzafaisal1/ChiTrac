@@ -6,10 +6,10 @@ import { Component, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatTableModule } from '@angular/material/table';
+import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { ShiftCrudComponent } from './shift-crud.component';
 import { ShiftDocument, ShiftService } from '../services/shift.service';
-import { formatTime } from './shift-time.utils';
+import { formatTimeSafe } from './shift-time.utils';
 
 @Component({
   selector: 'app-shift-settings',
@@ -58,7 +58,7 @@ export class ShiftSettingsComponent implements OnInit {
   private readonly shiftService = inject(ShiftService);
   private readonly snackBar = inject(MatSnackBar);
 
-  shifts: ShiftDocument[] = [];
+  readonly dataSource = new MatTableDataSource<ShiftDocument>([]);
   readonly displayedColumns = ['summary'];
   selection = new SelectionModel<ShiftDocument>(
     false,
@@ -95,10 +95,7 @@ export class ShiftSettingsComponent implements OnInit {
     const name = shift.name?.trim() ? shift.name : 'Unnamed shift';
     const st = shift.startTime;
     const en = shift.endTime;
-    const timePart =
-      st && en
-        ? `${formatTime(st)} – ${formatTime(en)}`
-        : '—';
+    const timePart = `${formatTimeSafe(st)} – ${formatTimeSafe(en)}`;
     const days = (shift.activeDays ?? [])
       .slice()
       .sort((a, b) => a - b)
@@ -113,7 +110,8 @@ export class ShiftSettingsComponent implements OnInit {
     this.isLoading = true;
     this.shiftService.getAllShifts().subscribe({
       next: (res) => {
-        this.shifts = res.shifts ?? [];
+        const list = [...(res.shifts ?? [])];
+        this.dataSource.data = list;
         this.isLoading = false;
         this.syncSelectionAfterReload();
       },
@@ -127,7 +125,7 @@ export class ShiftSettingsComponent implements OnInit {
             ? String((err.error as { error?: string }).error)
             : 'Could not load shifts.';
         this.snackBar.open(msg, 'Close', { duration: 4000 });
-        this.shifts = [];
+        this.dataSource.data = [];
       },
     });
   }
@@ -137,7 +135,7 @@ export class ShiftSettingsComponent implements OnInit {
     if (!sel) {
       return;
     }
-    const match = this.shifts.find((s) => s._id === sel._id);
+    const match = this.dataSource.data.find((s) => s._id === sel._id);
     if (match) {
       this.selection.setSelection(match);
       if (this.showEditor && this.editorMode === 'edit') {

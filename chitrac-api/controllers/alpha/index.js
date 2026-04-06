@@ -3914,6 +3914,74 @@ function constructor(server) {
     }
   }
 
+  function normalizeShiftIdForApi(raw) {
+    if (raw == null) {
+      return "";
+    }
+    if (typeof raw === "string") {
+      return raw;
+    }
+    if (typeof raw === "object" && raw.$oid != null) {
+      return String(raw.$oid);
+    }
+    if (typeof raw?.toHexString === "function") {
+      return raw.toHexString();
+    }
+    try {
+      return String(new ObjectId(raw));
+    } catch (e) {
+      return String(raw);
+    }
+  }
+
+  function normalizeTimePart(t) {
+    if (!t || typeof t !== "object") {
+      return { hour: 0, minute: 0 };
+    }
+    const hour = Number.isFinite(Number(t.hour))
+      ? Number(t.hour)
+      : parseInt(String(t.hour ?? 0), 10) || 0;
+    const minute = Number.isFinite(Number(t.minute))
+      ? Number(t.minute)
+      : parseInt(String(t.minute ?? 0), 10) || 0;
+    return {
+      hour: Math.min(23, Math.max(0, hour)),
+      minute: Math.min(59, Math.max(0, minute)),
+    };
+  }
+
+  /**
+   * Plain JSON for the Angular client: string _id, numeric hour/minute,
+   * so rows always render (avoids EJSON / type quirks from mixed drivers).
+   */
+  function normalizeShiftForClient(s) {
+    const out = {
+      ...s,
+      _id: normalizeShiftIdForApi(s._id),
+      startTime: normalizeTimePart(s.startTime),
+      endTime: normalizeTimePart(s.endTime),
+    };
+    if (Array.isArray(s.activeDays)) {
+      out.activeDays = s.activeDays
+        .map((d) =>
+          typeof d === "number" && Number.isFinite(d)
+            ? d
+            : parseInt(String(d), 10) || 0
+        )
+        .filter((d) => d >= 1 && d <= 7);
+    } else {
+      out.activeDays = [];
+    }
+    if (Array.isArray(s.breaks)) {
+      out.breaks = s.breaks.map((b) => ({
+        ...b,
+        startTime: normalizeTimePart(b && b.startTime),
+        endTime: normalizeTimePart(b && b.endTime),
+      }));
+    }
+    return out;
+  }
+
   router.get("/shifts", async (req, res) => {
     try {
       const shifts = await db.collection("shift").find({}).toArray();
@@ -3925,7 +3993,7 @@ function constructor(server) {
         return am - bm;
       });
       res.json({
-        shifts: shifts.map((s) => ({ ...s, _id: String(s._id) })),
+        shifts: shifts.map((s) => normalizeShiftForClient(s)),
       });
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
@@ -3980,10 +4048,7 @@ function constructor(server) {
 
       const result = await db.collection("shift").insertOne(doc);
       const saved = await db.collection("shift").findOne({ _id: result.insertedId });
-      res.status(201).json({
-        ...saved,
-        _id: String(saved._id),
-      });
+      res.status(201).json(normalizeShiftForClient(saved));
     } catch (err) {
       if (err.status === 409) {
         return res.status(409).json({ error: err.message });
@@ -4051,10 +4116,7 @@ function constructor(server) {
 
       await db.collection("shift").replaceOne({ _id: oid }, doc);
       const saved = await db.collection("shift").findOne({ _id: oid });
-      res.json({
-        ...saved,
-        _id: String(saved._id),
-      });
+      res.json(normalizeShiftForClient(saved));
     } catch (err) {
       if (err.status === 409) {
         return res.status(409).json({ error: err.message });

@@ -23,6 +23,19 @@ export function formatTime(time: ShiftTimeValue): string {
   return `${hour12}:${minute} ${suffix}`;
 }
 
+/** Avoids throwing if API/DB sends string or partial times (keeps table rows visible). */
+export function formatTimeSafe(time: ShiftTimeValue | null | undefined): string {
+  if (time == null || time.hour == null || time.minute == null) {
+    return '—';
+  }
+  const hour = Number(time.hour);
+  const minute = Number(time.minute);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return '—';
+  }
+  return formatTime({ hour, minute });
+}
+
 export function doBreaksOverlap(a: EditableBreak, b: EditableBreak): boolean {
   const aStart = toMinutes(a.startTime);
   const aEnd = toMinutes(a.endTime);
