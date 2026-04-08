@@ -42,6 +42,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isLoading: boolean = false;
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
+  isEmailing: boolean = false;
   showSummaryOnly: boolean = false;
   private observer!: MutationObserver;
 
@@ -166,38 +167,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     console.log('Starting PDF export...');
 
     try {
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-      const margin = 24;
-      let y = margin;
-
-      doc.setFontSize(14);
-      doc.text('MACHINE REPORT', margin, y); 
-      y += 18;
-      doc.setFontSize(10);
-      doc.text(`Range: ${this.startTime} → ${this.endTime}`, margin, y); 
-      y += 24;
-
-      const head = [['Machine/Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
-      const body = this.displayedRows.map(row => [
-        `${row['Machine']} / ${row['Item']}`,
-        row['Total Time (Runtime)'],
-        row['Total Count'],
-        row['PPH'],
-        row['Standard'],
-        row['Efficiency'],
-      ]);
-
-      console.log(`Adding table with ${body.length} rows`);
-      autoTable(doc, {
-        head, 
-        body,
-        startY: y,
-        margin: { left: margin, right: margin },
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [22, 160, 133], textColor: 255 },
-        columnStyles: { 0: { cellWidth: 180 } },
-        theme: 'striped'
-      });
+      const doc = this.buildMachineReportPdf();
 
       console.log('Saving PDF...');
       doc.save(`machine_report_${this.startTime}_${this.endTime}.pdf`);
@@ -206,6 +176,43 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       console.error('PDF export failed:', e);
     } finally {
       this.isDownloading = false;
+    }
+  }
+
+  openEmailReportDialog(): void {
+    if (!this.rows.length || !this.startTime || !this.endTime) return;
+
+    const to = window.prompt('Enter recipient email address:');
+    if (!to) return;
+
+    this.isEmailing = true;
+
+    try {
+      const doc = this.buildMachineReportPdf();
+      const dataUri = doc.output('datauristring');
+      const pdfBase64 = dataUri.split(',')[1] ?? '';
+
+      this.reportsService.emailMachineReport({
+        to: to.trim(),
+        pdfBase64,
+        start: new Date(this.startTime).toISOString(),
+        end: new Date(this.endTime).toISOString(),
+        summaryOnly: this.showSummaryOnly
+      }).subscribe({
+        next: () => {
+          window.alert('Machine report email sent successfully.');
+          this.isEmailing = false;
+        },
+        error: (error) => {
+          console.error('Error emailing machine report:', error);
+          window.alert('Failed to send machine report email.');
+          this.isEmailing = false;
+        }
+      });
+    } catch (error) {
+      console.error('Failed to generate PDF for email:', error);
+      window.alert('Failed to prepare machine report email.');
+      this.isEmailing = false;
     }
   }
 
@@ -262,5 +269,42 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  private buildMachineReportPdf(): jsPDF {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const margin = 24;
+    let y = margin;
+
+    doc.setFontSize(14);
+    doc.text('MACHINE REPORT', margin, y);
+    y += 18;
+    doc.setFontSize(10);
+    doc.text(`Range: ${this.startTime} → ${this.endTime}`, margin, y);
+    y += 24;
+
+    const head = [['Machine/Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
+    const body = this.displayedRows.map(row => [
+      `${row['Machine']} / ${row['Item']}`,
+      row['Total Time (Runtime)'],
+      row['Total Count'],
+      row['PPH'],
+      row['Standard'],
+      row['Efficiency'],
+    ]);
+
+    console.log(`Adding table with ${body.length} rows`);
+    autoTable(doc, {
+      head,
+      body,
+      startY: y,
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [22, 160, 133], textColor: 255 },
+      columnStyles: { 0: { cellWidth: 180 } },
+      theme: 'striped'
+    });
+
+    return doc;
   }
 }

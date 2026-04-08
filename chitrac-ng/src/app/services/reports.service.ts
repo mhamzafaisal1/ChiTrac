@@ -2,6 +2,26 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
+export interface ReportSubscriptionDto {
+  _id: string;
+  name: string;
+  enabled: boolean;
+  report: { name: string; type: 'summary' | 'detailed' };
+  email: { to: string; cc: string; bcc: string; subject: string; bodyText: string };
+  schedule: { cron: string };
+  timestamps?: any;
+  lastAttempt?: any;
+  log?: any;
+}
+
+export interface ReportSubscriptionPayload {
+  name: string;
+  enabled: boolean;
+  report: { name: string; type: 'summary' | 'detailed' };
+  email: { to: string; cc: string; bcc: string; subject: string; bodyText: string };
+  schedule: { cron: string };
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -61,5 +81,25 @@ export class ReportsService {
       `${this.apiUrl}/analytics/machine-report-email`,
       payload
     );
+  }
+
+  listReportSubscriptions(): Observable<ReportSubscriptionDto[]> {
+    return this.http.get<ReportSubscriptionDto[]>(`${this.apiUrl}/report-subscriptions`);
+  }
+
+  getReportSubscription(id: string): Observable<ReportSubscriptionDto> {
+    return this.http.get<ReportSubscriptionDto>(`${this.apiUrl}/report-subscriptions/${id}`);
+  }
+
+  createReportSubscription(payload: ReportSubscriptionPayload): Observable<ReportSubscriptionDto> {
+    return this.http.post<ReportSubscriptionDto>(`${this.apiUrl}/report-subscriptions`, payload);
+  }
+
+  updateReportSubscription(id: string, payload: ReportSubscriptionPayload): Observable<ReportSubscriptionDto> {
+    return this.http.put<ReportSubscriptionDto>(`${this.apiUrl}/report-subscriptions/${id}`, payload);
+  }
+
+  deleteReportSubscription(id: string): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`${this.apiUrl}/report-subscriptions/${id}`);
   }
 }

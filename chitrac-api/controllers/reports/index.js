@@ -24,6 +24,7 @@ module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
   const logger = server.logger;
+  const reportSubscriptionRoutes = require("./reportSubscription")(server);
 
   router.get("/shifts", async (req, res) => {
     try {
@@ -1289,6 +1290,8 @@ module.exports = function (server) {
       res.status(500).json({ error: "Failed to send email" });
     }
   });
+
+  router.use("/report-subscriptions", reportSubscriptionRoutes);
 
   return router;
 };
