@@ -1,5 +1,6 @@
 const express = require("express");
 const schedule = require("node-schedule");
+const nodemailer = require("nodemailer");
 const { ObjectId } = require("mongodb");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
@@ -67,6 +68,53 @@ const buildValidatedDocForCreate = (payload) => {
   return baseDoc;
 };
 
+const splitEmails = (value) => {
+  if (typeof value !== "string") return [];
+  return value
+    .split(";")
+    .map((x) => x.trim())
+    .filter(Boolean);
+};
+
+const sendSubscriptionEmail = async (subscriptionDoc) => {
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = parseInt(process.env.SMTP_PORT || "465", 10);
+  const secure = process.env.SMTP_SECURE !== "false";
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!user || !pass) {
+    throw new Error("SMTP_USER or SMTP_PASS is not set");
+  }
+
+  const toRecipients = splitEmails(subscriptionDoc?.email?.to);
+  if (!toRecipients.length) {
+    throw new Error("No valid recipient in email.to");
+  }
+
+  const ccRecipients = splitEmails(subscriptionDoc?.email?.cc);
+  const bccRecipients = splitEmails(subscriptionDoc?.email?.bcc);
+
+  const fromEmail = process.env.SMTP_FROM_EMAIL || user;
+  const fromName = process.env.SMTP_FROM_NAME || "ChiTrac";
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
+
+  await transporter.sendMail({
+    from: `"${fromName}" <${fromEmail}>`,
+    to: toRecipients.join(", "),
+    cc: ccRecipients.length ? ccRecipients.join(", ") : undefined,
+    bcc: bccRecipients.length ? bccRecipients.join(", ") : undefined,
+    subject: subscriptionDoc?.email?.subject || "Scheduled Report",
+    text: subscriptionDoc?.email?.bodyText || "Scheduled report triggered.",
+    html: `<p>${String(subscriptionDoc?.email?.bodyText || "Scheduled report triggered.")}</p>`,
+  });
+};
+
 const updateExecutionLog = async (db, docId, status, details) => {
   const now = new Date().toISOString();
   const current = await db.collection(COLLECTION_NAME).findOne({ _id: docId });
@@ -101,6 +149,7 @@ const updateExecutionLog = async (db, docId, status, details) => {
 const runSubscriptionJob = async (server, subscriptionDoc) => {
   const logger = server.logger;
   try {
+    await sendSubscriptionEmail(subscriptionDoc);
     logger.info(
       `[reportSubscription] Triggered subscription ${subscriptionDoc._id} (${subscriptionDoc.name})`
     );
