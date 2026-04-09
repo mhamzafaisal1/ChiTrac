@@ -1,0 +1,158 @@
+.shift-settings-page {
+  width: min(1000px, 92%);
+  margin: 1rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.page-header {
+  margin: 0;
+}
+
+.page-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.page-lede {
+  margin: 0;
+  max-width: 52rem;
+  line-height: 1.45;
+  color: var(--theme-color-on-surface-variant, rgba(0, 0, 0, 0.7));
+  font-size: 0.95rem;
+}
+
+.hint {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.shifts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shifts-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.section-help {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--theme-color-on-surface-variant, rgba(0, 0, 0, 0.65));
+  max-width: 48rem;
+}
+
+.shifts-layout {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 1rem;
+  align-items: start;
+  min-height: 200px;
+}
+
+.shift-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.shift-table-region {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.table-legend {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--theme-color-on-surface-variant, rgba(0, 0, 0, 0.6));
+  padding: 0 2px;
+}
+
+.shift-table-wrap {
+  border: 1px solid var(--theme-color-outline-variant, #d0d0d0);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 360px;
+  background: var(--theme-color-surface, #fff);
+}
+
+.shifts-table {
+  width: 100%;
+}
+
+/* MDC table paints cells; style row + cells so selection beats zebra striping */
+.shifts-table .mat-mdc-row {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.shifts-table .mat-mdc-cell {
+  border-bottom-color: var(--theme-color-outline-variant, rgba(0, 0, 0, 0.12));
+}
+
+.shifts-table .mat-mdc-row:nth-child(even):not(.selected-row) .mat-mdc-cell {
+  background-color: var(--theme-color-surface-bright, rgba(0, 0, 0, 0.03));
+}
+
+.shifts-table .mat-mdc-row:hover:not(.selected-row) .mat-mdc-cell {
+  background-color: var(--theme-color-secondary-middle, rgba(0, 0, 0, 0.06)) !important;
+}
+
+.shifts-table .mat-mdc-row.selected-row .mat-mdc-cell {
+  background-color: var(--theme-color-secondary-container, rgba(103, 80, 164, 0.28)) !important;
+  box-shadow: inset 4px 0 0 0 var(--theme-color-primary, #6750a4);
+  font-weight: 500;
+}
+
+.shift-editor-panel {
+  margin-top: 0.25rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+  border: 1px solid var(--theme-color-outline-variant, #d0d0d0);
+  border-radius: 10px;
+  background: var(--theme-color-surface-container-low, rgba(0, 0, 0, 0.04));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.editor-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.editor-subtitle {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--theme-color-on-surface-variant, rgba(0, 0, 0, 0.7));
+  max-width: 40rem;
+}
+
+.shift-crud-host {
+  display: block;
+}
+
+/* Tuck nested form flush with panel; avoid double max-width margins */
+.shift-editor-panel ::ng-deep .shift-crud-page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}

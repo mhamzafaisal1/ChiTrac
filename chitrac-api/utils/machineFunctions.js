@@ -27,6 +27,8 @@
     groupCountsByOperatorAndMachine,
     getValidCounts,
   } = require("./count");
+  const { loadActiveShifts } = require("./shiftElapsed");
+  const { getLiveProductiveWindowMs, liveDowntimeMs } = require("./availabilityLive");
 
   function safe(n) {
     return typeof n === "number" && isFinite(n) ? n : 0;
@@ -588,10 +590,12 @@ async function getActiveMachineSerials(db, start, end) {
     totalTimeCredit,
     queryStart,
     queryEnd,
+    productiveMs = null,
   }) {
-    const totalMs = Math.max(0, queryEnd - queryStart);
-    const availability = totalMs
-      ? Math.min(Math.max(runtimeMs / totalMs, 0), 1)
+    const wallMs = Math.max(0, queryEnd - queryStart);
+    const denomMs = productiveMs != null ? productiveMs : wallMs;
+    const availability = denomMs
+      ? Math.min(Math.max(runtimeMs / denomMs, 0), 1)
       : 0;
     const throughput =
       totalCount + misfeedCount ? totalCount / (totalCount + misfeedCount) : 0;
@@ -2005,6 +2009,9 @@ async function getActiveMachineSerials(db, start, end) {
           `[machineSessions] Real-time calculation for range: ${queryStart.toISOString()} to ${queryEnd.toISOString()}`
         );
 
+        const activeShifts = await loadActiveShifts(db);
+        const productiveMs = getLiveProductiveWindowMs(activeShifts, queryStart, queryEnd);
+
         const activeSerials = new Set(
           await db
             .collection(config.machineCollectionName)
@@ -2070,18 +2077,18 @@ async function getActiveMachineSerials(db, start, end) {
             );
 
             if (!sessions.length) {
-              const totalMs = queryEnd - queryStart;
               return formatMachinesSummaryRow({
                 machine: normalizedMachine,
                 status,
                 runtimeMs: 0,
-                downtimeMs: totalMs,
+                downtimeMs: liveDowntimeMs(0, productiveMs),
                 totalCount: 0,
                 misfeedCount: 0,
                 workTimeSec: 0,
                 totalTimeCredit: 0,
                 queryStart,
                 queryEnd,
+                productiveMs,
               });
             }
 
@@ -2172,7 +2179,7 @@ async function getActiveMachineSerials(db, start, end) {
 
             const totalCount = validCounts.length;
             const misfeedCount = misfeedCounts.length;
-            const downtimeMs = Math.max(0, queryEnd - queryStart - runtimeMs);
+            const downtimeMs = liveDowntimeMs(runtimeMs, productiveMs);
 
             return formatMachinesSummaryRow({
               machine: normalizedMachine,
@@ -2185,6 +2192,7 @@ async function getActiveMachineSerials(db, start, end) {
               totalTimeCredit,
               queryStart,
               queryEnd,
+              productiveMs,
             });
           })
         );

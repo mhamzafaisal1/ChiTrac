@@ -30,12 +30,14 @@ import { EightStationDemoComponent } from './efficiency-screens/eight-station-de
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
+import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 
 export const routes: Routes = [
 	// Settings pages
 	{ path: 'ng/settings/operators', component: OperatorGridComponent },
 	{ path: 'ng/settings/items', component: ItemGridComponent },
 	{ path: 'ng/settings/machines', component: MachineGridComponent },
+	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
