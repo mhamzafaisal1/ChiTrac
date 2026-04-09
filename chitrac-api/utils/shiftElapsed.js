@@ -170,19 +170,29 @@ function computeShiftElapsedMsFromShifts(shifts, start, end, zone = SYSTEM_TIMEZ
       // Carve break windows out of this shift's intersection to get productive sub-intervals.
       const breakIntervals = [];
       for (const brk of shift.breaks) {
+        let brkStartMs;
+        let brkEndMs;
         const brkSH = brk?.startTime?.hour;
         const brkSM = brk?.startTime?.minute;
         const brkEH = brk?.endTime?.hour;
         const brkEM = brk?.endTime?.minute;
         if (
-          typeof brkSH !== "number" || typeof brkSM !== "number" ||
-          typeof brkEH !== "number" || typeof brkEM !== "number"
-        ) continue;
-
-        const brkStart = dayCursor.set({ hour: brkSH, minute: brkSM, second: 0, millisecond: 0 });
-        const brkEnd   = dayCursor.set({ hour: brkEH, minute: brkEM, second: 0, millisecond: 0 });
-        const brkStartMs = Math.max(intersectionStartMs, brkStart.toMillis());
-        const brkEndMs   = Math.min(intersectionEndMs,   brkEnd.toMillis());
+          typeof brkSH === "number" && typeof brkSM === "number" &&
+          typeof brkEH === "number" && typeof brkEM === "number"
+        ) {
+          const brkStart = dayCursor.set({ hour: brkSH, minute: brkSM, second: 0, millisecond: 0 });
+          const brkEnd   = dayCursor.set({ hour: brkEH, minute: brkEM, second: 0, millisecond: 0 });
+          brkStartMs = Math.max(intersectionStartMs, brkStart.toMillis());
+          brkEndMs   = Math.min(intersectionEndMs,   brkEnd.toMillis());
+        } else if (brk?.timestamps?.start && brk?.timestamps?.end) {
+          const bs = toDateTime(brk.timestamps.start, zone);
+          const be = toDateTime(brk.timestamps.end, zone);
+          if (!bs.isValid || !be.isValid) continue;
+          brkStartMs = Math.max(intersectionStartMs, bs.toMillis());
+          brkEndMs   = Math.min(intersectionEndMs, be.toMillis());
+        } else {
+          continue;
+        }
         if (brkEndMs > brkStartMs) breakIntervals.push({ startMs: brkStartMs, endMs: brkEndMs });
       }
       const mergedBreaks = mergeIntervalsMs(breakIntervals);

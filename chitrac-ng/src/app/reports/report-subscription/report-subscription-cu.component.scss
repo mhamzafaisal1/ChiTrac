@@ -1,0 +1,39 @@
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 520px;
+  max-height: 70vh;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-section h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.section-note {
+  margin: 0;
+  color: #444;
+  font-size: 13px;
+}
+
+.report-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0;
+}
+
+.error {
+  color: #c62828;
+  font-size: 13px;
+}

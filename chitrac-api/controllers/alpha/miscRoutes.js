@@ -30,6 +30,7 @@ const {
   assignOperatorsToRunningCyclesMulti,
   buildStationAlignedOperators,
 } = require("../../utils/miscFunctions");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 
 const { getBookendedStatesAndTimeRange } = require("../../utils/machineFunctions");
 
@@ -1966,6 +1967,8 @@ router.get("/analytics/machine-item-sessions-summary-optimized", async (req, res
     const { start, end, serial } = parseAndValidateQueryParams(req);
     const exactStart = new Date(start);
     const exactEnd = new Date(end);
+    const activeShifts = await loadActiveShifts(db).catch(() => []);
+    const shiftElapsedMs = computeShiftElapsedMs(activeShifts, exactStart, exactEnd);
 
     // Check if this is a timeframe that can use daily totals optimization
     const isOptimizedTimeframe = req.query.timeframe && 
@@ -2141,7 +2144,7 @@ router.get("/analytics/machine-item-sessions-summary-optimized", async (req, res
 
       // Calculate performance metrics
       const totalHours = machine.workedTimeMs / 3600000;
-      const windowMs = exactEnd.getTime() - exactStart.getTime();
+      const windowMs = shiftElapsedMs;
       
       // Basic KPIs
       const pph = totalHours > 0 ? machine.totalCounts / totalHours : 0;
@@ -2364,6 +2367,8 @@ router.get("/analytics/operator-item-sessions-summary-optimized", async (req, re
     const exactStart = new Date(start);
     const exactEnd = new Date(end);
     const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
+    const activeShifts = await loadActiveShifts(db).catch(() => []);
+    const shiftElapsedMs = computeShiftElapsedMs(activeShifts, exactStart, exactEnd);
 
     // Check if this is a timeframe that can use daily totals optimization
     const isOptimizedTimeframe = req.query.timeframe && 
@@ -2612,7 +2617,7 @@ router.get("/analytics/operator-item-sessions-summary-optimized", async (req, re
 
           // Calculate performance metrics (same logic as original route)
           const totalHours = operator.workedTimeMs / 3600000;
-          const windowMs = exactEnd.getTime() - exactStart.getTime();
+          const windowMs = shiftElapsedMs;
           
           // Basic KPIs
           const pph = totalHours > 0 ? operator.totalCounts / totalHours : 0;

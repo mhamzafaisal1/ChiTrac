@@ -1,0 +1,62 @@
+<div class="shift-crud-page">
+  <div class="top-form-row">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Shift Name</mat-label>
+      <input matInput [(ngModel)]="shiftName" placeholder="Morning Shift" />
+    </mat-form-field>
+    <button mat-stroked-button [class.active-flag]="shiftActive" (click)="shiftActive = !shiftActive">
+      {{ shiftActive ? 'Active' : 'Inactive' }}
+    </button>
+  </div>
+
+  <section class="section">
+    <h3>Days of Week</h3>
+    <mat-button-toggle-group multiple [(ngModel)]="selectedDays">
+      <mat-button-toggle *ngFor="let day of dayOptions" [value]="day.value">{{ day.label }}</mat-button-toggle>
+    </mat-button-toggle-group>
+  </section>
+
+  <section class="section shift-time-row">
+    <mat-form-field>
+      <mat-label>Shift Start</mat-label>
+      <input matInput [matTimepicker]="shiftStartPicker" [(ngModel)]="shiftStartDate" />
+      <mat-timepicker-toggle matSuffix [for]="shiftStartPicker"></mat-timepicker-toggle>
+      <mat-timepicker #shiftStartPicker></mat-timepicker>
+    </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Shift End</mat-label>
+      <input matInput [matTimepicker]="shiftEndPicker" [(ngModel)]="shiftEndDate" />
+      <mat-timepicker-toggle matSuffix [for]="shiftEndPicker"></mat-timepicker-toggle>
+      <mat-timepicker #shiftEndPicker></mat-timepicker>
+    </mat-form-field>
+  </section>
+
+  <section class="section breaks-layout">
+    <div class="break-actions">
+      <button mat-flat-button (click)="addBreak()"><mat-icon>add</mat-icon>Add</button>
+      <button mat-flat-button [disabled]="!canEditOrDeleteBreak" (click)="editBreak()"><mat-icon>edit</mat-icon>Edit</button>
+      <button mat-flat-button [disabled]="!canEditOrDeleteBreak" (click)="deleteBreak()"><mat-icon>delete</mat-icon>Delete</button>
+    </div>
+
+    <div class="break-table-wrap">
+      <table mat-table [dataSource]="breaks">
+        <ng-container matColumnDef="range">
+          <td mat-cell *matCellDef="let row">{{ formatBreakRange(row) }}</td>
+        </ng-container>
+        <tr
+          mat-row
+          *matRowDef="let row; columns: displayedColumns"
+          [class.selected-row]="selection.isSelected(row)"
+          (click)="selectBreakRow(row)">
+        </tr>
+      </table>
+    </div>
+  </section>
+
+  <div class="save-row">
+    <button mat-flat-button color="primary" [disabled]="isSaving" (click)="saveShift()">
+      {{ isSaving ? 'Saving...' : 'Save Shift' }}
+    </button>
+  </div>
+</div>

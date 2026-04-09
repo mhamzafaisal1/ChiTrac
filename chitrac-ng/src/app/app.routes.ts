@@ -13,6 +13,7 @@ import { ShiftMachineReportComponent } from './reports/shift-machine-report/shif
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
 import { FaultReportComponent } from './reports/fault-report/fault-report.component';
+import { ReportSubscriptionComponent } from './reports/report-subscription/report-subscription.component';
 import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
 import { BlanketBlastertwoEfficiencyScreen } from './efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
@@ -29,12 +30,14 @@ import { EightStationDemoComponent } from './efficiency-screens/eight-station-de
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
+import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 
 export const routes: Routes = [
 	// Settings pages
 	{ path: 'ng/settings/operators', component: OperatorGridComponent },
 	{ path: 'ng/settings/items', component: ItemGridComponent },
 	{ path: 'ng/settings/machines', component: MachineGridComponent },
+	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
@@ -56,6 +59,7 @@ export const routes: Routes = [
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },
 	{ path: 'ng/reports/fault-report', component: FaultReportComponent },
+	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent },
 	
 	// Production/Efficiency Screens
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },

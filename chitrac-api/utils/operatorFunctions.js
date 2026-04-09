@@ -18,6 +18,12 @@ const { DateTime, Interval } = require("luxon");
 const config = require('../modules/config');
 const { getValidCountsForOperator, processCountStatistics, groupCountsByItem, extractItemNamesFromCounts } = require('./count');
 const { fetchGroupedAnalyticsData } = require('./machineFunctions');
+const { loadActiveShifts } = require("./shiftElapsed");
+const {
+  getLiveProductiveWindowMs,
+  liveAvailabilityRatioFromMs,
+  liveDowntimeMs,
+} = require("./availabilityLive");
 
 
 // ============================================================
@@ -2910,6 +2916,9 @@ function getOperatorsSummaryRealTime(db, logger, config) {
         return res.status(416).json({ error: "start must be before end" });
       }
 
+      const activeShifts = await loadActiveShifts(db);
+      const productiveMsForRange = getLiveProductiveWindowMs(activeShifts, queryStart, queryEnd);
+
       const collName = config.operatorSessionCollectionName;
       const coll = db.collection(collName);
 
@@ -3054,9 +3063,8 @@ function getOperatorsSummaryRealTime(db, logger, config) {
               }
             }
 
-            const totalMs = Math.max(0, queryEnd - queryStart);
-            const downtimeMs = Math.max(0, totalMs - runtimeMs);
-            const availability = totalMs ? (runtimeMs / totalMs) : 0;
+            const downtimeMs = liveDowntimeMs(runtimeMs, productiveMsForRange);
+            const availability = liveAvailabilityRatioFromMs(runtimeMs, productiveMsForRange);
             const throughput = (totalCount + misfeedCount) ? (totalCount / (totalCount + misfeedCount)) : 0;
             const efficiency = workTimeSec > 0 ? totalTimeCredit / workTimeSec : 0;
             const oee = availability * throughput * efficiency;

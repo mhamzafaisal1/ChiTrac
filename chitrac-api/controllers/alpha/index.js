@@ -82,6 +82,8 @@ const {
 } = require("../../utils/machineFunctions");
 
 const xml = require("xml2js");
+const schedule = require("node-schedule");
+const { sendScheduledJobTestEmail } = require("../../modules/sendScheduledJobTestEmail");
 
 function alphaController(server) {
   return constructor(server);
@@ -3807,6 +3809,341 @@ function constructor(server) {
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // --- Shift definitions: create / update (Mongo `shift` collection) ---
+  function shiftTimeToMinutes(t) {
+    if (!t || typeof t.hour !== "number" || typeof t.minute !== "number") {
+      return null;
+    }
+    return t.hour * 60 + t.minute;
+  }
+
+  function halfOpenIntervalsOverlap(s1, e1, s2, e2) {
+    return s1 < e2 && s2 < e1;
+  }
+
+  function validateShiftBreaksAgainstShift(breaks, shiftStartMin, shiftEndMin) {
+    if (!Array.isArray(breaks)) {
+      return "breaks must be an array";
+    }
+    const sorted = [...breaks].sort(
+      (a, b) => shiftTimeToMinutes(a.startTime) - shiftTimeToMinutes(b.startTime)
+    );
+    for (let i = 0; i < sorted.length; i += 1) {
+      const br = sorted[i];
+      const bs = shiftTimeToMinutes(br.startTime);
+      const be = shiftTimeToMinutes(br.endTime);
+      if (bs == null || be == null || bs >= be) {
+        return "Each break must have valid startTime/endTime with start before end";
+      }
+      if (bs < shiftStartMin || be > shiftEndMin) {
+        return "Break must stay within shift start and end";
+      }
+      if (i > 0) {
+        const prev = sorted[i - 1];
+        const ps = shiftTimeToMinutes(prev.startTime);
+        const pe = shiftTimeToMinutes(prev.endTime);
+        if (halfOpenIntervalsOverlap(ps, pe, bs, be)) {
+          return "Breaks must not overlap";
+        }
+      }
+    }
+    return null;
+  }
+
+  function validateShiftBody(body) {
+    const errs = [];
+    const sm = shiftTimeToMinutes(body.startTime);
+    const em = shiftTimeToMinutes(body.endTime);
+    if (sm == null || em == null) {
+      errs.push("Invalid shift startTime or endTime");
+    } else if (sm >= em) {
+      errs.push("Shift start must be before shift end");
+    }
+    if (!Array.isArray(body.activeDays) || body.activeDays.length === 0) {
+      errs.push("activeDays is required and must include at least one day");
+    } else {
+      const bad = body.activeDays.some(
+        (d) => typeof d !== "number" || d < 1 || d > 7
+      );
+      if (bad) {
+        errs.push("activeDays must be integers 1 (Mon) through 7 (Sun)");
+      }
+    }
+    if (errs.length) {
+      return errs;
+    }
+    const brErr = validateShiftBreaksAgainstShift(body.breaks || [], sm, em);
+    if (brErr) {
+      errs.push(brErr);
+    }
+    return errs;
+  }
+
+  function shiftsConflictOnSharedDay(a, b) {
+    const daysA = Array.isArray(a.activeDays) ? a.activeDays : [];
+    const daysB = Array.isArray(b.activeDays) ? b.activeDays : [];
+    const shared = daysA.filter((d) => daysB.includes(d));
+    if (shared.length === 0) {
+      return false;
+    }
+    const sa = shiftTimeToMinutes(a.startTime);
+    const ea = shiftTimeToMinutes(a.endTime);
+    const sb = shiftTimeToMinutes(b.startTime);
+    const eb = shiftTimeToMinutes(b.endTime);
+    if (sa == null || ea == null || sb == null || eb == null) {
+      return false;
+    }
+    return halfOpenIntervalsOverlap(sa, ea, sb, eb);
+  }
+
+  async function assertNoActiveShiftOverlap(db, candidate, excludeObjectId) {
+    const query = { active: true };
+    if (excludeObjectId) {
+      query._id = { $ne: excludeObjectId };
+    }
+    const others = await db.collection("shift").find(query).toArray();
+    for (const o of others) {
+      if (shiftsConflictOnSharedDay(candidate, o)) {
+        const err = new Error(
+          "Shift overlaps an existing active shift on a shared day"
+        );
+        err.status = 409;
+        throw err;
+      }
+    }
+  }
+
+  function normalizeShiftIdForApi(raw) {
+    if (raw == null) {
+      return "";
+    }
+    if (typeof raw === "string") {
+      return raw;
+    }
+    if (typeof raw === "object" && raw.$oid != null) {
+      return String(raw.$oid);
+    }
+    if (typeof raw?.toHexString === "function") {
+      return raw.toHexString();
+    }
+    try {
+      return String(new ObjectId(raw));
+    } catch (e) {
+      return String(raw);
+    }
+  }
+
+  function normalizeTimePart(t) {
+    if (!t || typeof t !== "object") {
+      return { hour: 0, minute: 0 };
+    }
+    const hour = Number.isFinite(Number(t.hour))
+      ? Number(t.hour)
+      : parseInt(String(t.hour ?? 0), 10) || 0;
+    const minute = Number.isFinite(Number(t.minute))
+      ? Number(t.minute)
+      : parseInt(String(t.minute ?? 0), 10) || 0;
+    return {
+      hour: Math.min(23, Math.max(0, hour)),
+      minute: Math.min(59, Math.max(0, minute)),
+    };
+  }
+
+  /**
+   * Plain JSON for the Angular client: string _id, numeric hour/minute,
+   * so rows always render (avoids EJSON / type quirks from mixed drivers).
+   */
+  function normalizeShiftForClient(s) {
+    const out = {
+      ...s,
+      _id: normalizeShiftIdForApi(s._id),
+      startTime: normalizeTimePart(s.startTime),
+      endTime: normalizeTimePart(s.endTime),
+    };
+    if (Array.isArray(s.activeDays)) {
+      out.activeDays = s.activeDays
+        .map((d) =>
+          typeof d === "number" && Number.isFinite(d)
+            ? d
+            : parseInt(String(d), 10) || 0
+        )
+        .filter((d) => d >= 1 && d <= 7);
+    } else {
+      out.activeDays = [];
+    }
+    if (Array.isArray(s.breaks)) {
+      out.breaks = s.breaks.map((b) => ({
+        ...b,
+        startTime: normalizeTimePart(b && b.startTime),
+        endTime: normalizeTimePart(b && b.endTime),
+      }));
+    }
+    return out;
+  }
+
+  router.get("/shifts", async (req, res) => {
+    try {
+      const shifts = await db.collection("shift").find({}).toArray();
+      shifts.sort((a, b) => {
+        const am =
+          (a.startTime?.hour ?? 0) * 60 + (a.startTime?.minute ?? 0);
+        const bm =
+          (b.startTime?.hour ?? 0) * 60 + (b.startTime?.minute ?? 0);
+        return am - bm;
+      });
+      res.json({
+        shifts: shifts.map((s) => normalizeShiftForClient(s)),
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to list shifts" });
+    }
+  });
+
+  router.post("/shifts", async (req, res) => {
+    try {
+      const body = req.body || {};
+      const validationErrs = validateShiftBody(body);
+      if (validationErrs.length) {
+        return res.status(400).json({
+          error: validationErrs[0],
+          errors: validationErrs,
+        });
+      }
+
+      if (body.active !== false) {
+        await assertNoActiveShiftOverlap(db, body, null);
+      }
+
+      const now = new Date().toISOString();
+      const sm = shiftTimeToMinutes(body.startTime);
+      const em = shiftTimeToMinutes(body.endTime);
+      const shiftTimeMs = (em - sm) * 60 * 1000;
+
+      const doc = {
+        active: body.active !== false,
+        ...(body.name != null && String(body.name).trim() !== ""
+          ? { name: String(body.name).trim() }
+          : {}),
+        timestamps: body.timestamps && body.timestamps.create
+          ? { ...body.timestamps, update: now }
+          : {
+              create: now,
+              active: now,
+              update: now,
+              ...(body.timestamps && body.timestamps.start
+                ? { start: body.timestamps.start }
+                : {}),
+              ...(body.timestamps && body.timestamps.end
+                ? { end: body.timestamps.end }
+                : {}),
+            },
+        shiftTime: shiftTimeMs,
+        breaks: Array.isArray(body.breaks) ? body.breaks : [],
+        startTime: body.startTime,
+        endTime: body.endTime,
+        activeDays: [...body.activeDays].sort((a, b) => a - b),
+      };
+
+      const result = await db.collection("shift").insertOne(doc);
+      const saved = await db.collection("shift").findOne({ _id: result.insertedId });
+      res.status(201).json(normalizeShiftForClient(saved));
+    } catch (err) {
+      if (err.status === 409) {
+        return res.status(409).json({ error: err.message });
+      }
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to create shift" });
+    }
+  });
+
+  router.put("/shifts/:id", async (req, res) => {
+    try {
+      let oid;
+      try {
+        oid = new ObjectId(String(req.params.id));
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid shift id" });
+      }
+
+      const existing = await db.collection("shift").findOne({ _id: oid });
+      if (!existing) {
+        return res.status(404).json({ error: "Shift not found" });
+      }
+
+      const body = req.body || {};
+      const validationErrs = validateShiftBody(body);
+      if (validationErrs.length) {
+        return res.status(400).json({
+          error: validationErrs[0],
+          errors: validationErrs,
+        });
+      }
+
+      if (body.active !== false) {
+        await assertNoActiveShiftOverlap(db, body, oid);
+      }
+
+      const now = new Date().toISOString();
+      const sm = shiftTimeToMinutes(body.startTime);
+      const em = shiftTimeToMinutes(body.endTime);
+      const shiftTimeMs = (em - sm) * 60 * 1000;
+
+      const timestampsIn = body.timestamps || {};
+      const mergedTimestamps = {
+        create: existing.timestamps?.create || now,
+        active: existing.timestamps?.active || now,
+        update: now,
+        ...(timestampsIn.start != null ? { start: timestampsIn.start } : {}),
+        ...(timestampsIn.end != null ? { end: timestampsIn.end } : {}),
+        ...(existing.timestamps?.inactive
+          ? { inactive: existing.timestamps.inactive }
+          : {}),
+      };
+
+      const doc = {
+        ...existing,
+        active: body.active !== false,
+        name: body.name !== undefined ? body.name : existing.name,
+        timestamps: mergedTimestamps,
+        shiftTime: shiftTimeMs,
+        breaks: Array.isArray(body.breaks) ? body.breaks : [],
+        startTime: body.startTime,
+        endTime: body.endTime,
+        activeDays: [...body.activeDays].sort((a, b) => a - b),
+      };
+
+      await db.collection("shift").replaceOne({ _id: oid }, doc);
+      const saved = await db.collection("shift").findOne({ _id: oid });
+      res.json(normalizeShiftForClient(saved));
+    } catch (err) {
+      if (err.status === 409) {
+        return res.status(409).json({ error: err.message });
+      }
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to update shift" });
+    }
+  });
+
+  router.delete("/shifts/:id", async (req, res) => {
+    try {
+      let oid;
+      try {
+        oid = new ObjectId(String(req.params.id));
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid shift id" });
+      }
+      const result = await db.collection("shift").deleteOne({ _id: oid });
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ error: "Shift not found" });
+      }
+      res.status(204).send();
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to delete shift" });
     }
   });
 

@@ -121,6 +121,9 @@
       <a mat-list-item routerLink="/ng/reports/fault-report" (click)="closeMenu()">
         <mat-icon>warning</mat-icon><span>Fault Report</span>
       </a>
+      <a mat-list-item routerLink="/ng/reports/report-subscriptions" (click)="closeMenu()">
+        <mat-icon>schedule_send</mat-icon><span>Report Subscriptions</span>
+      </a>
     </mat-nav-list>
 
     <!-- Settings Submenu -->
@@ -143,7 +146,7 @@
       <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>
       </a>
-      <a mat-list-item *ngIf="false" href="#">
+      <a mat-list-item routerLink="/ng/settings/shifts" (click)="closeMenu()">
         <mat-icon>punch_clock</mat-icon><span>Shifts</span>
       </a>
       <a mat-list-item *ngIf="false" href="#">

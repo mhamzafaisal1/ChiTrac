@@ -1,4 +1,5 @@
 const express = require("express");
+const nodemailer = require("nodemailer");
 const { ObjectId } = require("mongodb");
 const { parseAndValidateQueryParams, formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { DateTime } = require("luxon");
@@ -11,11 +12,20 @@ const {
   getItemDailyCachedDataForDays,
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+
+function isValidMachineReportRecipientEmail(s) {
+  if (typeof s !== "string") return false;
+  const t = s.trim();
+  if (!t || t.length > 254) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+}
 
 module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
   const logger = server.logger;
+  const reportSubscriptionRoutes = require("./reportSubscription")(server);
 
   router.get("/shifts", async (req, res) => {
     try {
@@ -61,6 +71,8 @@ module.exports = function (server) {
       const exactEnd = isTodaySinceMidnight 
         ? nowLocal.toUTC().toJSDate() 
         : endDt.toUTC().toJSDate();
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedMs = computeShiftElapsedMs(activeShifts, exactStart, exactEnd, SYSTEM_TIMEZONE);
       
       console.log(`[OPERATOR-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
@@ -539,6 +551,9 @@ module.exports = function (server) {
         const hours = operatorData.totalWorkedMs / 3600000;
         const operatorPph = hours > 0 ? operatorData.totalCount / hours : 0;
         const operatorEff = proratedStandard ? operatorPph / proratedStandard : null;
+        const runtimeMs = operatorData.totalRuntimeMs || 0;
+        const downtimeMs = Math.max(0, shiftElapsedMs - runtimeMs);
+        const availability = shiftElapsedMs > 0 ? Math.min(Math.max(runtimeMs / shiftElapsedMs, 0), 1) : 0;
         
         // Skip operators with no actual production data
         if (operatorData.totalCount === 0) {
@@ -553,8 +568,14 @@ module.exports = function (server) {
             totalCount: operatorData.totalCount,
             workedTimeMs: operatorData.totalWorkedMs || 0,
             workedTimeFormatted: formatMs(operatorData.totalWorkedMs || 0),
-            runtimeMs: operatorData.totalRuntimeMs || 0,
-            runtimeFormatted: formatMs(operatorData.totalRuntimeMs || 0),
+            runtimeMs,
+            runtimeFormatted: formatMs(runtimeMs),
+            downtimeMs,
+            downtimeFormatted: formatMs(downtimeMs),
+            availability: {
+              value: availability,
+              percentage: Math.round(availability * 10000) / 100,
+            },
             pph: Math.round(operatorPph * 100) / 100,
             proratedStandard: proratedStandard || null,
             efficiency: operatorEff ? Math.round(operatorEff * 10000) / 100 : null,
@@ -922,6 +943,8 @@ module.exports = function (server) {
   router.get("/analytics/machine-report-cache", async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedMs = computeShiftElapsedMs(activeShifts, start, end, SYSTEM_TIMEZONE);
 
       // Generate date range (full days)
       const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day');
@@ -1136,6 +1159,8 @@ module.exports = function (server) {
         const machineRuntimeHours = machineData.runtimeMs / 3600000;
         const machinePph = machineRuntimeHours > 0 ? itemTotalCounts / machineRuntimeHours : 0;
         const machineEfficiency = proratedStandard > 0 ? (machinePph / proratedStandard) * 100 : 0;
+        const downtimeMs = Math.max(0, shiftElapsedMs - machineData.runtimeMs);
+        const availability = shiftElapsedMs > 0 ? Math.min(Math.max(machineData.runtimeMs / shiftElapsedMs, 0), 1) : 0;
 
         // Build itemSummaries with Total row first
         const itemSummariesWithTotal = {
@@ -1161,6 +1186,12 @@ module.exports = function (server) {
             workedTimeFormatted: formatDuration(machineData.workedTimeMs),
             runtimeMs: machineData.runtimeMs,
             runtimeFormatted: formatDuration(machineData.runtimeMs),
+            downtimeMs,
+            downtimeFormatted: formatDuration(downtimeMs),
+            availability: {
+              value: availability,
+              percentage: Math.round(availability * 10000) / 100,
+            },
             pph: Math.round(machinePph * 100) / 100,
             proratedStandard: Math.round(proratedStandard * 100) / 100,
             efficiency: Math.round(machineEfficiency * 100) / 100,
@@ -1178,5 +1209,111 @@ module.exports = function (server) {
       res.status(500).json({ error: "Failed to generate machine report from cache" });
     }
   });
+
+  /** POST body: { to, pdfBase64, start, end, summaryOnly } — PDF is client-generated to match the download. */
+  router.post("/analytics/machine-report-email", async (req, res) => {
+    console.log("[machine-report-email] hit POST /analytics/machine-report-email");
+    try {
+      const { to, pdfBase64, start, end, summaryOnly } = req.body || {};
+      console.log("[machine-report-email] body keys:", Object.keys(req.body || {}), {
+        to: typeof to === "string" ? to : typeof to,
+        pdfBase64Chars: typeof pdfBase64 === "string" ? pdfBase64.length : null,
+        start,
+        end,
+        summaryOnly,
+      });
+
+      if (!isValidMachineReportRecipientEmail(to)) {
+        console.log("[machine-report-email] bail: invalid recipient email");
+        return res.status(400).json({ error: "Invalid email address" });
+      }
+      if (typeof pdfBase64 !== "string" || pdfBase64.length === 0) {
+        console.log("[machine-report-email] bail: missing pdfBase64");
+        return res.status(400).json({ error: "Missing PDF payload" });
+      }
+
+      let pdfBuffer;
+      try {
+        pdfBuffer = Buffer.from(pdfBase64, "base64");
+      } catch (e) {
+        console.log("[machine-report-email] bail: base64 decode threw", e?.message || e);
+        return res.status(400).json({ error: "Invalid PDF encoding" });
+      }
+      if (!pdfBuffer.length || pdfBuffer.length > 25 * 1024 * 1024) {
+        console.log("[machine-report-email] bail: bad pdf size", pdfBuffer.length);
+        return res.status(400).json({ error: "Invalid or oversized PDF" });
+      }
+      if (pdfBuffer.slice(0, 5).toString() !== "%PDF-") {
+        console.log("[machine-report-email] bail: not a PDF signature");
+        return res.status(400).json({ error: "Attachment is not a PDF" });
+      }
+      console.log("[machine-report-email] pdf ok bytes=", pdfBuffer.length);
+
+      const host = process.env.SMTP_HOST || "smtp.gmail.com";
+      const port = parseInt(process.env.SMTP_PORT || "465", 10);
+      const secure = process.env.SMTP_SECURE !== "false";
+      const user = process.env.SMTP_USER;
+      const pass = process.env.SMTP_PASS;
+      if (!user || !pass) {
+        console.log("[machine-report-email] bail: SMTP_USER/SMTP_PASS not set");
+        logger.warn("[machine-report-email] SMTP_USER or SMTP_PASS is not set");
+        return res
+          .status(503)
+          .json({ error: "Email is not configured on the server" });
+      }
+
+      const fromEmail = process.env.SMTP_FROM_EMAIL || user;
+      const fromName = process.env.SMTP_FROM_NAME || "ChiTrac Machine Report";
+
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: { user, pass },
+      });
+
+      const safeStart = String(start ?? "")
+        .replace(/[^\w.\-:+TZ]/g, "_")
+        .slice(0, 48);
+      const safeEnd = String(end ?? "")
+        .replace(/[^\w.\-:+TZ]/g, "_")
+        .slice(0, 48);
+      const filename = `machine_report_${safeStart}_${safeEnd}${
+        summaryOnly ? "_summary" : ""
+      }.pdf`;
+      console.log("[machine-report-email] sending mail", {
+        host,
+        port,
+        secure,
+        to: to.trim(),
+        filename,
+      });
+
+      await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: to.trim(),
+        subject: "ChiTrac Machine Report",
+        text: "Attached is the machine report for the selected period.",
+        html: "<p>Attached is the machine report for the selected period.</p>",
+        attachments: [
+          {
+            filename,
+            content: pdfBuffer,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+
+      console.log("[machine-report-email] sendMail finished ok");
+      res.json({ ok: true });
+    } catch (err) {
+      console.log("[machine-report-email] exception", err?.message || err);
+      logger.error("[machine-report-email] send failed", err);
+      res.status(500).json({ error: "Failed to send email" });
+    }
+  });
+
+  router.use("/report-subscriptions", reportSubscriptionRoutes);
+
   return router;
 };

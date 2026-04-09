@@ -1,0 +1,83 @@
+<h2 mat-dialog-title>{{ title }}</h2>
+
+<mat-dialog-content [formGroup]="form" class="form-grid">
+  <section class="form-section">
+    <mat-form-field>
+      <mat-label>Name</mat-label>
+      <input matInput formControlName="name" />
+      <mat-error *ngIf="form.get('name')?.hasError('required')">Name is required.</mat-error>
+    </mat-form-field>
+
+    <mat-slide-toggle formControlName="enabled" labelPosition="before">Enabled</mat-slide-toggle>
+  </section>
+
+  <section class="form-section">
+    <h3>Report</h3>
+    <mat-form-field>
+      <mat-label>Name</mat-label>
+      <mat-select formControlName="reportName">
+        <mat-option *ngFor="let option of reportNameOptions" [value]="option.value">{{ option.label }}</mat-option>
+      </mat-select>
+      <mat-error *ngIf="form.get('reportName')?.hasError('required')">Report name is required.</mat-error>
+    </mat-form-field>
+
+    <div class="report-mode-toggle">
+      <span class="toggle-label">Detailed</span>
+      <mat-slide-toggle formControlName="reportTypeSummary" color="primary"></mat-slide-toggle>
+      <span class="toggle-label">Summary</span>
+    </div>
+  </section>
+
+  <section class="form-section">
+    <h3>Schedule</h3>
+    <mat-form-field>
+      <mat-label>Cron Schedule String</mat-label>
+      <input matInput formControlName="cron" placeholder="* * * * * *" />
+      <mat-error *ngIf="form.get('cron')?.hasError('required')">Cron is required.</mat-error>
+    </mat-form-field>
+  </section>
+
+  <section class="form-section">
+    <h3>Destination</h3>
+    <p class="section-note">Deliver the report via email.</p>
+  </section>
+
+  <section class="form-section">
+    <h3>Delivery Options (E-Mail)</h3>
+    <mat-form-field>
+      <mat-label>To</mat-label>
+      <input matInput formControlName="emailTo" />
+      <mat-error *ngIf="form.get('emailTo')?.hasError('required')">To is required.</mat-error>
+    </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Cc</mat-label>
+      <input matInput formControlName="emailCc" />
+      <mat-error *ngIf="form.get('emailCc')?.hasError('required')">Cc is required.</mat-error>
+    </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Bcc</mat-label>
+      <input matInput formControlName="emailBcc" />
+      <mat-error *ngIf="form.get('emailBcc')?.hasError('required')">Bcc is required.</mat-error>
+    </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Subject</mat-label>
+      <input matInput formControlName="emailSubject" />
+      <mat-error *ngIf="form.get('emailSubject')?.hasError('required')">Subject is required.</mat-error>
+    </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Body Text</mat-label>
+      <textarea matInput rows="4" formControlName="emailBodyText"></textarea>
+      <mat-error *ngIf="form.get('emailBodyText')?.hasError('required')">Body text is required.</mat-error>
+    </mat-form-field>
+  </section>
+
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button [mat-dialog-close]="null">Cancel</button>
+  <button mat-flat-button color="primary" (click)="save()">Save</button>
+</mat-dialog-actions>

@@ -53,6 +53,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   isDarkTheme: boolean = false;
   liveMode: boolean = false;
   isLoading: boolean = false;
+  /** Full-screen loading overlay between row click and modal open (matches machine-report fetch UX). */
+  isOpeningModal: boolean = false;
   responsiveHiddenColumns: { [key: number]: string[] } = {
     1210: ["Misfeed Count", "Serial Number"],
     1024: ["Misfeed Count"],
@@ -518,13 +520,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     // Get modal-aware dimensions
     const modalChartDimensions = this.getModalAwareChartDimensions();
-    
+
+    this.isOpeningModal = true;
+
     if (timeframe) {
       // Use timeframe-based API call
       this.machineService
         .getMachineDetailsWithTimeframe(timeframe, machineSerial)
         .subscribe({
         next: (res: any[]) => {
+          try {
           const machineData = res[0]; // <-- FIX HERE
 
           const itemSummaryData = Object.values(
@@ -660,12 +665,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           dialogRef.afterClosed().subscribe(() => {
             if (this.selectedRow === row) this.selectedRow = null;
           });
+          } finally {
+            this.isOpeningModal = false;
+          }
         },
         error: (err: unknown) => {
           console.error(
             `Error loading detailed modal data for machine ${machineSerial}:`,
             err
           );
+          this.isOpeningModal = false;
         },
       });
     } else {
@@ -674,6 +683,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         .getMachineDetails(this.startTime, this.endTime, machineSerial)
         .subscribe({
           next: (res: any[]) => {
+            try {
             const machineData = res[0]; // <-- FIX HERE
 
             const itemSummaryData = Object.values(
@@ -810,12 +820,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             dialogRef.afterClosed().subscribe(() => {
               if (this.selectedRow === row) this.selectedRow = null;
             });
+            } finally {
+              this.isOpeningModal = false;
+            }
           },
           error: (err: unknown) => {
             console.error(
               `Error loading detailed modal data for machine ${machineSerial}:`,
               err
             );
+            this.isOpeningModal = false;
           },
         });
     }
