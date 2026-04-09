@@ -1,0 +1,41 @@
+.container {
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.toolbar {
+  gap: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+}
+
+.selected-row {
+  background: rgba(63, 81, 181, 0.14);
+}
+
+tr.mat-mdc-row {
+  cursor: pointer;
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}

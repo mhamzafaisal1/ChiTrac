@@ -1,0 +1,61 @@
+.email-report-modal {
+  padding: 8px 0 0;
+  min-width: 280px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.hint {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* Dark modal (matches body dark-theme via ModalWrapperComponent) */
+:host-context(.modal-wrapper.dark) {
+  .email-report-modal {
+    .title {
+      color: rgba(255, 255, 255, 0.96);
+    }
+
+    .hint {
+      color: rgba(255, 255, 255, 0.72);
+    }
+  }
+}
+
+/* Light modal */
+:host-context(.modal-wrapper.light) {
+  .email-report-modal {
+    .title {
+      color: rgba(0, 0, 0, 0.87);
+    }
+
+    .hint {
+      color: rgba(0, 0, 0, 0.65);
+    }
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+.error {
+  margin: -8px 0 12px;
+  font-size: 0.875rem;
+  color: var(--mat-form-field-error-text-color, #f44336);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}

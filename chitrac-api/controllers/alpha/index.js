@@ -82,6 +82,8 @@ const {
 } = require("../../utils/machineFunctions");
 
 const xml = require("xml2js");
+const schedule = require("node-schedule");
+const { sendScheduledJobTestEmail } = require("../../modules/sendScheduledJobTestEmail");
 
 function alphaController(server) {
   return constructor(server);
