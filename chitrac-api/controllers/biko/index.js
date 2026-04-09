@@ -37,13 +37,9 @@ function constructor(server) {
   router.post("/versa", async (req, res, next) => {
     const currentDateTime = new Date();
     let bodyJSON = Object.assign({}, req.body);
-    /*if (bodyJSON.timestamp) {
+    if (bodyJSON.timestamp) {
       bodyJSON.timestamp = new Date(DateTime.fromISO(bodyJSON.timestamp + "Z"));
-      //TEMPORARY FIX for future timestamps coming from AC360s on boot
-      if (bodyJSON.timestamp > currentDateTime) {
-        bodyJSON.timestamp = currentDateTime;
-      }
-    }*/
+    }
 
     let storeJSON = Object.assign({}, bodyJSON);
     /*if (req.socket.remoteAddress) {
