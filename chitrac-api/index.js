@@ -6,7 +6,12 @@ server.appRoot = require('app-root-path');
 
 /** Load config */
 const config = require('./modules/config');
+
 const db = require('./modules/mongoConnector')(config);
+
+if (!config.mongoLog?.url || typeof config.mongoLog.url !== 'string') {
+	throw new Error('MONGO_LOG_URI missing');
+}
 
 /** Load Morgan for http logging */
 const morgan = require('morgan');
@@ -49,8 +54,6 @@ if (config.mongoLog.url.startsWith('mongodb://')) {
 		loggerConnectionString += `&authSource=${logAuthSource}`;
 	}
 }
-
-console.log('Logger connection string:', loggerConnectionString.replace(/:[^:@]+@/, ':****@'));
 
 const dbClient = new MongoClient(loggerConnectionString);
 const logDb = dbClient.db(config.mongoLog.db);
@@ -142,10 +145,17 @@ const morganMiddleware = morgan(':method :url :status :res[content-length] - :re
 
 app.use(morganMiddleware);
 
-const routes = require('./routes');
-routes.init(app, server);
+try {
+	const routes = require('./routes');
+	routes.init(app, server);
+} catch (e) {
+	logger.error(`routes.init failed: ${e.message}`);
+	throw e;
+}
 
-app.listen(port, () => logger.info(`ChiTracAPI Started and listening on port ${port}`));
+app.listen(port, () => {
+	logger.info(`ChiTracAPI Started and listening on port ${port}`);
+});
 
 /**** Initial Collection Setup */
 async function initializeCollections() {

@@ -134,7 +134,7 @@ module.exports = function (server) {
                 oee: { value: 0, percentage: "0.00" },
               },
             },
-            timeRange: record.timeRange,
+            timeRange: record.buildRange || record.timeRange,
             machines: [],
             efficiencyData: [],
           });
@@ -156,9 +156,7 @@ module.exports = function (server) {
           operatorData.currentStatus = null;
         }
 
-        const downtimeMs = (record.pausedTimeMs || 0) + (record.faultTimeMs || 0);
-        operatorData.metrics.runtime.total += record.runtimeMs;
-        operatorData.metrics.downtime.total += downtimeMs;
+        operatorData.metrics.runtime.total += record.runtimeMs || 0;
         operatorData.metrics.output.totalCount += record.totalCounts;
         operatorData.metrics.output.misfeedCount += record.totalMisfeeds;
 

@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
 const config = require("../../modules/config");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getMachinesSummaryRealTime,
   buildLatestTickerMap,
@@ -278,6 +279,9 @@ function constructor(server) {
         return await getMachinesSummaryRealTimeHandler(req, res);
       }
 
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedCache = new Map();
+
       const machineSerials = cacheRecords.map((r) => Number(r.machineSerial));
 
       const tickers = await db
@@ -313,13 +317,11 @@ function constructor(server) {
         };
 
         const timeRange = record.buildRange || record.timeRange;
-        let windowMs = 0;
         let rangeStart, rangeEnd;
 
         if (timeRange && timeRange.start && timeRange.end) {
           rangeStart = new Date(timeRange.start);
           rangeEnd = new Date(timeRange.end);
-          windowMs = rangeEnd - rangeStart;
         } else {
           const todayFallback = new Date();
           const chicagoTimeFallback = new Date(
@@ -327,14 +329,19 @@ function constructor(server) {
           );
           rangeStart = new Date(chicagoTimeFallback.setHours(0, 0, 0, 0));
           rangeEnd = new Date();
-          windowMs = rangeEnd - rangeStart;
         }
 
-        const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
+        const shiftKey = `${rangeStart.getTime()}|${rangeEnd.getTime()}`;
+        const shiftElapsedMs = shiftElapsedCache.has(shiftKey)
+          ? shiftElapsedCache.get(shiftKey)
+          : computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
+        shiftElapsedCache.set(shiftKey, shiftElapsedMs);
+
+        const downtimeMs = Math.max(shiftElapsedMs - (record.runtimeMs || 0), 0);
 
         const availability =
-          windowMs > 0
-            ? Math.min(Math.max(record.runtimeMs / windowMs, 0), 1)
+          shiftElapsedMs > 0
+            ? Math.min(Math.max((record.runtimeMs || 0) / shiftElapsedMs, 0), 1)
             : 0;
         const totalOutput = record.totalCounts + record.totalMisfeeds;
         const throughput =
@@ -486,6 +493,9 @@ function constructor(server) {
         ]),
       ];
 
+      const activeShiftsDashboard = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedCacheDashboard = new Map();
+
       const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
         await Promise.all([
           cacheCollection
@@ -550,7 +560,16 @@ function constructor(server) {
             ? new Date(record.timeRange.end)
             : chicagoTime;
 
-          const performance = buildPerformanceFromMachineRecord(record);
+          const dashShiftKey = `${sessionStart.getTime()}|${sessionEnd.getTime()}`;
+          const shiftElapsedMsDash = shiftElapsedCacheDashboard.has(dashShiftKey)
+            ? shiftElapsedCacheDashboard.get(dashShiftKey)
+            : computeShiftElapsedMs(activeShiftsDashboard, sessionStart, sessionEnd);
+          shiftElapsedCacheDashboard.set(dashShiftKey, shiftElapsedMsDash);
+
+          const performance = buildPerformanceFromMachineRecord(
+            record,
+            shiftElapsedMsDash
+          );
           const machineItems = machineItemsBySerial.get(serial) || [];
           const itemSummary = buildItemSummaryFromRecords(
             machineItems,

@@ -49,7 +49,7 @@ const {
   resolveBatchItemFromSessions,
   buildZeroEfficiencyPayload,
 } = require("../../utils/sessionFunctions");
-const { loadActiveShifts } = require("../../utils/shiftElapsed");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getLiveProductiveWindowMs,
   liveAvailabilityRatioFromRuntimeSec,
@@ -683,7 +683,8 @@ module.exports = function (server) {
 
       const rangeStart = new Date(start);
       const rangeEnd = new Date(end);
-      const windowMs = rangeEnd - rangeStart;
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
 
       const byDept = new Map();
       for (const name of MACHINE_GROUP_DEPARTMENTS) byDept.set(name, []);
@@ -716,16 +717,12 @@ module.exports = function (server) {
         if (!records || records.length === 0) continue;
 
         let sumRuntimeMs = 0;
-        let sumPausedMs = 0;
-        let sumFaultMs = 0;
         let sumTotalCounts = 0;
         let sumTotalMisfeeds = 0;
         let sumTotalTimeCreditMs = 0;
         let sumWorkedTimeMs = 0;
         for (const record of records) {
           sumRuntimeMs += record.runtimeMs || 0;
-          sumPausedMs += record.pausedTimeMs || 0;
-          sumFaultMs += record.faultTimeMs || 0;
           sumTotalCounts += record.totalCounts || 0;
           sumTotalMisfeeds += record.totalMisfeeds || 0;
           sumTotalTimeCreditMs += record.totalTimeCreditMs || 0;
@@ -734,8 +731,11 @@ module.exports = function (server) {
           sumWorkedTimeMs += workMs;
         }
 
-        const downtimeMs = sumPausedMs + sumFaultMs;
-        const availability = windowMs > 0 ? Math.min(Math.max(sumRuntimeMs / windowMs, 0), 1) : 0;
+        const downtimeMs = Math.max(shiftElapsedMs - sumRuntimeMs, 0);
+        const availability =
+          shiftElapsedMs > 0
+            ? Math.min(Math.max(sumRuntimeMs / shiftElapsedMs, 0), 1)
+            : 0;
         const totalOutput = sumTotalCounts + sumTotalMisfeeds;
         const throughput = totalOutput > 0 ? sumTotalCounts / totalOutput : 0;
         const workTimeSec = sumWorkedTimeMs / 1000;

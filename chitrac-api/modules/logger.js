@@ -8,6 +8,8 @@ function constructor(db) {
     require('winston-daily-rotate-file');
     const path = require('path');
 
+    const logsDir = path.join(__dirname, '..', 'logs');
+
     /*let exceptionFileTransport = new winston.transports.DailyRotateFile({
         filename: path.join('logs', '/%DATE%_exception.log'),
         level: 'error',
@@ -15,13 +17,15 @@ function constructor(db) {
         maxFiles: '365d'
     });*/
     let errorFileTransport = new winston.transports.DailyRotateFile({
-        filename: path.join('logs', '/%DATE%_error.log'),
+        dirname: logsDir,
+        filename: '%DATE%_error.log',
         level: 'error',
         zippedArchive: true,
         maxFiles: '365d'
     });
     let httpFileTransport = new winston.transports.DailyRotateFile({
-        filename: path.join('logs', '/%DATE%_http.log'),
+        dirname: logsDir,
+        filename: '%DATE%_http.log',
         level: 'http',
         zippedArchive: true,
         maxFiles: '60d'
@@ -49,7 +53,8 @@ function constructor(db) {
             }));
         }
         logger.add(new winston.transports.DailyRotateFile({
-            filename: path.join('logs', '/%DATE%_everything.log'),
+            dirname: logsDir,
+            filename: '%DATE%_everything.log',
             level: 'silly',
             zippedArchive: true,
             maxFiles: '3d'

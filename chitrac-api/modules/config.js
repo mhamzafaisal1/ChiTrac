@@ -1,4 +1,9 @@
-require('dotenv').config();
+const path = require("path");
+
+// Load .env from the chitrac-api root (next to index.js), not process.cwd().
+// Windows services often start with cwd = System32 or another folder, which
+// would skip .env and leave MONGO_URI / secrets unset.
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV,
