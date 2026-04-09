@@ -1,16 +1,6 @@
 <div class="dashboard-container">
   <div class="table-wrapper">
-    <!-- Loading Overlay for initial load -->
-    <div class="loading-overlay" *ngIf="isLoading">
-      <div class="loading-content">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">
-          Loading data...
-        </div>
-      </div>
-    </div>
-
-    <div class="table-container" [class.loading]="isLoading">
+    <div class="table-container">
       <base-table
         *ngIf="rows.length"
         [columns]="columns"
@@ -20,6 +10,16 @@
         [getCellClass]="getEfficiencyClass"
         [responsiveHiddenColumns]="responsiveHiddenColumns"
       ></base-table>
+    </div>
+  </div>
+
+  <!-- Full-viewport frosted overlay (initial load + row click → modal) -->
+  <div class="loading-overlay" *ngIf="isLoading || isOpeningModal">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">
+        {{ isOpeningModal ? "Fetching data..." : "Loading data..." }}
+      </div>
     </div>
   </div>
 </div>
