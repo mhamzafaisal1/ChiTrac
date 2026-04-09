@@ -49,6 +49,12 @@ const {
   resolveBatchItemFromSessions,
   buildZeroEfficiencyPayload,
 } = require("../../utils/sessionFunctions");
+const { loadActiveShifts } = require("../../utils/shiftElapsed");
+const {
+  getLiveProductiveWindowMs,
+  liveAvailabilityRatioFromRuntimeSec,
+  liveAvailabilityRatioFromMs,
+} = require("../../utils/availabilityLive");
 
 async function resolveShiftIdString(req, db) {
   const raw = req.query.shiftId;
@@ -852,7 +858,7 @@ module.exports = function (server) {
         .filter((op) => !([67801, 67802].includes(serialNum) && op.station === 2));
 
       const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const todayDateStr = now.toFormat("yyyy-MM-dd");
 
       if (statusCode !== 1) {
@@ -880,6 +886,8 @@ module.exports = function (server) {
         return res.json({ flipperData: performanceData });
       }
 
+      const activeShifts = await loadActiveShifts(db);
+
       const shortFrames = {
         lastSixMinutes: { start: now.minus({ minutes: 6 }), label: "Last 6 Mins" },
         lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: "Last 15 Mins" },
@@ -899,6 +907,12 @@ module.exports = function (server) {
       for (const total of dailyTotals) {
         if (total.operatorId) dailyTotalsMap.set(total.operatorId, total);
       }
+
+      const todayProductiveMs = getLiveProductiveWindowMs(
+        activeShifts,
+        now.startOf("day").toJSDate(),
+        now.toJSDate()
+      );
 
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op) => {
@@ -962,8 +976,9 @@ module.exports = function (server) {
               op.id,
               serialNum
             );
-            const windowSec = (now.toMillis() - start.toMillis()) / 1000;
-            const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+            const productiveSec =
+              getLiveProductiveWindowMs(activeShifts, windowStart, windowEnd) / 1000;
+            const availability = liveAvailabilityRatioFromRuntimeSec(runtimeSec, productiveSec);
             const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
             const throughput = validCount + misfeedCount > 0 ? validCount / (validCount + misfeedCount) : 0;
             const oeeVal = availability * efficiencyRatio * throughput;
@@ -982,8 +997,7 @@ module.exports = function (server) {
             const runtimeSec = dailyTotal.runtimeMs / 1000;
             const timeCreditSec = (dailyTotal.totalTimeCreditMs || 0) / 1000;
             todayEfficiency = timeCreditSec / runtimeSec;
-            const windowMs = now.toMillis() - now.startOf("day").toMillis();
-            const availability = windowMs > 0 ? dailyTotal.runtimeMs / windowMs : 0;
+            const availability = liveAvailabilityRatioFromMs(dailyTotal.runtimeMs, todayProductiveMs);
             const totalCounts = dailyTotal.totalCounts || 0;
             const totalMisfeeds = dailyTotal.totalMisfeeds || 0;
             const throughput =
@@ -1080,7 +1094,7 @@ module.exports = function (server) {
         .filter((op) => !([67801, 67802].includes(serialNum) && op.station === 2));
 
       const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const todayDateStr = now.toFormat("yyyy-MM-dd");
 
       if (statusCode !== 1) {
@@ -1108,6 +1122,8 @@ module.exports = function (server) {
         return res.json({ flipperData: performanceData });
       }
 
+      const activeShifts = await loadActiveShifts(db);
+
       const shortFrames = {
         lastSixMinutes: { start: now.minus({ minutes: 6 }), label: "Last 6 Mins" },
         lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: "Last 15 Mins" },
@@ -1127,6 +1143,12 @@ module.exports = function (server) {
       for (const total of dailyTotals) {
         if (total.operatorId) dailyTotalsMap.set(total.operatorId, total);
       }
+
+      const todayProductiveMs = getLiveProductiveWindowMs(
+        activeShifts,
+        now.startOf("day").toJSDate(),
+        now.toJSDate()
+      );
 
       const performanceData = await Promise.all(
         onMachineOperators.map(async (op) => {
@@ -1190,8 +1212,9 @@ module.exports = function (server) {
               op.id,
               serialNum
             );
-            const windowSec = (now.toMillis() - start.toMillis()) / 1000;
-            const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+            const productiveSec =
+              getLiveProductiveWindowMs(activeShifts, windowStart, windowEnd) / 1000;
+            const availability = liveAvailabilityRatioFromRuntimeSec(runtimeSec, productiveSec);
             const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
             const throughput = validCount + misfeedCount > 0 ? validCount / (validCount + misfeedCount) : 0;
             const oeeVal = availability * efficiencyRatio * throughput;
@@ -1210,8 +1233,7 @@ module.exports = function (server) {
             const runtimeSec = dailyTotal.runtimeMs / 1000;
             const timeCreditSec = (dailyTotal.totalTimeCreditMs || 0) / 1000;
             todayEfficiency = timeCreditSec / runtimeSec;
-            const windowMs = now.toMillis() - now.startOf("day").toMillis();
-            const availability = windowMs > 0 ? dailyTotal.runtimeMs / windowMs : 0;
+            const availability = liveAvailabilityRatioFromMs(dailyTotal.runtimeMs, todayProductiveMs);
             const totalCounts = dailyTotal.totalCounts || 0;
             const totalMisfeeds = dailyTotal.totalMisfeeds || 0;
             const throughput =
@@ -1321,7 +1343,7 @@ module.exports = function (server) {
           });
         }
 
-        const now = DateTime.now();
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
         const frames = {
           lastSixMinutes: { start: now.minus({ minutes: 6 }), label: "Last 6 Mins" },
           lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: "Last 15 Mins" },
@@ -1391,8 +1413,14 @@ module.exports = function (server) {
         });
       }
 
-      const now = DateTime.now();
+      const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const todayDateStr = now.toFormat("yyyy-MM-dd");
+      const activeShifts = await loadActiveShifts(db);
+      const todayProductiveMs = getLiveProductiveWindowMs(
+        activeShifts,
+        now.startOf("day").toJSDate(),
+        now.toJSDate()
+      );
       const shortFrames = {
         lastSixMinutes: { start: now.minus({ minutes: 6 }), label: "Last 6 Mins" },
         lastFifteenMinutes: { start: now.minus({ minutes: 15 }), label: "Last 15 Mins" },
@@ -1458,8 +1486,9 @@ module.exports = function (server) {
           operator.id,
           serialNum
         );
-        const windowSec = (now.toMillis() - start.toMillis()) / 1000;
-        const availability = windowSec > 0 ? runtimeSec / windowSec : 0;
+        const productiveSec =
+          getLiveProductiveWindowMs(activeShifts, windowStart, windowEnd) / 1000;
+        const availability = liveAvailabilityRatioFromRuntimeSec(runtimeSec, productiveSec);
         const efficiencyRatio = runtimeSec > 0 ? totalTimeCreditSec / runtimeSec : 0;
         const throughput = validCount + misfeedCount > 0 ? validCount / (validCount + misfeedCount) : 0;
         const oeeVal = availability * efficiencyRatio * throughput;
@@ -1483,8 +1512,7 @@ module.exports = function (server) {
         const runtimeSec = dailyTotal.runtimeMs / 1000;
         const timeCreditSec = (dailyTotal.totalTimeCreditMs || 0) / 1000;
         todayEfficiency = timeCreditSec / runtimeSec;
-        const windowMs = now.toMillis() - now.startOf("day").toMillis();
-        const availability = windowMs > 0 ? dailyTotal.runtimeMs / windowMs : 0;
+        const availability = liveAvailabilityRatioFromMs(dailyTotal.runtimeMs, todayProductiveMs);
         const totalCounts = dailyTotal.totalCounts || 0;
         const totalMisfeeds = dailyTotal.totalMisfeeds || 0;
         const throughput =

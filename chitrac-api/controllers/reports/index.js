@@ -11,6 +11,7 @@ const {
   getItemDailyCachedDataForDays,
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -61,6 +62,8 @@ module.exports = function (server) {
       const exactEnd = isTodaySinceMidnight 
         ? nowLocal.toUTC().toJSDate() 
         : endDt.toUTC().toJSDate();
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedMs = computeShiftElapsedMs(activeShifts, exactStart, exactEnd, SYSTEM_TIMEZONE);
       
       console.log(`[OPERATOR-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
 
@@ -539,6 +542,9 @@ module.exports = function (server) {
         const hours = operatorData.totalWorkedMs / 3600000;
         const operatorPph = hours > 0 ? operatorData.totalCount / hours : 0;
         const operatorEff = proratedStandard ? operatorPph / proratedStandard : null;
+        const runtimeMs = operatorData.totalRuntimeMs || 0;
+        const downtimeMs = Math.max(0, shiftElapsedMs - runtimeMs);
+        const availability = shiftElapsedMs > 0 ? Math.min(Math.max(runtimeMs / shiftElapsedMs, 0), 1) : 0;
         
         // Skip operators with no actual production data
         if (operatorData.totalCount === 0) {
@@ -553,8 +559,14 @@ module.exports = function (server) {
             totalCount: operatorData.totalCount,
             workedTimeMs: operatorData.totalWorkedMs || 0,
             workedTimeFormatted: formatMs(operatorData.totalWorkedMs || 0),
-            runtimeMs: operatorData.totalRuntimeMs || 0,
-            runtimeFormatted: formatMs(operatorData.totalRuntimeMs || 0),
+            runtimeMs,
+            runtimeFormatted: formatMs(runtimeMs),
+            downtimeMs,
+            downtimeFormatted: formatMs(downtimeMs),
+            availability: {
+              value: availability,
+              percentage: Math.round(availability * 10000) / 100,
+            },
             pph: Math.round(operatorPph * 100) / 100,
             proratedStandard: proratedStandard || null,
             efficiency: operatorEff ? Math.round(operatorEff * 10000) / 100 : null,
@@ -922,6 +934,8 @@ module.exports = function (server) {
   router.get("/analytics/machine-report-cache", async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftElapsedMs = computeShiftElapsedMs(activeShifts, start, end, SYSTEM_TIMEZONE);
 
       // Generate date range (full days)
       const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day');
@@ -1136,6 +1150,8 @@ module.exports = function (server) {
         const machineRuntimeHours = machineData.runtimeMs / 3600000;
         const machinePph = machineRuntimeHours > 0 ? itemTotalCounts / machineRuntimeHours : 0;
         const machineEfficiency = proratedStandard > 0 ? (machinePph / proratedStandard) * 100 : 0;
+        const downtimeMs = Math.max(0, shiftElapsedMs - machineData.runtimeMs);
+        const availability = shiftElapsedMs > 0 ? Math.min(Math.max(machineData.runtimeMs / shiftElapsedMs, 0), 1) : 0;
 
         // Build itemSummaries with Total row first
         const itemSummariesWithTotal = {
@@ -1161,6 +1177,12 @@ module.exports = function (server) {
             workedTimeFormatted: formatDuration(machineData.workedTimeMs),
             runtimeMs: machineData.runtimeMs,
             runtimeFormatted: formatDuration(machineData.runtimeMs),
+            downtimeMs,
+            downtimeFormatted: formatDuration(downtimeMs),
+            availability: {
+              value: availability,
+              percentage: Math.round(availability * 10000) / 100,
+            },
             pph: Math.round(machinePph * 100) / 100,
             proratedStandard: Math.round(proratedStandard * 100) / 100,
             efficiency: Math.round(machineEfficiency * 100) / 100,
