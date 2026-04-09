@@ -26,7 +26,26 @@
   }
 }
 
+/* machine-report.component.scss — component fetch overlay (not row → modal) */
 .loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-content {
+  text-align: center;
+}
+
+/* Full-screen frosted: row click → modal */
+.modal-loading-overlay {
   position: fixed;
   inset: 0;
   z-index: 10000;
@@ -39,7 +58,7 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
-.loading-content {
+.loading-content-modal {
   text-align: center;
   padding: 1.35rem 1.85rem;
   border-radius: 14px;
@@ -93,18 +112,50 @@
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   position: relative;
+  min-height: 0;
+
+  &:empty {
+    display: none;
+  }
+
+  &.loading {
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+    }
+  }
 }
 
 :host-context(.dark-theme) {
-
   .loading-overlay {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+
+  .table-container {
+    background-color: var(--surface-color, #1e1e1e);
+
+    &.loading::after {
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+  }
+
+  .modal-loading-overlay {
     background: rgba(18, 22, 30, 0.22);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(20px) saturate(1.18);
     -webkit-backdrop-filter: blur(20px) saturate(1.18);
   }
 
-  .loading-content {
+  .loading-content-modal {
     background: rgba(32, 36, 48, 0.38);
     border-color: rgba(255, 255, 255, 0.1);
     box-shadow:
