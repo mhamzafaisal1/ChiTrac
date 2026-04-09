@@ -6,6 +6,7 @@ const humanNamesSchema = require('../../schemas/human-names');
 const operatorSchema = require('../../schemas/operator');
 
 const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
+const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getOperatorsSummaryRealTime,
   buildItemSummaryFromCache,
@@ -254,6 +255,8 @@ function constructor(server) {
         return await getOperatorsSummaryRealTimeHandler(req, res);
       }
 
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+
       const machineSerials = [
         ...new Set(
           cacheRecords
@@ -332,7 +335,7 @@ function constructor(server) {
                 oee: { value: 0, percentage: "0.00" },
               },
             },
-            timeRange: record.timeRange,
+            timeRange: record.buildRange || record.timeRange,
             machines: [],
             efficiencyData: [],
           });
@@ -354,9 +357,7 @@ function constructor(server) {
           operatorData.currentStatus = null;
         }
 
-        const downtimeMs = (record.pausedTimeMs || 0) + (record.faultTimeMs || 0);
-        operatorData.metrics.runtime.total += record.runtimeMs;
-        operatorData.metrics.downtime.total += downtimeMs;
+        operatorData.metrics.runtime.total += record.runtimeMs || 0;
         operatorData.metrics.output.totalCount += record.totalCounts;
         operatorData.metrics.output.misfeedCount += record.totalMisfeeds;
 
@@ -373,25 +374,31 @@ function constructor(server) {
       const results = Array.from(operatorMap.values()).map((operatorData) => {
         const { runtime, downtime, output } = operatorData.metrics;
 
-        let windowMs = 0;
+        let rangeStart = null;
+        let rangeEnd = null;
+
         if (operatorData.timeRange && operatorData.timeRange.start && operatorData.timeRange.end) {
           try {
             const startDate = new Date(operatorData.timeRange.start);
             const endDate = new Date(operatorData.timeRange.end);
             if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && endDate > startDate) {
-              windowMs = endDate.getTime() - startDate.getTime();
+              rangeStart = startDate;
+              rangeEnd = endDate;
             }
           } catch (e) {
             logger.warn(`[operatorSessions] Invalid timeRange for operator ${operatorData.operator.id}:`, e);
           }
         }
 
-        if (windowMs <= 0) {
-          const defaultStart = new Date(`${dateStr}T06:00:00.000Z`);
-          windowMs = Math.max(0, chicagoTime.getTime() - defaultStart.getTime());
+        if (!rangeStart || !rangeEnd) {
+          rangeStart = new Date(`${dateStr}T06:00:00.000Z`);
+          rangeEnd = chicagoTime;
         }
 
-        const availability = windowMs > 0 ? runtime.total / windowMs : 0;
+        const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
+        downtime.total = Math.max(shiftElapsedMs - runtime.total, 0);
+
+        const availability = shiftElapsedMs > 0 ? runtime.total / shiftElapsedMs : 0;
         const throughput =
           output.totalCount + output.misfeedCount > 0
             ? output.totalCount / (output.totalCount + output.misfeedCount)

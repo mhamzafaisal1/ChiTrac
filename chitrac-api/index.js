@@ -4,48 +4,12 @@ var state, server = {};
 /** Declare reqlib */
 server.appRoot = require('app-root-path');
 
-const bootLogger = require('./modules/bootLogger');
-bootLogger.registerProcessCrashHandlers();
-bootLogger.info('ChiTracAPI boot starting', {
-	cwd: process.cwd(),
-	node: process.version,
-});
-
 /** Load config */
-let config;
-try {
-	config = require('./modules/config');
-} catch (e) {
-	bootLogger.error('Failed to load config module', {
-		message: e.message,
-		stack: e.stack,
-	});
-	throw e;
-}
+const config = require('./modules/config');
 
-bootLogger.info('config loaded', {
-	port: config.port,
-	hasMongoUri: Boolean(config.mongo?.url),
-	hasMongoDb: Boolean(config.mongo?.db),
-	hasMongoLogUri: Boolean(config.mongoLog?.url),
-	hasJwtSecret: Boolean(config.jwtSecret),
-});
-
-let db;
-try {
-	db = require('./modules/mongoConnector')(config);
-} catch (e) {
-	bootLogger.error('mongoConnector failed', {
-		message: e.message,
-		stack: e.stack,
-	});
-	throw e;
-}
+const db = require('./modules/mongoConnector')(config);
 
 if (!config.mongoLog?.url || typeof config.mongoLog.url !== 'string') {
-	bootLogger.error(
-		'Invalid logger Mongo config: set MONGO_LOG_URI (and related) in .env or environment'
-	);
 	throw new Error('MONGO_LOG_URI missing');
 }
 
@@ -91,15 +55,9 @@ if (config.mongoLog.url.startsWith('mongodb://')) {
 	}
 }
 
-bootLogger.info('Logger Mongo connection string (redacted)', {
-	connectionString: loggerConnectionString.replace(/:[^:@]+@/, ':****@'),
-});
-
 const dbClient = new MongoClient(loggerConnectionString);
 const logDb = dbClient.db(config.mongoLog.db);
 const logger = new winston(logDb);
-
-bootLogger.info('Main winston logger constructed (file + DB transports as configured)');
 
 server.config = config;
 server.db = db;
@@ -191,14 +149,12 @@ try {
 	const routes = require('./routes');
 	routes.init(app, server);
 } catch (e) {
-	bootLogger.error('routes.init failed', { message: e.message, stack: e.stack });
 	logger.error(`routes.init failed: ${e.message}`);
 	throw e;
 }
 
 app.listen(port, () => {
 	logger.info(`ChiTracAPI Started and listening on port ${port}`);
-	bootLogger.info('ChiTracAPI listen OK', { port });
 });
 
 /**** Initial Collection Setup */
