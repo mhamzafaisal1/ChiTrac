@@ -1,6 +1,14 @@
 <div class="dashboard-container" [class.dark-mode]="isDarkTheme">
+  <!-- Same structure/classes as machine-report.component.html (component load only) -->
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Fetching data...</div>
+    </div>
+  </div>
+
   <div class="table-wrapper">
-    <div class="table-container">
+    <div class="table-container" [class.loading]="isLoading">
       <base-table
         *ngIf="rows.length"
         [columns]="columns"
@@ -14,13 +22,11 @@
     </div>
   </div>
 
-  <!-- Full-viewport frosted overlay (initial load + row click → modal) -->
-  <div class="loading-overlay" *ngIf="isLoading || isOpeningModal">
-    <div class="loading-content">
+  <!-- Full-viewport frosted overlay: row click → modal only -->
+  <div class="modal-loading-overlay" *ngIf="isOpeningModal">
+    <div class="loading-content-modal">
       <div class="loading-spinner"></div>
-      <div class="loading-text">
-        {{ isOpeningModal ? "Fetching data..." : "Loading data..." }}
-      </div>
+      <div class="loading-text">Fetching data...</div>
     </div>
   </div>
 </div>
