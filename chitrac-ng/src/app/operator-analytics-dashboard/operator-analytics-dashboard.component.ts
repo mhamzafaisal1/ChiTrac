@@ -53,6 +53,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   operatorData: any[] = []; // Store the raw dashboard data
   liveMode: boolean = false;
   isLoading: boolean = false;
+  /** Full-screen loading overlay between row click and modal open (matches machine dashboard). */
+  isOpeningModal: boolean = false;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
@@ -394,6 +396,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     // Check if we have a timeframe selected
     const timeframe = this.dateTimeService.getTimeframe();
 
+    this.isOpeningModal = true;
+
     // Fetch detailed operator data for the modal
     const summaryObservable = timeframe
       ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
@@ -402,17 +406,22 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     summaryObservable.subscribe({
       next: (summaryData) => {
         const base = Array.isArray(summaryData) ? summaryData.find(d => d.operator.id === operatorId) : summaryData;
-  
+
+        if (Array.isArray(summaryData) && base == null) {
+          this.isOpeningModal = false;
+          return;
+        }
+
         const detailsObservable = timeframe
           ? this.operatorService.getOperatorDetailsWithTimeFrame(this.startTime, this.endTime, operatorId)
           : this.operatorService.getOperatorDetails(this.startTime, this.endTime, operatorId);
 
-        detailsObservable
-          .subscribe({
+        detailsObservable.subscribe({
             next: (infoData) => {
-              const data = { ...base, ...infoData }; // Merge both
-  
-              const carouselTabs = [
+              try {
+                const data = { ...base, ...infoData }; // Merge both
+
+                const carouselTabs = [
                 {
                   label: 'Item Summary',
                   component: OperatorItemSummaryTableComponent,
@@ -500,23 +509,34 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     isModal: true
                   }
                 }
-              ];
-  
-              this.dialog.open(ModalWrapperComponent, {
-                width: '90vw',
-                height: '85vh',
-                maxWidth: '95vw',
-                maxHeight: '90vh',
-                panelClass: 'performance-chart-dialog',
-                data: {
-                  component: UseCarouselComponent,
-                  componentInputs: {
-                    tabData: carouselTabs
+                ];
+
+                this.dialog.open(ModalWrapperComponent, {
+                  width: '90vw',
+                  height: '85vh',
+                  maxWidth: '95vw',
+                  maxHeight: '90vh',
+                  panelClass: 'performance-chart-dialog',
+                  data: {
+                    component: UseCarouselComponent,
+                    componentInputs: {
+                      tabData: carouselTabs
+                    }
                   }
-                }
-              });
+                });
+              } finally {
+                this.isOpeningModal = false;
+              }
+            },
+            error: (err: unknown) => {
+              console.error('Error loading operator details for modal:', err);
+              this.isOpeningModal = false;
             }
           });
+      },
+      error: (err: unknown) => {
+        console.error('Error loading operator summary for modal:', err);
+        this.isOpeningModal = false;
       }
     });
   
