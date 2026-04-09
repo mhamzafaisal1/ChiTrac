@@ -60,6 +60,8 @@ server.config = config;
 server.db = db;
 server.logDb = logDb;
 server.logger = logger;
+/** Holds scheduled job handles (e.g. alpha testing job scheduler). */
+server.scheduledJobs = {};
 
 server.defaults = {
     machine: require('./defaults/machine').machine,
@@ -94,7 +96,17 @@ require('./configuration/passport')(passport, server);
 server['passport'] = passport;
 
 app.use(cookieParser());
-app.use(bodyParser.json());
+const jsonParserDefault = bodyParser.json();
+const jsonParserLarge = bodyParser.json({ limit: '25mb' });
+app.use((req, res, next) => {
+	if (
+		req.path === '/api/reports/analytics/machine-report-email' &&
+		req.method === 'POST'
+	) {
+		return jsonParserLarge(req, res, next);
+	}
+	jsonParserDefault(req, res, next);
+});
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(session({
