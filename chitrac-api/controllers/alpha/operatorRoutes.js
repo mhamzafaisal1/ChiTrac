@@ -194,7 +194,7 @@ module.exports = function (server) {
         if (!rangeStart || !rangeEnd) {
           // Keep legacy fallback when timeRange is missing/invalid.
           rangeStart = new Date(`${dateStr}T06:00:00.000Z`);
-          rangeEnd = chicagoTime;
+          rangeEnd = wallClockNow;
         }
 
         const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
