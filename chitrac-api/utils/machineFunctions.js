@@ -852,7 +852,13 @@ async function getActiveMachineSerials(db, start, end) {
     };
   }
 
-  function buildItemHourlyStackFromRecords(records, sessionStart) {
+  /**
+   * @param {object[]} records - hourly-totals rows
+   * @param {Date} sessionStart - anchor date for labels (Chicago wall clock via SYSTEM_TIMEZONE)
+   * @param {{ minHour: number, maxHour: number } | null} [hourEnvelope] - if set, only hours in [minHour,maxHour]
+   *   appear on the axis (first shift start through last shift end for that day); gaps between shifts stay.
+   */
+  function buildItemHourlyStackFromRecords(records, sessionStart, hourEnvelope = null) {
     if (!records.length) {
       return {
         title: "No data",
@@ -866,9 +872,15 @@ async function getActiveMachineSerials(db, start, end) {
 
     for (const record of records) {
       // Use the hour field directly from hourly-totals records
-      const hour = typeof record.hour === 'number' ? record.hour : null;
+      const hour = typeof record.hour === "number" ? record.hour : null;
       if (hour === null || hour < 0 || hour > 23) {
         continue; // Skip invalid hour records
+      }
+      if (
+        hourEnvelope &&
+        (hour < hourEnvelope.minHour || hour > hourEnvelope.maxHour)
+      ) {
+        continue;
       }
 
       const itemName = record.itemName || `Item ${record.itemId ?? "Unknown"}`;
@@ -882,20 +894,30 @@ async function getActiveMachineSerials(db, start, end) {
       itemNames.add(itemName);
     }
 
-    if (hourMap.size === 0) {
+    if (hourMap.size === 0 && !hourEnvelope) {
       return {
         title: "Item Stacked Count Chart",
         data: { hours: [], items: {} },
       };
     }
 
-    // Get all hours that have data and find the maximum
-    const hoursWithData = Array.from(hourMap.keys()).sort((a, b) => a - b);
-    const maxHour = Math.max(...hoursWithData);
-
-    // Create array of all hours from 0 to maxHour (inclusive) to match expected format
-    // This ensures hours start from 0 even if data doesn't exist for early hours
-    const allHours = Array.from({ length: maxHour + 1 }, (_, idx) => idx);
+    let allHours;
+    if (hourEnvelope) {
+      allHours = [];
+      for (let h = hourEnvelope.minHour; h <= hourEnvelope.maxHour; h++) {
+        allHours.push(h);
+      }
+    } else {
+      const hoursWithData = Array.from(hourMap.keys()).sort((a, b) => a - b);
+      if (hoursWithData.length === 0) {
+        return {
+          title: "Item Stacked Count Chart",
+          data: { hours: [], items: {} },
+        };
+      }
+      const maxHour = Math.max(...hoursWithData);
+      allHours = Array.from({ length: maxHour + 1 }, (_, idx) => idx);
+    }
 
     // Initialize items object with arrays filled with zeros
     const items = {};
@@ -903,12 +925,13 @@ async function getActiveMachineSerials(db, start, end) {
       items[name] = Array(allHours.length).fill(0);
     }
 
-    // Fill in the actual counts
-    for (const [hour, counts] of hourMap.entries()) {
-      if (hour >= 0 && hour < allHours.length) {
-        for (const [itemName, total] of Object.entries(counts)) {
-          items[itemName][hour] = total;
-        }
+    // Fill in the actual counts (index aligns with allHours[i] === hour)
+    for (let i = 0; i < allHours.length; i++) {
+      const hour = allHours[i];
+      const counts = hourMap.get(hour);
+      if (!counts) continue;
+      for (const [itemName, total] of Object.entries(counts)) {
+        if (items[itemName]) items[itemName][i] = total;
       }
     }
 
@@ -921,7 +944,11 @@ async function getActiveMachineSerials(db, start, end) {
     };
   }
 
-  function buildOperatorEfficiencyFromRecords(records, sessionStart) {
+  /**
+   * @param {{ minHour: number, maxHour: number } | null} [hourEnvelope] - if set, emits one entry per hour
+   *   from first shift start through last shift end (gaps between shifts included with empty/zero data).
+   */
+  function buildOperatorEfficiencyFromRecords(records, sessionStart, hourEnvelope = null) {
     if (!records.length) {
       return [];
     }
@@ -931,9 +958,15 @@ async function getActiveMachineSerials(db, start, end) {
 
     for (const record of records) {
       // Use the hour field directly from hourly-totals records
-      const hour = typeof record.hour === 'number' ? record.hour : null;
+      const hour = typeof record.hour === "number" ? record.hour : null;
       if (hour === null || hour < 0 || hour > 23) {
         continue; // Skip invalid hour records
+      }
+      if (
+        hourEnvelope &&
+        (hour < hourEnvelope.minHour || hour > hourEnvelope.maxHour)
+      ) {
+        continue;
       }
 
       const workedMs = safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
@@ -971,22 +1004,31 @@ async function getActiveMachineSerials(db, start, end) {
       }
     }
 
-    if (hourMap.size === 0) {
+    if (hourMap.size === 0 && !hourEnvelope) {
       return [];
     }
 
-    // Convert to array format, sorted by hour
-    const hours = Array.from(hourMap.keys()).sort((a, b) => a - b);
+    let hoursToEmit;
+    if (hourEnvelope) {
+      hoursToEmit = [];
+      for (let h = hourEnvelope.minHour; h <= hourEnvelope.maxHour; h++) {
+        hoursToEmit.push(h);
+      }
+    } else {
+      hoursToEmit = Array.from(hourMap.keys()).sort((a, b) => a - b);
+    }
+
     const result = [];
 
-    for (const hour of hours) {
+    for (const hour of hoursToEmit) {
       const hourData = hourMap.get(hour);
-      const operators = Array.from(hourData.operators.values());
+      const operators = hourData ? Array.from(hourData.operators.values()) : [];
 
       // Calculate average efficiency for this hour from all operators
-      const avgEfficiency = operators.length > 0
-        ? operators.reduce((sum, op) => sum + op.efficiency, 0) / operators.length
-        : 0;
+      const avgEfficiency =
+        operators.length > 0
+          ? operators.reduce((sum, op) => sum + op.efficiency, 0) / operators.length
+          : 0;
 
       // Create hour timestamp in Chicago timezone (matching the hour field from records)
       // Convert sessionStart to Chicago timezone, then set the hour in that timezone
@@ -997,7 +1039,7 @@ async function getActiveMachineSerials(db, start, end) {
       result.push({
         hour: hourDate.toISOString(),
         oee: Math.round(avgEfficiency * 100) / 100,
-        operators: operators
+        operators,
       });
     }
 
