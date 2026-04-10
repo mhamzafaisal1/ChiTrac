@@ -149,8 +149,12 @@ function recalcOperatorSession(session, logger) {
   // Operator-level work time == runtimeSec
   const workTimeSec = runtimeSec;
 
-  const counts = Array.isArray(session.counts) ? session.counts : [];
-  const misfeeds = Array.isArray(session.misfeeds) ? session.misfeeds : [];
+  const counts = Array.isArray(session.counts)
+    ? session.counts
+    : (session.counts?.valid || []);
+  const misfeeds = Array.isArray(session.misfeeds)
+    ? session.misfeeds
+    : (session.counts?.misfeed || []);
   const totalCount = counts.length;
   const misfeedCount = misfeeds.length;
 
@@ -192,12 +196,19 @@ function truncateAndRecalcOperator(original, newStart, newEnd, logger) {
     return original;
   }
 
+  const countsArray = Array.isArray(original.counts)
+    ? original.counts
+    : (original.counts?.valid || []);
+  const misfeedsArray = Array.isArray(original.misfeeds)
+    ? original.misfeeds
+    : (original.counts?.misfeed || []);
+
   // Only clone what we need to modify
   const s = {
     ...original,
     timestamps: { ...original.timestamps },
-    counts: [...(original.counts || [])],
-    misfeeds: [...(original.misfeeds || [])]
+    counts: [...countsArray],
+    misfeeds: [...misfeedsArray],
   };
 
   const start = new Date(s.timestamps.start);
