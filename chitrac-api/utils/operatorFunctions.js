@@ -18,7 +18,7 @@ const { DateTime, Interval } = require("luxon");
 const config = require('../modules/config');
 const { getValidCountsForOperator, processCountStatistics, groupCountsByItem, extractItemNamesFromCounts } = require('./count');
 const { fetchGroupedAnalyticsData } = require('./machineFunctions');
-const { loadActiveShifts } = require("./shiftElapsed");
+const { loadActiveShifts, getShiftDayHourEnvelope } = require("./shiftElapsed");
 const {
   getLiveProductiveWindowMs,
   liveAvailabilityRatioFromMs,
@@ -1956,9 +1956,33 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       allowDiskUse: true
     }).toArray();
 
+    const isSingleChicagoDay =
+      startDt.toFormat("yyyy-MM-dd") === endDt.toFormat("yyyy-MM-dd");
+
+    let hourEnvelope = null;
+    if (isSingleChicagoDay) {
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      hourEnvelope = getShiftDayHourEnvelope(
+        activeShifts,
+        startDt.toJSDate(),
+        "America/Chicago"
+      );
+    }
+
+    function fullDayHoursAxis() {
+      return Array.from({ length: 24 }, (_, i) => i);
+    }
+
+    function envelopeHoursAxis(env) {
+      const axis = [];
+      for (let h = env.minHour; h <= env.maxHour; h++) axis.push(h);
+      return axis;
+    }
+
+    const hoursAxis = hourEnvelope ? envelopeHoursAxis(hourEnvelope) : fullDayHoursAxis();
+
     // Build hourly breakdown map: itemName -> [counts for hours 0-23]
     const hourlyBreakdownMap = {};
-    const hourSet = new Set();
 
     for (const result of results) {
       const itemName = result._id || "Unknown";
@@ -1967,7 +1991,12 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       for (const entry of result.hourlyCounts) {
         const hour = entry.hour;
         if (hour >= 0 && hour <= 23) {
-          hourSet.add(hour);
+          if (
+            hourEnvelope &&
+            (hour < hourEnvelope.minHour || hour > hourEnvelope.maxHour)
+          ) {
+            continue;
+          }
           hourlyBreakdownMap[itemName][hour] = entry.count;
         }
       }
@@ -1978,17 +2007,26 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       return {
         title: "Operator Counts by item",
         data: {
-          hours: Array.from({ length: 24 }, (_, i) => i),
+          hours: hoursAxis,
           operators: {}
         }
       };
     }
 
+    const operatorsSliced = {};
+    for (const [itemName, fullRow] of Object.entries(hourlyBreakdownMap)) {
+      if (hourEnvelope) {
+        operatorsSliced[itemName] = hoursAxis.map((h) => fullRow[h] || 0);
+      } else {
+        operatorsSliced[itemName] = fullRow;
+      }
+    }
+
     return {
       title: "Operator Counts by item",
       data: {
-        hours: Array.from({ length: 24 }, (_, i) => i),
-        operators: hourlyBreakdownMap
+        hours: hoursAxis,
+        operators: operatorsSliced
       }
     };
   } catch (error) {
