@@ -38,7 +38,7 @@ function constructor(server) {
     const currentDateTime = new Date();
     let bodyJSON = Object.assign({}, req.body);
     if (bodyJSON.timestamp) {
-      bodyJSON.timestamp = new Date(DateTime.fromISO(bodyJSON.timestamp + "Z"));
+      bodyJSON.timestamp = new Date(DateTime.fromISO(bodyJSON.timestamp));
     }
 
     let storeJSON = Object.assign({}, bodyJSON);
