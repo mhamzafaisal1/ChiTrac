@@ -111,24 +111,31 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       return null;
     }
 
-    // Group points per operator
+    // Group points per operator. The API includes every hour in range; "current" hour may have
+    // operators: [] until hourly-totals exist — still emit an x tick (carry forward last y).
     const operatorMap = new Map<string, { name: string; data: { x: string; y: number }[] }>();
+    const lastYByOperator = new Map<string, number>();
 
     hourly.forEach((hourData: any) => {
-      if (hourData.operators && Array.isArray(hourData.operators)) {
-        const hourLabel = new Date(hourData.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const hourLabel = new Date(hourData.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const ops = hourData.operators && Array.isArray(hourData.operators) ? hourData.operators : [];
+      const namesThisHour = new Set(ops.map((o: any) => o.name).filter(Boolean));
 
-        hourData.operators.forEach((operator: any) => {
-          if (!operatorMap.has(operator.name)) {
-            operatorMap.set(operator.name, { name: operator.name, data: [] });
-          }
+      ops.forEach((operator: any) => {
+        if (!operator.name) return;
+        if (!operatorMap.has(operator.name)) {
+          operatorMap.set(operator.name, { name: operator.name, data: [] });
+        }
+        const y = operator.efficiency ?? 0;
+        operatorMap.get(operator.name)!.data.push({ x: hourLabel, y });
+        lastYByOperator.set(operator.name, y);
+      });
 
-          operatorMap.get(operator.name)!.data.push({
-            x: hourLabel,
-            y: operator.efficiency ?? 0
-          });
-        });
-      }
+      operatorMap.forEach((opData, name) => {
+        if (namesThisHour.has(name)) return;
+        const y = lastYByOperator.get(name) ?? (hourData.oee ?? 0);
+        opData.data.push({ x: hourLabel, y });
+      });
     });
 
     // Convert map to series array with guaranteed unique colors

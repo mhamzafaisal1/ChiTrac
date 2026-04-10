@@ -18,7 +18,7 @@ const { DateTime, Interval } = require("luxon");
 const config = require('../modules/config');
 const { getValidCountsForOperator, processCountStatistics, groupCountsByItem, extractItemNamesFromCounts } = require('./count');
 const { fetchGroupedAnalyticsData } = require('./machineFunctions');
-const { loadActiveShifts, getShiftDayHourEnvelope } = require("./shiftElapsed");
+const { loadActiveShifts, getShiftDayHourEnvelope, resolveShiftHourEnvelopeForDisplay } = require("./shiftElapsed");
 const {
   getLiveProductiveWindowMs,
   liveAvailabilityRatioFromMs,
@@ -1969,6 +1969,31 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       );
     }
 
+    let maxDataHourAgg = -1;
+    for (const result of results) {
+      for (const entry of result.hourlyCounts || []) {
+        const hour = entry.hour;
+        if (typeof hour !== "number" || hour < 0 || hour > 23) continue;
+        if (
+          hourEnvelope &&
+          (hour < hourEnvelope.minHour || hour > hourEnvelope.maxHour)
+        ) {
+          continue;
+        }
+        const c = Number(entry.count) || 0;
+        if (c > 0) maxDataHourAgg = Math.max(maxDataHourAgg, hour);
+      }
+    }
+
+    const displayEnvelope =
+      hourEnvelope &&
+      resolveShiftHourEnvelopeForDisplay(
+        hourEnvelope,
+        startDt.toJSDate(),
+        "America/Chicago",
+        maxDataHourAgg >= 0 ? maxDataHourAgg : null
+      );
+
     function fullDayHoursAxis() {
       return Array.from({ length: 24 }, (_, i) => i);
     }
@@ -1979,7 +2004,7 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       return axis;
     }
 
-    const hoursAxis = hourEnvelope ? envelopeHoursAxis(hourEnvelope) : fullDayHoursAxis();
+    const hoursAxis = displayEnvelope ? envelopeHoursAxis(displayEnvelope) : fullDayHoursAxis();
 
     // Build hourly breakdown map: itemName -> [counts for hours 0-23]
     const hourlyBreakdownMap = {};
