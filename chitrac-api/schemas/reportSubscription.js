@@ -53,7 +53,7 @@ const schema = {
     },
     email: {
       type: 'object',
-      required: ['to', 'cc', 'bcc', 'subject', 'bodyText'],
+      required: ['to', 'subject', 'bodyText'],
       properties: {
         to: {
           type: 'string',

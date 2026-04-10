@@ -67,8 +67,8 @@ export class ReportSubscriptionCuComponent implements OnInit {
       reportTypeSummary: [(this.data?.report?.type ?? 'summary') === 'summary'],
       cron: [this.data?.schedule?.cron ?? '', [Validators.required]],
       emailTo: [this.data?.email?.to ?? '', [Validators.required]],
-      emailCc: [this.data?.email?.cc ?? '', [Validators.required]],
-      emailBcc: [this.data?.email?.bcc ?? '', [Validators.required]],
+      emailCc: [this.data?.email?.cc ?? ''],
+      emailBcc: [this.data?.email?.bcc ?? ''],
       emailSubject: [this.data?.email?.subject ?? '', [Validators.required]],
       emailBodyText: [this.data?.email?.bodyText ?? '', [Validators.required]],
     });

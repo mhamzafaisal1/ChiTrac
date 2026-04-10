@@ -53,13 +53,11 @@
     <mat-form-field>
       <mat-label>Cc</mat-label>
       <input matInput formControlName="emailCc" />
-      <mat-error *ngIf="form.get('emailCc')?.hasError('required')">Cc is required.</mat-error>
     </mat-form-field>
 
     <mat-form-field>
       <mat-label>Bcc</mat-label>
       <input matInput formControlName="emailBcc" />
-      <mat-error *ngIf="form.get('emailBcc')?.hasError('required')">Bcc is required.</mat-error>
     </mat-form-field>
 
     <mat-form-field>
