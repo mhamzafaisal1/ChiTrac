@@ -27,7 +27,7 @@
     groupCountsByOperatorAndMachine,
     getValidCounts,
   } = require("./count");
-  const { loadActiveShifts } = require("./shiftElapsed");
+  const { loadActiveShifts, resolveShiftHourEnvelopeForDisplay } = require("./shiftElapsed");
   const { getLiveProductiveWindowMs, liveDowntimeMs } = require("./availabilityLive");
 
   function safe(n) {
@@ -901,10 +901,22 @@ async function getActiveMachineSerials(db, start, end) {
       };
     }
 
-    let allHours;
+    let displayEnvelope = hourEnvelope;
     if (hourEnvelope) {
+      const maxDataHour =
+        hourMap.size > 0 ? Math.max(...hourMap.keys()) : null;
+      displayEnvelope = resolveShiftHourEnvelopeForDisplay(
+        hourEnvelope,
+        sessionStart,
+        SYSTEM_TIMEZONE,
+        maxDataHour
+      );
+    }
+
+    let allHours;
+    if (displayEnvelope) {
       allHours = [];
-      for (let h = hourEnvelope.minHour; h <= hourEnvelope.maxHour; h++) {
+      for (let h = displayEnvelope.minHour; h <= displayEnvelope.maxHour; h++) {
         allHours.push(h);
       }
     } else {
@@ -1008,10 +1020,22 @@ async function getActiveMachineSerials(db, start, end) {
       return [];
     }
 
-    let hoursToEmit;
+    let displayEnvelope = hourEnvelope;
     if (hourEnvelope) {
+      const maxDataHour =
+        hourMap.size > 0 ? Math.max(...hourMap.keys()) : null;
+      displayEnvelope = resolveShiftHourEnvelopeForDisplay(
+        hourEnvelope,
+        sessionStart,
+        SYSTEM_TIMEZONE,
+        maxDataHour
+      );
+    }
+
+    let hoursToEmit;
+    if (displayEnvelope) {
       hoursToEmit = [];
-      for (let h = hourEnvelope.minHour; h <= hourEnvelope.maxHour; h++) {
+      for (let h = displayEnvelope.minHour; h <= displayEnvelope.maxHour; h++) {
         hoursToEmit.push(h);
       }
     } else {

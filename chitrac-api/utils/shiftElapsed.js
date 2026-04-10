@@ -260,6 +260,40 @@ function getShiftDayHourEnvelope(shifts, day, zone = SYSTEM_TIMEZONE) {
   return { minHour, maxHour };
 }
 
+/**
+ * For **today** in `zone`, tightens `maxHour` so the chart does not extend past hours that have
+ * already occurred, while still including any hour up to `maxDataHour` if counts exist (avoids
+ * dropping real data). Other calendar days: returns `envelope` unchanged.
+ *
+ * @param {{ minHour: number, maxHour: number } | null} envelope
+ * @param {Date|string|number} day - Any instant on the calendar day (interpreted in `zone`)
+ * @param {string} [zone=SYSTEM_TIMEZONE]
+ * @param {number|null|undefined} maxDataHour - Highest 0–23 hour index with data in range, or null/omit if none
+ * @returns {{ minHour: number, maxHour: number } | null}
+ */
+function resolveShiftHourEnvelopeForDisplay(
+  envelope,
+  day,
+  zone = SYSTEM_TIMEZONE,
+  maxDataHour = null
+) {
+  if (!envelope) return null;
+  const dayDT = toDateTime(day, zone);
+  const nowDT = DateTime.now().setZone(zone);
+  if (!dayDT.isValid || !nowDT.isValid) return envelope;
+  if (dayDT.toISODate() !== nowDT.toISODate()) {
+    return envelope;
+  }
+  const nowHour = nowDT.hour;
+  const dataMax =
+    typeof maxDataHour === "number" && maxDataHour >= 0 && maxDataHour <= 23
+      ? maxDataHour
+      : -1;
+  let maxHour = Math.min(envelope.maxHour, Math.max(nowHour, dataMax));
+  maxHour = Math.max(envelope.minHour, Math.min(23, maxHour));
+  return { minHour: envelope.minHour, maxHour };
+}
+
 async function loadActiveShifts(
   db,
   { collectionName = "shift", ttlMs = DEFAULT_CACHE_TTL_MS } = {}
@@ -281,5 +315,6 @@ module.exports = {
   loadActiveShifts,
   computeShiftElapsedMs: computeShiftElapsedMsFromShifts,
   getShiftDayHourEnvelope,
+  resolveShiftHourEnvelopeForDisplay,
 };
 
