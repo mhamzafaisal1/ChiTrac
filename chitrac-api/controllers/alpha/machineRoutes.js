@@ -2,7 +2,11 @@ const express = require("express");
 const { ObjectId } = require("mongodb");
 const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
 const config = require("../../modules/config");
-const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const {
+  loadActiveShifts,
+  computeShiftElapsedMs,
+  getShiftDayHourEnvelope,
+} = require("../../utils/shiftElapsed");
 const { getSessionDataForPartialDays } = require("../../utils/reportFunctions");
 const {
   getMachinesSummaryRealTime,
@@ -446,6 +450,9 @@ module.exports = function (server) {
         ]),
       ];
 
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftHourEnvelope = getShiftDayHourEnvelope(activeShifts, chicagoTime);
+
       const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
         await Promise.all([
           cacheCollection
@@ -528,12 +535,14 @@ module.exports = function (server) {
           const machineItemHourly = machineItemHourlyBySerial.get(serial) || [];
           const itemHourlyStack = buildItemHourlyStackFromRecords(
             machineItemHourly,
-            sessionStart
+            sessionStart,
+            shiftHourEnvelope
           );
           const operatorMachineHourly = operatorMachineHourlyBySerial.get(serial) || [];
           const operatorEfficiency = buildOperatorEfficiencyFromRecords(
             operatorMachineHourly,
-            sessionStart
+            sessionStart,
+            shiftHourEnvelope
           );
           const currentOperators = await buildCurrentOperators(db, serial);
 
