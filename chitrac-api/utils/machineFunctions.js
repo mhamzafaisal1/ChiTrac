@@ -853,12 +853,34 @@ async function getActiveMachineSerials(db, start, end) {
   }
 
   /**
+   * Start of wall-clock day for totals-daily `date` (yyyy-mm-dd) in SYSTEM_TIMEZONE. When missing/invalid,
+   * falls back to the calendar day of `sessionStart` in SYSTEM_TIMEZONE (UTC midnight `timeRange.start`
+   * must not anchor the business day — it maps to the prior local evening).
+   */
+  function dayBaseFromTotalsDailyDate(cacheDateStr, sessionStart) {
+    if (typeof cacheDateStr === "string") {
+      const trimmed = cacheDateStr.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        const dt = DateTime.fromISO(trimmed, { zone: SYSTEM_TIMEZONE });
+        if (dt.isValid) return dt.startOf("day");
+      }
+    }
+    return DateTime.fromJSDate(sessionStart, { zone: SYSTEM_TIMEZONE }).startOf("day");
+  }
+
+  /**
    * @param {object[]} records - hourly-totals rows
-   * @param {Date} sessionStart - anchor date for labels (Chicago wall clock via SYSTEM_TIMEZONE)
+   * @param {Date} sessionStart - fallback anchor if cacheDateStr is not provided
    * @param {{ minHour: number, maxHour: number } | null} [hourEnvelope] - if set, only hours in [minHour,maxHour]
    *   appear on the axis (first shift start through last shift end for that day); gaps between shifts stay.
+   * @param {string | null} [cacheDateStr] - totals-daily `date` (yyyy-mm-dd) for wall-clock business day
    */
-  function buildItemHourlyStackFromRecords(records, sessionStart, hourEnvelope = null) {
+  function buildItemHourlyStackFromRecords(
+    records,
+    sessionStart,
+    hourEnvelope = null,
+    cacheDateStr = null
+  ) {
     if (!records.length) {
       return {
         title: "No data",
@@ -901,13 +923,15 @@ async function getActiveMachineSerials(db, start, end) {
       };
     }
 
+    const dayBase = dayBaseFromTotalsDailyDate(cacheDateStr, sessionStart);
+
     let displayEnvelope = hourEnvelope;
     if (hourEnvelope) {
       const maxDataHour =
         hourMap.size > 0 ? Math.max(...hourMap.keys()) : null;
       displayEnvelope = resolveShiftHourEnvelopeForDisplay(
         hourEnvelope,
-        sessionStart,
+        dayBase.toJSDate(),
         SYSTEM_TIMEZONE,
         maxDataHour
       );
@@ -959,8 +983,14 @@ async function getActiveMachineSerials(db, start, end) {
   /**
    * @param {{ minHour: number, maxHour: number } | null} [hourEnvelope] - if set, emits one entry per hour
    *   from first shift start through last shift end (gaps between shifts included with empty/zero data).
+   * @param {string | null} [cacheDateStr] - totals-daily `date` (yyyy-mm-dd) for wall-clock day and hour ISO stamps
    */
-  function buildOperatorEfficiencyFromRecords(records, sessionStart, hourEnvelope = null) {
+  function buildOperatorEfficiencyFromRecords(
+    records,
+    sessionStart,
+    hourEnvelope = null,
+    cacheDateStr = null
+  ) {
     if (!records.length) {
       return [];
     }
@@ -1020,13 +1050,15 @@ async function getActiveMachineSerials(db, start, end) {
       return [];
     }
 
+    const dayBase = dayBaseFromTotalsDailyDate(cacheDateStr, sessionStart);
+
     let displayEnvelope = hourEnvelope;
     if (hourEnvelope) {
       const maxDataHour =
         hourMap.size > 0 ? Math.max(...hourMap.keys()) : null;
       displayEnvelope = resolveShiftHourEnvelopeForDisplay(
         hourEnvelope,
-        sessionStart,
+        dayBase.toJSDate(),
         SYSTEM_TIMEZONE,
         maxDataHour
       );
@@ -1054,9 +1086,7 @@ async function getActiveMachineSerials(db, start, end) {
           ? operators.reduce((sum, op) => sum + op.efficiency, 0) / operators.length
           : 0;
 
-      // Create hour timestamp in Chicago timezone (matching the hour field from records)
-      // Convert sessionStart to Chicago timezone, then set the hour in that timezone
-      const hourDate = DateTime.fromJSDate(sessionStart, { zone: SYSTEM_TIMEZONE })
+      const hourDate = dayBase
         .set({ hour: hour, minute: 0, second: 0, millisecond: 0 })
         .toJSDate();
 
