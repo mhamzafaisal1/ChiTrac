@@ -5,7 +5,7 @@ const config = require('../../modules/config');
 const humanNamesSchema = require('../../schemas/human-names');
 const operatorSchema = require('../../schemas/operator');
 
-const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
+const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getOperatorsSummaryRealTime,
@@ -231,8 +231,10 @@ function constructor(server) {
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
 
       const today = new Date();
-      const chicagoTime = new Date(today.toLocaleString("en-US", { timeZone: "America/Chicago" }));
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
+      );
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       logger.info(`[operatorSessions] Fetching daily cached operators summary for date: ${dateStr}, operatorId: ${operatorId || "all"}`);
 
@@ -479,7 +481,7 @@ function constructor(server) {
   // Returns operator details built entirely from cache (totals-daily + hourly-totals).
   router.get("/analytics/operator-details-cached", async (req, res) => {
     try {
-      const { start, end, operatorId, serial, tz = "America/Chicago" } = req.query;
+      const { start, end, operatorId, serial, tz } = req.query;
 
       if (!start || !end || !operatorId) {
         return res.status(400).json({ error: "start, end, and operatorId are required" });
@@ -490,7 +492,7 @@ function constructor(server) {
         return res.status(400).json({ error: "operatorId must be a valid number" });
       }
 
-      const tzParam = tz || "America/Chicago";
+      const tzParam = tz || SYSTEM_TIMEZONE;
 
       const nameDocPromise = db.collection("totals-daily")
         .find({

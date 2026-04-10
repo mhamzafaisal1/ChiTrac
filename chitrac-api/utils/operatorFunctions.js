@@ -1325,7 +1325,7 @@ const normalizeStdPPH = (std) => {
 };
 
 // helper: build day buckets in a TZ and sum cycle overlap per day
-function buildDayBuckets(start, end, tz = "America/Chicago") {
+function buildDayBuckets(start, end, tz = SYSTEM_TIMEZONE) {
   const s = DateTime.fromJSDate(new Date(start), { zone: tz }).startOf("day");
   const e = DateTime.fromJSDate(new Date(end),   { zone: tz }).endOf("day");
   return Interval.fromDateTimes(s, e).splitBy({ days: 1 }).map(iv => {
@@ -1347,7 +1347,7 @@ async function buildDailyEfficiencyFromOperatorSessions(
   start,
   end,
   serial = null,
-  tz = "America/Chicago"
+  tz = SYSTEM_TIMEZONE
 ) {
   // enforce 7-day window like before
   const endDt = new Date(end);
@@ -1691,9 +1691,9 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
     const wEnd = new Date(end);
     const windowMs = wEnd - wStart;
 
-    // Get all date strings in the range (in America/Chicago timezone)
-    const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' });
-    const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' });
+    // Get all date strings in the range in SYSTEM_TIMEZONE
+    const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE });
+    const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE });
     const dateStrings = [];
     let currentDay = startDt.startOf('day');
     const endDay = endDt.startOf('day');
@@ -1705,7 +1705,7 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
 
     // Query operator-machine cache records
     const dateObjs = dateStrings.map(str => {
-      const dt = DateTime.fromISO(str, { zone: 'America/Chicago' });
+      const dt = DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE });
       return dt.toUTC().startOf('day').toJSDate();
     });
 
@@ -1768,7 +1768,7 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
 }
 
 // Build daily efficiency from cache (operator-machine daily records)
-async function buildDailyEfficiencyFromCache(db, logger, operatorId, operatorName, start, end, serial = null, tz = "America/Chicago") {
+async function buildDailyEfficiencyFromCache(db, logger, operatorId, operatorName, start, end, serial = null, tz = SYSTEM_TIMEZONE) {
   try {
     // Enforce 7-day window like the original function
     const endDt = new Date(end);
@@ -1879,8 +1879,8 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
 
     // OPTIMIZATION: Use dateObj range query instead of $in with date strings
     // This is much faster with proper indexes and avoids large $in arrays
-    const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' }).startOf('day');
-    const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' }).endOf('day');
+    const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf('day');
+    const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf('day');
 
     // Build aggregation pipeline for hourly-totals
     // OPTIMIZATION: Use dateObj range query instead of $in with many date strings
@@ -1956,16 +1956,16 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       allowDiskUse: true
     }).toArray();
 
-    const isSingleChicagoDay =
+    const isSingleLocalDay =
       startDt.toFormat("yyyy-MM-dd") === endDt.toFormat("yyyy-MM-dd");
 
     let hourEnvelope = null;
-    if (isSingleChicagoDay) {
+    if (isSingleLocalDay) {
       const activeShifts = await loadActiveShifts(db).catch(() => []);
       hourEnvelope = getShiftDayHourEnvelope(
         activeShifts,
         startDt.toJSDate(),
-        "America/Chicago"
+        SYSTEM_TIMEZONE
       );
     }
 
@@ -1990,7 +1990,7 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       resolveShiftHourEnvelopeForDisplay(
         hourEnvelope,
         startDt.toJSDate(),
-        "America/Chicago",
+        SYSTEM_TIMEZONE,
         maxDataHourAgg >= 0 ? maxDataHourAgg : null
       );
 
@@ -2072,9 +2072,9 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
   const wStart = new Date(start);
   const wEnd = new Date(end);
 
-  // Get all date strings in the range (in America/Chicago timezone)
-  const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' });
-  const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' });
+  // Get all date strings in the range in SYSTEM_TIMEZONE
+  const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE });
+  const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE });
   const dateStrings = [];
   let currentDay = startDt.startOf('day');
   const endDay = endDt.startOf('day');
@@ -2092,7 +2092,7 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
 
   // Query cache for all dates in range
   const dateObjs = dateStrings.map(str => {
-    const dt = DateTime.fromISO(str, { zone: 'America/Chicago' });
+    const dt = DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE });
     return dt.toUTC().startOf('day').toJSDate();
   });
 

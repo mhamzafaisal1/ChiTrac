@@ -4,7 +4,7 @@
 /** MODULE REQUIRES */
 const express = require('express');
 const router = express.Router();
-const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
+const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const config = require("../../modules/config");
 const { loadActiveShifts, computeShiftElapsedMs, getShiftDayHourEnvelope } = require("../../utils/shiftElapsed");
 const {
@@ -248,10 +248,10 @@ function constructor(server) {
       const { start, end, serial } = parseAndValidateQueryParams(req);
 
       const today = new Date();
-      const chicagoTime = new Date(
-        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
       );
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       logger.info(
         `[machineSessions] Fetching daily cached machines summary for date: ${dateStr}, serial: ${
@@ -324,10 +324,10 @@ function constructor(server) {
           rangeEnd = new Date(timeRange.end);
         } else {
           const todayFallback = new Date();
-          const chicagoTimeFallback = new Date(
-            todayFallback.toLocaleString("en-US", { timeZone: "America/Chicago" })
+          const wallClockFallback = new Date(
+            todayFallback.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
           );
-          rangeStart = new Date(chicagoTimeFallback.setHours(0, 0, 0, 0));
+          rangeStart = new Date(wallClockFallback.setHours(0, 0, 0, 0));
           rangeEnd = new Date();
         }
 
@@ -450,10 +450,10 @@ function constructor(server) {
         : null;
 
       const today = new Date();
-      const chicagoTime = new Date(
-        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
       );
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       const cacheCollection = db.collection("totals-daily");
       const machineFilter = {
@@ -496,7 +496,7 @@ function constructor(server) {
       const activeShiftsDashboard = await loadActiveShifts(db).catch(() => []);
       const shiftHourEnvelope = getShiftDayHourEnvelope(
         activeShiftsDashboard,
-        chicagoTime
+        wallClockNow
       );
       const shiftElapsedCacheDashboard = new Map();
 
@@ -562,7 +562,12 @@ function constructor(server) {
             : new Date(`${dateStr}T00:00:00.000Z`);
           const sessionEnd = record.timeRange?.end
             ? new Date(record.timeRange.end)
-            : chicagoTime;
+            : wallClockNow;
+
+          const cacheDateForCharts =
+            typeof record.date === "string" && record.date.trim()
+              ? record.date.trim()
+              : dateStr;
 
           const dashShiftKey = `${sessionStart.getTime()}|${sessionEnd.getTime()}`;
           const shiftElapsedMsDash = shiftElapsedCacheDashboard.has(dashShiftKey)
@@ -584,13 +589,15 @@ function constructor(server) {
           const itemHourlyStack = buildItemHourlyStackFromRecords(
             machineItemHourly,
             sessionStart,
-            shiftHourEnvelope
+            shiftHourEnvelope,
+            cacheDateForCharts
           );
           const operatorMachineHourly = operatorMachineHourlyBySerial.get(serial) || [];
           const operatorEfficiency = buildOperatorEfficiencyFromRecords(
             operatorMachineHourly,
             sessionStart,
-            shiftHourEnvelope
+            shiftHourEnvelope,
+            cacheDateForCharts
           );
           const currentOperators = await buildCurrentOperators(db, serial);
 
@@ -614,7 +621,7 @@ function constructor(server) {
             },
             operatorEfficiency,
             currentOperators,
-            timestamp: record.lastUpdated || chicagoTime,
+            timestamp: record.lastUpdated || wallClockNow,
             sessionStart,
             sessionEnd,
           };
