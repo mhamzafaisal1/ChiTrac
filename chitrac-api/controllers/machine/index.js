@@ -437,6 +437,7 @@ function constructor(server) {
   // GET /api/alpha/analytics/machine-dashboard-daily-cached (legacy)
   // GET /api/machine/analytics/machine-dashboard-daily-cached (controller route)
   // Returns machine dashboard from totals-daily and hourly-totals cache.
+  // 
   router.get(
     ["/machine-dashboard-daily-cached", "/analytics/machine-dashboard-daily-cached"],
     async (req, res) => {
