@@ -1962,7 +1962,7 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       }
     ];
 
-    const collection = db.collection('hourly-totals');
+    const collection = db.collection(config.totalsHourlyCollectionName);
     const results = await collection.aggregate(pipeline, {
       allowDiskUse: true
     }).toArray();

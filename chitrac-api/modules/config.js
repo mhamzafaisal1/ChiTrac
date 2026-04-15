@@ -11,7 +11,8 @@ module.exports = {
 
   // MongoDB (Main App)
   mongo: {
-    url: process.env.MONGO_URI,
+    connectionString: process.env.MONGO_CONN_STRING || process.env.MONGO_URI,
+    url: process.env.MONGO_URI || process.env.MONGO_CONN_STRING,
     db: process.env.MONGO_DB,
     username: process.env.MONGO_USERNAME,
     password: process.env.MONGO_PASSWORD,
@@ -20,21 +21,27 @@ module.exports = {
 
   // MongoDB (Winston Logging)
   mongoLog: {
-    url: process.env.MONGO_LOG_URI,
+    url: process.env.MONGO_LOG_URI || process.env.MONGO_LOG_CONN_STRING,
     db: process.env.MONGO_LOG_DB,
     username: process.env.MONGO_LOG_USERNAME || process.env.MONGO_USERNAME,
     password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD,
     authSource: process.env.MONGO_LOG_AUTH_SOURCE || process.env.MONGO_AUTH_SOURCE || 'admin'
   },
 
-  //Session Collection names
-  machineCollectionName: 'machine',
-  stateTickerCollectionName: 'stateTicker',
-  machineSessionCollectionName: 'machine-session',
-  operatorSessionCollectionName: 'operator-session',
-  itemSessionCollectionName: 'item-session',
-  faultSessionCollectionName: 'fault-session',
-  pausedSessionCollectionName: 'paused-session',
+  // Collection names
+  machineCollectionName: 'config-machine',
+  operatorCollectionName: 'config-operator',
+  itemCollectionName: 'config-item',
+  faultCollectionName: 'config-fault',
+  statusCollectionName: 'config-status',
+  userCollectionName: 'config-user',
+  shiftCollectionName: 'config-shift',
+  stateTickerCollectionName: 'ticker-state',
+  machineSessionCollectionName: 'session-machine',
+  operatorSessionCollectionName: 'session-operator',
+  itemSessionCollectionName: 'session-item',
+  totalsDailyCollectionName: 'totals-daily',
+  totalsHourlyCollectionName: 'totals-hourly',
 
   jwtSecret: process.env.JWT_SECRET,
   logLevel: process.env.LOG_LEVEL || 'info',

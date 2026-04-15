@@ -24,7 +24,7 @@ module.exports = function(server) {
 
 function constructor(server) {
 	const db = server.db;
-	const collection = db.collection('machine');
+	const collection = db.collection(config.machineCollectionName);
 	const logger = server.logger;
 	const xmlParser = server.xmlParser;
 	const configService = require('../../services/mongo/');
@@ -268,7 +268,7 @@ function constructor(server) {
       }
 
       const cacheRecords = await db
-        .collection("totals-daily")
+        .collection(config.totalsDailyCollectionName)
         .find(filter)
         .toArray();
 
@@ -456,7 +456,7 @@ function constructor(server) {
       );
       const dateStr = wallClockNow.toISOString().split("T")[0];
 
-      const cacheCollection = db.collection("totals-daily");
+      const cacheCollection = db.collection(config.totalsDailyCollectionName);
       const machineFilter = {
         entityType: "machine",
         date: dateStr,
@@ -511,7 +511,7 @@ function constructor(server) {
             })
             .toArray(),
           db
-            .collection("hourly-totals")
+            .collection(config.totalsHourlyCollectionName)
             .find({
               entityType: "machine-item",
               date: dateStr,
@@ -526,7 +526,7 @@ function constructor(server) {
             })
             .toArray(),
           db
-            .collection("hourly-totals")
+            .collection(config.totalsHourlyCollectionName)
             .find({
               entityType: "operator-machine",
               date: dateStr,

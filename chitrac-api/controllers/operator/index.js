@@ -22,7 +22,7 @@ module.exports = function (server) { return constructor(server); };
 
 function constructor(server) {
   const db = server.db;
-  const collection = db.collection('operator');
+  const collection = db.collection(config.operatorCollectionName);
   const xmlParser = server.xmlParser;
   const configService = require('../../services/mongo/');
   const logger = server.logger;
@@ -248,7 +248,7 @@ function constructor(server) {
       }
 
       const cacheRecords = await db
-        .collection("totals-daily")
+        .collection(config.totalsDailyCollectionName)
         .find(filter)
         .toArray();
 
@@ -267,7 +267,7 @@ function constructor(server) {
         ),
       ];
 
-      const stateTickerData = await db.collection("stateTicker").find({}).toArray();
+      const stateTickerData = await db.collection(config.stateTickerCollectionName).find({}).toArray();
 
       const operatorTickerMap = new Map();
       for (const stateRecord of stateTickerData) {
@@ -494,7 +494,7 @@ function constructor(server) {
 
       const tzParam = tz || SYSTEM_TIMEZONE;
 
-      const nameDocPromise = db.collection("totals-daily")
+      const nameDocPromise = db.collection(config.totalsDailyCollectionName)
         .find({
           entityType: "operator-machine",
           operatorId: opId,
@@ -763,11 +763,12 @@ function constructor(server) {
       }
 
       const faultsByMachine = await db
-        .collection(config.faultSessionCollectionName)
+        .collection(config.machineSessionCollectionName)
         .aggregate([
           {
             $match: {
               "operators.id": operatorId,
+              type: { $nin: [0, 1] },
               "timestamps.start": { $lte: endDate },
               $or: [
                 { "timestamps.end": { $exists: false } },
@@ -777,7 +778,7 @@ function constructor(server) {
           },
           {
             $project: {
-              serial: "$machine.serial",
+              serial: { $ifNull: ["$machine.serial", "$machine.id"] },
               s: "$timestamps.start",
               e: { $ifNull: ["$timestamps.end", endDate] },
             },

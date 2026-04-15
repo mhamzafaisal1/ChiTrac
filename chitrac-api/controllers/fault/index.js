@@ -51,6 +51,7 @@ module.exports = function faultHistoryRoute(server) {
       // Base match: time overlap
       // Support both machine.serial and machine.id
       const match = {
+        type: { $nin: [0, 1] }, // Fault sessions are stored in session-machine with non-run/non-paused types
         "timestamps.start": { $lte: endDate },
         $or: [{ "timestamps.end": { $exists: false } }, { "timestamps.end": { $gte: startDate } }],
       };
@@ -74,7 +75,7 @@ module.exports = function faultHistoryRoute(server) {
 
       // Pull overlapping fault-sessions and clip to [start,end]
       const raw = await db
-        .collection(config.faultSessionCollectionName)
+        .collection(config.machineSessionCollectionName)
         .aggregate([
           { $match: match },
           {
@@ -279,7 +280,7 @@ module.exports = function faultHistoryRoute(server) {
 
   /**
    * Fault report: summary across all machines, grouped by fault code.
-   * Uses fault-session collection (sessions, no cache).
+   * Uses session-machine collection (fault rows filtered by type).
    * Query params: start, end (required).
    */
   router.get("/analytics/fault-report-summary", async (req, res) => {
@@ -289,6 +290,7 @@ module.exports = function faultHistoryRoute(server) {
       const endDate = new Date(end);
 
       const match = {
+        type: { $nin: [0, 1] }, // Fault sessions are stored in session-machine with non-run/non-paused types
         "timestamps.start": { $lte: endDate },
         $or: [
           { "timestamps.end": { $exists: false } },
@@ -297,7 +299,7 @@ module.exports = function faultHistoryRoute(server) {
       };
 
       const raw = await db
-        .collection(config.faultSessionCollectionName)
+        .collection(config.machineSessionCollectionName)
         .aggregate([
           { $match: match },
           {
@@ -391,7 +393,7 @@ module.exports = function faultHistoryRoute(server) {
 
   /**
    * Fault report: detailed by machine then fault code.
-   * Uses fault-session collection (sessions, no cache).
+   * Uses session-machine collection (fault rows filtered by type).
    * Query params: start, end (required).
    */
   router.get("/analytics/fault-report-detailed", async (req, res) => {
@@ -401,6 +403,7 @@ module.exports = function faultHistoryRoute(server) {
       const endDate = new Date(end);
 
       const match = {
+        type: { $nin: [0, 1] }, // Fault sessions are stored in session-machine with non-run/non-paused types
         "timestamps.start": { $lte: endDate },
         $or: [
           { "timestamps.end": { $exists: false } },
@@ -409,7 +412,7 @@ module.exports = function faultHistoryRoute(server) {
       };
 
       const raw = await db
-        .collection(config.faultSessionCollectionName)
+        .collection(config.machineSessionCollectionName)
         .aggregate([
           { $match: match },
           {
