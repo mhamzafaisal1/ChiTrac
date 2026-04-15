@@ -4,6 +4,7 @@
 /** MODULE REQUIRES */
 const express = require('express');
 const router = express.Router();
+const config = require('../../modules/config');
 const { parseAndValidateQueryParams, formatDuration } = require("../../utils/time");
 const {
   splitTimeRangeForHybridItems,
@@ -18,7 +19,7 @@ module.exports = function(server) {
 
 function constructor(server) {
 	const db = server.db;
-	const collection = db.collection('item');
+	const collection = db.collection(config.itemCollectionName);
 	const logger = server.logger;
 	const xmlParser = server.xmlParser;
 	const configService = require('../../services/mongo/');
@@ -313,7 +314,7 @@ function constructor(server) {
           itemTotals = combineItemsHybridData(itemTotals, sessionData);
         }
       } else {
-        const cacheCollection = db.collection("totals-daily");
+        const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
         const startDate = exactStart.toISOString().split("T")[0];
         const endDate = exactEnd.toISOString().split("T")[0];

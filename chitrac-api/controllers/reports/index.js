@@ -13,6 +13,7 @@ const {
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const config = require("../../modules/config");
 
 function isValidMachineReportRecipientEmail(s) {
   if (typeof s !== "string") return false;
@@ -30,7 +31,7 @@ module.exports = function (server) {
   router.get("/shifts", async (req, res) => {
     try {
       const shifts = await db
-        .collection("shift")
+        .collection(config.shiftCollectionName)
         .find({ active: true })
         .sort({ name: 1 })
         .project({ name: 1, startTime: 1, endTime: 1, activeDays: 1, active: 1 })
@@ -172,7 +173,7 @@ module.exports = function (server) {
       if (useCache) {
         const dateStrings = completeDays.map(d => d.dateStr);
         const dateObjs = dateStrings.map(str => new Date(str + 'T00:00:00.000Z'));
-        const cacheCollection = db.collection('totals-daily');
+        const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
         // Single query for both entity types with both date formats
         const cacheQuery = {
@@ -854,7 +855,7 @@ module.exports = function (server) {
         
       } else {
         // For same-day queries or queries including today, use cached data (same as machine report)
-        const cacheCollection = db.collection('totals-daily');
+        const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
         // Generate date range using normalized dates (same as machine report)
         const dateStrings = [];
@@ -960,7 +961,7 @@ module.exports = function (server) {
         let shiftId;
         try {
           shiftId = new ObjectId(String(shiftIdRaw));
-          shiftDoc = await db.collection("shift").findOne({ _id: shiftId });
+          shiftDoc = await db.collection(config.shiftCollectionName).findOne({ _id: shiftId });
         } catch (e) {
           return res.status(400).json({ error: "Invalid shiftId" });
         }
@@ -996,7 +997,7 @@ module.exports = function (server) {
           currentDate = currentDate.plus({ days: 1 });
         }
 
-        const cacheCollection = db.collection('totals-daily');
+        const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
         // Query cache for machine and machine-item records
         const cacheQuery = {

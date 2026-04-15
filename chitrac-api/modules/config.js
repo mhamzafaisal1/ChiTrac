@@ -19,14 +19,20 @@ module.exports = {
     connectionString: process.env.MONGO_LOG_CONN_STRING,
   },
 
-  //Session Collection names
-  machineCollectionName: 'machine',
-  stateTickerCollectionName: 'stateTicker',
-  machineSessionCollectionName: 'machine-session',
-  operatorSessionCollectionName: 'operator-session',
-  itemSessionCollectionName: 'item-session',
-  faultSessionCollectionName: 'fault-session',
-  pausedSessionCollectionName: 'paused-session',
+  // Collection names
+  machineCollectionName: 'config-machine',
+  operatorCollectionName: 'config-operator',
+  itemCollectionName: 'config-item',
+  faultCollectionName: 'config-fault',
+  statusCollectionName: 'config-status',
+  userCollectionName: 'config-user',
+  shiftCollectionName: 'config-shift',
+  stateTickerCollectionName: 'ticker-state',
+  machineSessionCollectionName: 'session-machine',
+  operatorSessionCollectionName: 'session-operator',
+  itemSessionCollectionName: 'session-item',
+  totalsDailyCollectionName: 'totals-daily',
+  totalsHourlyCollectionName: 'totals-hourly',
 
   jwtSecret: process.env.JWT_SECRET,
   logLevel: process.env.LOG_LEVEL || 'info',

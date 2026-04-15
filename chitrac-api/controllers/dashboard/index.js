@@ -67,7 +67,7 @@ async function resolveShiftIdString(req, db) {
     err.statusCode = 400;
     throw err;
   }
-  const doc = await db.collection("shift").findOne({ _id: oid });
+  const doc = await db.collection(config.shiftCollectionName).findOne({ _id: oid });
   if (!doc) {
     const err = new Error("Shift not found");
     err.statusCode = 404;
@@ -661,14 +661,14 @@ module.exports = function (server) {
       if (serial) filterYesterday.machineSerial = parseInt(serial);
 
       const [cacheRecords, yesterdayRecords] = await Promise.all([
-        db.collection("totals-daily").find(filter).toArray(),
-        db.collection("totals-daily").find(filterYesterday).toArray(),
+        db.collection(config.totalsDailyCollectionName).find(filter).toArray(),
+        db.collection(config.totalsDailyCollectionName).find(filterYesterday).toArray(),
       ]);
 
       if (cacheRecords.length === 0) {
-        const anyByDate = await db.collection("totals-daily").countDocuments({ date: dateStr });
+        const anyByDate = await db.collection(config.totalsDailyCollectionName).countDocuments({ date: dateStr });
         const sampleDocs = await db
-          .collection("totals-daily")
+          .collection(config.totalsDailyCollectionName)
           .find({})
           .limit(3)
           .project({ date: 1, entityType: 1, machineSerial: 1, "machine.groups.department": 1 })
@@ -824,14 +824,14 @@ module.exports = function (server) {
 
       const serialNum = Number(serial);
       const ticker = await db
-        .collection(config.stateTickerCollectionName || "stateTicker")
+        .collection(config.stateTickerCollectionName)
         .findOne(
           { "machine.id": serialNum },
           { projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 } }
         );
 
       if (!ticker) {
-        const machineConfig = await db.collection("machines").findOne(
+        const machineConfig = await db.collection(config.machineCollectionName).findOne(
           { serial: serialNum },
           { projection: { name: 1 } }
         );
@@ -895,7 +895,7 @@ module.exports = function (server) {
       };
 
       const dailyTotals = await db
-        .collection("totals-daily")
+        .collection(config.totalsDailyCollectionName)
         .find({
           entityType: "operator-machine",
           machineSerial: serialNum,
@@ -1060,14 +1060,14 @@ module.exports = function (server) {
 
       const serialNum = Number(serial);
       const ticker = await db
-        .collection(config.stateTickerCollectionName || "stateTicker")
+        .collection(config.stateTickerCollectionName)
         .findOne(
           { "machine.id": serialNum },
           { projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 } }
         );
 
       if (!ticker) {
-        const machineConfig = await db.collection("machines").findOne(
+        const machineConfig = await db.collection(config.machineCollectionName).findOne(
           { serial: serialNum },
           { projection: { name: 1 } }
         );
@@ -1131,7 +1131,7 @@ module.exports = function (server) {
       };
 
       const dailyTotals = await db
-        .collection("totals-daily")
+        .collection(config.totalsDailyCollectionName)
         .find({
           entityType: "operator-machine",
           machineSerial: serialNum,
@@ -1296,14 +1296,14 @@ module.exports = function (server) {
       const stationNum = Number(station);
 
       const ticker = await db
-        .collection(config.stateTickerCollectionName || "stateTicker")
+        .collection(config.stateTickerCollectionName)
         .findOne(
           { "machine.id": serialNum },
           { projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 } }
         );
 
       if (!ticker) {
-        const machineConfig = await db.collection("machines").findOne(
+        const machineConfig = await db.collection(config.machineCollectionName).findOne(
           { serial: serialNum },
           { projection: { name: 1 } }
         );
@@ -1354,7 +1354,7 @@ module.exports = function (server) {
         let results = await queryMachineTimeframes(db, serialNum, frames);
         if (Object.values(results).some((arr) => arr.length === 0)) {
           const open = await db
-            .collection(config.machineSessionCollectionName || "machine-session")
+            .collection(config.machineSessionCollectionName)
             .findOne(
               {
                 $or: [{ "machine.id": serialNum }, { "machine.serial": serialNum }],
@@ -1499,7 +1499,7 @@ module.exports = function (server) {
         };
       }
 
-      const dailyTotal = await db.collection("totals-daily").findOne({
+      const dailyTotal = await db.collection(config.totalsDailyCollectionName).findOne({
         entityType: "operator-machine",
         machineSerial: serialNum,
         date: todayDateStr,
