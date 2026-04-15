@@ -17,4 +17,3 @@ function constructor(config) {
 
   return db;
 }
-

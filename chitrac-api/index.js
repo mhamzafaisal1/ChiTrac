@@ -9,8 +9,8 @@ const config = require('./modules/config');
 
 const db = require('./modules/mongoConnector')(config);
 
-if (!config.mongoLog?.url || typeof config.mongoLog.url !== 'string') {
-	throw new Error('MONGO_LOG_URI missing');
+if (!config.mongoLog?.connectionString || typeof config.mongoLog.connectionString !== 'string' || !config.mongoLog.connectionString.trim()) {
+	throw new Error('MONGO_LOG_CONN_STRING is required');
 }
 
 /** Load Morgan for http logging */
@@ -22,16 +22,8 @@ const { MongoClient } = require('mongodb');
 /** Declare the custom winston logger and create a blank instance */
 const winston = require('./modules/logger');
 
-const loggerConnectionString = config.mongoLog.url;
-if (
-	!loggerConnectionString.startsWith('mongodb://') &&
-	!loggerConnectionString.startsWith('mongodb+srv://')
-) {
-	throw new Error('Invalid MONGO_LOG_URI / MONGO_LOG_CONN_STRING format');
-}
-
-const dbClient = new MongoClient(loggerConnectionString);
-const logDb = dbClient.db(config.mongoLog.db);
+const logClient = new MongoClient(config.mongoLog.connectionString.trim());
+const logDb = logClient.db();
 const logger = new winston(logDb);
 
 server.config = config;

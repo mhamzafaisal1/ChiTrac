@@ -2,30 +2,21 @@ const path = require("path");
 
 // Load .env from the chitrac-api root (next to index.js), not process.cwd().
 // Windows services often start with cwd = System32 or another folder, which
-// would skip .env and leave MONGO_URI / secrets unset.
+// would skip .env and leave connection strings / secrets unset.
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV,
   port: parseInt(process.env.PORT, 10) || 3000,
 
-  // MongoDB (Main App)
+  // MongoDB (Main App) — full URI; database is the path (e.g. .../chitrac)
   mongo: {
-    connectionString: process.env.MONGO_CONN_STRING || process.env.MONGO_URI,
-    url: process.env.MONGO_URI || process.env.MONGO_CONN_STRING,
-    db: process.env.MONGO_DB,
-    username: process.env.MONGO_USERNAME,
-    password: process.env.MONGO_PASSWORD,
-    authSource: process.env.MONGO_AUTH_SOURCE || 'admin'
+    connectionString: process.env.MONGO_CONN_STRING,
   },
 
-  // MongoDB (Winston Logging)
+  // MongoDB (Winston Logging) — full URI; database is the path (e.g. .../chitrac-logging)
   mongoLog: {
-    url: process.env.MONGO_LOG_URI || process.env.MONGO_LOG_CONN_STRING,
-    db: process.env.MONGO_LOG_DB,
-    username: process.env.MONGO_LOG_USERNAME || process.env.MONGO_USERNAME,
-    password: process.env.MONGO_LOG_PASSWORD || process.env.MONGO_PASSWORD,
-    authSource: process.env.MONGO_LOG_AUTH_SOURCE || process.env.MONGO_AUTH_SOURCE || 'admin'
+    connectionString: process.env.MONGO_LOG_CONN_STRING,
   },
 
   // Collection names
