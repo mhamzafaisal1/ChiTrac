@@ -221,18 +221,18 @@ function constructor(server) {
 
 	/*** Machine Config Routes */
 	/** GET routes */
-	router.get('/machines/config/xml', getMachineXML);
-	router.get('/machines/config', getMachine);
-	router.get("/machines/spf", getSpfMachines);
+	router.get('/machine/config/xml', getMachineXML);
+	router.get('/machine/config', getMachine);
+	router.get("/machine/spf", getSpfMachines);
 
 	/** POST routes */
-	router.post('/machines/config', machineValidator, createMachine);
+	router.post('/machine/config', machineValidator, createMachine);
 
 	/** PUT routes */
-	router.put('/machines/config/:id', machineValidator, upsertMachine);
+	router.put('/machine/config/:id', machineValidator, upsertMachine);
 
 	/** DELETE routes */
-	router.delete('/machines/config/:id', deleteMachine);
+	router.delete('/machine/config/:id', deleteMachine);
 
 	// Machine analytics routes are defined below in this controller
 
