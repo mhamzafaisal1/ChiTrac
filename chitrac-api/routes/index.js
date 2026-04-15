@@ -280,9 +280,9 @@ function init(app, server) {
     app.use(['/ng/*', '/'], express.static(path.join(server.appRoot.path, 'ng/browser/')));
     
 
-    app.use('/api/machine', machineRoutes);
-    app.use('/api/item', itemRoutes);
-    app.use('/api/operator', operatorRoutes);
+    app.use('/api', machineRoutes);
+    app.use('/api', itemRoutes);
+    app.use('/api', operatorRoutes);
     app.use('/api/dashboard', dashboardRoutes);
     app.use('/api/fault', faultRoutes);
     app.use('/api/reports', reportRoutes);

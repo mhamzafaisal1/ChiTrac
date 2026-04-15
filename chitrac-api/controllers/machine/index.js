@@ -221,28 +221,27 @@ function constructor(server) {
 
 	/*** Machine Config Routes */
 	/** GET routes */
-	router.get('/machines/config/xml', getMachineXML);
-	router.get('/machines/config', getMachine);
-	router.get("/machines/spf", getSpfMachines);
+	router.get('/machine/config/xml', getMachineXML);
+	router.get('/machine/config', getMachine);
+	router.get("/machine/spf", getSpfMachines);
 
 	/** POST routes */
-	router.post('/machines/config', machineValidator, createMachine);
+	router.post('/machine/config', machineValidator, createMachine);
 
 	/** PUT routes */
-	router.put('/machines/config/:id', machineValidator, upsertMachine);
+	router.put('/machine/config/:id', machineValidator, upsertMachine);
 
 	/** DELETE routes */
-	router.delete('/machines/config/:id', deleteMachine);
+	router.delete('/machine/config/:id', deleteMachine);
 
 	// Machine analytics routes are defined below in this controller
 
   const getMachinesSummaryRealTimeHandler = getMachinesSummaryRealTime(db, logger, config);
 
-  // GET /api/alpha/analytics/machines-summary-daily-cached (legacy)
-  // GET /api/machine/analytics/machines-summary-daily-cached (controller route)
+  // GET /api/machine/analytics/machines-summary-daily-cached
   // Returns daily machine summary from totals-daily cache; falls back to real-time if no cache.
   router.get(
-    ["/machines-summary-daily-cached", "/analytics/machines-summary-daily-cached"],
+    "/machine/analytics/machines-summary-daily-cached",
     async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
@@ -434,12 +433,11 @@ function constructor(server) {
     }
   );
 
-  // GET /api/alpha/analytics/machine-dashboard-daily-cached (legacy)
-  // GET /api/machine/analytics/machine-dashboard-daily-cached (controller route)
+  // GET /api/machine/analytics/machine-dashboard-daily-cached
   // Returns machine dashboard from totals-daily and hourly-totals cache.
   // 
   router.get(
-    ["/machine-dashboard-daily-cached", "/analytics/machine-dashboard-daily-cached"],
+    "/machine/analytics/machine-dashboard-daily-cached",
     async (req, res) => {
     try {
       const serialParam =

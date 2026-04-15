@@ -27,25 +27,27 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 
 ### Item
 - [/api/item/config](#apiitemconfig)
+- [/api/item/config/xml](#apiitemconfigxml)
 - [/api/item/new-id](#apiitemnew-id)
 - [/api/item/analytics/items-summary-daily-cache](#apiitemanalyticsitems-summary-daily-cache)
-- [/api/items/config](#apiitemsconfig)
 
 ### Machine
+- [/api/machine/config](#apimachineconfig)
+- [/api/machine/config/xml](#apimachineconfigxml)
+- [/api/machine/spf](#apimachinespf)
 - [/api/machine/levelone/:serialNumber](#apimachineleveloneserialnumber)
 - [/api/machine/leveltwo/:serialNumber](#apimachineleveltwoserialnumber)
 - [/api/machine/status/:serialNumber](#apimachinestatusserialnumber)
 - [/api/machine/analytics/machines-summary-daily-cached](#apimachineanalyticsmachines-summary-daily-cached)
 - [/api/machine/analytics/machine-dashboard-daily-cached](#apimachineanalyticsmachine-dashboard-daily-cached)
-- [/api/machines/config](#apimachinesconfig)
 
 ### Operator
 - [/api/operator/config](#apioperatorconfig)
+- [/api/operator/config/xml](#apioperatorconfigxml)
 - [/api/operator/new-id](#apioperatornew-id)
 - [/api/operator/analytics/operators-summary-daily-cached](#apioperatoranalyticsoperators-summary-daily-cached)
 - [/api/operator/analytics/operator-details-cached](#apioperatoranalyticsoperator-details-cached)
 - [/api/operator/analytics/operator-machine-summary](#apioperatoranalyticsoperator-machine-summary)
-- [/api/operators/config](#apioperatorsconfig)
 
 ### Reports
 - [/api/reports/shifts](#apireportsshifts)
@@ -909,6 +911,96 @@ GET /api/fault/analytics/fault-report-detailed?start=2025-05-01T00:00:00.000Z&en
 
 ## Item
 
+<a id="apiitemconfig"></a>
+
+### /api/item/config
+
+CRUD-style configuration for **items** stored in MongoDB (`item` collection). JSON routes use the shared configuration service; **POST** and **PUT** run through **`itemValidator`**.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/item/config` | Required | Returns all item documents (JSON). |
+| GET | `/api/item/config/xml` | Required | Same data as **XML** (`item` root). |
+| POST | `/api/item/config` | Required | Create or upsert (validator). |
+| PUT | `/api/item/config/:id` | Required | Update by MongoDB `_id` (validator). |
+| DELETE | `/api/item/config/:id` | Required | Delete by id. |
+
+**Query parameters (GET JSON):** None required.
+
+**Data Format (GET JSON):**
+```json
+{
+  "items": [
+    {
+      "number": 1,
+      "name": "Incontinent Pad",
+      "pace": 720,
+      "area": 1,
+      "department": "Towels",
+      "weight": null
+    }
+  ]
+}
+```
+
+**Example Requests:**
+```
+GET /api/item/config
+GET /api/item/config/xml
+POST /api/item/config
+PUT /api/item/config/507f1f77bcf86cd799439011
+DELETE /api/item/config/507f1f77bcf86cd799439011
+```
+
+**Error Responses:**
+
+**500 Internal Server Error**
+```json
+{
+  "error": "Failed to fetch items configuration"
+}
+```
+
+---
+
+<a id="apiitemconfigxml"></a>
+
+### /api/item/config/xml
+
+Same dataset as **`GET /api/item/config`**, returned as **XML** (content-type `text/xml`). See **`/api/item/config`** for semantics.
+
+**Method:** GET  
+**Auth:** Required  
+**Idempotent:** Yes
+
+---
+
+<a id="apiitemnew-id"></a>
+
+### /api/item/new-id
+
+Returns the **next suggested** item **`number`** (max existing `number` + 1, or **1** if empty).
+
+**Method:** GET  
+**Auth:** Required  
+**Idempotent:** Yes
+
+**Query Parameters:** None.
+
+**Data Format:**
+```json
+{ "number": 42 }
+```
+
+**Example Request:**
+```
+GET /api/item/new-id
+```
+
+---
+
+<a id="apiitemanalyticsitems-summary-daily-cache"></a>
+
 ### /api/item/analytics/items-summary-daily-cache
 
 **Item Dashboard — main table.** Hybrid **cache + session** aggregation over `[start, end]`. Uses **`totals-daily`** item rows for **full-day / today** windows and **`getItemsSessionDataForPartialDays`** for **partial past days**; may combine **hybrid splits** for long multi-day ranges (>24h) similar to other item routes.
@@ -962,33 +1054,43 @@ GET /api/item/analytics/items-summary-daily-cache?start=2025-05-01T00:00:00.000Z
 
 ---
 
-### /api/items/config
+## Machine
 
-This route provides configuration definition for all items in the system, as stored in the database.
+<a id="apimachineconfig"></a>
 
-**Method:** GET  
-**Auth:** Required  
-**Idempotent:** Yes
+### /api/machine/config
 
-**Data Format:**
+CRUD-style configuration for **machines** (`machine` collection). **POST**, **PUT**, and **DELETE** use **`machineValidator`** on write paths.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/machine/config` | Required | All machine documents (JSON). |
+| GET | `/api/machine/config/xml` | Required | Same data as **XML** (`machine` root). |
+| POST | `/api/machine/config` | Required | Create machine (validator). |
+| PUT | `/api/machine/config/:id` | Required | Update by MongoDB `_id` (validator). |
+| DELETE | `/api/machine/config/:id` | Required | Delete by id. |
+
+**Data Format (GET JSON):**
 ```json
 {
-  "items": [
+  "machines": [
     {
-      "number": 1,
-      "name": "Incontinent Pad",
-      "pace": 720,
-      "area": 1,
-      "department": "Towels",
-      "weight": null
+      "serial": 63520,
+      "name": "Flipper 1",
+      "ipAddress": "192.168.0.31",
+      "lanes": 1
     }
   ]
 }
 ```
 
-**Example Request:**
+**Example Requests:**
 ```
-GET /api/items/config
+GET /api/machine/config
+GET /api/machine/config/xml
+POST /api/machine/config
+PUT /api/machine/config/507f1f77bcf86cd799439011
+DELETE /api/machine/config/507f1f77bcf86cd799439011
 ```
 
 **Error Responses:**
@@ -996,15 +1098,51 @@ GET /api/items/config
 **500 Internal Server Error**
 ```json
 {
-  "error": "Failed to fetch items configuration"
+  "error": "Failed to fetch machines configuration"
 }
 ```
 
 ---
 
-## Machine
+<a id="apimachineconfigxml"></a>
+
+### /api/machine/config/xml
+
+Same dataset as **`GET /api/machine/config`**, returned as **XML**. See **`/api/machine/config`** for semantics.
+
+**Method:** GET  
+**Auth:** Required  
+**Idempotent:** Yes
+
+---
+
+<a id="apimachinespf"></a>
+
+### /api/machine/spf
+
+Returns a compact list of **SPF-type** machines (**name** matching `/^SPF/i` or **type** `"SPF"`), **`active` ≠ false**, sorted by name. Used for efficiency-screen machine pickers.
+
+**Method:** GET  
+**Auth:** Required  
+**Idempotent:** Yes
+
+**Data Format:**
+```json
+[
+  { "serial": 67808, "name": "SPF1", "active": true }
+]
+```
+
+**Example Request:**
+```
+GET /api/machine/spf
+```
+
+---
 
 ### Cached dashboard analytics
+
+<a id="apimachineanalyticsmachines-summary-daily-cached"></a>
 
 ### /api/machine/analytics/machines-summary-daily-cached
 
@@ -1068,6 +1206,8 @@ GET /api/machine/analytics/machines-summary-daily-cached?start=2025-05-01T00:00:
 **Versioning & Stability:** Alpha.
 
 ---
+
+<a id="apimachineanalyticsmachine-dashboard-daily-cached"></a>
 
 ### /api/machine/analytics/machine-dashboard-daily-cached
 
@@ -1345,11 +1485,80 @@ GET /api/machine/status/63520
 
 ---
 
-## Machines
+## Operator
 
-### /api/machines/config
+<a id="apioperatorconfig"></a>
 
-This route provides configuration definition for all CD machines in the system, as stored in the database.
+### /api/operator/config
+
+Configuration for **operators** (`operator` collection). **GET** routes use session auth like other JSON configuration endpoints. **POST**, **PUT**, and **DELETE** require a valid **JWT** (`Authorization: Bearer …`, or `token` in query/body) unless **`enableApiTokenCheck`** is disabled in server config.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/operator/config` | Required (session) | All operators (JSON). Optional query **`filterTestOperators=true`** excludes codes **> 500000**. |
+| GET | `/api/operator/config/xml` | Required | Operators as **XML** (`operator` root; simplified name fields). |
+| POST | `/api/operator/config` | JWT | Create operator (unique **`code`**). |
+| PUT | `/api/operator/config/:id` | JWT | Update by MongoDB `_id`. |
+| DELETE | `/api/operator/config/:id` | JWT | Delete by id. |
+
+**Query parameters (GET JSON):**
+
+| Label | Type | Required | Description |
+|-------|------|----------|-------------|
+| filterTestOperators | boolean string | No | If **`true`**, only operators with **`code` ≤ 500000** are returned. |
+
+**Data Format (GET JSON):**
+```json
+{
+  "operators": [
+    {
+      "code": 117811,
+      "name": "Brian Iguchi"
+    }
+  ]
+}
+```
+
+**Example Requests:**
+```
+GET /api/operator/config
+GET /api/operator/config?filterTestOperators=true
+GET /api/operator/config/xml
+POST /api/operator/config
+PUT /api/operator/config/507f1f77bcf86cd799439011
+DELETE /api/operator/config/507f1f77bcf86cd799439011
+```
+
+**Error Responses:**
+
+**401 Unauthorized** — missing or invalid JWT (mutating routes when token check is enabled)
+
+**500 Internal Server Error**
+```json
+{
+  "error": "Failed to fetch operators configuration"
+}
+```
+
+---
+
+<a id="apioperatorconfigxml"></a>
+
+### /api/operator/config/xml
+
+Same operator set as **`GET /api/operator/config`**, serialized to **XML**. See **`/api/operator/config`** for auth and filtering.
+
+**Method:** GET  
+**Auth:** Required  
+**Idempotent:** Yes
+
+---
+
+<a id="apioperatornew-id"></a>
+
+### /api/operator/new-id
+
+Returns the **next suggested** operator **`code`**: max existing code under **600000** plus one, or **100000** if none.
 
 **Method:** GET  
 **Auth:** Required  
@@ -1357,35 +1566,17 @@ This route provides configuration definition for all CD machines in the system, 
 
 **Data Format:**
 ```json
-{
-  "machines": [
-    {
-      "serial": 63520,
-      "name": "Flipper 1",
-      "ipAddress": "192.168.0.31",
-      "lanes": 1
-    }
-  ]
-}
+{ "code": 100001 }
 ```
 
 **Example Request:**
 ```
-GET /api/machines/config
-```
-
-**Error Responses:**
-
-**500 Internal Server Error**
-```json
-{
-  "error": "Failed to fetch machines configuration"
-}
+GET /api/operator/new-id
 ```
 
 ---
 
-## Operator
+<a id="apioperatoranalyticsoperators-summary-daily-cached"></a>
 
 ### /api/operator/analytics/operators-summary-daily-cached
 
@@ -1448,6 +1639,8 @@ GET /api/operator/analytics/operators-summary-daily-cached?start=2025-05-01T00:0
 **Versioning & Stability:** Alpha.
 
 ---
+
+<a id="apioperatoranalyticsoperator-details-cached"></a>
 
 ### /api/operator/analytics/operator-details-cached
 
@@ -1521,6 +1714,8 @@ GET /api/operator/analytics/operator-details-cached?start=2025-05-01T00:00:00.00
 
 ---
 
+<a id="apioperatoranalyticsoperator-machine-summary"></a>
+
 ### /api/operator/analytics/operator-machine-summary
 
 **Inside the Operator Dashboard modal** when breaking totals down **by machine**. Aggregates **overlapping operator sessions** in the window, merges **per-item** production, and counts **fault sessions that overlap runtime intervals** (**`faultsWhileRunning`**).
@@ -1590,44 +1785,6 @@ GET /api/operator/analytics/operator-machine-summary?start=2025-05-01T12:00:00.0
 ```
 
 **Versioning & Stability:** Alpha.
-
----
-
-## Operators
-
-### /api/operators/config
-
-This route provides configuration definition for all operators in the system, as stored in the database.
-
-**Method:** GET  
-**Auth:** Required  
-**Idempotent:** Yes
-
-**Data Format:**
-```json
-{
-  "operators": [
-    {
-      "code": 117811,
-      "name": "Brian Iguchi"
-    }
-  ]
-}
-```
-
-**Example Request:**
-```
-GET /api/operators/config
-```
-
-**Error Responses:**
-
-**500 Internal Server Error**
-```json
-{
-  "error": "Failed to fetch operators configuration"
-}
-```
 
 ---
 
