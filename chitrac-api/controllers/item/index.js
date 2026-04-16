@@ -4,6 +4,7 @@
 /** MODULE REQUIRES */
 const express = require('express');
 const router = express.Router();
+const config = require('../../modules/config');
 const { parseAndValidateQueryParams, formatDuration } = require("../../utils/time");
 const {
   splitTimeRangeForHybridItems,
@@ -18,7 +19,7 @@ module.exports = function(server) {
 
 function constructor(server) {
 	const db = server.db;
-	const collection = db.collection('item');
+	const collection = db.collection(config.itemCollectionName);
 	const logger = server.logger;
 	const xmlParser = server.xmlParser;
 	const configService = require('../../services/mongo/');
@@ -151,37 +152,25 @@ function constructor(server) {
 		}
 	}
 
-	/*** Machine Config Routes */
+	/*** Item Config Routes */
 	/** GET routes */
-	router.get('/items/config/xml', getItemXML);
-	router.get('/items/config', getItem);
 	router.get('/item/config/xml', getItemXML);
 	router.get('/item/config', getItem);
 	router.get('/item/new-id', getNewItemId);
-	// /api/item/... mount (same handlers; alpha mount keeps /item/* paths)
-	router.get('/config/xml', getItemXML);
-	router.get('/config', getItem);
-	router.get('/new-id', getNewItemId);
 
-	/** PUT routes */
-	// router.put('/items/config/:id', upsertItem);
-	// router.put('/item/config/:id', upsertItem);
+	/** POST / PUT routes */
 	router.post('/item/config', itemValidator, upsertItem);
 	router.put('/item/config/:id', itemValidator, upsertItem);
-	router.post('/config', itemValidator, upsertItem);
-	router.put('/config/:id', itemValidator, upsertItem);
 
 	/** DELETE routes */
-	router.delete('/items/config/:id', deleteItem);
 	router.delete('/item/config/:id', deleteItem);
-	router.delete('/config/:id', deleteItem);
 
 
 	// Item Routes 
 
-	 // ---- /api/alpha/analytics/items-summary-daily-cache ----
+  // GET /api/item/analytics/items-summary-daily-cache
   // Hybrid cached/session route for item summary, mirroring itemSessions.js implementation.
-  router.get("/analytics/items-summary-daily-cache", async (req, res) => {
+  router.get("/item/analytics/items-summary-daily-cache", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const exactStart = new Date(start);
@@ -313,7 +302,7 @@ function constructor(server) {
           itemTotals = combineItemsHybridData(itemTotals, sessionData);
         }
       } else {
-        const cacheCollection = db.collection("totals-daily");
+        const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
         const startDate = exactStart.toISOString().split("T")[0];
         const endDate = exactEnd.toISOString().split("T")[0];

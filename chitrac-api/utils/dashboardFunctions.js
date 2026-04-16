@@ -1896,7 +1896,7 @@ async function buildItemHourlyStackFromCache(db, dayStart, dayEnd, logger) {
       }
     ];
 
-    const results = await db.collection('hourly-totals').aggregate(pipeline).toArray();
+    const results = await db.collection(config.totalsHourlyCollectionName).aggregate(pipeline).toArray();
 
     const hourSet = new Set();
     const items = {};
@@ -1983,7 +1983,7 @@ async function buildItemTotalsFromCache(db, dayStart, dayEnd, logger) {
       { $sort: { _id: 1 } }
     ];
 
-    const results = await db.collection('hourly-totals').aggregate(pipeline).toArray();
+    const results = await db.collection(config.totalsHourlyCollectionName).aggregate(pipeline).toArray();
 
     const items = results.map(r => ({
       itemName: r._id,

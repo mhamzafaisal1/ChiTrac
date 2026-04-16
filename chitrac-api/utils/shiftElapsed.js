@@ -221,6 +221,79 @@ function computeShiftElapsedMsFromShifts(shifts, start, end, zone = SYSTEM_TIMEZ
   return Math.max(0, totalMs);
 }
 
+/**
+ * Inclusive 0–23 local hour indices for the "shift day" on `day` in `zone`:
+ * from the earliest shift start through the hour bucket that contains the latest shift end.
+ * Hours between separate shifts stay included; only time before the first start or after
+ * the last end is trimmed. Returns null if there are no valid shifts for that weekday.
+ *
+ * @param {unknown[]} shifts - Raw shift docs from Mongo
+ * @param {Date|string|number} day - Any instant on the calendar day (interpreted in `zone`)
+ * @param {string} [zone=SYSTEM_TIMEZONE]
+ * @returns {{ minHour: number, maxHour: number } | null}
+ */
+function getShiftDayHourEnvelope(shifts, day, zone = SYSTEM_TIMEZONE) {
+  const dayDT = toDateTime(day, zone);
+  if (!dayDT.isValid) return null;
+  const dayIsoWeekday = dayDT.weekday;
+
+  const normalized = (Array.isArray(shifts) ? shifts : [])
+    .map(normalizeShift)
+    .filter(Boolean)
+    .filter((s) => s.activeDays.includes(dayIsoWeekday));
+
+  if (normalized.length === 0) return null;
+
+  let minStartMin = Infinity;
+  let maxEndMin = -Infinity;
+  for (const s of normalized) {
+    minStartMin = Math.min(minStartMin, s.startMin);
+    const endMin = s.endHour * 60 + s.endMinute;
+    maxEndMin = Math.max(maxEndMin, endMin);
+  }
+
+  let minHour = Math.floor(minStartMin / 60);
+  let maxHour = Math.ceil(maxEndMin / 60) - 1;
+  minHour = Math.min(23, Math.max(0, minHour));
+  maxHour = Math.min(23, Math.max(0, maxHour));
+  if (maxHour < minHour) return null;
+  return { minHour, maxHour };
+}
+
+/**
+ * For **today** in `zone`, tightens `maxHour` so the chart does not extend past hours that have
+ * already occurred, while still including any hour up to `maxDataHour` if counts exist (avoids
+ * dropping real data). Other calendar days: returns `envelope` unchanged.
+ *
+ * @param {{ minHour: number, maxHour: number } | null} envelope
+ * @param {Date|string|number} day - Any instant on the calendar day (interpreted in `zone`)
+ * @param {string} [zone=SYSTEM_TIMEZONE]
+ * @param {number|null|undefined} maxDataHour - Highest 0–23 hour index with data in range, or null/omit if none
+ * @returns {{ minHour: number, maxHour: number } | null}
+ */
+function resolveShiftHourEnvelopeForDisplay(
+  envelope,
+  day,
+  zone = SYSTEM_TIMEZONE,
+  maxDataHour = null
+) {
+  if (!envelope) return null;
+  const dayDT = toDateTime(day, zone);
+  const nowDT = DateTime.now().setZone(zone);
+  if (!dayDT.isValid || !nowDT.isValid) return envelope;
+  if (dayDT.toISODate() !== nowDT.toISODate()) {
+    return envelope;
+  }
+  const nowHour = nowDT.hour;
+  const dataMax =
+    typeof maxDataHour === "number" && maxDataHour >= 0 && maxDataHour <= 23
+      ? maxDataHour
+      : -1;
+  let maxHour = Math.min(envelope.maxHour, Math.max(nowHour, dataMax));
+  maxHour = Math.max(envelope.minHour, Math.min(23, maxHour));
+  return { minHour: envelope.minHour, maxHour };
+}
+
 async function loadActiveShifts(
   db,
   { collectionName = "shift", ttlMs = DEFAULT_CACHE_TTL_MS } = {}
@@ -241,5 +314,7 @@ async function loadActiveShifts(
 module.exports = {
   loadActiveShifts,
   computeShiftElapsedMs: computeShiftElapsedMsFromShifts,
+  getShiftDayHourEnvelope,
+  resolveShiftHourEnvelopeForDisplay,
 };
 

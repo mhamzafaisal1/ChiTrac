@@ -5,7 +5,7 @@ const config = require('../../modules/config');
 const humanNamesSchema = require('../../schemas/human-names');
 const operatorSchema = require('../../schemas/operator');
 
-const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
+const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getOperatorsSummaryRealTime,
@@ -22,7 +22,7 @@ module.exports = function (server) { return constructor(server); };
 
 function constructor(server) {
   const db = server.db;
-  const collection = db.collection('operator');
+  const collection = db.collection(config.operatorCollectionName);
   const xmlParser = server.xmlParser;
   const configService = require('../../services/mongo/');
   const logger = server.logger;
@@ -206,33 +206,28 @@ function constructor(server) {
   router.get('/operator/config/xml', getOperatorXML);
   router.get('/operator/config', getOperator);
   router.get('/operator/new-id', getNewOperatorId);
-  // /api/operator/... mount (same handlers; alpha mount keeps /operator/* paths)
-  router.get('/config/xml', getOperatorXML);
-  router.get('/config', getOperator);
-  router.get('/new-id', getNewOperatorId);
 
   // Protected routes - require JWT token
   router.post('/operator/config', verifyJwtMiddleware, createOperator);
   router.put('/operator/config/:id', verifyJwtMiddleware, upsertOperator);
   router.delete('/operator/config/:id', verifyJwtMiddleware, deleteOperator);
-  router.post('/config', verifyJwtMiddleware, createOperator);
-  router.put('/config/:id', verifyJwtMiddleware, upsertOperator);
-  router.delete('/config/:id', verifyJwtMiddleware, deleteOperator);
 
   // Operator analytics routes are defined below in this controller
 
   const getOperatorsSummaryRealTimeHandler = getOperatorsSummaryRealTime(db, logger, config);
 
-  // GET /api/alpha/analytics/operators-summary-daily-cached
+  // GET /api/operator/analytics/operators-summary-daily-cached
   // Returns daily operator summary from totals-daily cache; falls back to real-time if no cache.
-  router.get("/analytics/operators-summary-daily-cached", async (req, res) => {
+  router.get("/operator/analytics/operators-summary-daily-cached", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
 
       const today = new Date();
-      const chicagoTime = new Date(today.toLocaleString("en-US", { timeZone: "America/Chicago" }));
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
+      );
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       logger.info(`[operatorSessions] Fetching daily cached operators summary for date: ${dateStr}, operatorId: ${operatorId || "all"}`);
 
@@ -246,7 +241,7 @@ function constructor(server) {
       }
 
       const cacheRecords = await db
-        .collection("totals-daily")
+        .collection(config.totalsDailyCollectionName)
         .find(filter)
         .toArray();
 
@@ -265,7 +260,7 @@ function constructor(server) {
         ),
       ];
 
-      const stateTickerData = await db.collection("stateTicker").find({}).toArray();
+      const stateTickerData = await db.collection(config.stateTickerCollectionName).find({}).toArray();
 
       const operatorTickerMap = new Map();
       for (const stateRecord of stateTickerData) {
@@ -392,7 +387,7 @@ function constructor(server) {
 
         if (!rangeStart || !rangeEnd) {
           rangeStart = new Date(`${dateStr}T06:00:00.000Z`);
-          rangeEnd = chicagoTime;
+          rangeEnd = wallClockNow;
         }
 
         const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
@@ -475,11 +470,11 @@ function constructor(server) {
     }
   });
 
-  // GET /api/alpha/analytics/operator-details-cached
+  // GET /api/operator/analytics/operator-details-cached
   // Returns operator details built entirely from cache (totals-daily + hourly-totals).
-  router.get("/analytics/operator-details-cached", async (req, res) => {
+  router.get("/operator/analytics/operator-details-cached", async (req, res) => {
     try {
-      const { start, end, operatorId, serial, tz = "America/Chicago" } = req.query;
+      const { start, end, operatorId, serial, tz } = req.query;
 
       if (!start || !end || !operatorId) {
         return res.status(400).json({ error: "start, end, and operatorId are required" });
@@ -490,9 +485,9 @@ function constructor(server) {
         return res.status(400).json({ error: "operatorId must be a valid number" });
       }
 
-      const tzParam = tz || "America/Chicago";
+      const tzParam = tz || SYSTEM_TIMEZONE;
 
-      const nameDocPromise = db.collection("totals-daily")
+      const nameDocPromise = db.collection(config.totalsDailyCollectionName)
         .find({
           entityType: "operator-machine",
           operatorId: opId,
@@ -549,9 +544,9 @@ function constructor(server) {
     }
   });
 
-  // GET /api/alpha/analytics/operator-machine-summary
+  // GET /api/operator/analytics/operator-machine-summary
   // Aggregates operator sessions by machine with totals, items, and fault overlap count.
-  router.get("/analytics/operator-machine-summary", async (req, res) => {
+  router.get("/operator/analytics/operator-machine-summary", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = Number(req.query.operatorId);
@@ -761,11 +756,12 @@ function constructor(server) {
       }
 
       const faultsByMachine = await db
-        .collection(config.faultSessionCollectionName)
+        .collection(config.machineSessionCollectionName)
         .aggregate([
           {
             $match: {
               "operators.id": operatorId,
+              type: { $nin: [0, 1] },
               "timestamps.start": { $lte: endDate },
               $or: [
                 { "timestamps.end": { $exists: false } },
@@ -775,7 +771,7 @@ function constructor(server) {
           },
           {
             $project: {
-              serial: "$machine.serial",
+              serial: { $ifNull: ["$machine.serial", "$machine.id"] },
               s: "$timestamps.start",
               e: { $ifNull: ["$timestamps.end", endDate] },
             },

@@ -1,8 +1,12 @@
 const express = require("express");
 const { ObjectId } = require("mongodb");
-const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
+const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const config = require("../../modules/config");
-const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const {
+  loadActiveShifts,
+  computeShiftElapsedMs,
+  getShiftDayHourEnvelope,
+} = require("../../utils/shiftElapsed");
 const { getSessionDataForPartialDays } = require("../../utils/reportFunctions");
 const {
   getMachinesSummaryRealTime,
@@ -125,10 +129,10 @@ module.exports = function (server) {
       }
 
       const today = new Date();
-      const chicagoTime = new Date(
-        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
       );
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       // Load shifts once per request (used to make availability/downtime shift-aware).
       const activeShifts = await loadActiveShifts(db).catch(() => []);
@@ -202,10 +206,10 @@ module.exports = function (server) {
           rangeEnd = new Date(timeRange.end);
         } else {
           const todayFallback = new Date();
-          const chicagoTimeFallback = new Date(
-            todayFallback.toLocaleString("en-US", { timeZone: "America/Chicago" })
+          const wallClockFallback = new Date(
+            todayFallback.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
           );
-          rangeStart = new Date(chicagoTimeFallback.setHours(0, 0, 0, 0));
+          rangeStart = new Date(wallClockFallback.setHours(0, 0, 0, 0));
           rangeEnd = new Date();
         }
 
@@ -403,10 +407,10 @@ module.exports = function (server) {
       }
 
       const today = new Date();
-      const chicagoTime = new Date(
-        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
       );
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       const cacheCollection = db.collection("totals-daily");
       const machineFilter = {
@@ -445,6 +449,9 @@ module.exports = function (server) {
           ...machineSerials.map((serial) => String(serial)),
         ]),
       ];
+
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const shiftHourEnvelope = getShiftDayHourEnvelope(activeShifts, wallClockNow);
 
       const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
         await Promise.all([
@@ -508,7 +515,12 @@ module.exports = function (server) {
             : new Date(`${dateStr}T00:00:00.000Z`);
           const sessionEnd = record.timeRange?.end
             ? new Date(record.timeRange.end)
-            : chicagoTime;
+            : wallClockNow;
+
+          const cacheDateForCharts =
+            typeof record.date === "string" && record.date.trim()
+              ? record.date.trim()
+              : dateStr;
 
           const shiftElapsedMs = computeShiftElapsedMs(
             activeShifts,
@@ -528,12 +540,16 @@ module.exports = function (server) {
           const machineItemHourly = machineItemHourlyBySerial.get(serial) || [];
           const itemHourlyStack = buildItemHourlyStackFromRecords(
             machineItemHourly,
-            sessionStart
+            sessionStart,
+            shiftHourEnvelope,
+            cacheDateForCharts
           );
           const operatorMachineHourly = operatorMachineHourlyBySerial.get(serial) || [];
           const operatorEfficiency = buildOperatorEfficiencyFromRecords(
             operatorMachineHourly,
-            sessionStart
+            sessionStart,
+            shiftHourEnvelope,
+            cacheDateForCharts
           );
           const currentOperators = await buildCurrentOperators(db, serial);
 
@@ -557,7 +573,7 @@ module.exports = function (server) {
             },
             operatorEfficiency,
             currentOperators,
-            timestamp: record.lastUpdated || chicagoTime,
+            timestamp: record.lastUpdated || wallClockNow,
             sessionStart,
             sessionEnd,
           };

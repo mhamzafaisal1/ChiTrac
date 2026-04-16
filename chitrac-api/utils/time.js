@@ -1,5 +1,6 @@
 const { DateTime, Duration } = require("luxon");
 
+/** IANA zone for plant wall-clock (totals-daily `date`, shifts, dashboard axes). Change here only. */
 const SYSTEM_TIMEZONE = "America/Chicago";
 
 const TIME_CONSTANTS = {

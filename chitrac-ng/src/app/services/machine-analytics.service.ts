@@ -13,7 +13,7 @@ export class MachineAnalyticsService {
   constructor(private http: HttpClient) {}
 
   getMachines(): Observable<any> {
-    return this.http.get(`${this.machineApiUrl}/machines/config`);
+    return this.http.get(`${this.machineApiUrl}/config`);
   }
 
   getMachineHourlyStates(machineSerial: string, endTime: string): Observable<any> {

@@ -18,7 +18,7 @@ const { DateTime, Interval } = require("luxon");
 const config = require('../modules/config');
 const { getValidCountsForOperator, processCountStatistics, groupCountsByItem, extractItemNamesFromCounts } = require('./count');
 const { fetchGroupedAnalyticsData } = require('./machineFunctions');
-const { loadActiveShifts } = require("./shiftElapsed");
+const { loadActiveShifts, getShiftDayHourEnvelope, resolveShiftHourEnvelopeForDisplay } = require("./shiftElapsed");
 const {
   getLiveProductiveWindowMs,
   liveAvailabilityRatioFromMs,
@@ -149,8 +149,12 @@ function recalcOperatorSession(session, logger) {
   // Operator-level work time == runtimeSec
   const workTimeSec = runtimeSec;
 
-  const counts = Array.isArray(session.counts) ? session.counts : [];
-  const misfeeds = Array.isArray(session.misfeeds) ? session.misfeeds : [];
+  const counts = Array.isArray(session.counts)
+    ? session.counts
+    : (session.counts?.valid || []);
+  const misfeeds = Array.isArray(session.misfeeds)
+    ? session.misfeeds
+    : (session.counts?.misfeed || []);
   const totalCount = counts.length;
   const misfeedCount = misfeeds.length;
 
@@ -192,12 +196,19 @@ function truncateAndRecalcOperator(original, newStart, newEnd, logger) {
     return original;
   }
 
+  const countsArray = Array.isArray(original.counts)
+    ? original.counts
+    : (original.counts?.valid || []);
+  const misfeedsArray = Array.isArray(original.misfeeds)
+    ? original.misfeeds
+    : (original.counts?.misfeed || []);
+
   // Only clone what we need to modify
   const s = {
     ...original,
     timestamps: { ...original.timestamps },
-    counts: [...(original.counts || [])],
-    misfeeds: [...(original.misfeeds || [])]
+    counts: [...countsArray],
+    misfeeds: [...misfeedsArray],
   };
 
   const start = new Date(s.timestamps.start);
@@ -1325,7 +1336,7 @@ const normalizeStdPPH = (std) => {
 };
 
 // helper: build day buckets in a TZ and sum cycle overlap per day
-function buildDayBuckets(start, end, tz = "America/Chicago") {
+function buildDayBuckets(start, end, tz = SYSTEM_TIMEZONE) {
   const s = DateTime.fromJSDate(new Date(start), { zone: tz }).startOf("day");
   const e = DateTime.fromJSDate(new Date(end),   { zone: tz }).endOf("day");
   return Interval.fromDateTimes(s, e).splitBy({ days: 1 }).map(iv => {
@@ -1347,7 +1358,7 @@ async function buildDailyEfficiencyFromOperatorSessions(
   start,
   end,
   serial = null,
-  tz = "America/Chicago"
+  tz = SYSTEM_TIMEZONE
 ) {
   // enforce 7-day window like before
   const endDt = new Date(end);
@@ -1691,9 +1702,9 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
     const wEnd = new Date(end);
     const windowMs = wEnd - wStart;
 
-    // Get all date strings in the range (in America/Chicago timezone)
-    const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' });
-    const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' });
+    // Get all date strings in the range in SYSTEM_TIMEZONE
+    const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE });
+    const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE });
     const dateStrings = [];
     let currentDay = startDt.startOf('day');
     const endDay = endDt.startOf('day');
@@ -1705,7 +1716,7 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
 
     // Query operator-machine cache records
     const dateObjs = dateStrings.map(str => {
-      const dt = DateTime.fromISO(str, { zone: 'America/Chicago' });
+      const dt = DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE });
       return dt.toUTC().startOf('day').toJSDate();
     });
 
@@ -1768,7 +1779,7 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
 }
 
 // Build daily efficiency from cache (operator-machine daily records)
-async function buildDailyEfficiencyFromCache(db, logger, operatorId, operatorName, start, end, serial = null, tz = "America/Chicago") {
+async function buildDailyEfficiencyFromCache(db, logger, operatorId, operatorName, start, end, serial = null, tz = SYSTEM_TIMEZONE) {
   try {
     // Enforce 7-day window like the original function
     const endDt = new Date(end);
@@ -1879,8 +1890,8 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
 
     // OPTIMIZATION: Use dateObj range query instead of $in with date strings
     // This is much faster with proper indexes and avoids large $in arrays
-    const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' }).startOf('day');
-    const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' }).endOf('day');
+    const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf('day');
+    const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf('day');
 
     // Build aggregation pipeline for hourly-totals
     // OPTIMIZATION: Use dateObj range query instead of $in with many date strings
@@ -1951,14 +1962,63 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       }
     ];
 
-    const collection = db.collection('hourly-totals');
+    const collection = db.collection(config.totalsHourlyCollectionName);
     const results = await collection.aggregate(pipeline, {
       allowDiskUse: true
     }).toArray();
 
+    const isSingleLocalDay =
+      startDt.toFormat("yyyy-MM-dd") === endDt.toFormat("yyyy-MM-dd");
+
+    let hourEnvelope = null;
+    if (isSingleLocalDay) {
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      hourEnvelope = getShiftDayHourEnvelope(
+        activeShifts,
+        startDt.toJSDate(),
+        SYSTEM_TIMEZONE
+      );
+    }
+
+    let maxDataHourAgg = -1;
+    for (const result of results) {
+      for (const entry of result.hourlyCounts || []) {
+        const hour = entry.hour;
+        if (typeof hour !== "number" || hour < 0 || hour > 23) continue;
+        if (
+          hourEnvelope &&
+          (hour < hourEnvelope.minHour || hour > hourEnvelope.maxHour)
+        ) {
+          continue;
+        }
+        const c = Number(entry.count) || 0;
+        if (c > 0) maxDataHourAgg = Math.max(maxDataHourAgg, hour);
+      }
+    }
+
+    const displayEnvelope =
+      hourEnvelope &&
+      resolveShiftHourEnvelopeForDisplay(
+        hourEnvelope,
+        startDt.toJSDate(),
+        SYSTEM_TIMEZONE,
+        maxDataHourAgg >= 0 ? maxDataHourAgg : null
+      );
+
+    function fullDayHoursAxis() {
+      return Array.from({ length: 24 }, (_, i) => i);
+    }
+
+    function envelopeHoursAxis(env) {
+      const axis = [];
+      for (let h = env.minHour; h <= env.maxHour; h++) axis.push(h);
+      return axis;
+    }
+
+    const hoursAxis = displayEnvelope ? envelopeHoursAxis(displayEnvelope) : fullDayHoursAxis();
+
     // Build hourly breakdown map: itemName -> [counts for hours 0-23]
     const hourlyBreakdownMap = {};
-    const hourSet = new Set();
 
     for (const result of results) {
       const itemName = result._id || "Unknown";
@@ -1967,7 +2027,12 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       for (const entry of result.hourlyCounts) {
         const hour = entry.hour;
         if (hour >= 0 && hour <= 23) {
-          hourSet.add(hour);
+          if (
+            hourEnvelope &&
+            (hour < hourEnvelope.minHour || hour > hourEnvelope.maxHour)
+          ) {
+            continue;
+          }
           hourlyBreakdownMap[itemName][hour] = entry.count;
         }
       }
@@ -1978,17 +2043,26 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
       return {
         title: "Operator Counts by item",
         data: {
-          hours: Array.from({ length: 24 }, (_, i) => i),
+          hours: hoursAxis,
           operators: {}
         }
       };
     }
 
+    const operatorsSliced = {};
+    for (const [itemName, fullRow] of Object.entries(hourlyBreakdownMap)) {
+      if (hourEnvelope) {
+        operatorsSliced[itemName] = hoursAxis.map((h) => fullRow[h] || 0);
+      } else {
+        operatorsSliced[itemName] = fullRow;
+      }
+    }
+
     return {
       title: "Operator Counts by item",
       data: {
-        hours: Array.from({ length: 24 }, (_, i) => i),
-        operators: hourlyBreakdownMap
+        hours: hoursAxis,
+        operators: operatorsSliced
       }
     };
   } catch (error) {
@@ -2009,9 +2083,9 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
   const wStart = new Date(start);
   const wEnd = new Date(end);
 
-  // Get all date strings in the range (in America/Chicago timezone)
-  const startDt = DateTime.fromJSDate(wStart, { zone: 'America/Chicago' });
-  const endDt = DateTime.fromJSDate(wEnd, { zone: 'America/Chicago' });
+  // Get all date strings in the range in SYSTEM_TIMEZONE
+  const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE });
+  const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE });
   const dateStrings = [];
   let currentDay = startDt.startOf('day');
   const endDay = endDt.startOf('day');
@@ -2029,7 +2103,7 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
 
   // Query cache for all dates in range
   const dateObjs = dateStrings.map(str => {
-    const dt = DateTime.fromISO(str, { zone: 'America/Chicago' });
+    const dt = DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE });
     return dt.toUTC().startOf('day').toJSDate();
   });
 

@@ -439,9 +439,9 @@ function constructor(server) {
       );
       const dateStr = chicagoTime.toISOString().split("T")[0];
 
-      const cacheCollection = db.collection("totals-daily");
+      const cacheCollection = db.collection(config.totalsDailyCollectionName);
       const tickerColl = db.collection(config.stateTickerCollectionName);
-      const faultSessionColl = db.collection(config.faultSessionCollectionName);
+      const faultSessionColl = db.collection(config.machineSessionCollectionName);
 
       const machineFilter = {
         entityType: "machine",
@@ -501,6 +501,7 @@ function constructor(server) {
         faultSessionColl
           .find({
             $and: [
+              { type: { $nin: [0, 1] } },
               {
                 $or: [
                   { "machine.serial": machineSerialFilter },
@@ -708,13 +709,13 @@ function constructor(server) {
       };
 
       const stateTickerResult = await db
-        .collection("stateTicker")
+        .collection(config.stateTickerCollectionName)
         .replaceOne({ "machine.serial": machine.serial }, state, {
           upsert: true,
         });
       const stateResult = await db.collection("state").insertOne(state);
 
-      const machineSessionArray = await db.collection('machine-session').find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+      const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
       if (machineSessionArray.length) {
         let session = machineSessionArray[0];
         const sessionID = session['_id'];
@@ -745,7 +746,7 @@ function constructor(server) {
               'states': state
             }
           }
-          const updatedSession = await db.collection('machine-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.machineSessionCollectionName).updateOne({ '_id': sessionID }, update);
 
           //Session doesn't exist, start one
           const newSession = {
@@ -763,7 +764,7 @@ function constructor(server) {
             startState: state,
             machine: machine
           }
-          const insertNewSession = await db.collection('machine-session').insertOne(newSession);
+          const insertNewSession = await db.collection(config.machineSessionCollectionName).insertOne(newSession);
         } else {
           //Open session for this machine exists and is open, append
           const standard = program.pace * 60;
@@ -790,7 +791,7 @@ function constructor(server) {
               'states': state
             }
           }
-          const updatedSession = await db.collection('machine-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.machineSessionCollectionName).updateOne({ '_id': sessionID }, update);
         }
       } else {
         //Session doesn't exist, start one
@@ -809,12 +810,12 @@ function constructor(server) {
           startState: state,
           machine: machine
         }
-        const insertNewSession = await db.collection('machine-session').insertOne(newSession);
+        const insertNewSession = await db.collection(config.machineSessionCollectionName).insertOne(newSession);
       }
 
 
 
-      const operatorSessionArray = await db.collection('operator-session').find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+      const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
       if (operatorSessionArray.length) {
         let session = operatorSessionArray[0];
         const sessionID = session['_id'];
@@ -845,7 +846,7 @@ function constructor(server) {
               'states': state
             }
           }
-          const updatedSession = await db.collection('operator-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.operatorSessionCollectionName).updateOne({ '_id': sessionID }, update);
           //Session doesn't exist, start one
           const newSession = {
             timestamps: {
@@ -862,7 +863,7 @@ function constructor(server) {
             startState: state,
             machine: machine
           }
-          const insertNewSession = await db.collection('operator-session').insertOne(newSession);
+          const insertNewSession = await db.collection(config.operatorSessionCollectionName).insertOne(newSession);
         } else {
           const now = new Date();
           const standard = program.pace * 60;
@@ -890,7 +891,7 @@ function constructor(server) {
               'states': state
             }
           }
-          const updatedSession = await db.collection('operator-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.operatorSessionCollectionName).updateOne({ '_id': sessionID }, update);
         }
       } else {
         //Session doesn't exist, start one
@@ -909,7 +910,7 @@ function constructor(server) {
           startState: state,
           machine: machine
         }
-        const insertNewSession = await db.collection('operator-session').insertOne(newSession);
+        const insertNewSession = await db.collection(config.operatorSessionCollectionName).insertOne(newSession);
       }
     } else if (storeJSON.item) {
       collection = db.collection("ac360-count");
@@ -973,13 +974,13 @@ function constructor(server) {
       };
 
       const result = await db
-        .collection("stateTicker")
+        .collection(config.stateTickerCollectionName)
         .replaceOne({ "machine.serial": machine.serial }, state, {
           upsert: true,
         });
 
       if (item.count) {
-        const machineSessionArray = await db.collection('machine-session').find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (machineSessionArray.length) {
           let session = machineSessionArray[0];
           const sessionID = session['_id'];
@@ -1005,11 +1006,11 @@ function constructor(server) {
               'counts': formattedCount
             }
           }
-          const updatedSession = await db.collection('machine-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.machineSessionCollectionName).updateOne({ '_id': sessionID }, update);
         }
 
 
-        const operatorSessionArray = await db.collection('operator-session').find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (operatorSessionArray.length) {
           let session = operatorSessionArray[0];
           const sessionID = session['_id'];
@@ -1036,10 +1037,10 @@ function constructor(server) {
               'counts': formattedCount
             }
           }
-          const updatedSession = await db.collection('operator-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.operatorSessionCollectionName).updateOne({ '_id': sessionID }, update);
         }
       } else { //Misfeed
-        const machineSessionArray = await db.collection('machine-session').find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (machineSessionArray.length) {
           let session = machineSessionArray[0];
           const sessionID = session['_id'];
@@ -1058,11 +1059,11 @@ function constructor(server) {
               'misfeeds': formattedMisfeed
             }
           }
-          const updatedSession = await db.collection('machine-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.machineSessionCollectionName).updateOne({ '_id': sessionID }, update);
         }
 
 
-        const operatorSessionArray = await db.collection('operator-session').find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (operatorSessionArray.length) {
           let session = machineSessionArray[0];
           const sessionID = session['_id'];
@@ -1081,7 +1082,7 @@ function constructor(server) {
               'misfeeds': formattedMisfeed
             }
           }
-          const updatedSession = await db.collection('operator-session').updateOne({ '_id': sessionID }, update);
+          const updatedSession = await db.collection(config.operatorSessionCollectionName).updateOne({ '_id': sessionID }, update);
         }
       }
 
@@ -1105,7 +1106,7 @@ function constructor(server) {
 
   router.get("/levelone/all", async (req, res, next) => {
     const stateCollection = db.collection("state");
-    const stateTickerCollection = db.collection("stateTicker");
+    const stateTickerCollection = db.collection(config.stateTickerCollectionName);
     const countCollection = db.collection("count");
 
     //const currentDateTime = DateTime.now().toISO();
@@ -1398,7 +1399,7 @@ function constructor(server) {
 
   router.get("/production/statistics/machines/all", async (req, res, next) => {
     const stateCollection = db.collection("state");
-    const stateTickerCollection = db.collection("stateTicker");
+    const stateTickerCollection = db.collection(config.stateTickerCollectionName);
     const countCollection = db.collection("count");
 
     const currentDateTime = DateTime.now().startOf("day").toISO();
@@ -3624,7 +3625,7 @@ function constructor(server) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
 
-      const machineSerials = await db.collection("machine").distinct("serial");
+      const machineSerials = await db.collection(config.machineCollectionName).distinct("serial");
 
       const resultsMap = new Map();
 
@@ -3904,7 +3905,7 @@ function constructor(server) {
     if (excludeObjectId) {
       query._id = { $ne: excludeObjectId };
     }
-    const others = await db.collection("shift").find(query).toArray();
+    const others = await db.collection(config.shiftCollectionName).find(query).toArray();
     for (const o of others) {
       if (shiftsConflictOnSharedDay(candidate, o)) {
         const err = new Error(
@@ -3986,7 +3987,7 @@ function constructor(server) {
 
   router.get("/shifts", async (req, res) => {
     try {
-      const shifts = await db.collection("shift").find({}).toArray();
+      const shifts = await db.collection(config.shiftCollectionName).find({}).toArray();
       shifts.sort((a, b) => {
         const am =
           (a.startTime?.hour ?? 0) * 60 + (a.startTime?.minute ?? 0);
@@ -4048,8 +4049,8 @@ function constructor(server) {
         activeDays: [...body.activeDays].sort((a, b) => a - b),
       };
 
-      const result = await db.collection("shift").insertOne(doc);
-      const saved = await db.collection("shift").findOne({ _id: result.insertedId });
+      const result = await db.collection(config.shiftCollectionName).insertOne(doc);
+      const saved = await db.collection(config.shiftCollectionName).findOne({ _id: result.insertedId });
       res.status(201).json(normalizeShiftForClient(saved));
     } catch (err) {
       if (err.status === 409) {
@@ -4069,7 +4070,7 @@ function constructor(server) {
         return res.status(400).json({ error: "Invalid shift id" });
       }
 
-      const existing = await db.collection("shift").findOne({ _id: oid });
+      const existing = await db.collection(config.shiftCollectionName).findOne({ _id: oid });
       if (!existing) {
         return res.status(404).json({ error: "Shift not found" });
       }
@@ -4116,8 +4117,8 @@ function constructor(server) {
         activeDays: [...body.activeDays].sort((a, b) => a - b),
       };
 
-      await db.collection("shift").replaceOne({ _id: oid }, doc);
-      const saved = await db.collection("shift").findOne({ _id: oid });
+      await db.collection(config.shiftCollectionName).replaceOne({ _id: oid }, doc);
+      const saved = await db.collection(config.shiftCollectionName).findOne({ _id: oid });
       res.json(normalizeShiftForClient(saved));
     } catch (err) {
       if (err.status === 409) {
@@ -4136,7 +4137,7 @@ function constructor(server) {
       } catch (e) {
         return res.status(400).json({ error: "Invalid shift id" });
       }
-      const result = await db.collection("shift").deleteOne({ _id: oid });
+      const result = await db.collection(config.shiftCollectionName).deleteOne({ _id: oid });
       if (result.deletedCount === 0) {
         return res.status(404).json({ error: "Shift not found" });
       }

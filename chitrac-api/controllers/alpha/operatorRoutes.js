@@ -1,6 +1,6 @@
 // 📁 operatorRoutes.js
 const express = require("express");
-const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
+const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const config = require("../../modules/config");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
@@ -29,8 +29,10 @@ module.exports = function (server) {
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
 
       const today = new Date();
-      const chicagoTime = new Date(today.toLocaleString("en-US", { timeZone: "America/Chicago" }));
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
+      );
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       // Load shifts once per request (used to make availability/downtime shift-aware).
       const activeShifts = await loadActiveShifts(db).catch(() => []);
@@ -192,7 +194,7 @@ module.exports = function (server) {
         if (!rangeStart || !rangeEnd) {
           // Keep legacy fallback when timeRange is missing/invalid.
           rangeStart = new Date(`${dateStr}T06:00:00.000Z`);
-          rangeEnd = chicagoTime;
+          rangeEnd = wallClockNow;
         }
 
         const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
@@ -279,7 +281,7 @@ module.exports = function (server) {
   // Returns operator details built entirely from cache (totals-daily + hourly-totals).
   router.get("/analytics/operator-details-cached", async (req, res) => {
     try {
-      const { start, end, operatorId, serial, tz = "America/Chicago" } = req.query;
+      const { start, end, operatorId, serial, tz } = req.query;
 
       if (!start || !end || !operatorId) {
         return res.status(400).json({ error: "start, end, and operatorId are required" });
@@ -290,7 +292,7 @@ module.exports = function (server) {
         return res.status(400).json({ error: "operatorId must be a valid number" });
       }
 
-      const tzParam = tz || "America/Chicago";
+      const tzParam = tz || SYSTEM_TIMEZONE;
 
       const nameDocPromise = db.collection("totals-daily")
         .find({

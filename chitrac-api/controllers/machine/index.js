@@ -4,9 +4,9 @@
 /** MODULE REQUIRES */
 const express = require('express');
 const router = express.Router();
-const { formatDuration, parseAndValidateQueryParams } = require("../../utils/time");
+const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const config = require("../../modules/config");
-const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const { loadActiveShifts, computeShiftElapsedMs, getShiftDayHourEnvelope } = require("../../utils/shiftElapsed");
 const {
   getMachinesSummaryRealTime,
   buildLatestTickerMap,
@@ -24,7 +24,7 @@ module.exports = function(server) {
 
 function constructor(server) {
 	const db = server.db;
-	const collection = db.collection('machine');
+	const collection = db.collection(config.machineCollectionName);
 	const logger = server.logger;
 	const xmlParser = server.xmlParser;
 	const configService = require('../../services/mongo/');
@@ -238,20 +238,19 @@ function constructor(server) {
 
   const getMachinesSummaryRealTimeHandler = getMachinesSummaryRealTime(db, logger, config);
 
-  // GET /api/alpha/analytics/machines-summary-daily-cached (legacy)
-  // GET /api/machine/analytics/machines-summary-daily-cached (controller route)
+  // GET /api/machine/analytics/machines-summary-daily-cached
   // Returns daily machine summary from totals-daily cache; falls back to real-time if no cache.
   router.get(
-    ["/machines-summary-daily-cached", "/analytics/machines-summary-daily-cached"],
+    "/machine/analytics/machines-summary-daily-cached",
     async (req, res) => {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
 
       const today = new Date();
-      const chicagoTime = new Date(
-        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
       );
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
       logger.info(
         `[machineSessions] Fetching daily cached machines summary for date: ${dateStr}, serial: ${
@@ -268,7 +267,7 @@ function constructor(server) {
       }
 
       const cacheRecords = await db
-        .collection("totals-daily")
+        .collection(config.totalsDailyCollectionName)
         .find(filter)
         .toArray();
 
@@ -324,10 +323,10 @@ function constructor(server) {
           rangeEnd = new Date(timeRange.end);
         } else {
           const todayFallback = new Date();
-          const chicagoTimeFallback = new Date(
-            todayFallback.toLocaleString("en-US", { timeZone: "America/Chicago" })
+          const wallClockFallback = new Date(
+            todayFallback.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
           );
-          rangeStart = new Date(chicagoTimeFallback.setHours(0, 0, 0, 0));
+          rangeStart = new Date(wallClockFallback.setHours(0, 0, 0, 0));
           rangeEnd = new Date();
         }
 
@@ -434,11 +433,11 @@ function constructor(server) {
     }
   );
 
-  // GET /api/alpha/analytics/machine-dashboard-daily-cached (legacy)
-  // GET /api/machine/analytics/machine-dashboard-daily-cached (controller route)
+  // GET /api/machine/analytics/machine-dashboard-daily-cached
   // Returns machine dashboard from totals-daily and hourly-totals cache.
+  // 
   router.get(
-    ["/machine-dashboard-daily-cached", "/analytics/machine-dashboard-daily-cached"],
+    "/machine/analytics/machine-dashboard-daily-cached",
     async (req, res) => {
     try {
       const serialParam =
@@ -450,12 +449,12 @@ function constructor(server) {
         : null;
 
       const today = new Date();
-      const chicagoTime = new Date(
-        today.toLocaleString("en-US", { timeZone: "America/Chicago" })
+      const wallClockNow = new Date(
+        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
       );
-      const dateStr = chicagoTime.toISOString().split("T")[0];
+      const dateStr = wallClockNow.toISOString().split("T")[0];
 
-      const cacheCollection = db.collection("totals-daily");
+      const cacheCollection = db.collection(config.totalsDailyCollectionName);
       const machineFilter = {
         entityType: "machine",
         date: dateStr,
@@ -494,6 +493,10 @@ function constructor(server) {
       ];
 
       const activeShiftsDashboard = await loadActiveShifts(db).catch(() => []);
+      const shiftHourEnvelope = getShiftDayHourEnvelope(
+        activeShiftsDashboard,
+        wallClockNow
+      );
       const shiftElapsedCacheDashboard = new Map();
 
       const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
@@ -506,7 +509,7 @@ function constructor(server) {
             })
             .toArray(),
           db
-            .collection("hourly-totals")
+            .collection(config.totalsHourlyCollectionName)
             .find({
               entityType: "machine-item",
               date: dateStr,
@@ -521,7 +524,7 @@ function constructor(server) {
             })
             .toArray(),
           db
-            .collection("hourly-totals")
+            .collection(config.totalsHourlyCollectionName)
             .find({
               entityType: "operator-machine",
               date: dateStr,
@@ -558,7 +561,12 @@ function constructor(server) {
             : new Date(`${dateStr}T00:00:00.000Z`);
           const sessionEnd = record.timeRange?.end
             ? new Date(record.timeRange.end)
-            : chicagoTime;
+            : wallClockNow;
+
+          const cacheDateForCharts =
+            typeof record.date === "string" && record.date.trim()
+              ? record.date.trim()
+              : dateStr;
 
           const dashShiftKey = `${sessionStart.getTime()}|${sessionEnd.getTime()}`;
           const shiftElapsedMsDash = shiftElapsedCacheDashboard.has(dashShiftKey)
@@ -579,12 +587,16 @@ function constructor(server) {
           const machineItemHourly = machineItemHourlyBySerial.get(serial) || [];
           const itemHourlyStack = buildItemHourlyStackFromRecords(
             machineItemHourly,
-            sessionStart
+            sessionStart,
+            shiftHourEnvelope,
+            cacheDateForCharts
           );
           const operatorMachineHourly = operatorMachineHourlyBySerial.get(serial) || [];
           const operatorEfficiency = buildOperatorEfficiencyFromRecords(
             operatorMachineHourly,
-            sessionStart
+            sessionStart,
+            shiftHourEnvelope,
+            cacheDateForCharts
           );
           const currentOperators = await buildCurrentOperators(db, serial);
 
@@ -608,7 +620,7 @@ function constructor(server) {
             },
             operatorEfficiency,
             currentOperators,
-            timestamp: record.lastUpdated || chicagoTime,
+            timestamp: record.lastUpdated || wallClockNow,
             sessionStart,
             sessionEnd,
           };
