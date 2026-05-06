@@ -4,6 +4,9 @@
 const express = require("express");
 const config = require("../../modules/config");
 const router = express.Router();
+const os = require("os");
+const jwt = require("jsonwebtoken");
+const { spawn } = require("child_process");
 const { DateTime, Duration, Interval } = require("luxon"); //For handling dates and times
 const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
@@ -18,6 +21,56 @@ function constructor(server) {
   const db = server.db;
   const logger = server.logger;
   const passport = server.passport;
+
+  function getBearerToken(req) {
+    const authHeader = req.headers["authorization"] || req.headers["Authorization"];
+    if (authHeader?.startsWith("Bearer ")) {
+      return authHeader.slice(7).trim();
+    }
+    return null;
+  }
+
+  function isRootUser(req) {
+    if (req.isAuthenticated?.() && req.user?.local?.username === "root") {
+      return true;
+    }
+
+    const token = getBearerToken(req);
+    if (!token || !config.jwtSecret) {
+      return false;
+    }
+
+    try {
+      const decoded = jwt.verify(token, config.jwtSecret);
+      return decoded?.username === "root";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function requireRoot(req, res, next) {
+    if (isRootUser(req)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      error: "Root user permission is required"
+    });
+  }
+
+  function scheduleLinuxReboot() {
+    const child = spawn(
+      "/bin/sh",
+      ["-c", "sleep 30 && sudo /sbin/shutdown -r now"],
+      {
+        detached: true,
+        stdio: "ignore"
+      }
+    );
+
+    child.unref();
+  }
 
 
 
@@ -1958,6 +2011,41 @@ function constructor(server) {
     } catch (error) {
       logger.error(`Error retrieving environment variables:`, error);
       res.status(500).json({ error: "Failed to retrieve environment variables" });
+    }
+  });
+
+  router.post("/reboot", requireRoot, (req, res) => {
+    const platform = os.platform();
+
+    if (platform !== "linux") {
+      return res.json({
+        success: false,
+        available: false,
+        platform,
+        message: `Server reboot is unavailable on ${platform}.`
+      });
+    }
+
+    try {
+      scheduleLinuxReboot();
+      logger.warn("Root user scheduled server reboot in 30 seconds from web utilities route.");
+
+      return res.json({
+        success: true,
+        available: true,
+        platform,
+        scheduledForSeconds: 30,
+        message: "Server reboot has been scheduled for 30 seconds from now."
+      });
+    } catch (error) {
+      logger.error("Failed to schedule server reboot:", error);
+      return res.status(500).json({
+        success: false,
+        available: true,
+        platform,
+        error: "Failed to schedule server reboot",
+        details: error.message
+      });
     }
   });
 
