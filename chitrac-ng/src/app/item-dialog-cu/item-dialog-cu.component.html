@@ -34,7 +34,7 @@
     <mat-slide-toggle labelPosition="before" formControlName="active">Active</mat-slide-toggle>
   </mat-dialog-content>
   <mat-dialog-actions>
-    <button mat-button cdkFocusInitial [mat-dialog-close]="'cancel'">Cancel</button>
+    <button mat-button cdkFocusInitial [mat-dialog-close]="null">Cancel</button>
     <button mat-button [mat-dialog-close]="item" [disabled]="!itemFormGroup.valid">Ok</button>
   </mat-dialog-actions>
   <br />

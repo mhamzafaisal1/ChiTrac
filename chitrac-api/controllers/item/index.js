@@ -110,7 +110,7 @@ function constructor(server) {
 				timestamp: new Date().toISOString()
 			});
 
-			let results = configService.deleteConfiguration(collection, id);
+			const results = await configService.deleteConfiguration(collection, id);
 			
 			logger.info('[deleteItem] Item deleted successfully:', {
 				id: id,
