@@ -198,7 +198,7 @@ export class ItemGridComponent implements OnInit, OnDestroy {
             };
           } else {
             retryItem.error = {
-              message: err.message || 'Operation failed',
+              message: err?.error?.message || err.message || 'Operation failed',
               details: []
             };
           }

@@ -25,6 +25,27 @@ function constructor(server) {
 	const configService = require('../../services/mongo/');
 	const itemValidator = require('../../middleware/itemValidator')(server);
 
+	// Block item configuration updates unless every machine is explicitly Offline (-1).
+	async function ensureAllMachinesOffline(req, res, next) {
+		try {
+			const tickerCollection = db.collection(config.stateTickerCollectionName);
+			const onlineMachine = await tickerCollection.findOne(
+				{ 'status.code': { $ne: -1 } },
+				{ projection: { _id: 0, machine: 1, status: 1 } }
+			);
+
+			if (onlineMachine) {
+				return res.status(409).json({
+					message: 'Cannot update item configuration while machines are online.'
+				});
+			}
+
+			next();
+		} catch (error) {
+			next(error);
+		}
+	}
+
 	/*** Service consumption functions */
 	async function getItemXML(req, res, next) {
 		try {
@@ -159,8 +180,8 @@ function constructor(server) {
 	router.get('/item/new-id', getNewItemId);
 
 	/** POST / PUT routes */
-	router.post('/item/config', itemValidator, upsertItem);
-	router.put('/item/config/:id', itemValidator, upsertItem);
+	router.post('/item/config', itemValidator, ensureAllMachinesOffline, upsertItem);
+	router.put('/item/config/:id', itemValidator, ensureAllMachinesOffline, upsertItem);
 
 	/** DELETE routes */
 	router.delete('/item/config/:id', deleteItem);
