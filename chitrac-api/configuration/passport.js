@@ -125,6 +125,9 @@ module.exports = function(passport, server) {
             const userFind = await userCollection.find({ 'local.username': username }).toArray();
             if (userFind.length) {
                 const user = userFind[0]
+				if (user.active === false) {
+                    return callback(null, false, req.flash('messages', 'User account is inactive.'));
+                }
 				if (!bcrypt.compareSync(password, user.local.password)) {
                     return callback(null, false, req.flash('messages', 'Oops! Wrong password.'));
                 } else {

@@ -1,0 +1,202 @@
+import { AfterViewInit, Component, OnInit, ViewChild } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
+import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatSort, MatSortModule } from '@angular/material/sort';
+import { MatTableDataSource, MatTableModule } from '@angular/material/table';
+import { MatTooltipModule } from '@angular/material/tooltip';
+
+import { ManagedUser, UserManagementService, UserSaveRequest } from '../services/user-management.service';
+
+@Component({
+  selector: 'app-user-management',
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatCardModule,
+    MatDividerModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatPaginatorModule,
+    MatSelectModule,
+    MatSlideToggleModule,
+    MatSnackBarModule,
+    MatSortModule,
+    MatTableModule,
+    MatTooltipModule
+  ],
+  templateUrl: './user-management.component.html',
+  styleUrl: './user-management.component.scss'
+})
+export class UserManagementComponent implements OnInit, AfterViewInit {
+  users: ManagedUser[] = [];
+  dataSource = new MatTableDataSource<ManagedUser>([]);
+  displayedColumns: string[] = ['username', 'email', 'role', 'active', 'updatedAt', 'actions'];
+  selectedUser: ManagedUser | null = null;
+  isSaving = false;
+  isLoading = false;
+
+  userFormGroup = new FormGroup({
+    username: new FormControl('', [Validators.required, Validators.minLength(4)]),
+    email: new FormControl(''),
+    role: new FormControl('user', [Validators.required]),
+    groups: new FormControl(''),
+    restrictions: new FormControl(''),
+    active: new FormControl(true),
+    password: new FormControl('', [Validators.minLength(6)])
+  });
+
+  @ViewChild(MatPaginator) paginator!: MatPaginator;
+  @ViewChild(MatSort) sort!: MatSort;
+
+  constructor(
+    private userManagementService: UserManagementService,
+    private snackBar: MatSnackBar
+  ) {}
+
+  ngOnInit(): void {
+    this.loadUsers();
+  }
+
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
+  }
+
+  loadUsers(): void {
+    this.isLoading = true;
+    this.userManagementService.getUsers().subscribe({
+      next: (res) => {
+        this.users = res.users;
+        this.dataSource.data = res.users;
+        this.isLoading = false;
+      },
+      error: (err) => {
+        this.isLoading = false;
+        this.showError(err, 'Failed to load users');
+      }
+    });
+  }
+
+  newUser(): void {
+    this.selectedUser = null;
+    this.userFormGroup.reset({
+      username: '',
+      email: '',
+      role: 'user',
+      groups: '',
+      restrictions: '',
+      active: true,
+      password: ''
+    });
+  }
+
+  editUser(user: ManagedUser): void {
+    this.selectedUser = user;
+    this.userFormGroup.reset({
+      username: user.username,
+      email: user.email || '',
+      role: user.role || 'user',
+      groups: (user.groups || []).join(', '),
+      restrictions: (user.restrictions || []).join(', '),
+      active: user.active !== false,
+      password: ''
+    });
+  }
+
+  saveUser(): void {
+    if (this.userFormGroup.invalid) {
+      this.userFormGroup.markAllAsTouched();
+      return;
+    }
+
+    const value = this.userFormGroup.value;
+    const password = `${value.password || ''}`;
+    const payload: UserSaveRequest = {
+      username: `${value.username || ''}`.trim(),
+      email: `${value.email || ''}`.trim(),
+      role: `${value.role || 'user'}`.trim(),
+      groups: this.parseList(value.groups),
+      restrictions: this.parseList(value.restrictions),
+      active: value.active !== false
+    };
+
+    if (password) {
+      payload.password = password;
+    }
+
+    if (!this.selectedUser && !payload.password) {
+      this.userFormGroup.get('password')?.setErrors({ required: true });
+      this.userFormGroup.get('password')?.markAsTouched();
+      return;
+    }
+
+    this.isSaving = true;
+    const request$ = this.selectedUser
+      ? this.userManagementService.updateUser(this.selectedUser._id, payload)
+      : this.userManagementService.createUser(payload);
+
+    request$.subscribe({
+      next: (res) => {
+        this.isSaving = false;
+        this.applySavedUser(res.user);
+        this.editUser(res.user);
+        this.snackBar.open('User saved', 'Close', { duration: 3000 });
+      },
+      error: (err) => {
+        this.isSaving = false;
+        this.showError(err, 'Failed to save user');
+      }
+    });
+  }
+
+  deleteUser(user: ManagedUser): void {
+    if (!confirm(`Delete ${user.username}?`)) return;
+
+    this.userManagementService.deleteUser(user._id).subscribe({
+      next: () => {
+        this.snackBar.open('User deleted', 'Close', { duration: 3000 });
+        this.loadUsers();
+        if (this.selectedUser?._id === user._id) {
+          this.newUser();
+        }
+      },
+      error: (err) => this.showError(err, 'Failed to delete user')
+    });
+  }
+
+  formatDate(date: Date | null): string {
+    if (!date) return '-';
+    return new Date(date).toLocaleString();
+  }
+
+  private parseList(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map(x => `${x}`.trim()).filter(Boolean);
+    return `${value || ''}`.split(',').map(x => x.trim()).filter(Boolean);
+  }
+
+  private applySavedUser(user: ManagedUser): void {
+    const index = this.users.findIndex(x => x._id === user._id);
+    this.users = index >= 0
+      ? [...this.users.slice(0, index), user, ...this.users.slice(index + 1)]
+      : [...this.users, user];
+    this.dataSource.data = this.users;
+  }
+
+  private showError(err: any, fallback: string): void {
+    const message = err?.error?.error || err?.error?.message || err?.message || fallback;
+    this.snackBar.open(message, 'Close', { duration: 5000 });
+  }
+}

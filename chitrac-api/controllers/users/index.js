@@ -1,0 +1,193 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { ObjectId } = require('mongodb');
+const config = require('../../modules/config');
+
+module.exports = function(server) {
+  const router = express.Router();
+  const db = server.db;
+  const logger = server.logger;
+  const userCollection = db.collection('user');
+
+  function extractToken(req) {
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+    if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
+    if (typeof req.query?.token === 'string') return req.query.token;
+    if (typeof req.body?.token === 'string') return req.body.token;
+    return null;
+  }
+
+  function requireRoot(req, res, next) {
+    if (config.enableApiTokenCheck === false) {
+      req.tokenPayload = { bypassed: true, username: 'root', role: 'root' };
+      return next();
+    }
+
+    try {
+      const token = extractToken(req);
+      if (!token) return res.status(401).json({ error: 'Missing token' });
+
+      const payload = jwt.verify(token, config.jwtSecret);
+      const username = payload?.username || payload?.createdByUsername;
+      const role = payload?.role;
+
+      if (username !== 'root' && role !== 'root' && role !== 'admin') {
+        return res.status(403).json({ error: 'Root or admin access required' });
+      }
+
+      req.tokenPayload = payload;
+      return next();
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+
+  function normalizeStringArray(value) {
+    if (Array.isArray(value)) {
+      return value.map(x => `${x}`.trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return value.split(',').map(x => x.trim()).filter(Boolean);
+    }
+    return [];
+  }
+
+  function sanitizeUser(user) {
+    if (!user) return null;
+    return {
+      _id: user._id,
+      username: user.local?.username || '',
+      email: user.email || '',
+      role: user.role || 'user',
+      groups: Array.isArray(user.groups) ? user.groups : [],
+      restrictions: Array.isArray(user.restrictions) ? user.restrictions : [],
+      active: user.active !== false,
+      createdAt: user.createdAt || null,
+      updatedAt: user.updatedAt || null
+    };
+  }
+
+  function buildUserUpdate(body, includePassword) {
+    const update = {
+      'local.username': `${body.username || ''}`.trim(),
+      email: `${body.email || ''}`.trim(),
+      role: `${body.role || 'user'}`.trim() || 'user',
+      groups: normalizeStringArray(body.groups),
+      restrictions: normalizeStringArray(body.restrictions),
+      active: body.active !== false,
+      updatedAt: new Date()
+    };
+
+    if (includePassword && body.password) {
+      update['local.password'] = bcrypt.hashSync(body.password, bcrypt.genSaltSync(10));
+    }
+
+    return update;
+  }
+
+  router.get('/', requireRoot, async (req, res) => {
+    try {
+      const users = await userCollection.find({})
+        .sort({ 'local.username': 1 })
+        .toArray();
+      res.json({ users: users.map(sanitizeUser) });
+    } catch (error) {
+      logger?.error?.('Error fetching users:', error);
+      res.status(500).json({ error: 'Failed to fetch users' });
+    }
+  });
+
+  router.post('/', requireRoot, async (req, res) => {
+    try {
+      const username = `${req.body.username || ''}`.trim();
+      const password = `${req.body.password || ''}`;
+
+      if (username.length < 4) {
+        return res.status(400).json({ error: 'Username must be at least 4 characters' });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+
+      const existing = await userCollection.findOne({ 'local.username': username });
+      if (existing) {
+        return res.status(409).json({ error: 'That username is already taken' });
+      }
+
+      const now = new Date();
+      const newUser = {
+        local: {
+          username,
+          password: bcrypt.hashSync(password, bcrypt.genSaltSync(10))
+        },
+        email: `${req.body.email || ''}`.trim(),
+        role: `${req.body.role || 'user'}`.trim() || 'user',
+        groups: normalizeStringArray(req.body.groups),
+        restrictions: normalizeStringArray(req.body.restrictions),
+        active: req.body.active !== false,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      const result = await userCollection.insertOne(newUser);
+      const saved = await userCollection.findOne({ _id: result.insertedId });
+      res.status(201).json({ user: sanitizeUser(saved) });
+    } catch (error) {
+      logger?.error?.('Error creating user:', error);
+      res.status(500).json({ error: 'Failed to create user' });
+    }
+  });
+
+  router.put('/:id', requireRoot, async (req, res) => {
+    try {
+      const userId = new ObjectId(req.params.id);
+      const username = `${req.body.username || ''}`.trim();
+
+      if (username.length < 4) {
+        return res.status(400).json({ error: 'Username must be at least 4 characters' });
+      }
+      if (req.body.password && `${req.body.password}`.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+
+      const duplicate = await userCollection.findOne({
+        'local.username': username,
+        _id: { $ne: userId }
+      });
+      if (duplicate) {
+        return res.status(409).json({ error: 'That username is already taken' });
+      }
+
+      const update = buildUserUpdate(req.body, !!req.body.password);
+      const result = await userCollection.updateOne({ _id: userId }, { $set: update });
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const saved = await userCollection.findOne({ _id: userId });
+      res.json({ user: sanitizeUser(saved) });
+    } catch (error) {
+      logger?.error?.('Error updating user:', error);
+      res.status(500).json({ error: 'Failed to update user' });
+    }
+  });
+
+  router.delete('/:id', requireRoot, async (req, res) => {
+    try {
+      const userId = new ObjectId(req.params.id);
+      const result = await userCollection.deleteOne({ _id: userId });
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      res.json({ success: true, message: 'User deleted' });
+    } catch (error) {
+      logger?.error?.('Error deleting user:', error);
+      res.status(500).json({ error: 'Failed to delete user' });
+    }
+  });
+
+  return router;
+};

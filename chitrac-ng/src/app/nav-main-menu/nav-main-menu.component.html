@@ -140,6 +140,9 @@
       <a mat-list-item routerLink="/ng/settings/tokens" (click)="closeMenu()">
         <mat-icon>vpn_key</mat-icon><span>API Tokens</span>
       </a>
+      <a mat-list-item *ngIf="user.username == 'root'" routerLink="/ng/settings/root/users" (click)="closeMenu()">
+        <mat-icon>manage_accounts</mat-icon><span>Users</span>
+      </a>
       <a mat-list-item routerLink="/ng/settings/server-logs" (click)="closeMenu()">
         <mat-icon>description</mat-icon><span>Server Logs</span>
       </a>
