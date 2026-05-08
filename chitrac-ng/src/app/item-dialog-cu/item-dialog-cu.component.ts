@@ -15,6 +15,7 @@ import {
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 
 /*** Model Imports */
 import { ItemConfig } from '../shared/models/item.model';
@@ -33,7 +34,8 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         MatDialogContent,
         MatDialogActions,
         MatDialogClose,
-        MatSlideToggleModule],
+        MatSlideToggleModule,
+        MatCheckboxModule],
     templateUrl: './item-dialog-cu.component.html',
     styleUrl: './item-dialog-cu.component.scss'
 })
@@ -61,7 +63,8 @@ export class ItemDialogCuComponent implements OnInit {
       number: new FormControl(this.item.number, [Validators.required, Validators.min(1)]),
       name: new FormControl(this.item.name, [Validators.required, Validators.minLength(4)]),
       active: new FormControl(this.item.active, [Validators.required]),
-      weight: new FormControl(this.item.weight)  // optional
+      weight: new FormControl(this.item.weight),  // optional
+      applyAfterMachinesOffline: new FormControl(false)
     });
 
     if (this.error) this.itemFormGroup.markAsDirty();
@@ -85,4 +88,18 @@ export class ItemDialogCuComponent implements OnInit {
       }
     });
   };
+
+  submit() {
+    if (!this.itemFormGroup.valid) return;
+
+    const formValue = this.itemFormGroup.getRawValue();
+    this.dialogRef.close({
+      ...this.item,
+      number: formValue.number,
+      name: formValue.name,
+      active: formValue.active,
+      weight: formValue.weight,
+      applyAfterMachinesOffline: formValue.applyAfterMachinesOffline
+    });
+  }
 }

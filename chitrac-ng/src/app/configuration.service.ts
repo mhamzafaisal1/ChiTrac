@@ -59,8 +59,11 @@ export class ConfigurationService {
     return this.http.get<{number: number}>('/api/item/new-id');
   }
 
-  public postItemConfig(item: ItemConfig): Observable<ItemConfig> {
-    return this.http.post<ItemConfig>('/api/item/config', item);
+  public postItemConfig(item: ItemConfig, applyAfterMachinesOffline = false): Observable<ItemConfig> {
+    const url = applyAfterMachinesOffline
+      ? '/api/item/config?applyAfterMachinesOffline=true'
+      : '/api/item/config';
+    return this.http.post<ItemConfig>(url, item);
   }
 
   // public putItemConfig(item: ItemConfig): Observable<ItemConfig> {
@@ -69,8 +72,11 @@ export class ConfigurationService {
 
   
 
-  public putItemConfig(item: ItemConfig): Observable<ItemConfig> {
-    return this.http.put<ItemConfig>(`/api/item/config/${item._id}`, item);
+  public putItemConfig(item: ItemConfig, applyAfterMachinesOffline = false): Observable<ItemConfig> {
+    const url = applyAfterMachinesOffline
+      ? `/api/item/config/${item._id}?applyAfterMachinesOffline=true`
+      : `/api/item/config/${item._id}`;
+    return this.http.put<ItemConfig>(url, item);
   }
   
 

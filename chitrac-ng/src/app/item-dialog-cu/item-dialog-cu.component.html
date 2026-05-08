@@ -32,10 +32,14 @@
     
     <br />
     <mat-slide-toggle labelPosition="before" formControlName="active">Active</mat-slide-toggle>
+    <br />
+    <mat-checkbox formControlName="applyAfterMachinesOffline">
+      Apply these changes after all machines are done running
+    </mat-checkbox>
   </mat-dialog-content>
   <mat-dialog-actions>
     <button mat-button cdkFocusInitial [mat-dialog-close]="null">Cancel</button>
-    <button mat-button [mat-dialog-close]="item" [disabled]="!itemFormGroup.valid">Ok</button>
+    <button type="button" mat-button (click)="submit()" [disabled]="!itemFormGroup.valid">Ok</button>
   </mat-dialog-actions>
   <br />
   <div *ngIf="error" style="text-align: center; width: 100%; color: red;">

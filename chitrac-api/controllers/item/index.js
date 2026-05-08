@@ -4,6 +4,7 @@
 /** MODULE REQUIRES */
 const express = require('express');
 const router = express.Router();
+const schedule = require('node-schedule');
 const config = require('../../modules/config');
 const { parseAndValidateQueryParams, formatDuration } = require("../../utils/time");
 const {
@@ -12,6 +13,8 @@ const {
   getItemsSessionDataForPartialDays,
   combineItemsHybridData,
 } = require("../../utils/itemFunctions");
+
+const DELAYED_ITEM_JOB_PREFIX = 'delayedItemConfigApply:';
 
 module.exports = function(server) {
 	return constructor(server);
@@ -25,15 +28,27 @@ function constructor(server) {
 	const configService = require('../../services/mongo/');
 	const itemValidator = require('../../middleware/itemValidator')(server);
 
+	function getApplyChangeWaitTimeMs() {
+		const minutes = Number(config.applyChangeWaitTime) || 10;
+		return Math.max(1, minutes) * 60 * 1000;
+	}
+
+	function wantsDelayedApply(req) {
+		return req.query.applyAfterMachinesOffline === 'true';
+	}
+
+	async function findOnlineMachine() {
+		const tickerCollection = db.collection(config.stateTickerCollectionName);
+		return tickerCollection.findOne(
+			{ 'status.code': { $ne: -1 } },
+			{ projection: { _id: 0, machine: 1, status: 1 } }
+		);
+	}
+
 	// Block item configuration updates unless every machine is explicitly Offline (-1).
 	async function ensureAllMachinesOffline(req, res, next) {
 		try {
-			const tickerCollection = db.collection(config.stateTickerCollectionName);
-			const onlineMachine = await tickerCollection.findOne(
-				{ 'status.code': { $ne: -1 } },
-				{ projection: { _id: 0, machine: 1, status: 1 } }
-			);
-
+			const onlineMachine = await findOnlineMachine();
 			if (onlineMachine) {
 				return res.status(409).json({
 					message: 'Cannot update item configuration while machines are online.'
@@ -41,6 +56,112 @@ function constructor(server) {
 			}
 
 			next();
+		} catch (error) {
+			next(error);
+		}
+	}
+
+	function setScheduledJob(jobKey, job) {
+		if (!server.scheduledJobs) server.scheduledJobs = {};
+		server.scheduledJobs[jobKey] = job;
+	}
+
+	function clearScheduledJob(jobKey) {
+		if (!server.scheduledJobs) return;
+		server.scheduledJobs[jobKey] = null;
+	}
+
+	async function applyItemConfigChange(id, itemPayload) {
+		const updates = { ...itemPayload };
+		if (updates._id) delete updates._id;
+		if (updates.weight === undefined) updates.weight = null;
+
+		return configService.upsertConfiguration(
+			collection,
+			id ? { _id: id, ...updates } : updates,
+			true,
+			'number'
+		);
+	}
+
+	function scheduleDelayedItemApply({ id, itemPayload, originalRequestTimestamp, attempt = 1 }) {
+		const waitTimeMs = getApplyChangeWaitTimeMs();
+		const runAt = new Date(Date.now() + waitTimeMs);
+		const jobKey = `${DELAYED_ITEM_JOB_PREFIX}${originalRequestTimestamp}:${attempt}`;
+
+		const job = schedule.scheduleJob(runAt, async () => {
+			clearScheduledJob(jobKey);
+			try {
+				const onlineMachine = await findOnlineMachine();
+				if (onlineMachine) {
+					logger.info('[delayedItemApply] Machines still online; scheduling next attempt.', {
+						id,
+						number: itemPayload.number,
+						originalRequestTimestamp,
+						attempt,
+						nextAttempt: attempt + 1
+					});
+					scheduleDelayedItemApply({
+						id,
+						itemPayload,
+						originalRequestTimestamp,
+						attempt: attempt + 1
+					});
+					return;
+				}
+
+				await applyItemConfigChange(id, itemPayload);
+				logger.info('[delayedItemApply] Item config change applied.', {
+					id,
+					number: itemPayload.number,
+					originalRequestTimestamp,
+					attempt
+				});
+			} catch (error) {
+				logger.error('[delayedItemApply] Apply attempt failed.', {
+					id,
+					number: itemPayload.number,
+					originalRequestTimestamp,
+					attempt,
+					error: error.message,
+					stack: error.stack
+				});
+			}
+		});
+
+		if (!job) {
+			throw new Error('Could not schedule delayed item config apply job.');
+		}
+
+		setScheduledJob(jobKey, job);
+		logger.info('[delayedItemApply] Scheduled item config change.', {
+			jobKey,
+			id,
+			number: itemPayload.number,
+			originalRequestTimestamp,
+			attempt,
+			runAt: runAt.toISOString()
+		});
+
+		return { jobKey, runAt };
+	}
+
+	function scheduleDelayedItemApplyHandler(req, res, next) {
+		try {
+			const originalRequestTimestamp = new Date().toISOString();
+			const scheduled = scheduleDelayedItemApply({
+				id: req.params.id,
+				itemPayload: { ...req.body },
+				originalRequestTimestamp
+			});
+
+			return res.status(202).json({
+				message: 'Item configuration changes will be applied after all machines are offline.',
+				scheduled: true,
+				originalRequestTimestamp,
+				nextAttemptAt: scheduled.runAt.toISOString(),
+				jobKey: scheduled.jobKey
+			});
 		} catch (error) {
 			next(error);
 		}
@@ -91,17 +212,7 @@ function constructor(server) {
 				timestamp: new Date().toISOString()
 			});
 	
-			if (updates._id) delete updates._id;
-	
-			// Ensure weight is explicitly null if not provided (so it passes schema)
-			if (updates.weight === undefined) updates.weight = null;
-	
-			const result = await configService.upsertConfiguration(
-				collection,
-				id ? { _id: id, ...updates } : updates,
-				true,
-				'number'
-			);
+			const result = await applyItemConfigChange(id, updates);
 
 			logger.info('[upsertItem] Item updated successfully:', {
 				id: id,
@@ -180,8 +291,14 @@ function constructor(server) {
 	router.get('/item/new-id', getNewItemId);
 
 	/** POST / PUT routes */
-	router.post('/item/config', itemValidator, ensureAllMachinesOffline, upsertItem);
-	router.put('/item/config/:id', itemValidator, ensureAllMachinesOffline, upsertItem);
+	router.post('/item/config', itemValidator, (req, res, next) => {
+		if (wantsDelayedApply(req)) return scheduleDelayedItemApplyHandler(req, res, next);
+		return ensureAllMachinesOffline(req, res, next);
+	}, upsertItem);
+	router.put('/item/config/:id', itemValidator, (req, res, next) => {
+		if (wantsDelayedApply(req)) return scheduleDelayedItemApplyHandler(req, res, next);
+		return ensureAllMachinesOffline(req, res, next);
+	}, upsertItem);
 
 	/** DELETE routes */
 	router.delete('/item/config/:id', deleteItem);

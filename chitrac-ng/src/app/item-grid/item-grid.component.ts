@@ -176,10 +176,11 @@ export class ItemGridComponent implements OnInit, OnDestroy {
         return;
       }
 
+      const applyAfterMachinesOffline = !!dialogItem.applyAfterMachinesOffline;
       const payload = this.sanitize(dialogItem);
       const action$ = payload._id
-        ? this.configurationService.putItemConfig(payload)
-        : this.configurationService.postItemConfig(payload);
+        ? this.configurationService.putItemConfig(payload, applyAfterMachinesOffline)
+        : this.configurationService.postItemConfig(payload, applyAfterMachinesOffline);
 
       action$.subscribe({
         next: (res) => {
