@@ -7,6 +7,18 @@ import { HttpClient } from '@angular/common/http';
 import { map } from 'rxjs/operators';
 import { BehaviorSubject, Observable } from 'rxjs';
 
+export const PermissionLevels = {
+  apiTokens: 1,
+  serverLogs: 1,
+  users: 2,
+  operators: 4,
+  reports: 4,
+  shifts: 4,
+  dashboards: 7,
+  profile: 7,
+  settings: 7
+} as const;
+
 @Injectable({
   providedIn: 'root'
 })
@@ -76,6 +88,11 @@ export class UserService {
 
   public getToken(): string | null {
     return localStorage.getItem('token');
+  }
+
+  public hasPermissionLevel(requiredLevel: number, user: User | null = this.userSubject.value): boolean {
+    const userLevel = user?.permissions?.level;
+    return typeof userLevel === 'number' && userLevel <= requiredLevel;
   }
 
   public getProfile() {

@@ -23,26 +23,11 @@ export class AuthGuard implements CanActivate {
     });*/
     let user: User = this.user;
 
-    let isSettings = false;
-    let isProfile = false;
-
-    for (const urlPart of route.url) {
-      if (urlPart.path == 'settings') {
-        isSettings = true;
-      }
-      if (urlPart.path == 'profile') {
-        isProfile = true;
-      }
-    }
-
     if (user && user.username != null) {
-      if (isSettings && !isProfile) {
-        const requiredLevel = route.data?.['requiredPermissionLevel'] ?? 0;
-        const userLevel = user.permissions?.level;
-        if (typeof userLevel !== 'number' || userLevel > requiredLevel) {
-          this.router.navigate(['/ng/settings/profile']);
-          return false;
-        }
+      const requiredLevel = route.data?.['requiredPermissionLevel'];
+      if (typeof requiredLevel === 'number' && !this.userService.hasPermissionLevel(requiredLevel, user)) {
+        this.router.navigate(['/ng/settings/profile']);
+        return false;
       }
       return true;
     }
