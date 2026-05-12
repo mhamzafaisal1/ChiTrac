@@ -134,6 +134,9 @@
       <a mat-list-item *ngIf="false" href="#">
         <mat-icon>local_laundry_service</mat-icon><span>Machines</span>
       </a>
+      <a mat-list-item routerLink="/ng/settings/profile" (click)="closeMenu()">
+        <mat-icon>account_circle</mat-icon><span>Profile</span>
+      </a>
       <a mat-list-item routerLink="/ng/settings/operators" (click)="closeMenu()">
         <mat-icon>person</mat-icon><span>Operators</span>
       </a>

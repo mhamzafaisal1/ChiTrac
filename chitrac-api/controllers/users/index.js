@@ -43,6 +43,31 @@ module.exports = function(server) {
     }
   }
 
+  function requireUser(req, res, next) {
+    if (config.enableApiTokenCheck === false) {
+      req.tokenPayload = { bypassed: true };
+      return next();
+    }
+
+    try {
+      const token = extractToken(req);
+      if (!token) return res.status(401).json({ error: 'Missing token' });
+
+      req.tokenPayload = jwt.verify(token, config.jwtSecret);
+      return next();
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  }
+
+  function getTokenUserId(payload) {
+    const rawUserId = payload?.userId;
+    if (!rawUserId) return null;
+    if (typeof rawUserId === 'string') return rawUserId;
+    if (typeof rawUserId === 'object' && rawUserId.$oid) return rawUserId.$oid;
+    return `${rawUserId}`;
+  }
+
   function normalizeStringArray(value) {
     if (Array.isArray(value)) {
       return value.map(x => `${x}`.trim()).filter(Boolean);
@@ -85,6 +110,90 @@ module.exports = function(server) {
 
     return update;
   }
+
+  function signUserToken(user) {
+    return jwt.sign(
+      {
+        userId: user._id,
+        username: user.local?.username,
+        role: user.role || 'user'
+      },
+      config.jwtSecret,
+      { expiresIn: '24h' }
+    );
+  }
+
+  router.get('/me', requireUser, async (req, res) => {
+    try {
+      const tokenUserId = getTokenUserId(req.tokenPayload);
+      if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
+
+      const user = await userCollection.findOne({ _id: new ObjectId(tokenUserId) });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (user.active === false) return res.status(403).json({ error: 'User account is inactive' });
+
+      res.json({ user: sanitizeUser(user) });
+    } catch (error) {
+      logger?.error?.('Error fetching profile:', error);
+      res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+  });
+
+  router.put('/me', requireUser, async (req, res) => {
+    try {
+      const tokenUserId = getTokenUserId(req.tokenPayload);
+      if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
+
+      const userId = new ObjectId(tokenUserId);
+      const existingUser = await userCollection.findOne({ _id: userId });
+      if (!existingUser) return res.status(404).json({ error: 'User not found' });
+      if (existingUser.active === false) return res.status(403).json({ error: 'User account is inactive' });
+
+      const username = `${req.body.username || ''}`.trim();
+      const email = `${req.body.email || ''}`.trim();
+      const password = `${req.body.password || ''}`;
+      const currentPassword = `${req.body.currentPassword || ''}`;
+
+      if (username.length < 4) {
+        return res.status(400).json({ error: 'Username must be at least 4 characters' });
+      }
+
+      const duplicate = await userCollection.findOne({
+        'local.username': username,
+        _id: { $ne: userId }
+      });
+      if (duplicate) {
+        return res.status(409).json({ error: 'That username is already taken' });
+      }
+
+      const update = {
+        'local.username': username,
+        email,
+        updatedAt: new Date()
+      };
+
+      if (password) {
+        if (password.length < 6) {
+          return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+        if (!currentPassword || !bcrypt.compareSync(currentPassword, existingUser.local?.password || '')) {
+          return res.status(400).json({ error: 'Current password is required to change password' });
+        }
+        update['local.password'] = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
+      }
+
+      await userCollection.updateOne({ _id: userId }, { $set: update });
+      const saved = await userCollection.findOne({ _id: userId });
+
+      res.json({
+        user: sanitizeUser(saved),
+        token: signUserToken(saved)
+      });
+    } catch (error) {
+      logger?.error?.('Error updating profile:', error);
+      res.status(500).json({ error: 'Failed to update profile' });
+    }
+  });
 
   router.get('/', requireRoot, async (req, res) => {
     try {

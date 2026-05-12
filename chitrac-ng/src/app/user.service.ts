@@ -75,6 +75,22 @@ export class UserService {
   public getToken(): string | null {
     return localStorage.getItem('token');
   }
+
+  public getProfile() {
+    return this.http.get<any>('/api/users/me').pipe(map(x => x));
+  }
+
+  public updateProfile(profile: any) {
+    return this.http.put<any>('/api/users/me', profile).pipe(map(x => {
+      if (x.user && x.token) {
+        const userWithToken = { username: x.user.username, token: x.token };
+        localStorage.setItem('user', JSON.stringify(userWithToken));
+        localStorage.setItem('token', x.token);
+        this.userSubject.next(userWithToken);
+      }
+      return x;
+    }));
+  }
 }
 
 export class User {

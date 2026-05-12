@@ -1,0 +1,52 @@
+<div class="profile-container">
+  <div class="header">
+    <h2>User Profile</h2>
+  </div>
+
+  <form [formGroup]="profileFormGroup" (ngSubmit)="saveProfile()" class="profile-form">
+    <section class="form-section">
+      <h3>Account</h3>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Username</mat-label>
+        <input matInput formControlName="username" autocomplete="username">
+        <mat-error *ngIf="profileFormGroup.get('username')?.hasError('required')">Username is required</mat-error>
+        <mat-error *ngIf="profileFormGroup.get('username')?.hasError('minlength')">Use at least 4 characters</mat-error>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Email</mat-label>
+        <input matInput formControlName="email" autocomplete="email">
+      </mat-form-field>
+    </section>
+
+    <section class="form-section">
+      <h3>Password</h3>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Current Password</mat-label>
+        <input matInput type="password" formControlName="currentPassword" autocomplete="current-password">
+        <mat-error *ngIf="profileFormGroup.get('currentPassword')?.hasError('required')">Current password is required</mat-error>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>New Password</mat-label>
+        <input matInput type="password" formControlName="password" autocomplete="new-password">
+        <mat-error *ngIf="profileFormGroup.get('password')?.hasError('minlength')">Use at least 6 characters</mat-error>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Confirm New Password</mat-label>
+        <input matInput type="password" formControlName="confirmPassword" autocomplete="new-password">
+        <mat-error *ngIf="profileFormGroup.get('confirmPassword')?.hasError('mismatch')">Passwords do not match</mat-error>
+      </mat-form-field>
+    </section>
+
+    <div class="actions">
+      <button mat-flat-button color="primary" type="submit" [disabled]="isLoading || isSaving">
+        <mat-icon>save</mat-icon>
+        {{ isSaving ? 'Saving...' : 'Save Profile' }}
+      </button>
+    </div>
+  </form>
+</div>
