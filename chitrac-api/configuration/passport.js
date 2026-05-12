@@ -15,6 +15,11 @@ module.exports = function(passport, server) {
     const db = server.db;
     const userCollection = db.collection('user');
 
+    function normalizePermissionLevel(value, defaultLevel = 3) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
+    }
+
     // =========================================================================
     // passport session setup ==================================================
     // =========================================================================
@@ -83,8 +88,13 @@ module.exports = function(passport, server) {
                     if (req.body.role) {
                         newUser.role = req.body.role
                     }
+                    newUser.permissions = {
+                        level: normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel)
+                    }
                     if (req.body.groups) {
-                        newUser.groups = req.body.groups
+                        newUser.groups = Array.isArray(req.body.groups) ? req.body.groups : []
+                    } else {
+                        newUser.groups = []
                     }
                     if (req.body.restrictions) {
                         newUser.restrictions = req.body.restrictions

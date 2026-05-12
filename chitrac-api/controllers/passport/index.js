@@ -15,6 +15,23 @@ function constructor(server) {
     const logger = server.logger;
     const passport = server.passport;
 
+    function normalizePermissionLevel(value, defaultLevel = 3) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
+    }
+
+    function sanitizeUser(user) {
+        const userObject = { ...user.local };
+        delete userObject.password;
+        userObject.email = user.email || '';
+        userObject.role = user.role || 'user';
+        userObject.permissions = {
+            level: typeof user.permissions?.level === 'number' ? user.permissions.level : 3
+        };
+        userObject.groups = Array.isArray(user.groups) ? user.groups : [];
+        return userObject;
+    }
+
     router.get('/passport', (req, res, next) => {
         res.json(server.passport);
     });
@@ -89,18 +106,18 @@ function constructor(server) {
                     { 
                         userId: user._id,
                         username: user.local.username,
-                        role: user.role || 'user'
+                        role: user.role || 'user',
+                        permissions: {
+                            level: typeof user.permissions?.level === 'number' ? user.permissions.level : 3
+                        }
                     },
                     config.jwtSecret,
                     { expiresIn: '24h' }
                 );
                 
                 // Return user data and token
-                const userObject = { ...user.local };
-                delete userObject.password;
-                
                 res.json({
-                    user: userObject,
+                    user: sanitizeUser(user),
                     token: token
                 });
             });
@@ -109,10 +126,8 @@ function constructor(server) {
 
     router.get('/user', function(req, res) {
         if (req.isAuthenticated()) {
-            var userObject = req.user.local
-            delete userObject.password
             res.json({
-                user: userObject
+                user: sanitizeUser(req.user)
             })
         } else {
             sendFlashJSON(req, res)
@@ -164,8 +179,13 @@ function constructor(server) {
                 if (req.body.role) {
                     newUser.role = req.body.role
                 }
+                newUser.permissions = {
+                    level: normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel)
+                }
                 if (req.body.groups) {
-                    newUser.groups = req.body.groups
+                    newUser.groups = Array.isArray(req.body.groups) ? req.body.groups : []
+                } else {
+                    newUser.groups = []
                 }
                 if (req.body.restrictions) {
                     newUser.restrictions = req.body.restrictions

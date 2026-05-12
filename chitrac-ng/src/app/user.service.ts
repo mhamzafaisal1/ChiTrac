@@ -50,9 +50,11 @@ export class UserService {
     return this.http.get<any>('/api/passport/user').pipe(map(x => {
       // store user details and jwt token in local storage to keep user logged in between page refreshes
       if (x.user) {
-        localStorage.setItem('user', JSON.stringify(x.user));
-        this.userSubject.next(x.user);
-        return x.user;
+        const token = localStorage.getItem('token');
+        const userWithToken = token ? { ...x.user, token } : x.user;
+        localStorage.setItem('user', JSON.stringify(userWithToken));
+        this.userSubject.next(userWithToken);
+        return userWithToken;
       } else {
         localStorage.setItem('user', JSON.stringify({ username: null }));
         this.userSubject.next({ username: null });
@@ -83,7 +85,7 @@ export class UserService {
   public updateProfile(profile: any) {
     return this.http.put<any>('/api/users/me', profile).pipe(map(x => {
       if (x.user && x.token) {
-        const userWithToken = { username: x.user.username, token: x.token };
+        const userWithToken = { ...x.user, token: x.token };
         localStorage.setItem('user', JSON.stringify(userWithToken));
         localStorage.setItem('token', x.token);
         this.userSubject.next(userWithToken);
@@ -95,4 +97,7 @@ export class UserService {
 
 export class User {
   username: string;
+  permissions?: {
+    level: number;
+  };
 }

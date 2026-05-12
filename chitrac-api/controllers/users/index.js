@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
+const { assertPermissionLevel } = require('../../modules/permissions');
 
 module.exports = function(server) {
   const router = express.Router();
@@ -18,9 +19,9 @@ module.exports = function(server) {
     return null;
   }
 
-  function requireRoot(req, res, next) {
+  async function requireRoot(req, res, next) {
     if (config.enableApiTokenCheck === false) {
-      req.tokenPayload = { bypassed: true, username: 'root', role: 'root' };
+      req.tokenPayload = { bypassed: true, username: 'root', permissions: { level: 0 } };
       return next();
     }
 
@@ -29,17 +30,17 @@ module.exports = function(server) {
       if (!token) return res.status(401).json({ error: 'Missing token' });
 
       const payload = jwt.verify(token, config.jwtSecret);
-      const username = payload?.username || payload?.createdByUsername;
-      const role = payload?.role;
+      const tokenUserId = getTokenUserId(payload);
+      if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 
-      if (username !== 'root' && role !== 'root' && role !== 'admin') {
-        return res.status(403).json({ error: 'Root or admin access required' });
-      }
-
+      const user = await userCollection.findOne({ _id: new ObjectId(tokenUserId) });
+      assertPermissionLevel(user, 0);
       req.tokenPayload = payload;
+      req.authUser = user;
       return next();
     } catch (error) {
-      return res.status(401).json({ error: 'Invalid token' });
+      logger?.error?.('Permission check failed:', error);
+      return res.status(error.status || 401).json({ error: error.message || 'Invalid token' });
     }
   }
 
@@ -78,6 +79,11 @@ module.exports = function(server) {
     return [];
   }
 
+  function normalizePermissionLevel(value, defaultLevel = 3) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
+  }
+
   function sanitizeUser(user) {
     if (!user) return null;
     return {
@@ -85,6 +91,9 @@ module.exports = function(server) {
       username: user.local?.username || '',
       email: user.email || '',
       role: user.role || 'user',
+      permissions: {
+        level: typeof user.permissions?.level === 'number' ? user.permissions.level : 3
+      },
       groups: Array.isArray(user.groups) ? user.groups : [],
       restrictions: Array.isArray(user.restrictions) ? user.restrictions : [],
       active: user.active !== false,
@@ -98,6 +107,9 @@ module.exports = function(server) {
       'local.username': `${body.username || ''}`.trim(),
       email: `${body.email || ''}`.trim(),
       role: `${body.role || 'user'}`.trim() || 'user',
+      permissions: {
+        level: normalizePermissionLevel(body.permissions?.level ?? body.permissionLevel)
+      },
       groups: normalizeStringArray(body.groups),
       restrictions: normalizeStringArray(body.restrictions),
       active: body.active !== false,
@@ -116,7 +128,10 @@ module.exports = function(server) {
       {
         userId: user._id,
         username: user.local?.username,
-        role: user.role || 'user'
+        role: user.role || 'user',
+        permissions: {
+          level: typeof user.permissions?.level === 'number' ? user.permissions.level : 3
+        }
       },
       config.jwtSecret,
       { expiresIn: '24h' }
@@ -232,6 +247,9 @@ module.exports = function(server) {
         },
         email: `${req.body.email || ''}`.trim(),
         role: `${req.body.role || 'user'}`.trim() || 'user',
+        permissions: {
+          level: normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel)
+        },
         groups: normalizeStringArray(req.body.groups),
         restrictions: normalizeStringArray(req.body.restrictions),
         active: req.body.active !== false,

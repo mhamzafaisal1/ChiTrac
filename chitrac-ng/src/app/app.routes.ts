@@ -36,15 +36,15 @@ import { ShiftSettingsComponent } from './shift-management/shift-settings.compon
 
 export const routes: Routes = [
 	// Settings pages
-	{ path: 'ng/settings/operators', component: OperatorGridComponent },
-	{ path: 'ng/settings/items', component: ItemGridComponent },
-	{ path: 'ng/settings/machines', component: MachineGridComponent },
+	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
+	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
+	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
 	{ path: 'ng/settings/profile', component: UserProfileComponent, canActivate: [AuthGuard] },
-	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent },
-	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
-	{ path: 'ng/settings/root/users', component: UserManagementComponent, canActivate: [AuthGuard] },
-	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
-	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
+	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
+	{ path: 'ng/settings/root/users', component: UserManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
+	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
+	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 0 } },
 	
 	// Login/Auth
 	{ path: 'ng/login', component: UserLoginComponent },

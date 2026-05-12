@@ -24,23 +24,27 @@ export class AuthGuard implements CanActivate {
     let user: User = this.user;
 
     let isSettings = false;
-    let isRoot = false;
+    let isProfile = false;
 
     for (const urlPart of route.url) {
       if (urlPart.path == 'settings') {
         isSettings = true;
       }
-      if (urlPart.path == 'root') {
-        isRoot = true;
+      if (urlPart.path == 'profile') {
+        isProfile = true;
       }
     }
 
     if (user && user.username != null) {
-      if (isRoot && user.username != 'root') {
-        return false;
-      } else {
-        return true;
+      if (isSettings && !isProfile) {
+        const requiredLevel = route.data?.['requiredPermissionLevel'] ?? 0;
+        const userLevel = user.permissions?.level;
+        if (typeof userLevel !== 'number' || userLevel > requiredLevel) {
+          this.router.navigate(['/ng/settings/profile']);
+          return false;
+        }
       }
+      return true;
     }
 
     // not logged in so redirect to login page with the return url

@@ -108,6 +108,11 @@ export class NavMainMenuComponent {
     });
   }
 
+  canAccessSettings(): boolean {
+    const level = this.user?.permissions?.level;
+    return typeof level === 'number' && level <= 0;
+  }
+
   constructor(private userService: UserService, private router: Router, private settingsService: SettingsService) {}
 
   ngOnInit() {

@@ -43,7 +43,7 @@ import { ManagedUser, UserManagementService, UserSaveRequest } from '../services
 export class UserManagementComponent implements OnInit, AfterViewInit {
   users: ManagedUser[] = [];
   dataSource = new MatTableDataSource<ManagedUser>([]);
-  displayedColumns: string[] = ['username', 'email', 'role', 'active', 'updatedAt', 'actions'];
+  displayedColumns: string[] = ['username', 'email', 'permissionLevel', 'active', 'updatedAt', 'actions'];
   selectedUser: ManagedUser | null = null;
   isSaving = false;
   isLoading = false;
@@ -52,6 +52,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     username: new FormControl('', [Validators.required, Validators.minLength(4)]),
     email: new FormControl(''),
     role: new FormControl('user', [Validators.required]),
+    permissionLevel: new FormControl(3, [Validators.required, Validators.min(0)]),
     groups: new FormControl(''),
     restrictions: new FormControl(''),
     active: new FormControl(true),
@@ -96,6 +97,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       username: '',
       email: '',
       role: 'user',
+      permissionLevel: 3,
       groups: '',
       restrictions: '',
       active: true,
@@ -109,6 +111,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       username: user.username,
       email: user.email || '',
       role: user.role || 'user',
+      permissionLevel: user.permissions?.level ?? 3,
       groups: (user.groups || []).join(', '),
       restrictions: (user.restrictions || []).join(', '),
       active: user.active !== false,
@@ -128,6 +131,9 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       username: `${value.username || ''}`.trim(),
       email: `${value.email || ''}`.trim(),
       role: `${value.role || 'user'}`.trim(),
+      permissions: {
+        level: Number(value.permissionLevel ?? 3)
+      },
       groups: this.parseList(value.groups),
       restrictions: this.parseList(value.restrictions),
       active: value.active !== false

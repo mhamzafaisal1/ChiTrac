@@ -7,6 +7,9 @@ export interface ManagedUser {
   username: string;
   email: string;
   role: string;
+  permissions: {
+    level: number;
+  };
   groups: string[];
   restrictions: string[];
   active: boolean;
@@ -27,6 +30,9 @@ export interface UserSaveRequest {
   password?: string;
   email?: string;
   role?: string;
+  permissions?: {
+    level: number;
+  };
   groups?: string[];
   restrictions?: string[];
   active?: boolean;
