@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
-const { assertPermissionLevel } = require('../../modules/permissions');
+const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
 
 module.exports = function(server) {
   const router = express.Router();
@@ -19,29 +19,58 @@ module.exports = function(server) {
     return null;
   }
 
-  async function requireRoot(req, res, next) {
-    if (config.enableApiTokenCheck === false) {
-      req.tokenPayload = { bypassed: true, username: 'root', permissions: { level: 0 } };
-      return next();
-    }
+  function requirePermissionLevel(requiredLevel) {
+    return async function(req, res, next) {
+      if (config.enableApiTokenCheck === false) {
+        req.tokenPayload = { bypassed: true, username: 'root', permissions: { level: 0 } };
+        req.authUser = { active: true, permissions: { level: 0 } };
+        return next();
+      }
 
-    try {
-      const token = extractToken(req);
-      if (!token) return res.status(401).json({ error: 'Missing token' });
+      try {
+        const token = extractToken(req);
+        if (!token) return res.status(401).json({ error: 'Missing token' });
 
-      const payload = jwt.verify(token, config.jwtSecret);
-      const tokenUserId = getTokenUserId(payload);
-      if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
+        const payload = jwt.verify(token, config.jwtSecret);
+        const tokenUserId = getTokenUserId(payload);
+        if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 
-      const user = await userCollection.findOne({ _id: new ObjectId(tokenUserId) });
-      assertPermissionLevel(user, 0);
-      req.tokenPayload = payload;
-      req.authUser = user;
-      return next();
-    } catch (error) {
-      logger?.error?.('Permission check failed:', error);
-      return res.status(error.status || 401).json({ error: error.message || 'Invalid token' });
-    }
+        const user = await userCollection.findOne({ _id: new ObjectId(tokenUserId) });
+        assertPermissionLevel(user, requiredLevel);
+        req.tokenPayload = payload;
+        req.authUser = user;
+        return next();
+      } catch (error) {
+        logger?.error?.('Permission check failed:', error);
+        return res.status(error.status || 401).json({ error: error.message || 'Invalid token' });
+      }
+    };
+  }
+
+  const requireUsersAccess = requirePermissionLevel(2);
+
+  function getVisibleUserFilter(authUser, additionalFilter = {}) {
+    const authLevel = getPermissionLevel(authUser);
+    if (authLevel === null) return { ...additionalFilter, _id: null };
+
+    const levelFilter = authLevel <= 3
+      ? {
+          $or: [
+            { 'permissions.level': { $gte: authLevel } },
+            { 'permissions.level': { $exists: false } }
+          ]
+        }
+      : { 'permissions.level': { $gte: authLevel } };
+
+    return {
+      ...additionalFilter,
+      ...levelFilter
+    };
+  }
+
+  function canManagePermissionLevel(authUser, targetLevel) {
+    const authLevel = getPermissionLevel(authUser);
+    return typeof targetLevel === 'number' && authLevel !== null && targetLevel >= authLevel;
   }
 
   function requireUser(req, res, next) {
@@ -210,9 +239,9 @@ module.exports = function(server) {
     }
   });
 
-  router.get('/', requireRoot, async (req, res) => {
+  router.get('/', requireUsersAccess, async (req, res) => {
     try {
-      const users = await userCollection.find({})
+      const users = await userCollection.find(getVisibleUserFilter(req.authUser))
         .sort({ 'local.username': 1 })
         .toArray();
       res.json({ users: users.map(sanitizeUser) });
@@ -222,16 +251,20 @@ module.exports = function(server) {
     }
   });
 
-  router.post('/', requireRoot, async (req, res) => {
+  router.post('/', requireUsersAccess, async (req, res) => {
     try {
       const username = `${req.body.username || ''}`.trim();
       const password = `${req.body.password || ''}`;
+      const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
 
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
       }
       if (password.length < 6) {
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
+        return res.status(403).json({ error: 'Cannot create a user with a higher permission level than your own' });
       }
 
       const existing = await userCollection.findOne({ 'local.username': username });
@@ -248,7 +281,7 @@ module.exports = function(server) {
         email: `${req.body.email || ''}`.trim(),
         role: `${req.body.role || 'user'}`.trim() || 'user',
         permissions: {
-          level: normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel)
+          level: permissionLevel
         },
         groups: normalizeStringArray(req.body.groups),
         restrictions: normalizeStringArray(req.body.restrictions),
@@ -266,16 +299,25 @@ module.exports = function(server) {
     }
   });
 
-  router.put('/:id', requireRoot, async (req, res) => {
+  router.put('/:id', requireUsersAccess, async (req, res) => {
     try {
       const userId = new ObjectId(req.params.id);
       const username = `${req.body.username || ''}`.trim();
+      const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
 
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
       }
       if (req.body.password && `${req.body.password}`.length < 6) {
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
+        return res.status(403).json({ error: 'Cannot assign a higher permission level than your own' });
+      }
+
+      const existingUser = await userCollection.findOne(getVisibleUserFilter(req.authUser, { _id: userId }));
+      if (!existingUser) {
+        return res.status(404).json({ error: 'User not found' });
       }
 
       const duplicate = await userCollection.findOne({
@@ -287,7 +329,7 @@ module.exports = function(server) {
       }
 
       const update = buildUserUpdate(req.body, !!req.body.password);
-      const result = await userCollection.updateOne({ _id: userId }, { $set: update });
+      const result = await userCollection.updateOne(getVisibleUserFilter(req.authUser, { _id: userId }), { $set: update });
       if (result.matchedCount === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -300,10 +342,10 @@ module.exports = function(server) {
     }
   });
 
-  router.delete('/:id', requireRoot, async (req, res) => {
+  router.delete('/:id', requireUsersAccess, async (req, res) => {
     try {
       const userId = new ObjectId(req.params.id);
-      const result = await userCollection.deleteOne({ _id: userId });
+      const result = await userCollection.deleteOne(getVisibleUserFilter(req.authUser, { _id: userId }));
 
       if (result.deletedCount === 0) {
         return res.status(404).json({ error: 'User not found' });
