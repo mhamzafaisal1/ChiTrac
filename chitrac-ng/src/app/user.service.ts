@@ -95,6 +95,11 @@ export class UserService {
     return typeof userLevel === 'number' && userLevel <= requiredLevel;
   }
 
+  public getPermissionLevel(user: User | null = this.userSubject.value, fallback = 3): number {
+    const userLevel = user?.permissions?.level;
+    return typeof userLevel === 'number' ? userLevel : fallback;
+  }
+
   public getProfile() {
     return this.http.get<any>('/api/users/me').pipe(map(x => x));
   }

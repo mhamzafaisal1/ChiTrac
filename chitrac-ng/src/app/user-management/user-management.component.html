@@ -94,9 +94,9 @@
 
         <mat-form-field appearance="outline">
           <mat-label>Permission Level</mat-label>
-          <input matInput type="number" min="0" formControlName="permissionLevel">
+          <input matInput type="number" [min]="currentPermissionLevel" formControlName="permissionLevel">
           <mat-error *ngIf="userFormGroup.get('permissionLevel')?.hasError('required')">Permission level is required</mat-error>
-          <mat-error *ngIf="userFormGroup.get('permissionLevel')?.hasError('min')">Permission level cannot be negative</mat-error>
+          <mat-error *ngIf="userFormGroup.get('permissionLevel')?.hasError('min')">Permission level cannot be higher than your own access</mat-error>
         </mat-form-field>
 
         <mat-form-field appearance="outline">

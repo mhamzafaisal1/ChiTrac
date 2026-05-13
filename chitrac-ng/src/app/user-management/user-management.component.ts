@@ -17,6 +17,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ManagedUser, UserManagementService, UserSaveRequest } from '../services/user-management.service';
+import { UserService } from '../user.service';
 
 @Component({
   selector: 'app-user-management',
@@ -47,6 +48,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
   selectedUser: ManagedUser | null = null;
   isSaving = false;
   isLoading = false;
+  currentPermissionLevel = 3;
 
   userFormGroup = new FormGroup({
     username: new FormControl('', [Validators.required, Validators.minLength(4)]),
@@ -64,10 +66,15 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
   constructor(
     private userManagementService: UserManagementService,
+    private userService: UserService,
     private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
+    this.userService.user.subscribe(user => {
+      this.currentPermissionLevel = this.userService.getPermissionLevel(user);
+      this.applyPermissionLevelValidator();
+    });
     this.loadUsers();
   }
 
@@ -97,7 +104,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       username: '',
       email: '',
       role: 'user',
-      permissionLevel: 3,
+      permissionLevel: this.currentPermissionLevel,
       groups: '',
       restrictions: '',
       active: true,
@@ -127,12 +134,20 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
     const value = this.userFormGroup.value;
     const password = `${value.password || ''}`;
+    const permissionLevel = Number(value.permissionLevel ?? this.currentPermissionLevel);
+
+    if (permissionLevel < this.currentPermissionLevel) {
+      this.userFormGroup.get('permissionLevel')?.setErrors({ min: true });
+      this.userFormGroup.get('permissionLevel')?.markAsTouched();
+      return;
+    }
+
     const payload: UserSaveRequest = {
       username: `${value.username || ''}`.trim(),
       email: `${value.email || ''}`.trim(),
       role: `${value.role || 'user'}`.trim(),
       permissions: {
-        level: Number(value.permissionLevel ?? 3)
+        level: permissionLevel
       },
       groups: this.parseList(value.groups),
       restrictions: this.parseList(value.restrictions),
@@ -191,6 +206,22 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
   private parseList(value: unknown): string[] {
     if (Array.isArray(value)) return value.map(x => `${x}`.trim()).filter(Boolean);
     return `${value || ''}`.split(',').map(x => x.trim()).filter(Boolean);
+  }
+
+  private applyPermissionLevelValidator(): void {
+    const control = this.userFormGroup.get('permissionLevel');
+    if (!control) return;
+
+    control.setValidators([
+      Validators.required,
+      Validators.min(this.currentPermissionLevel)
+    ]);
+
+    if (Number(control.value) < this.currentPermissionLevel) {
+      control.setValue(this.currentPermissionLevel);
+    }
+
+    control.updateValueAndValidity({ emitEvent: false });
   }
 
   private applySavedUser(user: ManagedUser): void {

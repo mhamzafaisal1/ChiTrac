@@ -14,6 +14,13 @@
     <mat-error *ngIf="userRegistrationFormGroup.get('password')?.hasError('minlength') && userRegistrationFormGroup.get('password')?.touched">Password must be at least 6 characters</mat-error>
   </mat-form-field>
   <br />
+  <mat-form-field appearance="fill" class="full-width">
+    <mat-label>Permission Level</mat-label>
+    <input matInput type="number" [min]="currentPermissionLevel" formControlName="permissionLevel" />
+    <mat-error *ngIf="userRegistrationFormGroup.get('permissionLevel')?.hasError('required') && userRegistrationFormGroup.get('permissionLevel')?.touched">Permission level is required</mat-error>
+    <mat-error *ngIf="userRegistrationFormGroup.get('permissionLevel')?.hasError('min') && userRegistrationFormGroup.get('permissionLevel')?.touched">Permission level cannot be higher than your own access</mat-error>
+  </mat-form-field>
+  <br />
   <div class="actions">
     <button type="submit" mat-flat-button color="primary" [disabled]="!userRegistrationFormGroup.valid">Register</button>
   </div>

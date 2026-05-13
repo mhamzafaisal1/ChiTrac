@@ -5,6 +5,10 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { ObjectId } = require('mongodb');
+const config = require('../../modules/config');
+const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
 
 module.exports = function(server) {
     return constructor(server);
@@ -18,6 +22,53 @@ function constructor(server) {
     function normalizePermissionLevel(value, defaultLevel = 3) {
         const parsed = Number(value);
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
+    }
+
+    function extractToken(req) {
+        const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+        if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
+        if (typeof req.query?.token === 'string') return req.query.token;
+        if (typeof req.body?.token === 'string') return req.body.token;
+        return null;
+    }
+
+    function getTokenUserId(payload) {
+        const rawUserId = payload?.userId;
+        if (!rawUserId) return null;
+        if (typeof rawUserId === 'string') return rawUserId;
+        if (typeof rawUserId === 'object' && rawUserId.$oid) return rawUserId.$oid;
+        return `${rawUserId}`;
+    }
+
+    function requirePermissionLevel(requiredLevel) {
+        return async function(req, res, next) {
+            if (config.enableApiTokenCheck === false) {
+                req.authUser = { active: true, permissions: { level: 0 } };
+                return next();
+            }
+
+            try {
+                const token = extractToken(req);
+                if (!token) return res.status(401).json({ error: 'Missing token' });
+
+                const payload = jwt.verify(token, config.jwtSecret);
+                const tokenUserId = getTokenUserId(payload);
+                if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
+
+                const user = await db.collection('user').findOne({ _id: new ObjectId(tokenUserId) });
+                assertPermissionLevel(user, requiredLevel);
+                req.authUser = user;
+                return next();
+            } catch (error) {
+                logger?.error?.('Permission check failed:', error);
+                return res.status(error.status || 401).json({ error: error.message || 'Invalid token' });
+            }
+        };
+    }
+
+    function canManagePermissionLevel(authUser, targetLevel) {
+        const authLevel = getPermissionLevel(authUser);
+        return typeof targetLevel === 'number' && authLevel !== null && targetLevel >= authLevel;
     }
 
     function sanitizeUser(user) {
@@ -149,10 +200,15 @@ function constructor(server) {
         failureFlash: true // allow flash messages
     }))
 
-    router.post('/user/register', async (req, res) => {
+    router.post('/user/register', requirePermissionLevel(2), async (req, res) => {
         try {
             const userCollection = db.collection('user');
             const user = req.body;
+            const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
+            if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
+                return res.status(403).json({ error: 'Cannot create a user with a higher permission level than your own' });
+            }
+
             const userFind = await userCollection.find({ 'local.username': user.username }).toArray();
             if (userFind.length) {
                 req.flash('messages', 'That username is already taken.')
@@ -180,7 +236,7 @@ function constructor(server) {
                     newUser.role = req.body.role
                 }
                 newUser.permissions = {
-                    level: normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel)
+                    level: permissionLevel
                 }
                 if (req.body.groups) {
                     newUser.groups = Array.isArray(req.body.groups) ? req.body.groups : []
