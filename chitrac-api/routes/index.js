@@ -15,6 +15,7 @@ function init(app, server) {
     const bikoRoutes = require('../controllers/biko')(server);
     const authRoutes = require('../controllers/auth')(server);
     const userRoutes = require('../controllers/users')(server);
+    const systemPreferencesRoutes = require('../controllers/system-preferences')(server);
     const passportRoutes = require('../controllers/passport')(server);
     const historyRoutes = require('../controllers/history')(server);
     const utilitiesRoutes = require('../controllers/utilities')(server);
@@ -260,6 +261,7 @@ function init(app, server) {
     app.use('/api/biko', bikoRoutes);
     app.use('/api/auth', authRoutes);
     app.use('/api/users', userRoutes);
+    app.use('/api/system-preferences', systemPreferencesRoutes);
     app.use('/api/passport', passportRoutes);
 
     // Conditionally load Softrol routes based on environment setting

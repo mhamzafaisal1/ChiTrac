@@ -198,6 +198,38 @@ async function initializeCollections() {
             logger.error(error.toString());
         }
     });
+
+    logger.debug('Initializing system-preferences collection...');
+    const systemPreferencesSchema = require('./schemas/system-preferences');
+    const systemPreferencesDefault = systemPreferencesSchema.utils.buildDefaultPreferences(config);
+    await cm.createCollection('system-preferences').then(async () => {
+        const collection = db.collection('system-preferences');
+        const { _id, ...updates } = systemPreferencesDefault;
+        await collection.updateOne(
+            { _id },
+            { $set: updates, $setOnInsert: { _id } },
+            { upsert: true }
+        );
+        logger.debug('System preferences collection initialized!');
+    }).catch(async (error) => {
+        if (error.codeName === 'NamespaceExists') {
+            const collection = db.collection('system-preferences');
+            const existing = await collection.findOne({ _id: systemPreferencesDefault._id });
+            if (existing) {
+                logger.debug('System preferences collection already initialized!');
+            } else {
+                const { _id, ...updates } = systemPreferencesDefault;
+                await collection.updateOne(
+                    { _id },
+                    { $set: updates, $setOnInsert: { _id } },
+                    { upsert: true }
+                );
+                logger.debug('System preferences collection populated!');
+            }
+        } else {
+            logger.error(error.toString());
+        }
+    });
 }
 
 initializeCollections();
