@@ -85,7 +85,7 @@ export class UserRegisterComponent {
 
     this.userRegistrationFormGroup = new FormGroup({
       username: new FormControl(this.user.username, [Validators.required, Validators.minLength(4)]),
-      password: new FormControl(this.user.password, [Validators.required, Validators.minLength(6)]),
+      password: new FormControl(this.user.password, [Validators.required, Validators.minLength(6), Validators.maxLength(64)]),
       permissionLevel: new FormControl(this.user.permissionLevel, [Validators.required, Validators.min(this.currentPermissionLevel)]),
     });
 

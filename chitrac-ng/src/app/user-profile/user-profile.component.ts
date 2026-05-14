@@ -31,9 +31,9 @@ export class UserProfileComponent implements OnInit {
   profileFormGroup = new FormGroup({
     username: new FormControl('', [Validators.required, Validators.minLength(4)]),
     email: new FormControl(''),
-    currentPassword: new FormControl(''),
-    password: new FormControl('', [Validators.minLength(6)]),
-    confirmPassword: new FormControl('')
+    currentPassword: new FormControl('', [Validators.maxLength(64)]),
+    password: new FormControl('', [Validators.minLength(6), Validators.maxLength(64)]),
+    confirmPassword: new FormControl('', [Validators.maxLength(64)])
   });
 
   constructor(

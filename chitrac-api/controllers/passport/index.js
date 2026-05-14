@@ -24,6 +24,11 @@ function constructor(server) {
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
     }
 
+    function isValidPasswordLength(password) {
+        const passwordString = `${password || ''}`;
+        return passwordString.length >= 6 && passwordString.length <= 64;
+    }
+
     function extractToken(req) {
         const authHeader = req.headers['authorization'] || req.headers['Authorization'];
         if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
@@ -207,6 +212,9 @@ function constructor(server) {
             const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
             if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
                 return res.status(403).json({ error: 'Cannot create a user with a higher permission level than your own' });
+            }
+            if (!isValidPasswordLength(user.password)) {
+                return res.status(400).json({ error: 'Password must be between 6 and 64 characters' });
             }
 
             const userFind = await userCollection.find({ 'local.username': user.username }).toArray();
