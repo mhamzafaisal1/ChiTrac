@@ -15,7 +15,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 
 /*** rxjs Imports */
 import { Subscription, timer } from 'rxjs';
-import { switchMap, retry, share, catchError, take } from 'rxjs/operators';
+import { switchMap, retry, share, catchError } from 'rxjs/operators';
 
 /*** Model Imports */
 import { ItemConfig } from '../shared/models/item.model';
@@ -68,6 +68,24 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   constructor(private configurationService: ConfigurationService) {}
 
   readonly dialog = inject(MatDialog);
+
+  private isItemPayload(value: unknown): value is ItemConfig {
+    return !!value && typeof value === 'object' && ('number' in value || '_id' in value);
+  }
+
+  private sanitize(item: any): ItemConfig {
+    const { _id, number, name, active, weight, standard, area, department } = item ?? {};
+    return new ItemConfig().deserialize({
+      _id,
+      number: typeof number === 'string' ? Number(number) : number,
+      name: typeof name === 'string' ? name.trim() : name,
+      active: !!active,
+      weight: weight === '' || weight === undefined ? null : Number(weight),
+      standard: standard === undefined || standard === null ? 0 : Number(standard),
+      area: area === undefined || area === null ? 0 : Number(area),
+      department: department ?? ''
+    });
+  }
 
   private getItemsSubFunction = (res: ItemConfig[]) => {
     this.error = null;
@@ -123,7 +141,7 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
-    this.sub.unsubscribe();
+    if (this.sub) this.sub.unsubscribe();
   }
 
   openDialog(item: ItemConfig | null): void {
@@ -153,14 +171,16 @@ export class ItemGridComponent implements OnInit, OnDestroy {
 
   private setupDialogHandlers(dialogRef: any): void {
     dialogRef.afterClosed().subscribe((dialogItem: any) => {
-      if (!dialogItem) {
+      if (!this.isItemPayload(dialogItem)) {
         console.log('Cancelled');
         return;
       }
 
-      const action$ = dialogItem._id
-        ? this.configurationService.putItemConfig(dialogItem)
-        : this.configurationService.postItemConfig(dialogItem);
+      const applyAfterMachinesOffline = !!dialogItem.applyAfterMachinesOffline;
+      const payload = this.sanitize(dialogItem);
+      const action$ = payload._id
+        ? this.configurationService.putItemConfig(payload, applyAfterMachinesOffline)
+        : this.configurationService.postItemConfig(payload, applyAfterMachinesOffline);
 
       action$.subscribe({
         next: (res) => {
@@ -171,22 +191,24 @@ export class ItemGridComponent implements OnInit, OnDestroy {
         error: (err) => {
           console.error('Operation failed:', err);
           // Handle backend validation errors
+          const retryItem: Record<string, any> & { error?: { message: string; details: any[] } } = { ...payload };
           if (err.error && err.error.details) {
-            dialogItem.error = {
+            retryItem.error = {
               message: 'Validation failed',
               details: err.error.details
             };
           } else {
-            dialogItem.error = {
-              message: err.message || 'Operation failed',
+            retryItem.error = {
+              message: err?.error?.message || err.message || 'Operation failed',
               details: []
             };
           }
           const errorDialogRef = this.dialog.open(ItemDialogCuComponent, {
-            data: dialogItem,
+            data: retryItem,
             disableClose: true,
             panelClass: 'error-dialog'
           });
+          this.setupDialogHandlers(errorDialogRef);
         }
       });
     });
