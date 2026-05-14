@@ -76,6 +76,25 @@ function constructor(server) {
         return typeof targetLevel === 'number' && authLevel !== null && targetLevel >= authLevel;
     }
 
+    function requireHttpsWhenEnabled(req, res, next) {
+        const runtimeConfig = server.config || config;
+        if (runtimeConfig.httpsEnabled !== true) {
+            return next();
+        }
+
+        if (req.secure) {
+            return next();
+        }
+
+        const hostHeader = req.headers.host || req.hostname || 'localhost';
+        const hostname = `${hostHeader}`.split(':')[0];
+        const httpsPort = Number(runtimeConfig.httpsPort) || 50443;
+        const httpsHost = httpsPort === 443 ? hostname : `${hostname}:${httpsPort}`;
+        return res.redirect(307, `https://${httpsHost}${req.originalUrl || req.url}`);
+    }
+
+    router.use(requireHttpsWhenEnabled);
+
     function sanitizeUser(user) {
         const userObject = { ...user.local };
         delete userObject.password;
@@ -232,13 +251,13 @@ function constructor(server) {
                 };
 
                 // set the user's local credentials
-                newUser.local.username = username;
+                newUser.local.username = user.username;
 
                 const salt = bcrypt.genSaltSync(10);
                 const hash = bcrypt.hashSync(user.password, salt);
                 newUser.local.password = hash;
-                if (email) {
-                    newUser.email = email
+                if (user.email) {
+                    newUser.email = user.email
                 }
                 if (req.body.role) {
                     newUser.role = req.body.role
