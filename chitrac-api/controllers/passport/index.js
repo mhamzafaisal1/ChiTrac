@@ -5,10 +5,10 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-
-function escapeRegex(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+const jwt = require('jsonwebtoken');
+const { ObjectId } = require('mongodb');
+const config = require('../../modules/config');
+const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
 
 module.exports = function(server) {
     return constructor(server);
@@ -18,6 +18,70 @@ function constructor(server) {
     const db = server.db;
     const logger = server.logger;
     const passport = server.passport;
+
+    function normalizePermissionLevel(value, defaultLevel = 3) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
+    }
+
+    function extractToken(req) {
+        const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+        if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
+        if (typeof req.query?.token === 'string') return req.query.token;
+        if (typeof req.body?.token === 'string') return req.body.token;
+        return null;
+    }
+
+    function getTokenUserId(payload) {
+        const rawUserId = payload?.userId;
+        if (!rawUserId) return null;
+        if (typeof rawUserId === 'string') return rawUserId;
+        if (typeof rawUserId === 'object' && rawUserId.$oid) return rawUserId.$oid;
+        return `${rawUserId}`;
+    }
+
+    function requirePermissionLevel(requiredLevel) {
+        return async function(req, res, next) {
+            if (config.enableApiTokenCheck === false) {
+                req.authUser = { active: true, permissions: { level: 0 } };
+                return next();
+            }
+
+            try {
+                const token = extractToken(req);
+                if (!token) return res.status(401).json({ error: 'Missing token' });
+
+                const payload = jwt.verify(token, config.jwtSecret);
+                const tokenUserId = getTokenUserId(payload);
+                if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
+
+                const user = await db.collection('user').findOne({ _id: new ObjectId(tokenUserId) });
+                assertPermissionLevel(user, requiredLevel);
+                req.authUser = user;
+                return next();
+            } catch (error) {
+                logger?.error?.('Permission check failed:', error);
+                return res.status(error.status || 401).json({ error: error.message || 'Invalid token' });
+            }
+        };
+    }
+
+    function canManagePermissionLevel(authUser, targetLevel) {
+        const authLevel = getPermissionLevel(authUser);
+        return typeof targetLevel === 'number' && authLevel !== null && targetLevel >= authLevel;
+    }
+
+    function sanitizeUser(user) {
+        const userObject = { ...user.local };
+        delete userObject.password;
+        userObject.email = user.email || '';
+        userObject.role = user.role || 'user';
+        userObject.permissions = {
+            level: typeof user.permissions?.level === 'number' ? user.permissions.level : 3
+        };
+        userObject.groups = Array.isArray(user.groups) ? user.groups : [];
+        return userObject;
+    }
 
     router.get('/passport', (req, res, next) => {
         res.json(server.passport);
@@ -93,18 +157,18 @@ function constructor(server) {
                     { 
                         userId: user._id,
                         username: user.local.username,
-                        role: user.role || 'user'
+                        role: user.role || 'user',
+                        permissions: {
+                            level: typeof user.permissions?.level === 'number' ? user.permissions.level : 3
+                        }
                     },
                     config.jwtSecret,
                     { expiresIn: '24h' }
                 );
                 
                 // Return user data and token
-                const userObject = { ...user.local };
-                delete userObject.password;
-                
                 res.json({
-                    user: userObject,
+                    user: sanitizeUser(user),
                     token: token
                 });
             });
@@ -113,10 +177,8 @@ function constructor(server) {
 
     router.get('/user', function(req, res) {
         if (req.isAuthenticated()) {
-            var userObject = req.user.local
-            delete userObject.password
             res.json({
-                user: userObject
+                user: sanitizeUser(req.user)
             })
         } else {
             sendFlashJSON(req, res)
@@ -138,39 +200,19 @@ function constructor(server) {
         failureFlash: true // allow flash messages
     }))
 
-    router.post('/user/register', async (req, res) => {
+    router.post('/user/register', requirePermissionLevel(2), async (req, res) => {
         try {
             const userCollection = db.collection('user');
-            const user = req.body || {};
-            const username = (user.username || '').trim();
-            const email = (user.email || '').trim().toLowerCase();
-
-            if (!username || !user.password) {
-                return res.status(400).json({ message: 'Username and password are required.' });
+            const user = req.body;
+            const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
+            if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
+                return res.status(403).json({ error: 'Cannot create a user with a higher permission level than your own' });
             }
 
-            const duplicateConditions = [
-                { 'local.username': { $regex: `^${escapeRegex(username)}$`, $options: 'i' } }
-            ];
-
-            if (email) {
-                duplicateConditions.push({ email: { $regex: `^${escapeRegex(email)}$`, $options: 'i' } });
-            }
-
-            const existingUser = await userCollection.findOne({ $or: duplicateConditions });
-            if (existingUser) {
-                const isDuplicateUsername = existingUser?.local?.username &&
-                    existingUser.local.username.toLowerCase() === username.toLowerCase();
-                const isDuplicateEmail = email && existingUser?.email &&
-                    existingUser.email.toLowerCase() === email;
-
-                if (isDuplicateUsername) {
-                    return res.status(409).json({ message: 'That username is already taken.' });
-                }
-                if (isDuplicateEmail) {
-                    return res.status(409).json({ message: 'That email address is already in use.' });
-                }
-                return res.status(409).json({ message: 'A user with these details already exists.' });
+            const userFind = await userCollection.find({ 'local.username': user.username }).toArray();
+            if (userFind.length) {
+                req.flash('messages', 'That username is already taken.')
+                sendFlashJSON(req, res);
             } else {
                 // if there is no user with that email
                 // create the user
@@ -193,8 +235,13 @@ function constructor(server) {
                 if (req.body.role) {
                     newUser.role = req.body.role
                 }
+                newUser.permissions = {
+                    level: permissionLevel
+                }
                 if (req.body.groups) {
-                    newUser.groups = req.body.groups
+                    newUser.groups = Array.isArray(req.body.groups) ? req.body.groups : []
+                } else {
+                    newUser.groups = []
                 }
                 if (req.body.restrictions) {
                     newUser.restrictions = req.body.restrictions

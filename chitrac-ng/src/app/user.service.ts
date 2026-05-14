@@ -7,6 +7,18 @@ import { HttpClient } from '@angular/common/http';
 import { map } from 'rxjs/operators';
 import { BehaviorSubject, Observable } from 'rxjs';
 
+export const PermissionLevels = {
+  apiTokens: 1,
+  serverLogs: 1,
+  users: 2,
+  operators: 4,
+  reports: 4,
+  shifts: 4,
+  dashboards: 7,
+  profile: 7,
+  settings: 7
+} as const;
+
 @Injectable({
   providedIn: 'root'
 })
@@ -50,9 +62,11 @@ export class UserService {
     return this.http.get<any>('/api/passport/user').pipe(map(x => {
       // store user details and jwt token in local storage to keep user logged in between page refreshes
       if (x.user) {
-        localStorage.setItem('user', JSON.stringify(x.user));
-        this.userSubject.next(x.user);
-        return x.user;
+        const token = localStorage.getItem('token');
+        const userWithToken = token ? { ...x.user, token } : x.user;
+        localStorage.setItem('user', JSON.stringify(userWithToken));
+        this.userSubject.next(userWithToken);
+        return userWithToken;
       } else {
         localStorage.setItem('user', JSON.stringify({ username: null }));
         this.userSubject.next({ username: null });
@@ -75,8 +89,37 @@ export class UserService {
   public getToken(): string | null {
     return localStorage.getItem('token');
   }
+
+  public hasPermissionLevel(requiredLevel: number, user: User | null = this.userSubject.value): boolean {
+    const userLevel = user?.permissions?.level;
+    return typeof userLevel === 'number' && userLevel <= requiredLevel;
+  }
+
+  public getPermissionLevel(user: User | null = this.userSubject.value, fallback = 3): number {
+    const userLevel = user?.permissions?.level;
+    return typeof userLevel === 'number' ? userLevel : fallback;
+  }
+
+  public getProfile() {
+    return this.http.get<any>('/api/users/me').pipe(map(x => x));
+  }
+
+  public updateProfile(profile: any) {
+    return this.http.put<any>('/api/users/me', profile).pipe(map(x => {
+      if (x.user && x.token) {
+        const userWithToken = { ...x.user, token: x.token };
+        localStorage.setItem('user', JSON.stringify(userWithToken));
+        localStorage.setItem('token', x.token);
+        this.userSubject.next(userWithToken);
+      }
+      return x;
+    }));
+  }
 }
 
 export class User {
   username: string;
+  permissions?: {
+    level: number;
+  };
 }

@@ -29,39 +29,44 @@ import { BlanketBlastersEfficiencyScreenComponent } from './efficiency-screens/b
 import { EightStationDemoComponent } from './efficiency-screens/eight-station-demo/eight-station-demo.component';
 import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
+import { UserManagementComponent } from './user-management/user-management.component';
+import { UserProfileComponent } from './user-profile/user-profile.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
+import { PermissionLevels } from './user.service';
 
 export const routes: Routes = [
 	// Settings pages
-	{ path: 'ng/settings/operators', component: OperatorGridComponent },
-	{ path: 'ng/settings/items', component: ItemGridComponent },
-	{ path: 'ng/settings/machines', component: MachineGridComponent },
-	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent },
-	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
-	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.operators } },
+	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
+	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
+	{ path: 'ng/settings/profile', component: UserProfileComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.profile } },
+	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },
+	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.apiTokens } },
+	{ path: 'ng/settings/root/users', component: UserManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
+	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
 	{ path: 'ng/settings/root/utilities', component: SettingsUtilitiesComponent, canActivate: [AuthGuard] },
-	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.serverLogs } },
 	
 	// Login/Auth
 	{ path: 'ng/login', component: UserLoginComponent },
 	
 	// Main Dashboards
-	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent },
-	{ path: 'ng/operatorAnalytics', component: OperatorAnalyticsDashboardComponent },
-	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent },
-	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent },
-	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent },
-	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
+	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
+	{ path: 'ng/operatorAnalytics', component: OperatorAnalyticsDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
+	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
+	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
+	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
+	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
 	
 	// Reports
-	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
-	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
-	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
-	{ path: 'ng/reports/item-report', component: ItemReportComponent },
-	{ path: 'ng/reports/fault-report', component: FaultReportComponent },
-	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent },
+	{ path: 'ng/reports/machine-report', component: MachineReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/operator-report', component: OperatorReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/item-report', component: ItemReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/fault-report', component: FaultReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
 	
 	// Production/Efficiency Screens
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },

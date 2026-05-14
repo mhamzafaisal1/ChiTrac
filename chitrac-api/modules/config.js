@@ -27,6 +27,7 @@ module.exports = {
   statusCollectionName: 'config-status',
   userCollectionName: 'config-user',
   shiftCollectionName: 'config-shift',
+  systemPreferencesCollectionName: 'system-preferences',
   stateTickerCollectionName: 'ticker-state',
   machineSessionCollectionName: 'session-machine',
   operatorSessionCollectionName: 'session-operator',
@@ -59,6 +60,17 @@ module.exports = {
   // System Name
   // System name displayed in the navbar (fallback for when DB is unavailable)
   systemName: process.env.SYSTEM_NAME || 'ChiTrac',
+
+  userPermissionsLevels: [
+    'Root',
+    'SysAdmin',
+    'Admin',
+    'Manager',
+    'Supervisor',
+    'Employee',
+    'Operator',
+    'Guest'
+  ],
 
   // Softrol API Settings
   // Enable/disable Softrol API routes and documentation (default: false)

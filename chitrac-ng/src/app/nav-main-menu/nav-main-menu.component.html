@@ -16,16 +16,16 @@
       <a mat-list-item routerLink="/ng/home">
         <mat-icon>home</mat-icon><span class="menu-item">Home</span>
       </a>
-      <a mat-list-item (click)="openMenu('dashboards')">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.dashboards)" (click)="openMenu('dashboards')">
         <mat-icon>dashboard</mat-icon><span class="menu-item">Dashboards</span>
       </a>
       <a mat-list-item (click)="openMenu('productionScreens')">
         <mat-icon>live_tv</mat-icon><span>Production Screens</span>
       </a>
-      <a mat-list-item (click)="openMenu('reports')">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.reports)" (click)="openMenu('reports')">
         <mat-icon>bar_chart</mat-icon><span class="menu-item">Reports</span>
       </a>
-      <a mat-list-item *ngIf="user.username" (click)="openMenu('settings')">
+      <a mat-list-item *ngIf="user.username && canAccess(permissionLevels.settings)" (click)="openMenu('settings')">
         <mat-icon>settings</mat-icon><span class="menu-item">Settings</span>
       </a>
       <!-- Login now handled by popup in toolbar -->
@@ -134,16 +134,22 @@
       <a mat-list-item *ngIf="false" href="#">
         <mat-icon>local_laundry_service</mat-icon><span>Machines</span>
       </a>
-      <a mat-list-item routerLink="/ng/settings/operators" (click)="closeMenu()">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.profile)" routerLink="/ng/settings/profile" (click)="closeMenu()">
+        <mat-icon>account_circle</mat-icon><span>Profile</span>
+      </a>
+      <a mat-list-item *ngIf="canAccess(permissionLevels.operators)" routerLink="/ng/settings/operators" (click)="closeMenu()">
         <mat-icon>person</mat-icon><span>Operators</span>
       </a>
       <a mat-list-item routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>
       </a>
-      <a mat-list-item routerLink="/ng/settings/tokens" (click)="closeMenu()">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.apiTokens)" routerLink="/ng/settings/tokens" (click)="closeMenu()">
         <mat-icon>vpn_key</mat-icon><span>API Tokens</span>
       </a>
-      <a mat-list-item routerLink="/ng/settings/server-logs" (click)="closeMenu()">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.users)" routerLink="/ng/settings/root/users" (click)="closeMenu()">
+        <mat-icon>manage_accounts</mat-icon><span>Users</span>
+      </a>
+      <a mat-list-item *ngIf="canAccess(permissionLevels.serverLogs)" routerLink="/ng/settings/server-logs" (click)="closeMenu()">
         <mat-icon>description</mat-icon><span>Server Logs</span>
       </a>
       <a mat-list-item *ngIf="user.username === 'root'" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
@@ -152,7 +158,7 @@
       <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>
       </a>
-      <a mat-list-item routerLink="/ng/settings/shifts" (click)="closeMenu()">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/shifts" (click)="closeMenu()">
         <mat-icon>punch_clock</mat-icon><span>Shifts</span>
       </a>
       <a mat-list-item *ngIf="false" href="#">

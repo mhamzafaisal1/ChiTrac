@@ -34,9 +34,11 @@ export class UserRegisterComponent {
   user: any = {
     username: null,
     password: null,
-    email: null
+    email: null,
+    permissionLevel: 3
   };
   error: any = null;
+  currentPermissionLevel = 3;
 
   subscribeToUser(): void {
     if (this.sub) {
@@ -54,6 +56,13 @@ export class UserRegisterComponent {
       this.userRegistrationFormGroup?.markAllAsTouched();
       return;
     }
+    const permissionLevel = Number(this.userRegistrationFormGroup.get('permissionLevel')?.value ?? this.currentPermissionLevel);
+    if (permissionLevel < this.currentPermissionLevel) {
+      this.userRegistrationFormGroup.get('permissionLevel')?.setErrors({ min: true });
+      this.userRegistrationFormGroup.get('permissionLevel')?.markAsTouched();
+      return;
+    }
+
     this.userService.postUserRegister(user).pipe(first())
       .subscribe({
         next: (resp: any) => {
@@ -72,13 +81,22 @@ export class UserRegisterComponent {
 
 
   ngOnInit() {
+    this.currentPermissionLevel = this.userService.getPermissionLevel();
+    this.user.permissionLevel = this.currentPermissionLevel;
+
     this.userRegistrationFormGroup = new FormGroup({
       username: new FormControl(this.user.username, [Validators.required, Validators.minLength(4)]),
       password: new FormControl(this.user.password, [Validators.required, Validators.minLength(6)]),
       email: new FormControl(this.user.email, [Validators.email]),
+      permissionLevel: new FormControl(this.user.permissionLevel, [Validators.required, Validators.min(this.currentPermissionLevel)]),
     });
 
     if (this.error) this.userRegistrationFormGroup.markAsDirty();
+
+    this.userService.user.subscribe(currentUser => {
+      this.currentPermissionLevel = this.userService.getPermissionLevel(currentUser);
+      this.applyPermissionLevelValidator();
+    });
 
     this.userRegistrationFormGroup.valueChanges.pipe(
       debounceTime(1),
@@ -87,8 +105,25 @@ export class UserRegisterComponent {
       this.user.username = res.username;
       this.user.password = res.password;
       this.user.email = res.email;
+      this.user.permissionLevel = Number(res.permissionLevel ?? this.currentPermissionLevel);
     });
   };
+
+  private applyPermissionLevelValidator(): void {
+    const control = this.userRegistrationFormGroup?.get('permissionLevel');
+    if (!control) return;
+
+    control.setValidators([
+      Validators.required,
+      Validators.min(this.currentPermissionLevel)
+    ]);
+
+    if (Number(control.value) < this.currentPermissionLevel) {
+      control.setValue(this.currentPermissionLevel);
+    }
+
+    control.updateValueAndValidity({ emitEvent: false });
+  }
 
 
 }

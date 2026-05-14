@@ -1,6 +1,6 @@
 const Ajv = require('ajv');
 const ajv = new Ajv();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 // Import related schemas
 const timestampsSchema = require('./timestampsSchema');
@@ -14,7 +14,9 @@ const schema = {
     'active',
     'timestamps',
     'name',
-    'local'
+    'local',
+    'permissions',
+    'groups'
   ],
   properties: {
     _id: {
@@ -56,21 +58,25 @@ const schema = {
       additionalProperties: false,
       description: 'Parent object with two required children: username and password'
     },
-    groups: {
+    permissions: {
       type: 'object',
+      required: ['level'],
       properties: {
-        area: {
-          type: 'string'
-        },
-        category: {
-          type: 'string'
-        },
-        department: {
-          type: 'string'
+        level: {
+          type: 'number',
+          description: 'Numeric permission level. Level 0 is highest access; larger numbers have less access.'
         }
       },
       additionalProperties: false,
-      description: 'Object containing any combination of three optional string child properties: area, category, department'
+      description: 'Permission settings for this user'
+    },
+    groups: {
+      type: 'array',
+      items: {
+        type: 'string'
+      },
+      minItems: 0,
+      description: 'Required array of group names. Empty array is valid.'
     }
   },
   additionalProperties: false
@@ -87,10 +93,11 @@ const utils = {
    * @param {object} name - Required schema valid human name object
    * @param {string} username - Required string value of user's desired username
    * @param {string} password - Required string value of the password (will be encrypted)
-   * @param {object} [groups] - Optional parent object to the potential children Strings of 'area', 'category', or 'department'
+   * @param {string[]} [groups] - Required array of group strings
+   * @param {number} [permissionLevel] - Numeric permission level; 0 is highest access
    * @returns {object} Validated user object
    */
-  initUser: (id, name, username, password, groups = null) => {
+  initUser: (id, name, username, password, groups = [], permissionLevel = 3) => {
     // Initialize timestamps using timestamps utils
     const now = new Date().toISOString();
     const timestamps = timestampsSchema.utils.stampInit(now);
@@ -108,13 +115,12 @@ const utils = {
       local: {
         username,
         password: encryptedPassword
-      }
+      },
+      permissions: {
+        level: permissionLevel
+      },
+      groups
     };
-
-    // Add optional properties if provided
-    if (groups !== null) {
-      userObject.groups = groups;
-    }
 
     // Validate against schema before returning
     const valid = validate(userObject);

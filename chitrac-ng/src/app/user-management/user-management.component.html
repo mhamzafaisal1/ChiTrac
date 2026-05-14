@@ -1,0 +1,135 @@
+<div class="user-management-container">
+  <div class="header">
+    <h2>User Management</h2>
+  </div>
+
+  <div class="layout">
+    <section class="table-panel">
+      <div class="table-header">
+        <h3>Users</h3>
+        <button mat-flat-button color="primary" type="button" (click)="newUser()">
+          <mat-icon>add</mat-icon>
+          New User
+        </button>
+      </div>
+
+      <div class="table-shell">
+        <table mat-table [dataSource]="dataSource" matSort class="users-table">
+          <ng-container matColumnDef="username">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Username</th>
+            <td mat-cell *matCellDef="let user">{{ user.username }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="email">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Email</th>
+            <td mat-cell *matCellDef="let user">{{ user.email || '-' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="permissionLevel">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Level</th>
+            <td mat-cell *matCellDef="let user">{{ user.permissions?.level ?? '-' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="active">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+            <td mat-cell *matCellDef="let user">
+              <span class="status" [class.inactive]="user.active === false">
+                {{ user.active === false ? 'Inactive' : 'Active' }}
+              </span>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="updatedAt">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Updated</th>
+            <td mat-cell *matCellDef="let user">{{ formatDate(user.updatedAt) }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Actions</th>
+            <td mat-cell *matCellDef="let user">
+              <div class="row-actions">
+                <button mat-icon-button type="button" (click)="$event.stopPropagation(); editUser(user)" matTooltip="Edit user">
+                  <mat-icon>edit</mat-icon>
+                </button>
+                <button mat-icon-button color="warn" type="button" (click)="$event.stopPropagation(); deleteUser(user)" matTooltip="Delete user">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" [class.selected-row]="selectedUser?._id === row._id" (click)="editUser(row)"></tr>
+          <tr class="mat-row" *matNoDataRow>
+            <td class="mat-cell empty-cell" [attr.colspan]="displayedColumns.length">
+              {{ isLoading ? 'Loading users...' : 'No users found.' }}
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <mat-paginator [pageSizeOptions]="[10, 25, 50]" showFirstLastButtons></mat-paginator>
+    </section>
+
+    <section class="editor-panel">
+      <h3>{{ selectedUser ? 'Edit User' : 'Create User' }}</h3>
+
+      <form [formGroup]="userFormGroup" (ngSubmit)="saveUser()">
+        <mat-form-field appearance="outline">
+          <mat-label>Username</mat-label>
+          <input matInput formControlName="username" autocomplete="username">
+          <mat-error *ngIf="userFormGroup.get('username')?.hasError('required')">Username is required</mat-error>
+          <mat-error *ngIf="userFormGroup.get('username')?.hasError('minlength')">Use at least 4 characters</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Email</mat-label>
+          <input matInput formControlName="email" autocomplete="email">
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Role</mat-label>
+          <mat-select formControlName="role">
+            <mat-option value="user">User</mat-option>
+            <mat-option value="admin">Admin</mat-option>
+            <mat-option value="root">Root</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Permission Level</mat-label>
+          <input matInput type="number" [min]="currentPermissionLevel" formControlName="permissionLevel">
+          <mat-error *ngIf="userFormGroup.get('permissionLevel')?.hasError('required')">Permission level is required</mat-error>
+          <mat-error *ngIf="userFormGroup.get('permissionLevel')?.hasError('min')">Permission level cannot be higher than your own access</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Groups</mat-label>
+          <input matInput formControlName="groups">
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Restrictions</mat-label>
+          <input matInput formControlName="restrictions">
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ selectedUser ? 'New Password' : 'Password' }}</mat-label>
+          <input matInput type="password" formControlName="password" autocomplete="new-password">
+          <mat-error *ngIf="userFormGroup.get('password')?.hasError('required')">Password is required for new users</mat-error>
+          <mat-error *ngIf="userFormGroup.get('password')?.hasError('minlength')">Use at least 6 characters</mat-error>
+        </mat-form-field>
+
+        <mat-slide-toggle formControlName="active">Active</mat-slide-toggle>
+
+        <div class="form-actions">
+          <button mat-flat-button color="primary" type="submit" [disabled]="isSaving">
+            <mat-icon>save</mat-icon>
+            {{ isSaving ? 'Saving...' : 'Save User' }}
+          </button>
+          <button mat-button type="button" (click)="newUser()">Clear</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>

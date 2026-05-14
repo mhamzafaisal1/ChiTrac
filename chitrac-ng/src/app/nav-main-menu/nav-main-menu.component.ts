@@ -18,7 +18,7 @@ import { trigger, state, style, animate, transition, query, group } from '@angul
 import { Observable } from 'rxjs';
 import { map, shareReplay } from 'rxjs/operators';
 
-import { UserService } from '../user.service';
+import { PermissionLevels, UserService } from '../user.service';
 import { SettingsService } from '../services/settings.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
 import { UserLoginComponent } from '../user-login/user-login.component';
@@ -107,6 +107,12 @@ export class NavMainMenuComponent {
       }
     });
   }
+
+  canAccess(requiredLevel: number): boolean {
+    return this.userService.hasPermissionLevel(requiredLevel, this.user);
+  }
+
+  readonly permissionLevels = PermissionLevels;
 
   constructor(private userService: UserService, private router: Router, private settingsService: SettingsService) {}
 
