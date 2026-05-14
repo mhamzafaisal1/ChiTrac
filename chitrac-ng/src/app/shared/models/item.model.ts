@@ -9,6 +9,7 @@ export class ItemConfig implements Deserializable {
 	public standard?: number; // pieces per hour standard
 	public area?: number; // area id (currently unused)
 	public department?: string; // department name
+	public applyAfterMachinesOffline?: boolean; // UI-only save option, not persisted
 
 	deserialize(input: any) {
 		Object.assign(this, input);

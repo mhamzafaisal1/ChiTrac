@@ -41,6 +41,9 @@ module.exports = {
   
   // Hybrid query configuration
   hybridThresholdHours: parseInt(process.env.HYBRID_THRESHOLD_HOURS, 10) || 36,
+
+  // Delayed config apply wait time, in minutes.
+  applyChangeWaitTime: parseInt(process.env.APPLYCHANGEWAITTIME, 10) || 10,
   
   // API Security Settings
   // Enable/disable API token authentication (default: true)
