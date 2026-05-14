@@ -146,6 +146,12 @@
       <a mat-list-item routerLink="/ng/settings/server-logs" (click)="closeMenu()">
         <mat-icon>description</mat-icon><span>Server Logs</span>
       </a>
+      <a mat-list-item *ngIf="user.username === 'root'" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
+        <mat-icon>build_circle</mat-icon><span>Utilities</span>
+      </a>
+      <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
+        <mat-icon>dry_cleaning</mat-icon><span>Items</span>
+      </a>
       <a mat-list-item routerLink="/ng/settings/shifts" (click)="closeMenu()">
         <mat-icon>punch_clock</mat-icon><span>Shifts</span>
       </a>

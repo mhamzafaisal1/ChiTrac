@@ -1,0 +1,33 @@
+<div class="settings-utilities-container">
+  <div class="header">
+    <h2>Utilities</h2>
+    <p class="subtitle">Administrative tools for this ChiTrac server</p>
+  </div>
+
+  <mat-card class="utility-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>restart_alt</mat-icon>
+      <mat-card-title>Server Reboot</mat-card-title>
+      <mat-card-subtitle>Schedule a reboot from the web interface</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <p>
+        This action checks the host operating system and only schedules a reboot when the server is running on Linux.
+      </p>
+
+      <div class="result-message" *ngIf="lastResponse" [class.success]="lastResponse.success" [class.unavailable]="!lastResponse.success">
+        <mat-icon>{{ lastResponse.success ? 'check_circle' : 'info' }}</mat-icon>
+        <span>{{ lastResponse.message || lastResponse.error }}</span>
+      </div>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isLoading">
+        <mat-spinner *ngIf="isLoading" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isLoading">power_settings_new</mat-icon>
+        {{ isLoading ? 'Scheduling...' : 'Reboot Server' }}
+      </button>
+    </mat-card-actions>
+  </mat-card>
+</div>

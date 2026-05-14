@@ -1,0 +1,85 @@
+.settings-utilities-container {
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: 24px;
+
+  h2 {
+    margin: 0 0 8px 0;
+    font-size: 28px;
+    font-weight: 500;
+    color: #333;
+  }
+
+  .subtitle {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+  }
+}
+
+.utility-card {
+  mat-card-header {
+    margin-bottom: 16px;
+  }
+
+  mat-card-content {
+    color: #444;
+    font-size: 14px;
+  }
+
+  mat-card-actions {
+    padding: 16px;
+  }
+
+  button {
+    min-width: 168px;
+  }
+
+  mat-spinner {
+    display: inline-block;
+    margin-right: 8px;
+  }
+}
+
+.result-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 4px;
+  background: #e8f5e9;
+  color: #1b5e20;
+
+  &.unavailable {
+    background: #fff8e1;
+    color: #795548;
+  }
+}
+
+@media (max-width: 768px) {
+  .settings-utilities-container {
+    padding: 16px;
+  }
+}
+
+::ng-deep {
+  .success-snackbar {
+    background-color: #4caf50 !important;
+    color: white !important;
+  }
+
+  .warning-snackbar {
+    background-color: #ff9800 !important;
+    color: white !important;
+  }
+
+  .error-snackbar {
+    background-color: #f44336 !important;
+    color: white !important;
+  }
+}

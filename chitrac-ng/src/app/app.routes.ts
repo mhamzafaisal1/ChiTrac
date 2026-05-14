@@ -31,6 +31,7 @@ import { ErrorModalDemoComponent } from './components/error-modal/error-modal-de
 import { TokenManagementComponent } from './token-management/token-management.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
+import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
 
 export const routes: Routes = [
 	// Settings pages
@@ -40,6 +41,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/root/utilities', component: SettingsUtilitiesComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard] },
 	
 	// Login/Auth
