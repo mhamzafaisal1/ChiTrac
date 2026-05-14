@@ -6,6 +6,10 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 
+function escapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 module.exports = function(server) {
     return constructor(server);
 }
@@ -137,11 +141,36 @@ function constructor(server) {
     router.post('/user/register', async (req, res) => {
         try {
             const userCollection = db.collection('user');
-            const user = req.body;
-            const userFind = await userCollection.find({ 'local.username': user.username }).toArray();
-            if (userFind.length) {
-                req.flash('messages', 'That username is already taken.')
-                sendFlashJSON(req, res);
+            const user = req.body || {};
+            const username = (user.username || '').trim();
+            const email = (user.email || '').trim().toLowerCase();
+
+            if (!username || !user.password) {
+                return res.status(400).json({ message: 'Username and password are required.' });
+            }
+
+            const duplicateConditions = [
+                { 'local.username': { $regex: `^${escapeRegex(username)}$`, $options: 'i' } }
+            ];
+
+            if (email) {
+                duplicateConditions.push({ email: { $regex: `^${escapeRegex(email)}$`, $options: 'i' } });
+            }
+
+            const existingUser = await userCollection.findOne({ $or: duplicateConditions });
+            if (existingUser) {
+                const isDuplicateUsername = existingUser?.local?.username &&
+                    existingUser.local.username.toLowerCase() === username.toLowerCase();
+                const isDuplicateEmail = email && existingUser?.email &&
+                    existingUser.email.toLowerCase() === email;
+
+                if (isDuplicateUsername) {
+                    return res.status(409).json({ message: 'That username is already taken.' });
+                }
+                if (isDuplicateEmail) {
+                    return res.status(409).json({ message: 'That email address is already in use.' });
+                }
+                return res.status(409).json({ message: 'A user with these details already exists.' });
             } else {
                 // if there is no user with that email
                 // create the user
@@ -153,13 +182,13 @@ function constructor(server) {
                 };
 
                 // set the user's local credentials
-                newUser.local.username = user.username;
+                newUser.local.username = username;
 
                 const salt = bcrypt.genSaltSync(10);
                 const hash = bcrypt.hashSync(user.password, salt);
                 newUser.local.password = hash;
-                if (req.body.email) {
-                    newUser.email = req.body.email
+                if (email) {
+                    newUser.email = email
                 }
                 if (req.body.role) {
                     newUser.role = req.body.role
@@ -173,17 +202,24 @@ function constructor(server) {
 
                 // save the user
                 try {
-                    const newUserInsert = await userCollection.insertOne(newUser);
-                    return res.json(newUser);
+                    await userCollection.insertOne(newUser);
+                    const safeUser = {
+                        ...newUser,
+                        local: {
+                            ...newUser.local
+                        }
+                    };
+                    delete safeUser.local.password;
+                    return res.json({ message: 'User created successfully.', user: safeUser });
                 } catch (error) {
                     logger.error(error);
-                    return res.json(error)
+                    return res.status(500).json({ message: 'Failed to create user.' });
                 }
 
             }
         } catch (error) {
             logger.error(error);
-            return res.json(error);
+            return res.status(500).json({ message: 'Failed to register user.' });
         }
     })
 
