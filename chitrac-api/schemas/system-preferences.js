@@ -60,7 +60,9 @@ function buildDefaultPreferences(config = {}) {
     systemName: config.systemName || 'ChiTrac',
     defaultTheme: config.defaultTheme || 'dark',
     logLevel: config.logLevel || 'info',
-    userPermissionsLevels: [...DEFAULT_USER_PERMISSION_LEVELS],
+    userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
+      ? [...config.userPermissionsLevels]
+      : [...DEFAULT_USER_PERMISSION_LEVELS],
     createdAt: now,
     updatedAt: now
   };

@@ -3,9 +3,10 @@ const jwt = require('jsonwebtoken');
 const config = require('../../modules/config');
 const { assertPermissionLevel } = require('../../modules/permissions');
 const systemPreferencesSchema = require('../../schemas/system-preferences');
+const systemPreferences = require('../../modules/systemPreferences');
 const { ObjectId } = require('mongodb');
 
-const SINGLETON_ID = 'system-preferences';
+const SINGLETON_ID = systemPreferences.SINGLETON_ID;
 
 module.exports = function(server) {
   return constructor(server);
@@ -15,7 +16,7 @@ function constructor(server) {
   const router = express.Router();
   const db = server.db;
   const logger = server.logger;
-  const collection = db.collection('system-preferences');
+  const collection = systemPreferences.getCollection(db, config);
   const userCollection = db.collection('user');
 
   collection.createIndex({ _id: 1 }, { unique: true }).catch(() => {});
@@ -63,17 +64,7 @@ function constructor(server) {
   }
 
   async function ensureSystemPreferences() {
-    const existing = await collection.findOne({ _id: SINGLETON_ID });
-    if (existing) return existing;
-
-    const preferences = systemPreferencesSchema.utils.normalizePreferences({}, {}, config);
-    const { _id, ...updates } = preferences;
-    await collection.updateOne(
-      { _id: SINGLETON_ID },
-      { $set: updates, $setOnInsert: { _id } },
-      { upsert: true }
-    );
-    return collection.findOne({ _id: SINGLETON_ID });
+    return systemPreferences.ensureSystemPreferences(db, config);
   }
 
   async function getSystemPreferences(req, res, next) {

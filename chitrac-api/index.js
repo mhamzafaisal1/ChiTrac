@@ -112,18 +112,6 @@ const morganMiddleware = morgan(':method :url :status :res[content-length] - :re
 
 app.use(morganMiddleware);
 
-try {
-	const routes = require('./routes');
-	routes.init(app, server);
-} catch (e) {
-	logger.error(`routes.init failed: ${e.message}`);
-	throw e;
-}
-
-app.listen(port, () => {
-	logger.info(`ChiTracAPI Started and listening on port ${port}`);
-});
-
 /**** Initial Collection Setup */
 async function initializeCollections() {
     logger.debug('Initializing machine collection...');
@@ -200,36 +188,43 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing system-preferences collection...');
-    const systemPreferencesSchema = require('./schemas/system-preferences');
-    const systemPreferencesDefault = systemPreferencesSchema.utils.buildDefaultPreferences(config);
-    await cm.createCollection('system-preferences').then(async () => {
-        const collection = db.collection('system-preferences');
-        const { _id, ...updates } = systemPreferencesDefault;
-        await collection.updateOne(
-            { _id },
-            { $set: updates, $setOnInsert: { _id } },
-            { upsert: true }
-        );
+    const systemPreferences = require('./modules/systemPreferences');
+    await cm.createCollection(config.systemPreferencesCollectionName).then(async () => {
+        await systemPreferences.ensureSystemPreferences(db, config);
         logger.debug('System preferences collection initialized!');
     }).catch(async (error) => {
         if (error.codeName === 'NamespaceExists') {
-            const collection = db.collection('system-preferences');
-            const existing = await collection.findOne({ _id: systemPreferencesDefault._id });
-            if (existing) {
-                logger.debug('System preferences collection already initialized!');
-            } else {
-                const { _id, ...updates } = systemPreferencesDefault;
-                await collection.updateOne(
-                    { _id },
-                    { $set: updates, $setOnInsert: { _id } },
-                    { upsert: true }
-                );
-                logger.debug('System preferences collection populated!');
-            }
+            await systemPreferences.ensureSystemPreferences(db, config);
+            logger.debug('System preferences collection already initialized!');
         } else {
             logger.error(error.toString());
         }
     });
 }
 
-initializeCollections();
+async function startServer() {
+    try {
+        const systemPreferences = require('./modules/systemPreferences');
+        const preferences = await systemPreferences.loadAndApplySystemPreferences(server);
+        logger.info('System preferences loaded', {
+            systemName: server.config.systemName,
+            defaultTheme: server.config.defaultTheme,
+            logLevel: server.config.logLevel,
+            userPermissionsLevels: server.config.userPermissionsLevels
+        });
+
+        const routes = require('./routes');
+        routes.init(app, server);
+
+        await initializeCollections();
+
+        app.listen(port, () => {
+            logger.info(`ChiTracAPI Started and listening on port ${port}`);
+        });
+    } catch (e) {
+        logger.error(`Server startup failed: ${e.message}`);
+        throw e;
+    }
+}
+
+startServer();
