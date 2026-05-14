@@ -34,6 +34,7 @@ export class UserRegisterComponent {
   user: any = {
     username: null,
     password: null,
+    email: null,
     permissionLevel: 3
   };
   error: any = null;
@@ -86,6 +87,7 @@ export class UserRegisterComponent {
     this.userRegistrationFormGroup = new FormGroup({
       username: new FormControl(this.user.username, [Validators.required, Validators.minLength(4)]),
       password: new FormControl(this.user.password, [Validators.required, Validators.minLength(6), Validators.maxLength(64)]),
+      email: new FormControl(this.user.email, [Validators.email]),
       permissionLevel: new FormControl(this.user.permissionLevel, [Validators.required, Validators.min(this.currentPermissionLevel)]),
     });
 
@@ -102,6 +104,7 @@ export class UserRegisterComponent {
     ).subscribe(res => {
       this.user.username = res.username;
       this.user.password = res.password;
+      this.user.email = res.email;
       this.user.permissionLevel = Number(res.permissionLevel ?? this.currentPermissionLevel);
     });
   };

@@ -232,13 +232,13 @@ function constructor(server) {
                 };
 
                 // set the user's local credentials
-                newUser.local.username = user.username;
+                newUser.local.username = username;
 
                 const salt = bcrypt.genSaltSync(10);
                 const hash = bcrypt.hashSync(user.password, salt);
                 newUser.local.password = hash;
-                if (req.body.email) {
-                    newUser.email = req.body.email
+                if (email) {
+                    newUser.email = email
                 }
                 if (req.body.role) {
                     newUser.role = req.body.role
@@ -257,17 +257,24 @@ function constructor(server) {
 
                 // save the user
                 try {
-                    const newUserInsert = await userCollection.insertOne(newUser);
-                    return res.json(newUser);
+                    await userCollection.insertOne(newUser);
+                    const safeUser = {
+                        ...newUser,
+                        local: {
+                            ...newUser.local
+                        }
+                    };
+                    delete safeUser.local.password;
+                    return res.json({ message: 'User created successfully.', user: safeUser });
                 } catch (error) {
                     logger.error(error);
-                    return res.json(error)
+                    return res.status(500).json({ message: 'Failed to create user.' });
                 }
 
             }
         } catch (error) {
             logger.error(error);
-            return res.json(error);
+            return res.status(500).json({ message: 'Failed to register user.' });
         }
     })
 

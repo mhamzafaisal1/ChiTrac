@@ -140,6 +140,9 @@
       <a mat-list-item *ngIf="canAccess(permissionLevels.operators)" routerLink="/ng/settings/operators" (click)="closeMenu()">
         <mat-icon>person</mat-icon><span>Operators</span>
       </a>
+      <a mat-list-item routerLink="/ng/settings/items" (click)="closeMenu()">
+        <mat-icon>dry_cleaning</mat-icon><span>Items</span>
+      </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.apiTokens)" routerLink="/ng/settings/tokens" (click)="closeMenu()">
         <mat-icon>vpn_key</mat-icon><span>API Tokens</span>
       </a>
@@ -148,6 +151,9 @@
       </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.serverLogs)" routerLink="/ng/settings/server-logs" (click)="closeMenu()">
         <mat-icon>description</mat-icon><span>Server Logs</span>
+      </a>
+      <a mat-list-item *ngIf="user.username === 'root'" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
+        <mat-icon>build_circle</mat-icon><span>Utilities</span>
       </a>
       <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>

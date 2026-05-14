@@ -1,4 +1,5 @@
 const path = require("path");
+const hasHttpsEnabledEnv = Object.prototype.hasOwnProperty.call(process.env, 'HTTPS_ENABLED');
 
 // Load .env from the chitrac-api root (next to index.js), not process.cwd().
 // Windows services often start with cwd = System32 or another folder, which
@@ -38,9 +39,18 @@ module.exports = {
   jwtSecret: process.env.JWT_SECRET,
   logLevel: process.env.LOG_LEVEL || 'info',
   inDev: process.env.NODE_ENV === 'development',
+  httpsEnabled: process.env.HTTPS_ENABLED === 'true',
+  httpsEnabledEnvConfigured: hasHttpsEnabledEnv,
+  httpsPort: parseInt(process.env.HTTPS_PORT, 10) || 50443,
+  certificatesDir: path.join(__dirname, '..', 'certificates'),
+  httpsKeyFile: 'chitrac.key',
+  httpsCertFile: 'chitrac.crt',
   
   // Hybrid query configuration
   hybridThresholdHours: parseInt(process.env.HYBRID_THRESHOLD_HOURS, 10) || 36,
+
+  // Delayed config apply wait time, in minutes.
+  applyChangeWaitTime: parseInt(process.env.APPLYCHANGEWAITTIME, 10) || 10,
   
   // API Security Settings
   // Enable/disable API token authentication (default: true)
