@@ -18,6 +18,8 @@ const morgan = require('morgan');
 
 /** Load MongoDB for logger connection */
 const { MongoClient } = require('mongodb');
+const https = require('https');
+const certificates = require('./modules/certificates');
 
 /** Declare the custom winston logger and create a blank instance */
 const winston = require('./modules/logger');
@@ -210,6 +212,8 @@ async function startServer() {
             systemName: server.config.systemName,
             defaultTheme: server.config.defaultTheme,
             logLevel: server.config.logLevel,
+            httpsEnabled: server.config.httpsEnabled,
+            httpsEnabledSource: server.config.httpsEnabledSource,
             userPermissionsLevels: server.config.userPermissionsLevels
         });
 
@@ -221,6 +225,18 @@ async function startServer() {
         app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
         });
+
+        if (server.config.httpsEnabled === true) {
+            if (!certificates.certificateFilesExist(server.config)) {
+                const { keyPath, certPath } = certificates.getCertificatePaths(server.config);
+                logger.error(`HTTPS is enabled but certificate files were not found. Expected key: ${keyPath}, cert: ${certPath}`);
+            } else {
+                const credentials = certificates.loadHttpsCredentials(server.config);
+                https.createServer(credentials, app).listen(server.config.httpsPort, () => {
+                    logger.info(`ChiTracAPI HTTPS Started and listening on port ${server.config.httpsPort}`);
+                });
+            }
+        }
     } catch (e) {
         logger.error(`Server startup failed: ${e.message}`);
         throw e;

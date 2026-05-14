@@ -32,6 +32,10 @@ const schema = {
       type: 'string',
       description: 'Runtime log level, equivalent to LOG_LEVEL from .env'
     },
+    httpsEnabled: {
+      type: 'boolean',
+      description: 'Whether HTTPS hosting should be enabled at runtime'
+    },
     userPermissionsLevels: {
       type: 'array',
       minItems: 8,
@@ -84,6 +88,12 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     createdAt: existing.createdAt || defaults.createdAt,
     updatedAt: now
   };
+
+  if (typeof input.httpsEnabled === 'boolean') {
+    preferences.httpsEnabled = input.httpsEnabled;
+  } else if (typeof existing.httpsEnabled === 'boolean') {
+    preferences.httpsEnabled = existing.httpsEnabled;
+  }
 
   const valid = validate(preferences);
   if (!valid) {

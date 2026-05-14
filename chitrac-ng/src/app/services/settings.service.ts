@@ -8,6 +8,7 @@ export interface AppSettings {
   showErrorModals: boolean;
   defaultTheme: 'light' | 'dark';
   systemName: string;
+  httpsEnabled: boolean;
 }
 
 export interface ThemeResponse {

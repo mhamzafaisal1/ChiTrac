@@ -1,6 +1,9 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const config = require("../../modules/config");
+const certificates = require("../../modules/certificates");
+const { ObjectId } = require("mongodb");
+const { assertPermissionLevel } = require("../../modules/permissions");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -12,6 +15,13 @@ module.exports = function (server) {
     if (typeof req.query?.token === "string") return req.query.token;
     if (typeof req.body?.token === "string") return req.body.token;
     return null;
+  }
+
+  function normalizeTokenUserId(rawUserId) {
+    if (!rawUserId) return null;
+    if (typeof rawUserId === "string") return rawUserId;
+    if (typeof rawUserId === "object" && rawUserId.$oid) return rawUserId.$oid;
+    return `${rawUserId}`;
   }
 
   function verifyJwtMiddleware(req, res, next) {
@@ -93,8 +103,47 @@ module.exports = function (server) {
     }
   }
 
+  function requirePermissionLevel(requiredLevel) {
+    return async function(req, res, next) {
+      if (req.tokenPayload?.bypassed) return next();
+
+      try {
+        const userId = normalizeTokenUserId(req.tokenPayload?.userId || req.tokenPayload?.createdBy);
+        if (!userId) return res.status(401).json({ error: "Invalid token payload" });
+
+        const user = await server.db.collection('user').findOne({ _id: new ObjectId(userId) });
+        assertPermissionLevel(user, requiredLevel);
+        req.authUser = user;
+        return next();
+      } catch (err) {
+        logger?.error?.("Permission check failed:", err);
+        return res.status(err.status || 403).json({ error: err.message || "Insufficient permissions" });
+      }
+    };
+  }
+
   router.get("/tokenTest", verifyJwtMiddleware, (req, res) => {
     res.json({ valid: true, payload: req.tokenPayload });
+  });
+
+  router.post("/ssl/generate-certificate", verifyJwtMiddleware, requirePermissionLevel(0), async (req, res) => {
+    try {
+      const result = await certificates.generateSelfSignedCertificate(config, {
+        commonName: req.body?.commonName,
+        days: req.body?.days
+      });
+
+      res.json({
+        success: true,
+        message: "SSL certificate generated",
+        certificatesDir: result.certificatesDir,
+        keyFile: config.httpsKeyFile,
+        certFile: config.httpsCertFile
+      });
+    } catch (err) {
+      logger?.error?.("Error generating SSL certificate:", err);
+      res.status(err.status || 500).json({ error: err.message || "Failed to generate SSL certificate" });
+    }
   });
 
   // Test endpoint to generate JWT tokens for testing

@@ -1,10 +1,11 @@
 const path = require("path");
-const hasHttpsEnabledEnv = Object.prototype.hasOwnProperty.call(process.env, 'HTTPS_ENABLED');
 
 // Load .env from the chitrac-api root (next to index.js), not process.cwd().
 // Windows services often start with cwd = System32 or another folder, which
 // would skip .env and leave connection strings / secrets unset.
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+
+const hasHttpsEnabledEnv = Object.prototype.hasOwnProperty.call(process.env, 'HTTPS_ENABLED');
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV,
