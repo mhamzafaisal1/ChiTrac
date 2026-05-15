@@ -6,6 +6,20 @@ const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const hasHttpsEnabledEnv = Object.prototype.hasOwnProperty.call(process.env, 'HTTPS_ENABLED');
+const defaultTheme = ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark';
+const systemName = process.env.SYSTEM_NAME || 'ChiTrac';
+const logLevel = process.env.LOG_LEVEL || 'info';
+const httpsEnabled = process.env.HTTPS_ENABLED === 'true';
+const userPermissionsLevels = [
+  'Root',
+  'SysAdmin',
+  'Admin',
+  'Manager',
+  'Supervisor',
+  'Employee',
+  'Operator',
+  'Guest'
+];
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV,
@@ -38,9 +52,9 @@ module.exports = {
   totalsHourlyCollectionName: 'totals-hourly',
 
   jwtSecret: process.env.JWT_SECRET,
-  logLevel: process.env.LOG_LEVEL || 'info',
+  logLevel,
   inDev: process.env.NODE_ENV === 'development',
-  httpsEnabled: process.env.HTTPS_ENABLED === 'true',
+  httpsEnabled,
   httpsEnabledEnvConfigured: hasHttpsEnabledEnv,
   httpsPort: parseInt(process.env.HTTPS_PORT, 10) || 50443,
   certificatesDir: path.join(__dirname, '..', 'certificates'),
@@ -63,22 +77,21 @@ module.exports = {
   
   // Theme Settings
   // Default theme for new users: 'light' or 'dark' (default: 'light')
-  defaultTheme: ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? process.env.DEFAULT_THEME : 'dark',
+  defaultTheme,
   
   // System Name
   // System name displayed in the navbar (fallback for when DB is unavailable)
-  systemName: process.env.SYSTEM_NAME || 'ChiTrac',
+  systemName,
 
-  userPermissionsLevels: [
-    'Root',
-    'SysAdmin',
-    'Admin',
-    'Manager',
-    'Supervisor',
-    'Employee',
-    'Operator',
-    'Guest'
-  ],
+  userPermissionsLevels,
+
+  envPreferences: {
+    systemName,
+    defaultTheme,
+    logLevel,
+    httpsEnabled,
+    userPermissionsLevels: [...userPermissionsLevels]
+  },
 
   // Softrol API Settings
   // Enable/disable Softrol API routes and documentation (default: false)
