@@ -1,6 +1,8 @@
 const Ajv = require('ajv');
 const ajv = new Ajv();
 const bcrypt = require('bcryptjs');
+const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MAX_LENGTH = 64;
 
 // Import related schemas
 const timestampsSchema = require('./timestampsSchema');
@@ -52,6 +54,8 @@ const schema = {
         },
         password: {
           type: 'string',
+          minLength: PASSWORD_MIN_LENGTH,
+          maxLength: PASSWORD_MAX_LENGTH,
           description: 'String of the encrypted password for user'
         }
       },
@@ -87,6 +91,14 @@ const validate = ajv.compile(schema);
 
 // User Utility Functions
 const utils = {
+  validatePlainTextPassword: (password) => {
+    const passwordString = `${password || ''}`;
+    if (passwordString.length < PASSWORD_MIN_LENGTH || passwordString.length > PASSWORD_MAX_LENGTH) {
+      throw new Error(`Password must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters`);
+    }
+    return true;
+  },
+
   /**
    * Initialize a user object
    * @param {number} id - Required number value of the user id
@@ -101,6 +113,8 @@ const utils = {
     // Initialize timestamps using timestamps utils
     const now = new Date().toISOString();
     const timestamps = timestampsSchema.utils.stampInit(now);
+
+    utils.validatePlainTextPassword(password);
 
     // Encrypt the password using bcrypt (same method as current passport registration)
     const salt = bcrypt.genSaltSync(10);
@@ -230,6 +244,8 @@ const utils = {
    */
   updatePassword: (userObject, newPassword) => {
     const now = new Date().toISOString();
+
+    utils.validatePlainTextPassword(newPassword);
     
     // Encrypt the new password
     const salt = bcrypt.genSaltSync(10);

@@ -24,6 +24,11 @@ function constructor(server) {
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
     }
 
+    function isValidPasswordLength(password) {
+        const passwordString = `${password || ''}`;
+        return passwordString.length >= 6 && passwordString.length <= 64;
+    }
+
     function extractToken(req) {
         const authHeader = req.headers['authorization'] || req.headers['Authorization'];
         if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
@@ -70,6 +75,25 @@ function constructor(server) {
         const authLevel = getPermissionLevel(authUser);
         return typeof targetLevel === 'number' && authLevel !== null && targetLevel >= authLevel;
     }
+
+    function requireHttpsWhenEnabled(req, res, next) {
+        const runtimeConfig = server.config || config;
+        if (runtimeConfig.httpsEnabled !== true) {
+            return next();
+        }
+
+        if (req.secure) {
+            return next();
+        }
+
+        const hostHeader = req.headers.host || req.hostname || 'localhost';
+        const hostname = `${hostHeader}`.split(':')[0];
+        const httpsPort = Number(runtimeConfig.httpsPort) || 50443;
+        const httpsHost = httpsPort === 443 ? hostname : `${hostname}:${httpsPort}`;
+        return res.redirect(307, `https://${httpsHost}${req.originalUrl || req.url}`);
+    }
+
+    router.use(requireHttpsWhenEnabled);
 
     function sanitizeUser(user) {
         const userObject = { ...user.local };
@@ -208,6 +232,9 @@ function constructor(server) {
             if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
                 return res.status(403).json({ error: 'Cannot create a user with a higher permission level than your own' });
             }
+            if (!isValidPasswordLength(user.password)) {
+                return res.status(400).json({ error: 'Password must be between 6 and 64 characters' });
+            }
 
             const userFind = await userCollection.find({ 'local.username': user.username }).toArray();
             if (userFind.length) {
@@ -224,13 +251,13 @@ function constructor(server) {
                 };
 
                 // set the user's local credentials
-                newUser.local.username = username;
+                newUser.local.username = user.username;
 
                 const salt = bcrypt.genSaltSync(10);
                 const hash = bcrypt.hashSync(user.password, salt);
                 newUser.local.password = hash;
-                if (email) {
-                    newUser.email = email
+                if (user.email) {
+                    newUser.email = user.email
                 }
                 if (req.body.role) {
                     newUser.role = req.body.role

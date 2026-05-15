@@ -24,6 +24,9 @@ dist/
 # Log folder
 logs/
 
+# Generated HTTPS certificates
+certificates/
+
 # Log files
 *.log
 

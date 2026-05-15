@@ -35,6 +35,13 @@ function applySystemPreferences(config, preferences = {}) {
     config.logLevel = preferences.logLevel.trim();
   }
 
+  if (typeof preferences.httpsEnabled === 'boolean') {
+    config.httpsEnabled = preferences.httpsEnabled;
+    config.httpsEnabledSource = 'system-preferences';
+  } else {
+    config.httpsEnabledSource = config.httpsEnabledEnvConfigured ? 'env' : 'default';
+  }
+
   if (Array.isArray(preferences.userPermissionsLevels)) {
     config.userPermissionsLevels = preferences.userPermissionsLevels.map(label => `${label}`.trim());
   }

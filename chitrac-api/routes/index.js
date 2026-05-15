@@ -15,6 +15,7 @@ function init(app, server) {
     const bikoRoutes = require('../controllers/biko')(server);
     const authRoutes = require('../controllers/auth')(server);
     const userRoutes = require('../controllers/users')(server);
+    const preferencesRoutes = require('../controllers/preferences')(server);
     const systemPreferencesRoutes = require('../controllers/system-preferences')(server);
     const passportRoutes = require('../controllers/passport')(server);
     const historyRoutes = require('../controllers/history')(server);
@@ -261,6 +262,7 @@ function init(app, server) {
     app.use('/api/biko', bikoRoutes);
     app.use('/api/auth', authRoutes);
     app.use('/api/users', userRoutes);
+    app.use('/api/preferences', preferencesRoutes);
     app.use('/api/system-preferences', systemPreferencesRoutes);
     app.use('/api/passport', passportRoutes);
 

@@ -1,6 +1,9 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const config = require("../../modules/config");
+const certificates = require("../../modules/certificates");
+const { ObjectId } = require("mongodb");
+const { assertPermissionLevel } = require("../../modules/permissions");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -12,6 +15,13 @@ module.exports = function (server) {
     if (typeof req.query?.token === "string") return req.query.token;
     if (typeof req.body?.token === "string") return req.body.token;
     return null;
+  }
+
+  function normalizeTokenUserId(rawUserId) {
+    if (!rawUserId) return null;
+    if (typeof rawUserId === "string") return rawUserId;
+    if (typeof rawUserId === "object" && rawUserId.$oid) return rawUserId.$oid;
+    return `${rawUserId}`;
   }
 
   function verifyJwtMiddleware(req, res, next) {
@@ -93,8 +103,47 @@ module.exports = function (server) {
     }
   }
 
+  function requirePermissionLevel(requiredLevel) {
+    return async function(req, res, next) {
+      if (req.tokenPayload?.bypassed) return next();
+
+      try {
+        const userId = normalizeTokenUserId(req.tokenPayload?.userId || req.tokenPayload?.createdBy);
+        if (!userId) return res.status(401).json({ error: "Invalid token payload" });
+
+        const user = await server.db.collection('user').findOne({ _id: new ObjectId(userId) });
+        assertPermissionLevel(user, requiredLevel);
+        req.authUser = user;
+        return next();
+      } catch (err) {
+        logger?.error?.("Permission check failed:", err);
+        return res.status(err.status || 403).json({ error: err.message || "Insufficient permissions" });
+      }
+    };
+  }
+
   router.get("/tokenTest", verifyJwtMiddleware, (req, res) => {
     res.json({ valid: true, payload: req.tokenPayload });
+  });
+
+  router.post("/ssl/generate-certificate", verifyJwtMiddleware, requirePermissionLevel(0), async (req, res) => {
+    try {
+      const result = await certificates.generateSelfSignedCertificate(config, {
+        commonName: req.body?.commonName,
+        days: req.body?.days
+      });
+
+      res.json({
+        success: true,
+        message: "SSL certificate generated",
+        certificatesDir: result.certificatesDir,
+        keyFile: config.httpsKeyFile,
+        certFile: config.httpsCertFile
+      });
+    } catch (err) {
+      logger?.error?.("Error generating SSL certificate:", err);
+      res.status(err.status || 500).json({ error: err.message || "Failed to generate SSL certificate" });
+    }
   });
 
   // Test endpoint to generate JWT tokens for testing
@@ -256,88 +305,13 @@ module.exports = function (server) {
   });
 
   // Get user's theme preference
-  router.get("/user/theme", verifyJwtMiddleware, async (req, res) => {
-    try {
-      const db = server.db;
-      const userPreferencesCollection = db.collection('user-preferences');
-      
-      // If bypassed (no auth required), return default theme only
-      if (req.tokenPayload?.bypassed) {
-        return res.json({ 
-          theme: config.defaultTheme,
-          source: 'default'
-        });
-      }
-
-      const userId = req.tokenPayload.userId;
-      
-      // Try to find user's preference in database
-      const userPrefs = await userPreferencesCollection.findOne({ userId: userId });
-      
-      if (userPrefs && userPrefs.theme) {
-        return res.json({ 
-          theme: userPrefs.theme,
-          source: 'user'
-        });
-      }
-      
-      // Fall back to env default
-      res.json({ 
-        theme: config.defaultTheme,
-        source: 'default'
-      });
-
-    } catch (err) {
-      logger?.error?.("Error fetching user theme:", err);
-      res.status(500).json({ error: "Failed to fetch user theme" });
-    }
+  router.get("/user/theme", (req, res) => {
+    res.redirect(307, `/api/preferences/user/theme`);
   });
 
   // Save user's theme preference
-  router.put("/user/theme", verifyJwtMiddleware, async (req, res) => {
-    try {
-      const { theme } = req.body;
-      
-      // Validate theme value
-      if (!theme || !['light', 'dark'].includes(theme)) {
-        return res.status(400).json({ error: "Invalid theme. Must be 'light' or 'dark'" });
-      }
-
-      // If bypassed (no auth required), can't save preferences
-      if (req.tokenPayload?.bypassed) {
-        return res.status(401).json({ error: "Authentication required to save preferences" });
-      }
-
-      const db = server.db;
-      const userPreferencesCollection = db.collection('user-preferences');
-      const userId = req.tokenPayload.userId;
-      
-      // Upsert user preference
-      await userPreferencesCollection.updateOne(
-        { userId: userId },
-        { 
-          $set: { 
-            theme: theme,
-            updatedAt: new Date()
-          },
-          $setOnInsert: {
-            userId: userId,
-            createdAt: new Date()
-          }
-        },
-        { upsert: true }
-      );
-
-      res.json({ 
-        success: true, 
-        theme: theme,
-        message: "Theme preference saved"
-      });
-
-    } catch (err) {
-      logger?.error?.("Error saving user theme:", err);
-      res.status(500).json({ error: "Failed to save user theme" });
-    }
+  router.put("/user/theme", (req, res) => {
+    res.redirect(307, `/api/preferences/user/theme`);
   });
 
   return router;

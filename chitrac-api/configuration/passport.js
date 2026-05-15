@@ -20,6 +20,11 @@ module.exports = function(passport, server) {
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
     }
 
+    function isValidPasswordLength(password) {
+        const passwordString = `${password || ''}`;
+        return passwordString.length >= 6 && passwordString.length <= 64;
+    }
+
     // =========================================================================
     // passport session setup ==================================================
     // =========================================================================
@@ -65,6 +70,8 @@ module.exports = function(passport, server) {
                 const userFind = await userCollection.find({ 'local.username': username }).toArray();
                 if (userFind.length) {
                     return callback(null, false, req.flash('messages', 'That username is already taken.'));
+                } else if (!isValidPasswordLength(password)) {
+                    return callback(null, false, req.flash('messages', 'Password must be between 6 and 64 characters.'));
                 } else {
 
                     // if there is no user with that email

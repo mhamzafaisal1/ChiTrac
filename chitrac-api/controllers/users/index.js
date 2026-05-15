@@ -10,6 +10,8 @@ module.exports = function(server) {
   const db = server.db;
   const logger = server.logger;
   const userCollection = db.collection('user');
+  const PASSWORD_MIN_LENGTH = 6;
+  const PASSWORD_MAX_LENGTH = 64;
 
   function extractToken(req) {
     const authHeader = req.headers['authorization'] || req.headers['Authorization'];
@@ -111,6 +113,14 @@ module.exports = function(server) {
   function normalizePermissionLevel(value, defaultLevel = 3) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
+  }
+
+  function isValidPasswordLength(password) {
+    return password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH;
+  }
+
+  function passwordLengthError() {
+    return `Password must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters`;
   }
 
   function sanitizeUser(user) {
@@ -217,8 +227,8 @@ module.exports = function(server) {
       };
 
       if (password) {
-        if (password.length < 6) {
-          return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        if (!isValidPasswordLength(password)) {
+          return res.status(400).json({ error: passwordLengthError() });
         }
         if (!currentPassword || !bcrypt.compareSync(currentPassword, existingUser.local?.password || '')) {
           return res.status(400).json({ error: 'Current password is required to change password' });
@@ -260,8 +270,8 @@ module.exports = function(server) {
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      if (!isValidPasswordLength(password)) {
+        return res.status(400).json({ error: passwordLengthError() });
       }
       if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
         return res.status(403).json({ error: 'Cannot create a user with a higher permission level than your own' });
@@ -308,8 +318,8 @@ module.exports = function(server) {
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
       }
-      if (req.body.password && `${req.body.password}`.length < 6) {
-        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      if (req.body.password && !isValidPasswordLength(`${req.body.password}`)) {
+        return res.status(400).json({ error: passwordLengthError() });
       }
       if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
         return res.status(403).json({ error: 'Cannot assign a higher permission level than your own' });

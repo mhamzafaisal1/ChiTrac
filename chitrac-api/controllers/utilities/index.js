@@ -2056,7 +2056,8 @@ function constructor(server) {
         enableApiTokenCheck: config.enableApiTokenCheck,
         showErrorModals: config.showErrorModals,
         defaultTheme: config.defaultTheme,
-        systemName: config.systemName
+        systemName: config.systemName,
+        httpsEnabled: config.httpsEnabled
       });
     } catch (error) {
       logger.error(`Error retrieving settings:`, error);

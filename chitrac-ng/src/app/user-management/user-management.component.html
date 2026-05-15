@@ -115,9 +115,10 @@
 
         <mat-form-field appearance="outline">
           <mat-label>{{ selectedUser ? 'New Password' : 'Password' }}</mat-label>
-          <input matInput type="password" formControlName="password" autocomplete="new-password">
+          <input matInput type="password" formControlName="password" autocomplete="new-password" maxlength="64">
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('required')">Password is required for new users</mat-error>
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('minlength')">Use at least 6 characters</mat-error>
+          <mat-error *ngIf="userFormGroup.get('password')?.hasError('maxlength')">Use no more than 64 characters</mat-error>
         </mat-form-field>
 
         <mat-slide-toggle formControlName="active">Active</mat-slide-toggle>

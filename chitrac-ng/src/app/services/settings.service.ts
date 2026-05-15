@@ -8,6 +8,7 @@ export interface AppSettings {
   showErrorModals: boolean;
   defaultTheme: 'light' | 'dark';
   systemName: string;
+  httpsEnabled: boolean;
 }
 
 export interface ThemeResponse {
@@ -50,7 +51,7 @@ export class SettingsService {
    * Get user's theme preference from server
    */
   getUserTheme(): Observable<ThemeResponse> {
-    return this.http.get<ThemeResponse>('/api/auth/user/theme').pipe(
+    return this.http.get<ThemeResponse>('/api/preferences/user/theme').pipe(
       tap(response => {
         this.currentThemeSubject.next(response.theme);
         console.log('[SettingsService] Theme loaded:', response);
@@ -62,7 +63,7 @@ export class SettingsService {
    * Save user's theme preference to server
    */
   saveUserTheme(theme: 'light' | 'dark'): Observable<any> {
-    return this.http.put('/api/auth/user/theme', { theme }).pipe(
+    return this.http.put('/api/preferences/user/theme', { theme }).pipe(
       tap(() => {
         this.currentThemeSubject.next(theme);
         console.log('[SettingsService] Theme saved:', theme);

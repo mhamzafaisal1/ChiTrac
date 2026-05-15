@@ -58,7 +58,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     groups: new FormControl(''),
     restrictions: new FormControl(''),
     active: new FormControl(true),
-    password: new FormControl('', [Validators.minLength(6)])
+    password: new FormControl('', [Validators.minLength(6), Validators.maxLength(64)])
   });
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
