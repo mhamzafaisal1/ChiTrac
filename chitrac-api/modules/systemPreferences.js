@@ -9,7 +9,23 @@ function getCollection(db, config = {}) {
 async function ensureSystemPreferences(db, config = {}) {
   const collection = getCollection(db, config);
   const existing = await collection.findOne({ _id: SINGLETON_ID });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.userSessionExpirationHours === undefined) {
+      await collection.updateOne(
+        { _id: SINGLETON_ID },
+        {
+          $set: {
+            userSessionExpirationHours: Number(config.userSessionExpirationHours) > 0
+              ? Number(config.userSessionExpirationHours)
+              : 48,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      );
+      return collection.findOne({ _id: SINGLETON_ID });
+    }
+    return existing;
+  }
 
   const preferences = systemPreferencesSchema.utils.normalizePreferences({}, {}, config);
   const { _id, ...updates } = preferences;
@@ -42,8 +58,20 @@ function applySystemPreferences(config, preferences = {}) {
     config.httpsEnabledSource = config.httpsEnabledEnvConfigured ? 'env' : 'default';
   }
 
+  if (Number.isFinite(Number(preferences.userSessionExpirationHours)) && Number(preferences.userSessionExpirationHours) > 0) {
+    config.userSessionExpirationHours = Number(preferences.userSessionExpirationHours);
+    config.userSessionExpirationMs = config.userSessionExpirationHours * 60 * 60 * 1000;
+  }
+
   if (Array.isArray(preferences.userPermissionsLevels)) {
     config.userPermissionsLevels = preferences.userPermissionsLevels.map(label => `${label}`.trim());
+  }
+
+  if (Array.isArray(preferences.operatorPaceHandicap)) {
+    config.operatorPaceHandicap = preferences.operatorPaceHandicap.map(rule => ({
+      daysOfEmployment: Number(rule.daysOfEmployment),
+      handicapFactor: Number(rule.handicapFactor)
+    }));
   }
 
   config.systemPreferences = preferences;

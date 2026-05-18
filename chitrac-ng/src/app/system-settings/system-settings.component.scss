@@ -1,0 +1,107 @@
+.system-settings-page {
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 24px;
+
+  h2 {
+    margin: 0 0 8px 0;
+    font-size: 28px;
+    font-weight: 500;
+    color: #333;
+  }
+
+  .subtitle {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+  }
+}
+
+.settings-card {
+  mat-card-header {
+    margin-bottom: 16px;
+  }
+
+  mat-card-content {
+    padding-top: 24px;
+  }
+
+  mat-card-actions {
+    display: flex;
+    gap: 12px;
+    padding: 16px 0 0;
+  }
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #555;
+  min-height: 72px;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 24px;
+  align-items: start;
+}
+
+.setting-copy {
+  h3 {
+    margin: 4px 0 8px;
+    font-size: 18px;
+    font-weight: 500;
+    color: #333;
+  }
+
+  p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+}
+
+.hours-field {
+  width: 100%;
+}
+
+.metadata {
+  margin-top: 8px;
+  color: #666;
+  font-size: 13px;
+}
+
+button mat-spinner {
+  display: inline-block;
+  margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+  .system-settings-page {
+    padding: 16px;
+  }
+
+  .setting-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+::ng-deep {
+  .success-snackbar {
+    background-color: #4caf50 !important;
+    color: white !important;
+  }
+
+  .error-snackbar {
+    background-color: #f44336 !important;
+    color: white !important;
+  }
+}

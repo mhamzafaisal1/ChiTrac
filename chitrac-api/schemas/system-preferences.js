@@ -36,6 +36,11 @@ const schema = {
       type: 'boolean',
       description: 'Whether HTTPS hosting should be enabled at runtime'
     },
+    userSessionExpirationHours: {
+      type: 'number',
+      exclusiveMinimum: 0,
+      description: 'User session expiration duration in hours, equivalent to USER_SESSION_EXPIRATION_HOURS from .env'
+    },
     userPermissionsLevels: {
       type: 'array',
       minItems: 8,
@@ -44,6 +49,27 @@ const schema = {
         type: 'string'
       },
       description: 'String labels for user permission levels 0 through 7'
+    },
+    operatorPaceHandicap: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['daysOfEmployment', 'handicapFactor'],
+        properties: {
+          daysOfEmployment: {
+            type: 'number',
+            minimum: 0,
+            description: 'Minimum days employed for this handicap rule to apply'
+          },
+          handicapFactor: {
+            type: 'number',
+            minimum: 0,
+            description: 'Multiplier applied to the full operator pace standard'
+          }
+        },
+        additionalProperties: false
+      },
+      description: 'Operator pace standard proration rules based on days of employment'
     },
     createdAt: {
       type: 'string'
@@ -64,6 +90,9 @@ function buildDefaultPreferences(config = {}) {
     systemName: config.systemName || 'ChiTrac',
     defaultTheme: config.defaultTheme || 'dark',
     logLevel: config.logLevel || 'info',
+    userSessionExpirationHours: Number(config.userSessionExpirationHours) > 0
+      ? Number(config.userSessionExpirationHours)
+      : 48,
     userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
       ? [...config.userPermissionsLevels]
       : [...DEFAULT_USER_PERMISSION_LEVELS],
@@ -78,12 +107,23 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
   const userPermissionsLevels = Array.isArray(input.userPermissionsLevels)
     ? input.userPermissionsLevels.map(label => `${label}`.trim())
     : existing.userPermissionsLevels || defaults.userPermissionsLevels;
+  const operatorPaceHandicap = Array.isArray(input.operatorPaceHandicap)
+    ? input.operatorPaceHandicap.map(rule => ({
+        daysOfEmployment: Number(rule.daysOfEmployment),
+        handicapFactor: Number(rule.handicapFactor)
+      }))
+    : existing.operatorPaceHandicap;
+  const userSessionExpirationHours =
+    input.userSessionExpirationHours !== undefined
+      ? Number(input.userSessionExpirationHours)
+      : existing.userSessionExpirationHours ?? defaults.userSessionExpirationHours;
 
   const preferences = {
     _id: 'system-preferences',
     systemName: input.systemName ?? existing.systemName ?? defaults.systemName,
     defaultTheme: input.defaultTheme ?? existing.defaultTheme ?? defaults.defaultTheme,
     logLevel: input.logLevel ?? existing.logLevel ?? defaults.logLevel,
+    userSessionExpirationHours,
     userPermissionsLevels,
     createdAt: existing.createdAt || defaults.createdAt,
     updatedAt: now
@@ -93,6 +133,10 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     preferences.httpsEnabled = input.httpsEnabled;
   } else if (typeof existing.httpsEnabled === 'boolean') {
     preferences.httpsEnabled = existing.httpsEnabled;
+  }
+
+  if (Array.isArray(operatorPaceHandicap)) {
+    preferences.operatorPaceHandicap = operatorPaceHandicap;
   }
 
   const valid = validate(preferences);

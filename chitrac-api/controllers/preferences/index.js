@@ -132,6 +132,9 @@ function constructor(server) {
       defaultTheme: config.defaultTheme,
       logLevel: config.logLevel,
       httpsEnabled: config.httpsEnabled,
+      operatorPaceHandicap: Array.isArray(config.operatorPaceHandicap)
+        ? [...config.operatorPaceHandicap]
+        : [],
       userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
         ? [...config.userPermissionsLevels]
         : []

@@ -85,7 +85,10 @@ function constructor(server) {
         { $set: updates, $setOnInsert: { _id } },
         { upsert: true }
       );
-      res.json(await collection.findOne({ _id: SINGLETON_ID }));
+      const savedPreferences = await collection.findOne({ _id: SINGLETON_ID });
+      systemPreferences.applySystemPreferences(config, savedPreferences);
+      server.systemPreferences = savedPreferences;
+      res.json(savedPreferences);
     } catch (error) {
       next(error);
     }
@@ -105,7 +108,10 @@ function constructor(server) {
         { $set: updates, $setOnInsert: { _id } },
         { upsert: true }
       );
-      res.json(await collection.findOne({ _id: SINGLETON_ID }));
+      const savedPreferences = await collection.findOne({ _id: SINGLETON_ID });
+      systemPreferences.applySystemPreferences(config, savedPreferences);
+      server.systemPreferences = savedPreferences;
+      res.json(savedPreferences);
     } catch (error) {
       next(error);
     }

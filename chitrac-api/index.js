@@ -81,17 +81,27 @@ app.use((req, res, next) => {
 });
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use(session({
-    secret: config.jwtSecret, // ✅ Using .env secret
-    resave: true,
-    saveUninitialized: true
-}));
-
-app.use(passport.initialize());
-app.use(passport.session());
-
 const flash = require('connect-flash');
-app.use(flash());
+
+function configureSessionMiddleware() {
+    const sessionOptions = {
+        secret: config.jwtSecret,
+        resave: true,
+        saveUninitialized: true,
+        cookie: {
+            maxAge: config.userSessionExpirationMs
+        }
+    };
+
+    const sessionMiddleware = session(sessionOptions);
+    app.use((req, res, next) => {
+        sessionOptions.cookie.maxAge = config.userSessionExpirationMs;
+        return sessionMiddleware(req, res, next);
+    });
+    app.use(passport.initialize());
+    app.use(passport.session());
+    app.use(flash());
+}
 
 const allowCrossDomain = function(req, res, next) {
     res.header('Access-Control-Allow-Origin', '*');
@@ -214,8 +224,11 @@ async function startServer() {
             logLevel: server.config.logLevel,
             httpsEnabled: server.config.httpsEnabled,
             httpsEnabledSource: server.config.httpsEnabledSource,
+            userSessionExpirationHours: server.config.userSessionExpirationHours,
             userPermissionsLevels: server.config.userPermissionsLevels
         });
+
+        configureSessionMiddleware();
 
         const routes = require('./routes');
         routes.init(app, server);

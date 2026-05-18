@@ -143,6 +143,9 @@
       <a mat-list-item routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>
       </a>
+      <a mat-list-item *ngIf="canAccess(permissionLevels.settings)" routerLink="/ng/settings/system" (click)="closeMenu()">
+        <mat-icon>tune</mat-icon><span>System Settings</span>
+      </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.apiTokens)" routerLink="/ng/settings/tokens" (click)="closeMenu()">
         <mat-icon>vpn_key</mat-icon><span>API Tokens</span>
       </a>
