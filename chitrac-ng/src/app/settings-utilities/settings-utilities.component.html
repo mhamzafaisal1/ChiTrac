@@ -4,30 +4,72 @@
     <p class="subtitle">Administrative tools for this ChiTrac server</p>
   </div>
 
-  <mat-card class="utility-card">
-    <mat-card-header>
-      <mat-icon mat-card-avatar>restart_alt</mat-icon>
-      <mat-card-title>Server Reboot</mat-card-title>
-      <mat-card-subtitle>Schedule a reboot from the web interface</mat-card-subtitle>
-    </mat-card-header>
+  <div class="utility-grid">
+    <mat-card class="utility-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar>restart_alt</mat-icon>
+        <mat-card-title>Server Reboot</mat-card-title>
+        <mat-card-subtitle>Schedule a reboot from the web interface</mat-card-subtitle>
+      </mat-card-header>
 
-    <mat-card-content>
-      <p>
-        This action checks the host operating system and only schedules a reboot when the server is running on Linux.
-      </p>
+      <mat-card-content>
+        <p>
+          This action checks the host operating system and only schedules a reboot when the server is running on Linux.
+        </p>
 
-      <div class="result-message" *ngIf="lastResponse" [class.success]="lastResponse.success" [class.unavailable]="!lastResponse.success">
-        <mat-icon>{{ lastResponse.success ? 'check_circle' : 'info' }}</mat-icon>
-        <span>{{ lastResponse.message || lastResponse.error }}</span>
-      </div>
-    </mat-card-content>
+        <div class="result-message" *ngIf="lastRebootResponse" [class.success]="lastRebootResponse.success" [class.unavailable]="!lastRebootResponse.success">
+          <mat-icon>{{ lastRebootResponse.success ? 'check_circle' : 'info' }}</mat-icon>
+          <span>{{ lastRebootResponse.message || lastRebootResponse.error }}</span>
+        </div>
+      </mat-card-content>
 
-    <mat-card-actions>
-      <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isLoading">
-        <mat-spinner *ngIf="isLoading" diameter="20"></mat-spinner>
-        <mat-icon *ngIf="!isLoading">power_settings_new</mat-icon>
-        {{ isLoading ? 'Scheduling...' : 'Reboot Server' }}
-      </button>
-    </mat-card-actions>
-  </mat-card>
+      <mat-card-actions>
+        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading">
+          <mat-spinner *ngIf="isRebootLoading" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isRebootLoading">power_settings_new</mat-icon>
+          {{ isRebootLoading ? 'Scheduling...' : 'Reboot Server' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <mat-card class="utility-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar>usb</mat-icon>
+        <mat-card-title>MongoDB USB Backup</mat-card-title>
+        <mat-card-subtitle>Back up ChiTrac to the inserted USB drive</mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <p>
+          Creates a timestamped MongoDB backup folder on the USB drive mounted at /media/usb.
+        </p>
+
+        <div class="result-message" *ngIf="lastBackupResponse" [class.success]="lastBackupResponse.success" [class.unavailable]="!lastBackupResponse.success">
+          <mat-icon>{{ lastBackupResponse.success ? 'check_circle' : 'info' }}</mat-icon>
+          <span>
+            {{ lastBackupResponse.success ? 'Backup completed' : (lastBackupResponse.message || lastBackupResponse.error) }}
+          </span>
+        </div>
+
+        <div class="backup-details" *ngIf="lastBackupResponse?.success">
+          <div *ngIf="lastBackupResponse?.database">
+            <strong>Database</strong>
+            <span>{{ lastBackupResponse?.database }}</span>
+          </div>
+          <div *ngIf="lastBackupResponse?.backupPath">
+            <strong>Backup Path</strong>
+            <span>{{ lastBackupResponse?.backupPath }}</span>
+          </div>
+        </div>
+      </mat-card-content>
+
+      <mat-card-actions>
+        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading">
+          <mat-spinner *ngIf="isBackupLoading" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isBackupLoading">backup</mat-icon>
+          {{ isBackupLoading ? 'Backing Up...' : 'Back Up to USB' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+  </div>
 </div>
