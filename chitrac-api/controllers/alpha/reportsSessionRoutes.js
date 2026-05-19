@@ -5791,226 +5791,373 @@ router.get("/analytics/item-sessions-summary", async (req, res) => {
     }
   });
 
-  // NEW: Simplified cached version using simulator's item entity records (with itemStandard built-in)
+  const NONE_ENTERED_ITEM_NAME = "None Entered";
+
+  /** Merge overlapping [start,end] intervals; returns total covered milliseconds. */
+  function unionIntervalDurationMs(intervals) {
+    if (!intervals?.length) return 0;
+    const sorted = intervals
+      .map((i) => ({
+        start: new Date(i.start).getTime(),
+        end: new Date(i.end).getTime(),
+      }))
+      .filter((i) => !Number.isNaN(i.start) && !Number.isNaN(i.end) && i.end > i.start)
+      .sort((a, b) => a.start - b.start);
+    if (!sorted.length) return 0;
+
+    let total = 0;
+    let curStart = sorted[0].start;
+    let curEnd = sorted[0].end;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].start <= curEnd) {
+        curEnd = Math.max(curEnd, sorted[i].end);
+      } else {
+        total += curEnd - curStart;
+        curStart = sorted[i].start;
+        curEnd = sorted[i].end;
+      }
+    }
+    total += curEnd - curStart;
+    return total;
+  }
+
+  /** Group counts by item id; missing id → None Entered bucket (see groupCountsByItem). */
+  function groupCountsForItemReport(counts) {
+    const grouped = {};
+    const noneKey = "__none_entered__";
+    for (const count of counts) {
+      const itemId = count.item?.id;
+      const key = itemId == null ? noneKey : itemId;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(count);
+    }
+    return { grouped, noneKey };
+  }
+
+  // Item summary from state + count collections (same response contract as before)
   router.get("/analytics/item-sessions-summary-daily-cache", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
+      const { paddedStart, paddedEnd } = createPaddedTimeRange(start, end);
+      const debug =
+        req.query.debug === "1" ||
+        req.query.debug === "true" ||
+        req.query.debug === true;
 
-      console.log(`[item-sessions-summary-daily-cache] Query start: ${exactStart.toISOString()}, end: ${exactEnd.toISOString()}`);
+      console.log(
+        `[item-sessions-summary-daily-cache] Query start: ${start.toISOString()}, end: ${end.toISOString()}${debug ? " (debug)" : ""}`
+      );
 
-      // ---------- Timezone-aware date handling (same as machine report) ----------
-      const startDt = DateTime.fromJSDate(exactStart, { zone: SYSTEM_TIMEZONE });
-      const endDt = DateTime.fromJSDate(exactEnd, { zone: SYSTEM_TIMEZONE });
-      const nowLocal = DateTime.now().setZone(SYSTEM_TIMEZONE);
-
-      const normalizedStart = startDt.startOf('day');
-      const normalizedEnd = endDt.startOf('day');
-      const todayStart = nowLocal.startOf('day');
-
-      // Check if query includes today
-      const queryIncludesToday = normalizedEnd >= todayStart;
-
-      // Check if this is a partial day query for a past date (not today)
-      // Use timezone-aware comparisons with Luxon DateTime
-      const isStartOfDay = startDt.hour === 0 && startDt.minute === 0 && startDt.second === 0 && startDt.millisecond === 0;
-      const endOfDayEnd = endDt.endOf('day');
-      const isEndOfDay = endDt >= endOfDayEnd.minus({ seconds: 1 }); // Allow 1 second tolerance
-      const isSameDay = normalizedStart.hasSame(normalizedEnd, 'day');
-      const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
-      const isPartialPastDay = isPartialDay && !queryIncludesToday;
-
-      console.log(`[item-sessions-summary-daily-cache] Time window analysis:`, {
-        isStartOfDay,
-        isEndOfDay,
-        isSameDay,
-        isPartialDay,
-        queryIncludesToday,
-        isPartialPastDay,
-        startDate: exactStart.toISOString().split('T')[0],
-        endDate: exactEnd.toISOString().split('T')[0],
-        todayDate: todayStart.toISODate()
-      });
-
-      // If querying a partial day from the PAST (not today), use session data for accurate time windowing
-      if (isPartialPastDay) {
-        console.log(`[item-sessions-summary-daily-cache] ⚠️ PARTIAL PAST DAY DETECTED - Falling back to session-based query for accurate time windowing`);
-        console.log(`[item-sessions-summary-daily-cache] Reason: Querying partial day from the past requires session-level precision`);
-
-        // Fall back to session-based approach
-        const partialDays = [{ start: exactStart, end: exactEnd }];
-        const sessionData = await getItemSessionDataForPartialDays(db,partialDays);
-
-        console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions`);
-
-        // Process session data
-        const resultsMap = new Map();
-
-        for (const item of sessionData.items) {
-          const itemId = String(item.itemId);
-
-          if (!resultsMap.has(itemId)) {
-            resultsMap.set(itemId, {
-              itemId: item.itemId,
-              name: item.itemName || "Unknown",
-              standard: item.itemStandard ?? 0,
-              count: 0,
-              workedSec: 0,
-            });
+      const noneEnteredDebug = debug
+        ? {
+            byItemId: {},
+            byMachine: {},
+            countsNoItemIdInCycles: 0,
+            countsOutsideRunningCycles: 0,
+            countsInWindowTotal: 0,
+            countsAttributedInCycles: 0,
           }
+        : null;
 
-          const acc = resultsMap.get(itemId);
-          acc.count += item.totalCounts || 0;
-          acc.workedSec += (item.workedTimeMs || 0) / 1000;
-        }
+      const stateCollectionName = "state";
+      const countCollectionName = "count";
 
-        const normalizePPH = (std) => {
-          const n = Number(std) || 0;
-          return n > 0 && n < 60 ? n * 60 : n;
-        };
-
-        const results = Array.from(resultsMap.values()).map((entry) => {
-          const workedMs = Math.round(entry.workedSec * 1000);
-          const hours = workedMs / 3_600_000;
-          const pph = hours > 0 ? entry.count / hours : 0;
-          const stdPPH = normalizePPH(entry.standard);
-          const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
-
-          return {
-            itemName: entry.name,
-            workedTimeFormatted: formatDuration(workedMs),
-            count: entry.count,
-            pph: Math.round(pph * 100) / 100,
-            standard: entry.standard,
-            efficiency: Math.round(efficiencyPct * 100) / 100,
-          };
-        });
-
-        console.log(`[item-sessions-summary-daily-cache] Returning ${results.length} items from session-based fallback`);
-        return res.json(results);
-      }
-
-      // ---------- Hybrid query configuration (for multi-day queries) ----------
-      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
-      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-      
-      // Determine if we should use hybrid approach
-      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
-      
-      console.log(`[item-sessions-summary-daily-cache] Strategy: ${useHybrid ? 'HYBRID' : 'CACHE ONLY'}, time range: ${timeRangeHours.toFixed(2)} hours`);
-
-      // ---------- helpers (local to route) ----------
-      const normalizePPH = (std) => {
-        const n = Number(std) || 0;
-        return n > 0 && n < 60 ? n * 60 : n; // PPM→PPH
+      const stateQuery = {
+        $and: [
+          {
+            $or: [
+              { timestamp: { $gte: paddedStart, $lte: paddedEnd } },
+              {
+                "timestamps.create": {
+                  $gte: paddedStart,
+                  $lte: paddedEnd,
+                },
+              },
+            ],
+          },
+        ],
       };
 
-      // ---------- 1) Time range splitting and data collection ----------
-      let itemTotals = [];
+      const allStatesRaw = await db
+        .collection(stateCollectionName)
+        .find(stateQuery)
+        .project({
+          timestamp: 1,
+          "timestamps.create": 1,
+          status: 1,
+          machine: 1,
+          program: 1,
+        })
+        .toArray();
 
-      if (useHybrid) {
-        // Split time range into complete days and partial days
-        const { completeDays, partialDays } = splitTimeRangeForHybridReport(exactStart, exactEnd);
-        
-        console.log(`[item-sessions-summary-daily-cache] Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
-        console.log(`[item-sessions-summary-daily-cache] Complete days:`, completeDays.map(d => d.dateStr));
-        console.log(`[item-sessions-summary-daily-cache] Partial days:`, partialDays.map(d => ({ start: d.start.toISOString(), end: d.end.toISOString() })));
-        
-        // Get data from daily cache for complete days (using simulator's item records)
-        if (completeDays.length > 0) {
-          itemTotals = await getItemDailyCachedDataForDays(db,completeDays);
-          console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache for complete days`);
-        }
-        
-        // Get data from sessions for partial days
-        if (partialDays.length > 0) {
-          const sessionData = await getItemSessionDataForPartialDays(db,partialDays);
-          console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions for partial days`);
-          itemTotals = combineItemDailyHybridData(itemTotals, sessionData.items);
-          console.log(`[item-sessions-summary-daily-cache] Combined to ${itemTotals.length} total item records`);
-        }
-        
-      } else {
-        // For same-day queries or queries including today, use cached data (same as machine report)
-        const cacheCollection = db.collection('totals-daily');
-
-        // Generate date range using normalized dates (same as machine report)
-        const dateStrings = [];
-        let currentDate = normalizedStart;
-        while (currentDate <= normalizedEnd) {
-          dateStrings.push(currentDate.toISODate());
-          currentDate = currentDate.plus({ days: 1 });
-        }
-
-        console.log(`[item-sessions-summary-daily-cache] Querying cache for dates: ${dateStrings.join(', ')}`);
-
-        // Get item daily totals from simulator (using date strings, same as machine report)
-        const itemQuery = {
-          entityType: 'item',
-          source: 'simulator', // Only get simulator records
-          $or: [
-            { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
-            { date: { $in: dateStrings } }
-          ]
+      const allStates = allStatesRaw.map((s) => {
+        const m = s.machine || {};
+        const st = s.status || {};
+        const code = st?.code ?? st?.id;
+        const statusCode =
+          code !== undefined && code !== null ? code : 1;
+        return {
+          ...s,
+          timestamp: s.timestamp || s.timestamps?.create,
+          machine: {
+            ...m,
+            serial: m.serial ?? m.id,
+          },
+          status: { ...st, code: statusCode },
         };
+      });
 
-        itemTotals = await cacheCollection.find(itemQuery).toArray();
-        console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache`);
-      }
-
-      if (!itemTotals.length) {
+      if (!allStates.length) {
+        console.log("[item-sessions-summary-daily-cache] No states, returning []");
         return res.json([]);
       }
 
-      // ---------- 2) Process item data ----------
-      const resultsMap = new Map();
+      allStates.sort(
+        (a, b) =>
+          new Date(a.timestamp || 0).getTime() -
+          new Date(b.timestamp || 0).getTime()
+      );
 
-      console.log(`[item-sessions-summary-daily-cache] Processing ${itemTotals.length} item total records`);
+      const groupedStates = groupStatesByMachine(allStates);
+      const machineSerials = Object.keys(groupedStates);
+      const globalItemSummaries = {};
 
-      // Group item totals by item ID
-      for (const itemTotal of itemTotals) {
-        const itemId = String(itemTotal.itemId);
-        
-        if (!resultsMap.has(itemId)) {
-          resultsMap.set(itemId, {
-            itemId: itemTotal.itemId,
-            name: itemTotal.itemName || "Unknown",
-            standard: itemTotal.itemStandard ?? 0, // itemStandard is built into simulator's item record
-            count: 0,
-            workedSec: 0,
-          });
-        }
-        
-        const acc = resultsMap.get(itemId);
-        acc.count += itemTotal.totalCounts || 0;
-        acc.workedSec += (itemTotal.workedTimeMs || 0) / 1000; // Convert to seconds
-        
-        logger.debug(`[item-sessions-summary-daily-cache] Item ${itemId} (${itemTotal.itemName}): +${itemTotal.totalCounts} counts, +${(itemTotal.workedTimeMs/1000).toFixed(0)}s worked time`);
+      await Promise.all(
+        machineSerials.map(async (machineSerial) => {
+          const machineStates = groupedStates[machineSerial].states;
+          const cycles = extractAllCyclesFromStates(
+            machineStates,
+            start,
+            end
+          ).running;
+
+          if (!cycles.length) return;
+
+          const machineSerialNum = parseInt(machineSerial, 10);
+          const countQuery = {
+            timestamp: { $gte: start, $lte: end },
+            $or: [
+              { "machine.serial": machineSerialNum },
+              { "machine.id": machineSerialNum },
+            ],
+            "operator.id": { $exists: true, $ne: -1 },
+            misfeed: { $ne: true },
+          };
+          const allCounts = await db
+            .collection(countCollectionName)
+            .find(countQuery)
+            .sort({ timestamp: 1 })
+            .toArray();
+
+          if (noneEnteredDebug) {
+            noneEnteredDebug.countsInWindowTotal += allCounts.length;
+          }
+
+          const countIdsInCycles = new Set();
+
+          for (const cycle of cycles) {
+            const cycleStart = new Date(cycle.start);
+            const cycleEnd = new Date(cycle.end);
+            const cycleMs = cycleEnd - cycleStart;
+
+            const cycleCounts = allCounts.filter((c) => {
+              const ts = new Date(c.timestamp);
+              return ts >= cycleStart && ts <= cycleEnd;
+            });
+
+            if (!cycleCounts.length) continue;
+
+            cycleCounts.forEach((c) => {
+              if (c._id) countIdsInCycles.add(String(c._id));
+            });
+
+            const totalCycleCounts = cycleCounts.length;
+            const { grouped: groupedCounts, noneKey } =
+              groupCountsForItemReport(cycleCounts);
+
+            // Per cycle: merge by item name, prorate runtime by count share
+            const cycleByName = {};
+            for (const [groupKey, records] of Object.entries(groupedCounts)) {
+              const count = records.length;
+              const isNoneBucket = groupKey === noneKey;
+              if (noneEnteredDebug && isNoneBucket) {
+                noneEnteredDebug.countsNoItemIdInCycles += count;
+              }
+              const name = isNoneBucket
+                ? NONE_ENTERED_ITEM_NAME
+                : (records[0].item?.name || "Unknown").trim();
+              const standardSumForGroup = isNoneBucket
+                ? records.reduce(
+                    (sum, r) => sum + (r.item?.standard || 666),
+                    0
+                  )
+                : count * (records[0].item?.standard || 666);
+
+              if (!cycleByName[name]) {
+                cycleByName[name] = { count: 0, standardSum: 0 };
+              }
+              cycleByName[name].count += count;
+              cycleByName[name].standardSum += standardSumForGroup;
+
+              if (
+                noneEnteredDebug &&
+                name === NONE_ENTERED_ITEM_NAME &&
+                !isNoneBucket
+              ) {
+                const idLabel = String(records[0].item?.id ?? "unknown");
+                if (!noneEnteredDebug.byItemId[idLabel]) {
+                  noneEnteredDebug.byItemId[idLabel] = {
+                    count: 0,
+                    standard: records[0].item?.standard,
+                  };
+                }
+                noneEnteredDebug.byItemId[idLabel].count += count;
+              }
+              if (noneEnteredDebug && isNoneBucket) {
+                const idLabel = "no-item-id";
+                if (!noneEnteredDebug.byItemId[idLabel]) {
+                  noneEnteredDebug.byItemId[idLabel] = { count: 0 };
+                }
+                noneEnteredDebug.byItemId[idLabel].count += count;
+              }
+            }
+
+            for (const [name, data] of Object.entries(cycleByName)) {
+              const itemWorkedMs =
+                totalCycleCounts > 0
+                  ? cycleMs * (data.count / totalCycleCounts)
+                  : 0;
+
+              if (!globalItemSummaries[name]) {
+                globalItemSummaries[name] = {
+                  name,
+                  count: 0,
+                  workedTimeMs: 0,
+                  standardSum: 0,
+                  ...(name === NONE_ENTERED_ITEM_NAME
+                    ? { workedIntervals: [], workedTimeMsSummed: 0 }
+                    : {}),
+                };
+              }
+
+              const acc = globalItemSummaries[name];
+              acc.count += data.count;
+              acc.workedTimeMs += itemWorkedMs;
+              acc.standardSum += data.standardSum;
+
+              // None Entered runs on many machines in parallel; union intervals = clock time
+              if (name === NONE_ENTERED_ITEM_NAME) {
+                const intervalEndMs = Math.min(
+                  cycleEnd.getTime(),
+                  cycleStart.getTime() + itemWorkedMs
+                );
+                if (intervalEndMs > cycleStart.getTime()) {
+                  acc.workedIntervals.push({
+                    start: cycleStart,
+                    end: new Date(intervalEndMs),
+                  });
+                }
+                acc.workedTimeMsSummed += itemWorkedMs;
+              }
+
+              if (noneEnteredDebug && name === NONE_ENTERED_ITEM_NAME) {
+                if (!noneEnteredDebug.byMachine[machineSerial]) {
+                  noneEnteredDebug.byMachine[machineSerial] = {
+                    count: 0,
+                    workedTimeMs: 0,
+                  };
+                }
+                noneEnteredDebug.byMachine[machineSerial].count += data.count;
+                noneEnteredDebug.byMachine[machineSerial].workedTimeMs +=
+                  itemWorkedMs;
+              }
+            }
+
+            if (noneEnteredDebug) {
+              noneEnteredDebug.countsAttributedInCycles += cycleCounts.length;
+            }
+          }
+
+          if (noneEnteredDebug) {
+            const orphanCounts = allCounts.filter(
+              (c) => !c._id || !countIdsInCycles.has(String(c._id))
+            );
+            noneEnteredDebug.countsOutsideRunningCycles +=
+              orphanCounts.length;
+          }
+        })
+      );
+
+      const results = Object.values(globalItemSummaries)
+        .map((summary) => {
+          const workedMs =
+            summary.name === NONE_ENTERED_ITEM_NAME &&
+            summary.workedIntervals?.length
+              ? unionIntervalDurationMs(summary.workedIntervals)
+              : summary.workedTimeMs;
+          const hours = workedMs / 3600000;
+          const pph = hours > 0 ? summary.count / hours : 0;
+          const standard =
+            summary.count > 0 ? summary.standardSum / summary.count : 0;
+          const efficiency = standard > 0 ? pph / standard : 0;
+
+          return {
+            itemName: summary.name,
+            workedTimeFormatted: formatDuration(workedMs),
+            count: summary.count,
+            pph: Math.round(pph * 100) / 100,
+            standard: Math.round(standard * 100) / 100,
+            efficiency: Math.round(efficiency * 10000) / 100,
+          };
+        })
+        .sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+      const noneEntered = globalItemSummaries[NONE_ENTERED_ITEM_NAME];
+      if (noneEntered) {
+        const neWorkedUnion = noneEntered.workedIntervals?.length
+          ? unionIntervalDurationMs(noneEntered.workedIntervals)
+          : noneEntered.workedTimeMs;
+        const neHours = neWorkedUnion / 3600000;
+        const nePph = neHours > 0 ? noneEntered.count / neHours : 0;
+        const summedFmt = formatDuration(
+          noneEntered.workedTimeMsSummed ?? noneEntered.workedTimeMs
+        );
+        const unionFmt = formatDuration(neWorkedUnion);
+        console.log(
+          `[item-sessions-summary-daily-cache] None Entered: count=${noneEntered.count}, worked(clock)=${unionFmt.hours}h ${unionFmt.minutes}m, worked(summed)=${summedFmt.hours}h ${summedFmt.minutes}m, pph=${nePph.toFixed(2)}`
+        );
       }
 
-      console.log(`[item-sessions-summary-daily-cache] Aggregated into ${resultsMap.size} unique items`);
+      if (noneEnteredDebug) {
+        const sumItemCounts = results.reduce((s, r) => s + r.count, 0);
+        console.log(
+          `[item-sessions-summary-daily-cache] DEBUG None Entered:`,
+          JSON.stringify(
+            {
+              ...noneEnteredDebug,
+              reportedNoneEntered: noneEntered
+                ? {
+                    count: noneEntered.count,
+                    workedTimeMsUnion: noneEntered.workedIntervals?.length
+                      ? unionIntervalDurationMs(noneEntered.workedIntervals)
+                      : noneEntered.workedTimeMs,
+                    workedTimeMsSummed:
+                      noneEntered.workedTimeMsSummed ?? noneEntered.workedTimeMs,
+                  }
+                : null,
+              sumCountsAllItems: sumItemCounts,
+              gapVsWindow:
+                noneEnteredDebug.countsInWindowTotal - sumItemCounts,
+            },
+            null,
+            2
+          )
+        );
+      }
 
-      // ---------- 3) Finalize results (same format as original route) ----------
-      const results = Array.from(resultsMap.values()).map((entry) => {
-        const workedMs = Math.round(entry.workedSec * 1000);
-        const hours = workedMs / 3_600_000;
-        const pph = hours > 0 ? entry.count / hours : 0;
-        const stdPPH = normalizePPH(entry.standard);
-        const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
-
-        return {
-          itemName: entry.name,
-          workedTimeFormatted: formatDuration(workedMs),
-          count: entry.count,
-          pph: Math.round(pph * 100) / 100,
-          standard: entry.standard,
-          efficiency: Math.round(efficiencyPct * 100) / 100, // percent
-        };
-      });
-
-      console.log(`[item-sessions-summary-daily-cache] Returning ${results.length} items in final response`);
-
+      console.log(
+        `[item-sessions-summary-daily-cache] Returning ${results.length} items`
+      );
       res.json(results);
     } catch (error) {
       console.log(`Error in ${req.method} ${req.originalUrl}:`, error);

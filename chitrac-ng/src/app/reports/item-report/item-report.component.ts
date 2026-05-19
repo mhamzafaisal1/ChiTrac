@@ -49,6 +49,8 @@ export class ItemReportComponent implements OnInit, OnDestroy {
   isDownloadingCsv: boolean = false;
   private observer!: MutationObserver;
 
+  getCellClass = (value: any, column: string): string => this.getEfficiencyClass(value, column);
+
   constructor(
     private analyticsService: MachineAnalyticsService,
     private renderer: Renderer2,
@@ -112,6 +114,17 @@ export class ItemReportComponent implements OnInit, OnDestroy {
         this.isLoading = false;
       }
     });
+  }
+
+  getEfficiencyClass(value: any, column: string): string {
+    if (column === 'Efficiency' && typeof value === 'string' && value.includes('%')) {
+      const num = parseInt(value.replace('%', ''), 10);
+      if (isNaN(num)) return '';
+      if (num >= 90) return 'green';
+      if (num >= 70) return 'yellow';
+      return 'red';
+    }
+    return '';
   }
 
   downloadItemSummaryPdf(): void {
