@@ -1,34 +1,78 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse } from '../services/utilities.service';
+import { SettingsService } from '../services/settings.service';
 
 @Component({
   selector: 'app-settings-utilities',
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     MatButtonModule,
     MatCardModule,
+    MatFormFieldModule,
     MatIconModule,
+    MatSelectModule,
     MatProgressSpinnerModule,
     MatSnackBarModule
   ],
   templateUrl: './settings-utilities.component.html',
   styleUrl: './settings-utilities.component.scss'
 })
-export class SettingsUtilitiesComponent {
+export class SettingsUtilitiesComponent implements OnInit {
   isLoading = false;
+  isSavingDashboardTimeframe = false;
+  dashboardTimeframe: 'current' | 'shift' = 'current';
   lastResponse: RebootResponse | null = null;
 
   constructor(
     private utilitiesService: UtilitiesService,
+    private settingsService: SettingsService,
     private snackBar: MatSnackBar
   ) {}
+
+  ngOnInit(): void {
+    this.settingsService.getSystemPreferences().subscribe({
+      next: (settings) => {
+        this.dashboardTimeframe = settings.dashboardTimeframe === 'shift' ? 'shift' : 'current';
+      },
+      error: () => {
+        this.dashboardTimeframe = 'current';
+      }
+    });
+  }
+
+  saveDashboardTimeframe(): void {
+    this.isSavingDashboardTimeframe = true;
+
+    this.settingsService.saveDashboardTimeframe(this.dashboardTimeframe).subscribe({
+      next: () => {
+        this.isSavingDashboardTimeframe = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('Dashboard default timeframe saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save dashboard default timeframe';
+        this.isSavingDashboardTimeframe = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
 
   scheduleReboot(): void {
     const confirmed = confirm('Schedule a server reboot 30 seconds from now?');

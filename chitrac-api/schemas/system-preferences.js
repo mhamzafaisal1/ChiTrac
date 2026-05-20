@@ -36,6 +36,11 @@ const schema = {
       type: 'boolean',
       description: 'Whether HTTPS hosting should be enabled at runtime'
     },
+    dashboardTimeframe: {
+      type: ['string', 'null'],
+      enum: ['current', 'shift', null],
+      description: "Default dashboard timeframe. 'current' uses midnight-to-now; 'shift' uses the active/current shift when available."
+    },
     userPermissionsLevels: {
       type: 'array',
       minItems: 8,
@@ -64,6 +69,7 @@ function buildDefaultPreferences(config = {}) {
     systemName: config.systemName || 'ChiTrac',
     defaultTheme: config.defaultTheme || 'dark',
     logLevel: config.logLevel || 'info',
+    dashboardTimeframe: 'current',
     userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
       ? [...config.userPermissionsLevels]
       : [...DEFAULT_USER_PERMISSION_LEVELS],
@@ -84,6 +90,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     systemName: input.systemName ?? existing.systemName ?? defaults.systemName,
     defaultTheme: input.defaultTheme ?? existing.defaultTheme ?? defaults.defaultTheme,
     logLevel: input.logLevel ?? existing.logLevel ?? defaults.logLevel,
+    dashboardTimeframe: input.dashboardTimeframe ?? existing.dashboardTimeframe ?? defaults.dashboardTimeframe,
     userPermissionsLevels,
     createdAt: existing.createdAt || defaults.createdAt,
     updatedAt: now

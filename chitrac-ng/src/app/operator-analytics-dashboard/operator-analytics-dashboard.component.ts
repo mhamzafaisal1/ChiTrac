@@ -15,6 +15,7 @@ import { OperatorService } from '../services/operator.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -82,6 +83,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private elRef: ElementRef,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
+    private dashboardTimeframeService: DashboardTimeframeService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -99,13 +101,17 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       this.startTime = this.dateTimeService.getStartTime();
       this.endTime = this.dateTimeService.getEndTime();
       this.fetchAnalyticsData();
+    } else {
+      this.dashboardTimeframeService.applyDefault().subscribe((selection) => {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+        this.dateTimeService.setLiveMode(selection.mode === 'current');
+        if (selection.mode === 'shift') {
+          this.addDummyLoadingRow();
+          this.fetchAnalyticsData();
+        }
+      });
     }
-
-    const now = new Date();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
 
     this.detectTheme();
     this.observer = new MutationObserver(() => {

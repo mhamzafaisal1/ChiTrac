@@ -19,6 +19,7 @@ import { BaseTableComponent } from "../components/base-table/base-table.componen
 import { MachineService } from "../services/machine.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
+import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
 import { UseCarouselComponent } from "../use-carousel/use-carousel.component";
@@ -104,7 +105,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private elRef: ElementRef,
     private dialog: MatDialog,
     private pollingService: PollingService,
-    private dateTimeService: DateTimeService
+    private dateTimeService: DateTimeService,
+    private dashboardTimeframeService: DashboardTimeframeService
   ) {}
 
   ngOnInit(): void {
@@ -121,13 +123,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       this.startTime = this.dateTimeService.getStartTime();
       this.endTime = this.dateTimeService.getEndTime();
       this.fetchAnalyticsData();
+    } else {
+      this.dashboardTimeframeService.applyDefault().subscribe((selection) => {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+        this.dateTimeService.setLiveMode(selection.mode === "current");
+        if (selection.mode === "shift") {
+          this.addDummyLoadingRow();
+          this.fetchAnalyticsData();
+        }
+      });
     }
-    const now = new Date();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
 
     this.detectTheme();
     this.observer = new MutationObserver(() => this.detectTheme());
@@ -201,7 +207,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
             return this.machineService
-              .getMachinesSummary(this.startTime, this.endTime)
+              .getMachinesSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
               .pipe(
                 tap((data: any) => {
                   const responses = Array.isArray(data) ? data : [data];
@@ -267,7 +273,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (timeframe) {
       // Use timeframe-based API call
       this.machineService
-        .getMachineSummaryWithTimeframe(timeframe)
+        .getMachineSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
         .subscribe({
         next: (data: any) => {
           const responses = Array.isArray(data) ? data : [data];
@@ -358,7 +364,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }
       
       this.machineService
-        .getMachinesSummary(this.startTime, this.endTime)
+        .getMachinesSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
         .subscribe({
           next: (data: any) => {
             const responses = Array.isArray(data) ? data : [data];
@@ -526,7 +532,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (timeframe) {
       // Use timeframe-based API call
       this.machineService
-        .getMachineDetailsWithTimeframe(timeframe, machineSerial)
+        .getMachineDetailsWithTimeframe(timeframe, machineSerial, this.dateTimeService.getShiftId())
         .subscribe({
         next: (res: any[]) => {
           try {
@@ -680,7 +686,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     } else {
       // Fallback to date-based API call
       this.machineService
-        .getMachineDetails(this.startTime, this.endTime, machineSerial)
+        .getMachineDetails(this.startTime, this.endTime, machineSerial, this.dateTimeService.getShiftId())
         .subscribe({
           next: (res: any[]) => {
             try {
