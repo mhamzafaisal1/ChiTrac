@@ -12,6 +12,18 @@ export interface RebootResponse {
   details?: string;
 }
 
+export interface MongoUsbBackupResponse {
+  success: boolean;
+  available?: boolean;
+  platform?: string;
+  database?: string;
+  mountPath?: string;
+  backupPath?: string;
+  message?: string;
+  error?: string;
+  details?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -22,5 +34,9 @@ export class UtilitiesService {
 
   rebootServer(): Observable<RebootResponse> {
     return this.http.post<RebootResponse>(`${this.apiUrl}/reboot`, {});
+  }
+
+  backupMongoDbToUsb(): Observable<MongoUsbBackupResponse> {
+    return this.http.post<MongoUsbBackupResponse>(`${this.apiUrl}/backup/mongodb-usb`, {});
   }
 }

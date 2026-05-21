@@ -242,10 +242,11 @@ function constructor(server) {
       }
 
       const preferences = sanitizeUserPreferences(req.body, req.authUserId);
+      const { userId, ...updates } = preferences;
       await userPreferencesCollection.updateOne(
         { userId: req.authUserId },
         {
-          $set: preferences,
+          $set: updates,
           $setOnInsert: {
             userId: req.authUserId,
             createdAt: new Date()
@@ -315,10 +316,11 @@ function constructor(server) {
 
       const { theme } = req.body;
       const preferences = sanitizeUserPreferences({ theme }, req.authUserId);
+      const { userId, ...updates } = preferences;
       await userPreferencesCollection.updateOne(
         { userId: req.authUserId },
         {
-          $set: preferences,
+          $set: updates,
           $setOnInsert: {
             userId: req.authUserId,
             createdAt: new Date()

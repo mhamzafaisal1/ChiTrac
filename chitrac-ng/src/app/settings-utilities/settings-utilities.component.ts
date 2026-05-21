@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { UtilitiesService, RebootResponse } from '../services/utilities.service';
+import { UtilitiesService, RebootResponse, MongoUsbBackupResponse } from '../services/utilities.service';
 import { SettingsService } from '../services/settings.service';
 
 @Component({
@@ -29,10 +29,12 @@ import { SettingsService } from '../services/settings.service';
   styleUrl: './settings-utilities.component.scss'
 })
 export class SettingsUtilitiesComponent implements OnInit {
-  isLoading = false;
+  isRebootLoading = false;
+  isBackupLoading = false;
   isSavingDashboardTimeframe = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
-  lastResponse: RebootResponse | null = null;
+  lastRebootResponse: RebootResponse | null = null;
+  lastBackupResponse: MongoUsbBackupResponse | null = null;
 
   constructor(
     private utilitiesService: UtilitiesService,
@@ -81,13 +83,13 @@ export class SettingsUtilitiesComponent implements OnInit {
       return;
     }
 
-    this.isLoading = true;
-    this.lastResponse = null;
+    this.isRebootLoading = true;
+    this.lastRebootResponse = null;
 
     this.utilitiesService.rebootServer().subscribe({
       next: (response) => {
-        this.lastResponse = response;
-        this.isLoading = false;
+        this.lastRebootResponse = response;
+        this.isRebootLoading = false;
 
         this.snackBar.open(response.message || 'Reboot request completed.', 'Close', {
           duration: 5000,
@@ -97,16 +99,57 @@ export class SettingsUtilitiesComponent implements OnInit {
       error: (error) => {
         const message = error.error?.error || error.error?.message || 'Failed to schedule server reboot';
 
-        this.lastResponse = {
+        this.lastRebootResponse = {
           success: false,
           available: true,
           platform: 'unknown',
           message
         };
-        this.isLoading = false;
+        this.isRebootLoading = false;
 
         this.snackBar.open(message, 'Close', {
           duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  backupMongoDbToUsb(): void {
+    const confirmed = confirm('Back up the ChiTrac database to the mounted USB drive?');
+
+    if (!confirmed) {
+      return;
+    }
+
+    this.isBackupLoading = true;
+    this.lastBackupResponse = null;
+
+    this.utilitiesService.backupMongoDbToUsb().subscribe({
+      next: (response) => {
+        this.lastBackupResponse = response;
+        this.isBackupLoading = false;
+
+        const message = response.success
+          ? `Backup completed: ${response.backupPath || 'USB drive'}`
+          : response.message || response.error || 'Backup request completed.';
+
+        this.snackBar.open(message, 'Close', {
+          duration: 7000,
+          panelClass: [response.success ? 'success-snackbar' : 'warning-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.details || error.error?.error || error.error?.message || 'Failed to back up MongoDB to USB';
+
+        this.lastBackupResponse = {
+          success: false,
+          message
+        };
+        this.isBackupLoading = false;
+
+        this.snackBar.open(message, 'Close', {
+          duration: 7000,
           panelClass: ['error-snackbar']
         });
       }
