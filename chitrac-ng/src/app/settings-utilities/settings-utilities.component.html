@@ -4,13 +4,38 @@
     <p class="subtitle">Administrative tools for this ChiTrac server</p>
   </div>
 
-  <div class="utility-grid">
-    <mat-card class="utility-card">
-      <mat-card-header>
-        <mat-icon mat-card-avatar>restart_alt</mat-icon>
-        <mat-card-title>Server Reboot</mat-card-title>
-        <mat-card-subtitle>Schedule a reboot from the web interface</mat-card-subtitle>
-      </mat-card-header>
+  <mat-card class="utility-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>dashboard_customize</mat-icon>
+      <mat-card-title>Dashboard Defaults</mat-card-title>
+      <mat-card-subtitle>Choose the timeframe dashboards use when opened</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <mat-form-field class="dashboard-timeframe-field">
+        <mat-label>Default timeframe</mat-label>
+        <mat-select [(ngModel)]="dashboardTimeframe">
+          <mat-option value="current">Current</mat-option>
+          <mat-option value="shift">Current shift</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <button mat-raised-button color="primary" (click)="saveDashboardTimeframe()" [disabled]="isSavingDashboardTimeframe">
+        <mat-spinner *ngIf="isSavingDashboardTimeframe" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isSavingDashboardTimeframe">save</mat-icon>
+        {{ isSavingDashboardTimeframe ? 'Saving...' : 'Save Default' }}
+      </button>
+    </mat-card-actions>
+  </mat-card>
+
+  <mat-card class="utility-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>restart_alt</mat-icon>
+      <mat-card-title>Server Reboot</mat-card-title>
+      <mat-card-subtitle>Schedule a reboot from the web interface</mat-card-subtitle>
+    </mat-card-header>
 
       <mat-card-content>
         <p>

@@ -9,6 +9,7 @@ export interface AppSettings {
   defaultTheme: 'light' | 'dark';
   systemName: string;
   httpsEnabled: boolean;
+  dashboardTimeframe?: 'current' | 'shift' | null;
 }
 
 export interface ThemeResponse {
@@ -36,6 +37,21 @@ export class SettingsService {
       tap(settings => {
         this.settingsSubject.next(settings);
         console.log('[SettingsService] Settings loaded:', settings);
+      })
+    );
+  }
+
+  getSystemPreferences(): Observable<AppSettings> {
+    return this.http.get<AppSettings>('/api/preferences/system');
+  }
+
+  saveDashboardTimeframe(dashboardTimeframe: 'current' | 'shift'): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { dashboardTimeframe }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, dashboardTimeframe });
+        }
       })
     );
   }

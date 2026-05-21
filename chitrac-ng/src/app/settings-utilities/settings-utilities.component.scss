@@ -34,6 +34,8 @@
   background: var(--theme-color-surface-container);
   color: var(--theme-color-text);
 
+  margin-bottom: 16px;
+
   mat-card-header {
     margin-bottom: 16px;
   }
@@ -77,6 +79,11 @@
     display: inline-block;
     margin-right: 8px;
   }
+}
+
+.dashboard-timeframe-field {
+  width: 100%;
+  max-width: 320px;
 }
 
 .result-message {

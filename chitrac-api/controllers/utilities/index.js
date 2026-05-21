@@ -2462,7 +2462,8 @@ function constructor(server) {
         showErrorModals: config.showErrorModals,
         defaultTheme: config.defaultTheme,
         systemName: config.systemName,
-        httpsEnabled: config.httpsEnabled
+        httpsEnabled: config.httpsEnabled,
+        dashboardTimeframe: config.dashboardTimeframe || 'current'
       });
     } catch (error) {
       logger.error(`Error retrieving settings:`, error);

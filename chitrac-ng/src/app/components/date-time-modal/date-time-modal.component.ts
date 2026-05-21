@@ -22,6 +22,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 
 import { DateTimeService } from '../../services/date-time.service';
+import { DashboardTimeframeService } from '../../services/dashboard-timeframe.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
 
 @Component({
@@ -48,6 +49,7 @@ import { ShiftListItem, ShiftService } from '../../services/shift.service';
 })
 export class DateTimeModalComponent implements OnInit {
   private dateTimeService = inject(DateTimeService);
+  private dashboardTimeframeService = inject(DashboardTimeframeService);
   private shiftService = inject(ShiftService);
   private cdr = inject(ChangeDetectorRef);
   @Output() closeModal = new EventEmitter<void>();
@@ -61,7 +63,8 @@ export class DateTimeModalComponent implements OnInit {
   shiftsLoadError: string | null = null;
 
   ngOnInit(): void {
-    this.setLiveModeDefaults();
+    this.initializePickerDates();
+    this.mode = this.dateTimeService.getLiveMode() ? 'live' : 'manual';
     const existing = this.dateTimeService.getShiftId();
     this.selectedShiftId = existing || null;
 
@@ -163,6 +166,35 @@ export class DateTimeModalComponent implements OnInit {
     const now = new Date();
     this.startDateTime = new Date(now.setHours(0, 0, 0, 0));
     this.endDateTime = new Date();
+  }
+
+  private setInitialDatesFromService(): void {
+    const start = this.dateTimeService.getStartTime();
+    const end = this.dateTimeService.getEndTime();
+    if (start && end) {
+      this.startDateTime = new Date(start);
+      this.endDateTime = new Date(end);
+      return;
+    }
+    this.setLiveModeDefaults();
+  }
+
+  private initializePickerDates(): void {
+    const start = this.dateTimeService.getStartTime();
+    const end = this.dateTimeService.getEndTime();
+    if (start && end) {
+      this.setInitialDatesFromService();
+      return;
+    }
+
+    this.dashboardTimeframeService.applyDefault().subscribe((selection) => {
+      this.startDateTime = selection.start;
+      this.endDateTime = selection.end;
+      this.selectedShiftId = selection.shiftId || null;
+      this.mode = selection.mode === 'current' ? 'live' : 'manual';
+      this.dateTimeService.setLiveMode(selection.mode === 'current');
+      this.cdr.markForCheck();
+    });
   }
 
   confirm(): void {
