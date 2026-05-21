@@ -1,12 +1,43 @@
 <div class="date-time-picker">
   <label [for]="inputId" class="date-time-label">{{ label }}</label>
-  <input
-    type="datetime-local"
-    [id]="inputId"
-    [(ngModel)]="value"
-    (ngModelChange)="valueChange.emit($event)"
-    [disabled]="disabled"
-  />
+  <div class="date-time-inputs">
+    <input
+      type="date"
+      [id]="inputId"
+      [(ngModel)]="dateValue"
+      (ngModelChange)="onPickerChange()"
+      [disabled]="disabled"
+    />
+
+    <div class="time-inputs">
+      <select
+        aria-label="Hour"
+        [(ngModel)]="hourValue"
+        (ngModelChange)="onPickerChange()"
+        [disabled]="disabled">
+        <option *ngFor="let hour of hours" [value]="hour">{{ hour }}</option>
+      </select>
+
+      <span class="time-separator">:</span>
+
+      <select
+        aria-label="Minute"
+        [(ngModel)]="minuteValue"
+        (ngModelChange)="onPickerChange()"
+        [disabled]="disabled">
+        <option *ngFor="let minute of minutes" [value]="minute">{{ minute }}</option>
+      </select>
+
+      <select
+        aria-label="AM or PM"
+        [(ngModel)]="meridiemValue"
+        (ngModelChange)="onPickerChange()"
+        [disabled]="disabled">
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  </div>
   
   <div class="timeframe-section" *ngIf="showTimeframes">
     <div class="timeframe-buttons">
