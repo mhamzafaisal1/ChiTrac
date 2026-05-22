@@ -28,6 +28,14 @@ function constructor(server) {
       : NaN;
   }
 
+  function parseOperatorId(raw) {
+    if (typeof raw === "undefined" || raw === null || raw === "") return null;
+    const operatorId = Number.parseInt(String(raw), 10);
+    return Number.isFinite(operatorId) && String(operatorId) === String(raw).trim()
+      ? operatorId
+      : NaN;
+  }
+
   function parseRequiredInteger(raw) {
     if (typeof raw === "undefined" || raw === null || raw === "") return NaN;
     const value = Number.parseInt(String(raw), 10);
@@ -155,6 +163,38 @@ function constructor(server) {
       .toArray();
   }
 
+  function formatName(name, fallback = "Unknown") {
+    if (typeof name === "object" && name !== null) {
+      return `${name.first || ""} ${name.surname || ""}`.trim() || fallback;
+    }
+    return name || fallback;
+  }
+
+  async function loadActiveOperatorIds(operatorId) {
+    const filter = { active: { $ne: false } };
+    if (operatorId !== null) {
+      filter.$or = [{ id: operatorId }, { code: operatorId }];
+    }
+
+    const operators = await db
+      .collection(config.operatorCollectionName)
+      .find(filter)
+      .project({ _id: 0, id: 1, code: 1, name: 1 })
+      .toArray();
+
+    return new Map(
+      operators
+        .map((operator) => [
+          Number(operator.id ?? operator.code),
+          {
+            id: Number(operator.id ?? operator.code),
+            name: formatName(operator.name, `Operator ${operator.id ?? operator.code}`),
+          },
+        ])
+        .filter(([id]) => Number.isFinite(id))
+    );
+  }
+
   async function buildStatusMap(serials) {
     const finiteSerials = serials.filter((serial) => Number.isFinite(serial));
     if (!finiteSerials.length) return new Map();
@@ -202,6 +242,69 @@ function constructor(server) {
     }
 
     return statusMap;
+  }
+
+  async function buildOperatorTickerMap(operatorIds = []) {
+    const operatorIdSet = new Set(
+      operatorIds.filter((operatorId) => Number.isFinite(operatorId))
+    );
+
+    const tickers = await db
+      .collection(config.stateTickerCollectionName)
+      .find({})
+      .project({
+        _id: 0,
+        machine: 1,
+        operators: 1,
+        status: 1,
+        timestamp: 1,
+        timestamps: 1,
+      })
+      .toArray();
+
+    const tickerMap = new Map();
+    for (const ticker of tickers) {
+      const operators = Array.isArray(ticker.operators) ? ticker.operators : [];
+      if (!operators.length) continue;
+
+      const status = ticker.status || {};
+      const timestamp = new Date(
+        status.timestamp ||
+          ticker.timestamp ||
+          ticker.timestamps?.update ||
+          ticker.timestamps?.active ||
+          ticker.timestamps?.create ||
+          0
+      ).getTime();
+
+      for (const operator of operators) {
+        const operatorId = Number(operator?.id);
+        if (!Number.isFinite(operatorId) || operatorId === -1) continue;
+        if (operatorIdSet.size && !operatorIdSet.has(operatorId)) continue;
+
+        const existing = tickerMap.get(operatorId);
+        if (existing && existing.timestamp >= timestamp) continue;
+
+        const machineSerial = ticker.machine?.serial ?? ticker.machine?.id ?? null;
+        tickerMap.set(operatorId, {
+          timestamp,
+          machine:
+            machineSerial !== null && typeof machineSerial !== "undefined"
+              ? {
+                  serial: machineSerial,
+                  name: ticker.machine?.name || null,
+                }
+              : null,
+          status: {
+            code: status.id ?? status.code ?? null,
+            name: status.name ?? null,
+            color: status.softrolColor || "None",
+          },
+        });
+      }
+    }
+
+    return tickerMap;
   }
 
   function createAggregate(machine, productiveMs = 0) {
@@ -505,6 +608,289 @@ function constructor(server) {
     };
   }
 
+  function createOperatorAggregate(operatorId, operatorName = null) {
+    return {
+      operatorId: Number(operatorId),
+      operatorName: operatorName || `Operator ${operatorId}`,
+      currentStatus: null,
+      currentMachine: null,
+      runtimeMs: 0,
+      workedTimeMs: 0,
+      totalCounts: 0,
+      totalMisfeeds: 0,
+      totalTimeCreditMs: 0,
+      productiveMs: 0,
+      segmentKeys: new Set(),
+      rangeStart: null,
+      rangeEnd: null,
+      efficiencyData: [],
+      hasData: false,
+    };
+  }
+
+  function addOperatorSegmentProductive(aggregate, segment) {
+    if (!aggregate.segmentKeys.has(segment.key)) {
+      aggregate.productiveMs += segment.productiveMs;
+      aggregate.segmentKeys.add(segment.key);
+    }
+
+    if (!aggregate.rangeStart || segment.start < aggregate.rangeStart) {
+      aggregate.rangeStart = segment.start;
+    }
+    if (!aggregate.rangeEnd || segment.end > aggregate.rangeEnd) {
+      aggregate.rangeEnd = segment.end;
+    }
+  }
+
+  function addOperatorRecordToAggregate(aggregateMap, record, segment) {
+    const operatorId = Number(record.operatorId);
+    if (!Number.isFinite(operatorId) || operatorId === -1) return;
+
+    const operatorName = formatName(record.operatorName, `Operator ${operatorId}`);
+    if (!aggregateMap.has(operatorId)) {
+      aggregateMap.set(operatorId, createOperatorAggregate(operatorId, operatorName));
+    }
+
+    const aggregate = aggregateMap.get(operatorId);
+    aggregate.operatorName = operatorName || aggregate.operatorName;
+    aggregate.runtimeMs += record.runtimeMs || 0;
+    aggregate.workedTimeMs += record.workedTimeMs || 0;
+    aggregate.totalCounts += record.totalCounts || record.totalCount || 0;
+    aggregate.totalMisfeeds += record.totalMisfeeds || record.misfeedCount || 0;
+    aggregate.totalTimeCreditMs += record.totalTimeCreditMs || 0;
+    aggregate.hasData = true;
+
+    if (record.machineSerial || record.machineName) {
+      aggregate.currentMachine = {
+        serial: record.machineSerial ?? null,
+        name: record.machineName ?? null,
+      };
+    }
+
+    const workedTimeMs = record.workedTimeMs || 0;
+    if (workedTimeMs > 0) {
+      aggregate.efficiencyData.push({
+        efficiency: (record.totalTimeCreditMs || 0) / workedTimeMs,
+        weight: workedTimeMs,
+      });
+    }
+
+    addOperatorSegmentProductive(aggregate, segment);
+  }
+
+  async function addOperatorSessionFallback(aggregateMap, segment, operatorIds, options = {}) {
+    if (!operatorIds.length) return;
+
+    const sessionMatch = {
+      $and: [
+        { "operator.id": { $in: operatorIds } },
+        { "timestamps.start": { $lt: segment.end } },
+        {
+          $or: [
+            { "timestamps.end": { $gt: segment.start } },
+            { "timestamps.end": { $exists: false } },
+            { "timestamps.end": null },
+          ],
+        },
+      ],
+    };
+
+    if (options.shiftId) {
+      sessionMatch.$and.push({ "shift._id": options.shiftId });
+    }
+
+    const sessions = await db
+      .collection(config.operatorSessionCollectionName)
+      .find(sessionMatch)
+      .project({
+        _id: 0,
+        operator: 1,
+        machine: 1,
+        timestamps: 1,
+        runtime: 1,
+        workTime: 1,
+        totalCount: 1,
+        misfeedCount: 1,
+        totalTimeCredit: 1,
+        counts: 1,
+        misfeeds: 1,
+      })
+      .toArray();
+
+    const sessionBuckets = new Map();
+    for (const session of sessions) {
+      const operatorId = Number(session.operator?.id);
+      if (!operatorIds.includes(operatorId) || operatorId === -1) continue;
+
+      const sessionStart = new Date(session.timestamps?.start);
+      const rawSessionEnd = session.timestamps?.end
+        ? new Date(session.timestamps.end)
+        : segment.end;
+      const clampedStart = sessionStart > segment.start ? sessionStart : segment.start;
+      const clampedEnd = rawSessionEnd < segment.end ? rawSessionEnd : segment.end;
+      const runtimeMs = Math.max(0, clampedEnd - clampedStart);
+      if (runtimeMs <= 0) continue;
+
+      const fullSessionMs = Math.max(0, rawSessionEnd - sessionStart);
+      const overlapFactor = fullSessionMs > 0 ? runtimeMs / fullSessionMs : 1;
+      const storedRuntimeSec = Number(session.runtime) || 0;
+      const runtimeFromStoredMs =
+        storedRuntimeSec > 0 ? storedRuntimeSec * 1000 * overlapFactor : runtimeMs;
+      const storedWorkSec = Number(session.workTime) || 0;
+      const workedTimeMs =
+        storedWorkSec > 0 ? storedWorkSec * 1000 * overlapFactor : runtimeMs;
+      const totalTimeCreditMs =
+        Number(session.totalTimeCredit || 0) * 1000 * overlapFactor;
+      const totalCounts = Number(session.totalCount || 0) * overlapFactor;
+      const totalMisfeeds = Number(session.misfeedCount || 0) * overlapFactor;
+
+      const bucket =
+        sessionBuckets.get(operatorId) ||
+        {
+          operatorId,
+          operatorName: formatName(session.operator?.name, `Operator ${operatorId}`),
+          machineSerial: session.machine?.serial ?? session.machine?.id ?? null,
+          machineName: session.machine?.name ?? null,
+          runtimeMs: 0,
+          workedTimeMs: 0,
+          totalCounts: 0,
+          totalMisfeeds: 0,
+          totalTimeCreditMs: 0,
+        };
+
+      bucket.runtimeMs += runtimeFromStoredMs;
+      bucket.workedTimeMs += workedTimeMs;
+      bucket.totalCounts += totalCounts;
+      bucket.totalMisfeeds += totalMisfeeds;
+      bucket.totalTimeCreditMs += totalTimeCreditMs;
+      if (session.machine?.serial || session.machine?.id) {
+        bucket.machineSerial = session.machine.serial ?? session.machine.id;
+        bucket.machineName = session.machine.name ?? null;
+      }
+
+      sessionBuckets.set(operatorId, bucket);
+    }
+
+    for (const record of sessionBuckets.values()) {
+      record.totalCounts = Math.round(record.totalCounts);
+      record.totalMisfeeds = Math.round(record.totalMisfeeds);
+      addOperatorRecordToAggregate(aggregateMap, record, segment);
+    }
+  }
+
+  async function addOperatorCacheSegment(
+    aggregateMap,
+    segment,
+    collectionName,
+    baseFilter,
+    operatorIds,
+    sessionOptions = {}
+  ) {
+    const filter = {
+      ...baseFilter,
+      entityType: "operator-machine",
+      date: segment.dateStr,
+    };
+
+    if (operatorIds.length === 1) {
+      filter.operatorId = operatorIds[0];
+    } else if (operatorIds.length > 1) {
+      filter.operatorId = { $in: operatorIds };
+    }
+
+    const records = await db.collection(collectionName).find(filter).toArray();
+    const foundOperatorIds = new Set();
+
+    for (const record of records) {
+      const operatorId = Number(record.operatorId);
+      if (!Number.isFinite(operatorId) || operatorId === -1) continue;
+      foundOperatorIds.add(operatorId);
+      addOperatorRecordToAggregate(aggregateMap, record, segment);
+    }
+
+    const missingOperatorIds = operatorIds.filter(
+      (operatorId) => !foundOperatorIds.has(operatorId)
+    );
+    await addOperatorSessionFallback(
+      aggregateMap,
+      segment,
+      missingOperatorIds,
+      sessionOptions
+    );
+  }
+
+  function toOperatorOverviewRow(aggregate, tickerMap, requestStart, requestEnd) {
+    const runtimeMs = Math.round(aggregate.runtimeMs || 0);
+    const productiveMs = aggregate.productiveMs || 0;
+    const downtimeMs = Math.max(productiveMs - runtimeMs, 0);
+    const totalCounts = Math.round(aggregate.totalCounts || 0);
+    const totalMisfeeds = Math.round(aggregate.totalMisfeeds || 0);
+    const totalOutput = totalCounts + totalMisfeeds;
+
+    const availability = productiveMs > 0 ? runtimeMs / productiveMs : 0;
+    const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
+
+    let totalWeightedEfficiency = 0;
+    let totalWeight = 0;
+    for (const entry of aggregate.efficiencyData) {
+      totalWeightedEfficiency += entry.efficiency * entry.weight;
+      totalWeight += entry.weight;
+    }
+    const efficiency =
+      totalWeight > 0
+        ? totalWeightedEfficiency / totalWeight
+        : aggregate.workedTimeMs > 0
+          ? aggregate.totalTimeCreditMs / aggregate.workedTimeMs
+          : 0;
+    const oee = availability * throughput * efficiency;
+    const tickerContext = tickerMap.get(aggregate.operatorId);
+
+    return {
+      operator: {
+        id: aggregate.operatorId,
+        name: aggregate.operatorName,
+      },
+      currentStatus: tickerContext?.status || aggregate.currentStatus || null,
+      currentMachine: tickerContext?.machine || aggregate.currentMachine || null,
+      metrics: {
+        runtime: {
+          total: runtimeMs,
+          formatted: formatDuration(runtimeMs),
+        },
+        downtime: {
+          total: downtimeMs,
+          formatted: formatDuration(downtimeMs),
+        },
+        output: {
+          totalCount: totalCounts,
+          misfeedCount: totalMisfeeds,
+        },
+        performance: {
+          availability: {
+            value: availability,
+            percentage: (availability * 100).toFixed(2),
+          },
+          throughput: {
+            value: throughput,
+            percentage: (throughput * 100).toFixed(2),
+          },
+          efficiency: {
+            value: efficiency,
+            percentage: (efficiency * 100).toFixed(2),
+          },
+          oee: {
+            value: oee,
+            percentage: (oee * 100).toFixed(2),
+          },
+        },
+      },
+      timeRange: {
+        start: aggregate.rangeStart || requestStart,
+        end: aggregate.rangeEnd || requestEnd,
+      },
+    };
+  }
+
   async function buildMachineOverview(req, res) {
     const timeframe = req.query.timeframe || "today";
     if (!["today", "custom", "shift"].includes(timeframe)) {
@@ -678,6 +1064,168 @@ function constructor(server) {
     return res.json(data);
   }
 
+  async function buildOperatorOverview(req, res) {
+    const timeframe = req.query.timeframe || "today";
+    if (!["today", "custom", "shift"].includes(timeframe)) {
+      return badRequest(res, "Invalid timeframe");
+    }
+
+    const operatorId = parseOperatorId(req.query.operatorid);
+    if (Number.isNaN(operatorId)) {
+      return badRequest(res, "operatorid must be numeric");
+    }
+
+    let shiftDoc = null;
+    let cacheSegments = [];
+    let sessionSegments = [];
+    let cacheCollectionName = config.totalsDailyCollectionName;
+    let cacheBaseFilter = {};
+    let sessionOptions = {};
+
+    const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+
+    try {
+      if (timeframe === "today") {
+        const today = todayBounds(now);
+        cacheSegments = [
+          {
+            key: `operator-daily:${today.dateStr}`,
+            dateStr: today.dateStr,
+            start: today.start.toJSDate(),
+            end: today.end.toJSDate(),
+          },
+        ];
+      } else if (timeframe === "custom") {
+        const startDT = parseIsoDate(req.query.start, "start");
+        const endDT = req.query.end ? parseIsoDate(req.query.end, "end") : now;
+        const clampedEndDT = endDT > now ? now : endDT;
+
+        if (startDT >= clampedEndDT) {
+          return badRequest(res, "Start date must be before end date");
+        }
+
+        const split = splitCustomRange(startDT, clampedEndDT);
+        cacheSegments = split.cacheSegments.map((segment) => ({
+          ...segment,
+          key: `operator-daily:${segment.dateStr}`,
+        }));
+        sessionSegments = split.sessionSegments.map((segment, index) => ({
+          ...segment,
+          key: `operator-session:${index}:${segment.start.getTime()}-${segment.end.getTime()}`,
+        }));
+      } else if (timeframe === "shift") {
+        const shiftIntegerId = parseRequiredInteger(req.query.shift);
+        if (Number.isNaN(shiftIntegerId)) {
+          return badRequest(res, "shift is required and must be an integer");
+        }
+
+        shiftDoc = await db
+          .collection(config.shiftCollectionName)
+          .findOne({ id: shiftIntegerId });
+
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+
+        const shiftWindow = shiftWindowForToday(shiftDoc, now);
+        if (!shiftWindow || shiftWindow.end <= shiftWindow.start) {
+          return res.json([]);
+        }
+
+        cacheCollectionName = totalsShiftCollectionName;
+        cacheBaseFilter = { shiftId: shiftDoc._id.toString() };
+        sessionOptions = { shiftId: shiftDoc._id.toString() };
+        cacheSegments = [
+          {
+            key: `operator-shift:${shiftDoc._id.toString()}:${shiftWindow.dateStr}`,
+            dateStr: shiftWindow.dateStr,
+            start: shiftWindow.start,
+            end: shiftWindow.end,
+          },
+        ];
+      }
+    } catch (error) {
+      return badRequest(res, error.message);
+    }
+
+    const activeShifts = shiftDoc ? [shiftDoc] : await loadActiveShifts();
+    const operatorMap = await loadActiveOperatorIds(operatorId);
+    const requestedOperatorIds =
+      operatorId !== null ? [operatorId] : [...operatorMap.keys()];
+    const aggregateMap = new Map();
+
+    const allSegments = [...cacheSegments, ...sessionSegments];
+    for (const segment of allSegments) {
+      segment.productiveMs = computeShiftElapsedMs(
+        activeShifts,
+        segment.start,
+        segment.end,
+        SYSTEM_TIMEZONE
+      );
+    }
+
+    for (const segment of cacheSegments) {
+      await addOperatorCacheSegment(
+        aggregateMap,
+        segment,
+        cacheCollectionName,
+        cacheBaseFilter,
+        requestedOperatorIds,
+        sessionOptions
+      );
+    }
+
+    for (const segment of sessionSegments) {
+      await addOperatorSessionFallback(
+        aggregateMap,
+        segment,
+        requestedOperatorIds,
+        sessionOptions
+      );
+    }
+
+    for (const [id, operator] of operatorMap) {
+      const aggregate = aggregateMap.get(id);
+      if (aggregate) {
+        aggregate.operatorName = operator.name || aggregate.operatorName;
+      }
+    }
+
+    const aggregates = [...aggregateMap.values()].filter((aggregate) => {
+      if (operatorId !== null) {
+        return aggregate.operatorId === operatorId && aggregate.hasData;
+      }
+
+      const hasRuntime = aggregate.runtimeMs > 0;
+      const hasProduction = aggregate.totalCounts > 0;
+      const hasCurrentMachine = aggregate.currentMachine !== null;
+      const hasSignificantRuntime = aggregate.runtimeMs >= 3600000;
+      return (
+        requestedOperatorIds.includes(aggregate.operatorId) &&
+        hasRuntime &&
+        hasProduction &&
+        (hasCurrentMachine || hasSignificantRuntime)
+      );
+    });
+
+    if (!aggregates.length) {
+      return res.json([]);
+    }
+
+    const tickerMap = await buildOperatorTickerMap(
+      aggregates.map((aggregate) => aggregate.operatorId)
+    );
+    const requestStart = allSegments[0]?.start || now.startOf("day").toJSDate();
+    const requestEnd = allSegments[allSegments.length - 1]?.end || now.toJSDate();
+    const data = aggregates
+      .map((aggregate) =>
+        toOperatorOverviewRow(aggregate, tickerMap, requestStart, requestEnd)
+      )
+      .sort((a, b) => a.operator.id - b.operator.id);
+
+    return res.json(data);
+  }
+
   router.get("/status", async (req, res) => {
     res.json({ vendor: "Milnor", status: "ok" });
   });
@@ -688,6 +1236,15 @@ function constructor(server) {
     } catch (error) {
       logger.error("[milnor] Error in /machine/overview route:", error);
       res.status(500).json({ error: "Failed to fetch Milnor machine overview" });
+    }
+  });
+
+  router.get("/operator/overview", async (req, res) => {
+    try {
+      await buildOperatorOverview(req, res);
+    } catch (error) {
+      logger.error("[milnor] Error in /operator/overview route:", error);
+      res.status(500).json({ error: "Failed to fetch Milnor operator overview" });
     }
   });
 
