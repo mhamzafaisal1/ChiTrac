@@ -682,11 +682,11 @@ function constructor(server) {
     res.json({ vendor: "Milnor", status: "ok" });
   });
 
-  router.get("/machine-overview", async (req, res) => {
+  router.get("/machine/overview", async (req, res) => {
     try {
       await buildMachineOverview(req, res);
     } catch (error) {
-      logger.error("[milnor] Error in machine-overview route:", error);
+      logger.error("[milnor] Error in /machine/overview route:", error);
       res.status(500).json({ error: "Failed to fetch Milnor machine overview" });
     }
   });
