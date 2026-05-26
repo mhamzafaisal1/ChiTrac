@@ -9,6 +9,7 @@ const {
   buildItemHourlyStackFromCacheForOperator,
   buildOperatorCyclePieFromCache,
   buildDailyEfficiencyFromCache,
+  buildOperatorMachineSummaryFromCache,
   mergeIntervals,
   overlapsAny,
   coalesceItems,
@@ -330,9 +331,9 @@ module.exports = function (server) {
           machineName: mName,
           itemName: item.name || "Unknown",
           count: item.countTotal || 0,
-          misfeed: 0,
+          misfeed: item.misfeedTotal || 0,
           standard: item.standard || 0,
-          valid: item.countTotal || 0,
+          valid: Math.max(0, (item.countTotal || 0) - (item.misfeedTotal || 0)),
           pph: item.pph || 0,
           efficiency: item.efficiency || 0,
           workedTimeFormatted: session.workedTimeFormatted || formatDuration(0),
@@ -363,6 +364,9 @@ module.exports = function (server) {
 
       const startDate = new Date(start);
       const endDate = new Date(end);
+
+      const summary = await buildOperatorMachineSummaryFromCache(db, operatorId, startDate, endDate);
+      return res.json(summary);
 
       const matchSessions = {
         "operator.id": operatorId,
