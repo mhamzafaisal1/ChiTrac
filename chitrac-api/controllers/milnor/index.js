@@ -4,6 +4,20 @@ const { DateTime } = require("luxon");
 const config = require("../../modules/config");
 const { formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const {
+  buildLatestTickerMap,
+  groupRecordsBySerial,
+  buildPerformanceFromMachineRecord,
+  buildItemSummaryFromRecords,
+  buildItemHourlyStackFromRecords,
+  buildOperatorEfficiencyFromRecords,
+} = require("../../utils/machineFunctions");
+const {
+  buildItemSummaryFromCache,
+  buildItemHourlyStackFromCacheForOperator,
+  buildOperatorCyclePieFromCache,
+  buildDailyEfficiencyFromCache,
+} = require("../../utils/operatorFunctions");
 
 module.exports = function (server) {
   return constructor(server);
@@ -460,55 +474,73 @@ function constructor(server) {
 
       bucket.runtimeMs += runtimeMs;
       bucket.workedTimeMs += workedTimeMs;
+      bucket.totalCounts +=
+        (Number(session.metrics?.totals?.counts?.valid) ||
+          Number(session.totalCount) ||
+          0) * overlapFactor;
+      bucket.totalMisfeeds +=
+        (Number(session.metrics?.totals?.counts?.misfeed) ||
+          Number(session.misfeedCount) ||
+          0) * overlapFactor;
+      bucket.totalTimeCreditMs +=
+        (Number(session.metrics?.totals?.timeCredit) ||
+          Number(session.totalTimeCredit) ||
+          0) *
+        1000 *
+        overlapFactor;
       sessionBuckets.set(serial, bucket);
     }
 
-    const countMatch = {
-      "machine.id": { $in: serials },
-      "timestamps.create": { $gte: segment.start, $lte: segment.end },
-    };
+    if (!options.skipRawCounts) {
+      const countMatch = {
+        "machine.id": { $in: serials },
+        "timestamps.create": { $gte: segment.start, $lte: segment.end },
+      };
 
-    const counts = await db
-      .collection("count")
-      .find(countMatch)
-      .project({
-        _id: 0,
-        machine: 1,
-        item: 1,
-        misfeed: 1,
-      })
-      .toArray();
+      const counts = await db
+        .collection("count")
+        .find(countMatch)
+        .project({
+          _id: 0,
+          machine: 1,
+          item: 1,
+          misfeed: 1,
+        })
+        .toArray();
 
-    for (const count of counts) {
-      const serial = Number(count.machine?.serial ?? count.machine?.id);
-      if (!serials.includes(serial)) continue;
+      for (const count of counts) {
+        const serial = Number(count.machine?.serial ?? count.machine?.id);
+        if (!serials.includes(serial)) continue;
 
-      const bucket =
-        sessionBuckets.get(serial) || {
-          machineSerial: serial,
-          machineName: count.machine?.name || `Serial ${serial}`,
-          runtimeMs: 0,
-          workedTimeMs: 0,
-          totalCounts: 0,
-          totalMisfeeds: 0,
-          totalTimeCreditMs: 0,
-        };
+        const bucket =
+          sessionBuckets.get(serial) || {
+            machineSerial: serial,
+            machineName: count.machine?.name || `Serial ${serial}`,
+            runtimeMs: 0,
+            workedTimeMs: 0,
+            totalCounts: 0,
+            totalMisfeeds: 0,
+            totalTimeCreditMs: 0,
+          };
 
-      if (count.misfeed) {
-        bucket.totalMisfeeds += 1;
-      } else {
-        bucket.totalCounts += 1;
-        const standard = Number(count.item?.standard || 0);
-        const pph = standard > 0 && standard < 60 ? standard * 60 : standard;
-        if (pph > 0) {
-          bucket.totalTimeCreditMs += (1 / pph) * 3600000;
+        if (count.misfeed) {
+          bucket.totalMisfeeds += 1;
+        } else {
+          bucket.totalCounts += 1;
+          const standard = Number(count.item?.standard || 0);
+          const pph = standard > 0 && standard < 60 ? standard * 60 : standard;
+          if (pph > 0) {
+            bucket.totalTimeCreditMs += (1 / pph) * 3600000;
+          }
         }
-      }
 
-      sessionBuckets.set(serial, bucket);
+        sessionBuckets.set(serial, bucket);
+      }
     }
 
     for (const record of sessionBuckets.values()) {
+      record.totalCounts = Math.round(record.totalCounts);
+      record.totalMisfeeds = Math.round(record.totalMisfeeds);
       addRecordToAggregate(aggregateMap, record, segment);
     }
   }
@@ -697,6 +729,14 @@ function constructor(server) {
 
     if (options.shiftId) {
       sessionMatch.$and.push({ "shift._id": options.shiftId });
+    }
+    if (options.machineSerial !== null && typeof options.machineSerial !== "undefined") {
+      sessionMatch.$and.push({
+        $or: [
+          { "machine.serial": Number(options.machineSerial) },
+          { "machine.id": Number(options.machineSerial) },
+        ],
+      });
     }
 
     const sessions = await db
@@ -1226,6 +1266,879 @@ function constructor(server) {
     return res.json(data);
   }
 
+  async function resolveDetailsTimeframe(req, keyPrefix) {
+    const timeframe = req.query.timeframe || "today";
+    if (!["today", "custom", "shift"].includes(timeframe)) {
+      return { error: { status: 400, message: "Invalid timeframe" } };
+    }
+
+    let shiftDoc = null;
+    let cacheSegments = [];
+    let sessionSegments = [];
+    let cacheCollectionName = config.totalsDailyCollectionName;
+    let cacheBaseFilter = {};
+    let sessionOptions = {};
+    const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+
+    try {
+      if (timeframe === "today") {
+        const today = todayBounds(now);
+        cacheSegments = [
+          {
+            key: `${keyPrefix}-daily:${today.dateStr}`,
+            dateStr: today.dateStr,
+            start: today.start.toJSDate(),
+            end: today.end.toJSDate(),
+          },
+        ];
+      } else if (timeframe === "custom") {
+        const startDT = parseIsoDate(req.query.start, "start");
+        const endDT = req.query.end ? parseIsoDate(req.query.end, "end") : now;
+        const clampedEndDT = endDT > now ? now : endDT;
+
+        if (startDT >= clampedEndDT) {
+          return { error: { status: 400, message: "Start date must be before end date" } };
+        }
+
+        const split = splitCustomRange(startDT, clampedEndDT);
+        cacheSegments = split.cacheSegments.map((segment) => ({
+          ...segment,
+          key: `${keyPrefix}-daily:${segment.dateStr}`,
+        }));
+        sessionSegments = split.sessionSegments.map((segment, index) => ({
+          ...segment,
+          key: `${keyPrefix}-session:${index}:${segment.start.getTime()}-${segment.end.getTime()}`,
+        }));
+      } else {
+        const shiftIntegerId = parseRequiredInteger(req.query.shift);
+        if (Number.isNaN(shiftIntegerId)) {
+          return {
+            error: {
+              status: 400,
+              message: "shift is required and must be an integer",
+            },
+          };
+        }
+
+        shiftDoc = await db.collection(config.shiftCollectionName).findOne({
+          id: shiftIntegerId,
+        });
+
+        if (!shiftDoc) {
+          return { error: { status: 404, message: "Shift not found" } };
+        }
+
+        const shiftWindow = shiftWindowForToday(shiftDoc, now);
+        if (!shiftWindow || shiftWindow.end <= shiftWindow.start) {
+          return {
+            timeframe,
+            shiftDoc,
+            cacheSegments: [],
+            sessionSegments: [],
+            cacheCollectionName,
+            cacheBaseFilter,
+            sessionOptions,
+            activeShifts: [shiftDoc],
+            allSegments: [],
+            now,
+          };
+        }
+
+        cacheCollectionName = totalsShiftCollectionName;
+        cacheBaseFilter = { shiftId: shiftDoc._id.toString() };
+        sessionOptions = { shiftId: shiftDoc._id.toString() };
+        cacheSegments = [
+          {
+            key: `${keyPrefix}-shift:${shiftDoc._id.toString()}:${shiftWindow.dateStr}`,
+            dateStr: shiftWindow.dateStr,
+            start: shiftWindow.start,
+            end: shiftWindow.end,
+          },
+        ];
+      }
+    } catch (error) {
+      return { error: { status: 400, message: error.message } };
+    }
+
+    const activeShifts = shiftDoc ? [shiftDoc] : await loadActiveShifts();
+    const allSegments = [...cacheSegments, ...sessionSegments];
+    for (const segment of allSegments) {
+      segment.productiveMs = computeShiftElapsedMs(
+        activeShifts,
+        segment.start,
+        segment.end,
+        SYSTEM_TIMEZONE
+      );
+    }
+
+    return {
+      timeframe,
+      shiftDoc,
+      cacheSegments,
+      sessionSegments,
+      cacheCollectionName,
+      cacheBaseFilter,
+      sessionOptions,
+      activeShifts,
+      allSegments,
+      now,
+    };
+  }
+
+  function dateFilterForSegments(segments) {
+    const dateStrs = [...new Set(segments.map((segment) => segment.dateStr))];
+    return {
+      dateStrs,
+      dateObjs: dateStrs.map((dateStr) => new Date(`${dateStr}T00:00:00.000Z`)),
+    };
+  }
+
+  async function queryEntityRecords(collectionName, entityType, segments, baseFilter, extraFilter = {}) {
+    if (!segments.length) return [];
+    const { dateStrs, dateObjs } = dateFilterForSegments(segments);
+    const filter = {
+      ...baseFilter,
+      ...extraFilter,
+      entityType,
+    };
+    if (collectionName === totalsShiftCollectionName) {
+      filter.date = { $in: dateStrs };
+    } else {
+      filter.$or = [{ date: { $in: dateStrs } }, { dateObj: { $in: dateObjs } }];
+    }
+
+    return db.collection(collectionName).find(filter).toArray();
+  }
+
+  function buildHourlyMachineItemRecordsFromCounts(counts) {
+    const bucketMap = new Map();
+    for (const count of counts) {
+      const timestamp = count.timestamps?.create || count.timestamp;
+      if (!timestamp || count.misfeed) continue;
+      const dt = DateTime.fromJSDate(new Date(timestamp), { zone: SYSTEM_TIMEZONE });
+      if (!dt.isValid) continue;
+      const hour = dt.hour;
+      const itemName = count.item?.name || "Unknown";
+      const key = `${hour}|${itemName}`;
+      const existing = bucketMap.get(key) || {
+        hour,
+        itemName,
+        totalCounts: 0,
+      };
+      existing.totalCounts += 1;
+      bucketMap.set(key, existing);
+    }
+    return [...bucketMap.values()];
+  }
+
+  async function queryMachineCounts(serial, segments) {
+    const counts = [];
+    for (const segment of segments) {
+      const rows = await db
+        .collection("count")
+        .find({
+          "machine.id": serial,
+          "timestamps.create": { $gte: segment.start, $lte: segment.end },
+        })
+        .project({
+          _id: 0,
+          machine: 1,
+          item: 1,
+          operator: 1,
+          misfeed: 1,
+          timestamps: 1,
+          timestamp: 1,
+        })
+        .toArray();
+      counts.push(...rows);
+    }
+    return counts;
+  }
+
+  async function buildSessionOperatorEfficiencyRecords(serial, segments) {
+    const bucketMap = new Map();
+    for (const segment of segments) {
+      const sessions = await db
+        .collection(config.operatorSessionCollectionName)
+        .find({
+          "machine.serial": Number(serial),
+          "timestamps.start": { $lt: segment.end },
+          $or: [
+            { "timestamps.end": { $gt: segment.start } },
+            { "timestamps.end": { $exists: false } },
+            { "timestamps.end": null },
+          ],
+        })
+        .project({
+          _id: 0,
+          operator: 1,
+          timestamps: 1,
+          workTime: 1,
+          totalTimeCredit: 1,
+        })
+        .toArray();
+
+      for (const session of sessions) {
+        const operatorId = Number(session.operator?.id);
+        if (!Number.isFinite(operatorId) || operatorId === -1) continue;
+
+        const sessionStart = new Date(session.timestamps?.start);
+        const sessionEnd = session.timestamps?.end
+          ? new Date(session.timestamps.end)
+          : segment.end;
+        const clampedStart = sessionStart > segment.start ? sessionStart : segment.start;
+        const clampedEnd = sessionEnd < segment.end ? sessionEnd : segment.end;
+        const overlapMs = Math.max(0, clampedEnd - clampedStart);
+        const fullMs = Math.max(0, sessionEnd - sessionStart);
+        if (!overlapMs || !fullMs) continue;
+
+        const factor = overlapMs / fullMs;
+        const hour = DateTime.fromJSDate(clampedStart, {
+          zone: SYSTEM_TIMEZONE,
+        }).hour;
+        const key = `${hour}|${operatorId}`;
+        const existing = bucketMap.get(key) || {
+          hour,
+          operatorId,
+          operatorName: session.operator?.name || `Operator ${operatorId}`,
+          workedTimeMs: 0,
+          totalTimeCreditMs: 0,
+        };
+        existing.workedTimeMs += (Number(session.workTime) || 0) * 1000 * factor;
+        existing.totalTimeCreditMs +=
+          (Number(session.totalTimeCredit) || 0) * 1000 * factor;
+        bucketMap.set(key, existing);
+      }
+    }
+    return [...bucketMap.values()];
+  }
+
+  async function buildCurrentOperatorsFast(serial) {
+    const serialNum = Number(serial);
+    const ticker = await db.collection(config.stateTickerCollectionName).findOne(
+      {
+        $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }],
+      },
+      { projection: { _id: 0, operators: 1, machine: 1 } }
+    );
+
+    const operators = Array.isArray(ticker?.operators) ? ticker.operators : [];
+    const opIds = [
+      ...new Set(
+        operators
+          .map((operator) => Number(operator?.id))
+          .filter((id) => Number.isFinite(id) && id !== -1)
+      ),
+    ];
+    if (!opIds.length) return [];
+
+    return opIds.map((id) => {
+      const tickerOperator = operators.find(
+        (operator) => Number(operator?.id) === id
+      );
+      const operatorName = formatName(tickerOperator?.name, `Operator ${id}`);
+
+      return {
+        operatorId: id,
+        operatorName,
+        machineSerial: ticker?.machine?.serial ?? ticker?.machine?.id ?? serialNum,
+        machineName: ticker?.machine?.name || "Unknown",
+        session: {
+          start: null,
+          end: null,
+        },
+        metrics: {
+          workedTimeMs: 0,
+          workedTimeFormatted: formatDuration(0),
+          totalCount: 0,
+          validCount: 0,
+          misfeedCount: 0,
+          efficiencyPct: 0,
+        },
+      };
+    });
+  }
+
+  async function buildMachineDetails(req, res) {
+    const serial = parseSerial(req.query.serial);
+    if (Number.isNaN(serial)) {
+      return badRequest(res, "serial must be numeric");
+    }
+
+    const resolved = await resolveDetailsTimeframe(req, "machine-detail");
+    if (resolved.error) {
+      return res.status(resolved.error.status).json({ error: resolved.error.message });
+    }
+    if (
+      resolved.timeframe === "custom" &&
+      !resolved.cacheSegments.length &&
+      resolved.sessionSegments.length
+    ) {
+      resolved.cacheSegments = resolved.sessionSegments.map((segment) => ({
+        ...segment,
+        key: `machine-detail-daily:${segment.dateStr}`,
+      }));
+      resolved.sessionSegments = [];
+      resolved.cacheCollectionName = config.totalsDailyCollectionName;
+      resolved.cacheBaseFilter = {};
+      resolved.sessionOptions = {};
+      resolved.allSegments = resolved.cacheSegments;
+    }
+    if (!resolved.allSegments.length) return res.json([]);
+
+    const machineMap = await loadActiveMachines(serial);
+    const requestedSerials = serial !== null ? [serial] : [...machineMap.keys()];
+    const aggregateMap = new Map();
+
+    if (serial === null) {
+      for (const machine of machineMap.values()) {
+        aggregateMap.set(Number(machine.serial), createAggregate(machine));
+      }
+    }
+
+    for (const segment of resolved.cacheSegments) {
+      await addCacheSegment(
+        aggregateMap,
+        segment,
+        resolved.cacheCollectionName,
+        resolved.cacheBaseFilter,
+        requestedSerials,
+        { ...resolved.sessionOptions, skipRawCounts: true }
+      );
+
+      if (serial === null) {
+        for (const machineSerial of requestedSerials) {
+          const aggregate = aggregateMap.get(machineSerial);
+          if (aggregate) {
+            addSegmentProductive(
+              aggregate,
+              segment.key,
+              segment.productiveMs,
+              segment.start,
+              segment.end
+            );
+          }
+        }
+      }
+    }
+
+    for (const segment of resolved.sessionSegments) {
+      await addSessionFallback(
+        aggregateMap,
+        segment,
+        requestedSerials,
+        { ...resolved.sessionOptions, skipRawCounts: true }
+      );
+
+      if (serial === null) {
+        for (const machineSerial of requestedSerials) {
+          const aggregate = aggregateMap.get(machineSerial);
+          if (aggregate) {
+            addSegmentProductive(
+              aggregate,
+              segment.key,
+              segment.productiveMs,
+              segment.start,
+              segment.end
+            );
+          }
+        }
+      }
+    }
+
+    const aggregates = [...aggregateMap.values()].filter((aggregate) => {
+      if (serial !== null) return aggregate.machineSerial === serial && aggregate.hasData;
+      return requestedSerials.includes(aggregate.machineSerial);
+    });
+
+    if (!aggregates.length) return res.json([]);
+
+    const serials = aggregates.map((aggregate) => aggregate.machineSerial);
+    const serialFilter =
+      serials.length === 1 ? { machineSerial: serials[0] } : { machineSerial: { $in: serials } };
+
+    const [
+      machineItemRecords,
+      operatorMachineRecords,
+      machineItemHourlyRecords,
+      operatorMachineHourlyRecords,
+      stateTickerData,
+    ] = await Promise.all([
+      queryEntityRecords(
+        resolved.cacheCollectionName,
+        "machine-item",
+        resolved.cacheSegments,
+        resolved.cacheBaseFilter,
+        serialFilter
+      ),
+      queryEntityRecords(
+        resolved.cacheCollectionName,
+        "operator-machine",
+        resolved.cacheSegments,
+        resolved.cacheBaseFilter,
+        serialFilter
+      ),
+      resolved.cacheCollectionName === config.totalsDailyCollectionName
+        ? queryEntityRecords(
+            config.totalsHourlyCollectionName,
+            "machine-item",
+            resolved.cacheSegments,
+            {},
+            serialFilter
+          )
+        : [],
+      resolved.cacheCollectionName === config.totalsDailyCollectionName
+        ? queryEntityRecords(
+            config.totalsHourlyCollectionName,
+            "operator-machine",
+            resolved.cacheSegments,
+            {},
+            serialFilter
+          )
+        : [],
+      db
+        .collection(config.stateTickerCollectionName)
+        .find({
+          $or: [
+            { "machine.serial": { $in: serials } },
+            { "machine.id": { $in: serials } },
+          ],
+        })
+        .toArray(),
+    ]);
+
+    const tickerMap = buildLatestTickerMap(stateTickerData);
+    const machineItemsBySerial = groupRecordsBySerial(machineItemRecords);
+    const operatorMachineBySerial = groupRecordsBySerial(operatorMachineRecords);
+    const operatorMachineHourlyBySerial = groupRecordsBySerial(operatorMachineHourlyRecords);
+    const machineItemHourlyBySerial = groupRecordsBySerial(machineItemHourlyRecords);
+    const requestStart = resolved.allSegments[0].start;
+    const requestEnd = resolved.allSegments[resolved.allSegments.length - 1].end;
+
+    const results = await Promise.all(
+      aggregates.map(async (aggregate) => {
+        const machineSerial = aggregate.machineSerial;
+        const machine = machineMap.get(machineSerial);
+        const machineName = aggregate.machineName || machine?.name || `Serial ${machineSerial}`;
+        const record = {
+          machineSerial,
+          machineName,
+          runtimeMs: Math.round(aggregate.runtimeMs || 0),
+          workedTimeMs: Math.round(aggregate.workedTimeMs || 0),
+          totalCounts: Math.round(aggregate.totalCounts || 0),
+          totalMisfeeds: Math.round(aggregate.totalMisfeeds || 0),
+          totalTimeCreditMs: Math.round(aggregate.totalTimeCreditMs || 0),
+          timeRange: {
+            start: aggregate.rangeStart || requestStart,
+            end: aggregate.rangeEnd || requestEnd,
+          },
+        };
+
+        const sessionCounts = await queryMachineCounts(
+          machineSerial,
+          []
+        );
+        const sessionHourlyItems = buildHourlyMachineItemRecordsFromCounts(sessionCounts);
+        const sessionOperatorEfficiency = await buildSessionOperatorEfficiencyRecords(
+          machineSerial,
+          resolved.sessionSegments.length ? resolved.sessionSegments : []
+        );
+
+        const itemRecords = [
+          ...(machineItemsBySerial.get(machineSerial) || []),
+        ];
+        const shiftHour = DateTime.fromJSDate(requestStart, {
+          zone: SYSTEM_TIMEZONE,
+        }).hour;
+        const shiftItemHourlyRecords =
+          resolved.cacheCollectionName === totalsShiftCollectionName
+            ? itemRecords.map((record) => ({ ...record, hour: shiftHour }))
+            : [];
+        const shiftOperatorHourlyRecords =
+          resolved.cacheCollectionName === totalsShiftCollectionName
+            ? (operatorMachineBySerial.get(machineSerial) || []).map((record) => ({
+                ...record,
+                hour: shiftHour,
+              }))
+            : [];
+        const hourlyItemRecords = [
+          ...(machineItemHourlyBySerial.get(machineSerial) || []),
+          ...shiftItemHourlyRecords,
+          ...sessionHourlyItems,
+        ];
+        const operatorHourlyRecords = [
+          ...(operatorMachineHourlyBySerial.get(machineSerial) || []),
+          ...shiftOperatorHourlyRecords,
+          ...sessionOperatorEfficiency,
+        ];
+
+        const cacheDateForCharts =
+          resolved.cacheSegments[0]?.dateStr ||
+          DateTime.fromJSDate(requestStart, { zone: SYSTEM_TIMEZONE }).toISODate();
+
+        return {
+          machine: {
+            serial: machineSerial,
+            name: machineName,
+          },
+          currentStatus: tickerMap.get(machineSerial)?.status || {
+            code: 0,
+            name: "Unknown",
+          },
+          performance: buildPerformanceFromMachineRecord(
+            record,
+            aggregate.productiveMs || requestEnd - requestStart
+          ),
+          itemSummary: buildItemSummaryFromRecords(
+            itemRecords,
+            requestStart,
+            requestEnd
+          ),
+          itemHourlyStack: buildItemHourlyStackFromRecords(
+            hourlyItemRecords,
+            requestStart,
+            null,
+            cacheDateForCharts
+          ),
+          faultData: {
+            faultSummaries: [],
+            faultCycles: [],
+          },
+          operatorEfficiency: buildOperatorEfficiencyFromRecords(
+            operatorHourlyRecords,
+            requestStart,
+            null,
+            cacheDateForCharts
+          ),
+          currentOperators: await buildCurrentOperatorsFast(machineSerial),
+          timestamp: resolved.now.toJSDate(),
+          sessionStart: record.timeRange.start,
+          sessionEnd: record.timeRange.end,
+        };
+      })
+    );
+
+    return res.json(results.sort((a, b) => a.machine.serial - b.machine.serial));
+  }
+
+  function buildOperatorItemSummaryRowsFromRecords(records, operatorName) {
+    return records.map((record) => {
+      const workedMs =
+        Number(record.workedTimeMs) ||
+        Number(record.totalTimeCreditMs) ||
+        Number(record.runtimeMs) ||
+        0;
+      const count = Number(record.totalCounts || record.totalCount || 0);
+      const standard = Number(record.itemStandard || 0);
+      const hours = workedMs / 3600000;
+      const pph = hours > 0 ? count / hours : 0;
+      const efficiency = standard > 0 ? pph / standard : 0;
+      return {
+        operatorName,
+        machineSerial: record.machineSerial ?? "Unknown",
+        machineName: record.machineName ?? "Unknown",
+        itemName: record.itemName || "Unknown",
+        count,
+        misfeed: Number(record.totalMisfeeds || record.misfeedCount || 0),
+        standard,
+        valid: count,
+        pph: Math.round(pph * 100) / 100,
+        efficiency: Math.round(efficiency * 10000) / 100,
+        workedTimeFormatted: formatDuration(workedMs),
+      };
+    });
+  }
+
+  async function buildOperatorCountsByItemFromSessions(operatorId, serial, segments) {
+    const bucketMap = new Map();
+    const itemNames = new Set();
+    for (const segment of segments) {
+      const filter = {
+        "operator.id": operatorId,
+        "timestamps.create": { $gte: segment.start, $lte: segment.end },
+        misfeed: { $ne: true },
+      };
+      if (serial !== null) {
+        filter.$or = [
+          { "machine.serial": Number(serial) },
+          { "machine.id": Number(serial) },
+        ];
+      }
+      const counts = await db
+        .collection("count")
+        .find(filter)
+        .project({ _id: 0, item: 1, timestamps: 1, timestamp: 1 })
+        .toArray();
+
+      for (const count of counts) {
+        const timestamp = count.timestamps?.create || count.timestamp;
+        if (!timestamp) continue;
+        const hour = DateTime.fromJSDate(new Date(timestamp), {
+          zone: SYSTEM_TIMEZONE,
+        }).hour;
+        const itemName = count.item?.name || "Unknown";
+        itemNames.add(itemName);
+        const key = `${hour}|${itemName}`;
+        bucketMap.set(key, (bucketMap.get(key) || 0) + 1);
+      }
+    }
+
+    const hours = [...new Set([...bucketMap.keys()].map((key) => Number(key.split("|")[0])))]
+      .filter((hour) => Number.isFinite(hour))
+      .sort((a, b) => a - b);
+    const operators = {};
+    for (const itemName of itemNames) {
+      operators[itemName] = hours.map(
+        (hour) => bucketMap.get(`${hour}|${itemName}`) || 0
+      );
+    }
+
+    return {
+      title: "Operator Counts by item",
+      data: {
+        hours,
+        operators,
+      },
+    };
+  }
+
+  function buildOperatorCountsByItemFromRecords(records, requestStart) {
+    const hour = DateTime.fromJSDate(requestStart, {
+      zone: SYSTEM_TIMEZONE,
+    }).hour;
+    const operators = {};
+    for (const record of records) {
+      const itemName = record.itemName || "Unknown";
+      operators[itemName] = [
+        (operators[itemName]?.[0] || 0) +
+          Number(record.totalCounts || record.totalCount || 0),
+      ];
+    }
+
+    return {
+      title: "Operator Counts by item",
+      data: {
+        hours: Object.keys(operators).length ? [hour] : [],
+        operators,
+      },
+    };
+  }
+
+  async function buildOperatorDetails(req, res) {
+    const operatorId = parseOperatorId(req.query.operatorid);
+    if (Number.isNaN(operatorId)) {
+      return badRequest(res, "operatorid must be numeric");
+    }
+
+    const serial = parseSerial(req.query.serial);
+    if (Number.isNaN(serial)) {
+      return badRequest(res, "serial must be numeric");
+    }
+
+    const resolved = await resolveDetailsTimeframe(req, "operator-detail");
+    if (resolved.error) {
+      return res.status(resolved.error.status).json({ error: resolved.error.message });
+    }
+    if (!resolved.allSegments.length) return res.json([]);
+
+    const operatorMap = await loadActiveOperatorIds(operatorId);
+    const requestedOperatorIds =
+      operatorId !== null ? [operatorId] : [...operatorMap.keys()];
+    const aggregateMap = new Map();
+    const sessionOptions =
+      serial !== null
+        ? { ...resolved.sessionOptions, machineSerial: serial }
+        : resolved.sessionOptions;
+
+    for (const segment of resolved.cacheSegments) {
+      const baseFilter =
+        serial !== null
+          ? { ...resolved.cacheBaseFilter, machineSerial: serial }
+          : resolved.cacheBaseFilter;
+      if (resolved.cacheCollectionName === totalsShiftCollectionName) {
+        const filter = {
+          ...baseFilter,
+          entityType: "operator-machine",
+          date: segment.dateStr,
+        };
+        if (requestedOperatorIds.length === 1) {
+          filter.operatorId = requestedOperatorIds[0];
+        } else if (requestedOperatorIds.length > 1) {
+          filter.operatorId = { $in: requestedOperatorIds };
+        }
+        const records = await db
+          .collection(resolved.cacheCollectionName)
+          .find(filter)
+          .toArray();
+        for (const record of records) {
+          addOperatorRecordToAggregate(aggregateMap, record, segment);
+        }
+      } else {
+        await addOperatorCacheSegment(
+          aggregateMap,
+          segment,
+          resolved.cacheCollectionName,
+          baseFilter,
+          requestedOperatorIds,
+          sessionOptions
+        );
+      }
+    }
+
+    for (const segment of resolved.sessionSegments) {
+      await addOperatorSessionFallback(
+        aggregateMap,
+        segment,
+        requestedOperatorIds,
+        sessionOptions
+      );
+    }
+
+    const aggregates = [...aggregateMap.values()].filter((aggregate) => {
+      if (operatorId !== null) {
+        return aggregate.operatorId === operatorId && aggregate.hasData;
+      }
+      return requestedOperatorIds.includes(aggregate.operatorId) && aggregate.hasData;
+    });
+
+    if (!aggregates.length) return res.json([]);
+
+    const requestStart = resolved.allSegments[0].start;
+    const requestEnd = resolved.allSegments[resolved.allSegments.length - 1].end;
+    const startIso = requestStart.toISOString();
+    const endIso = requestEnd.toISOString();
+
+    const results = await Promise.all(
+      aggregates.map(async (aggregate) => {
+        const id = aggregate.operatorId;
+        const operatorName =
+          operatorMap.get(id)?.name || aggregate.operatorName || `Operator ${id}`;
+        if (resolved.cacheCollectionName === totalsShiftCollectionName) {
+          const shiftItemRecords = await queryEntityRecords(
+            resolved.cacheCollectionName,
+            "operator-item",
+            resolved.cacheSegments,
+            resolved.cacheBaseFilter,
+            {
+              operatorId: id,
+              ...(serial !== null ? { machineSerial: serial } : {}),
+            }
+          );
+          const runtimeMs = Math.round(aggregate.runtimeMs || 0);
+          const windowMs = Math.max(0, requestEnd - requestStart);
+          const pausedMs = Math.max(0, windowMs - runtimeMs);
+          const total = runtimeMs + pausedMs || 1;
+          const efficiency =
+            aggregate.workedTimeMs > 0
+              ? (aggregate.totalTimeCreditMs || 0) / aggregate.workedTimeMs
+              : 0;
+
+          return {
+            operator: {
+              id,
+              name: operatorName,
+            },
+            itemSummary: buildOperatorItemSummaryRowsFromRecords(
+              shiftItemRecords,
+              operatorName
+            ),
+            countByItem: buildOperatorCountsByItemFromRecords(
+              shiftItemRecords,
+              requestStart
+            ),
+            cyclePie: [
+              { name: "Running", value: Math.round((runtimeMs / total) * 100) },
+              { name: "Paused", value: Math.round((pausedMs / total) * 100) },
+              { name: "Faulted", value: 0 },
+            ],
+            dailyEfficiency: {
+              operator: { id, name: operatorName },
+              timeRange: {
+                start: requestStart.toISOString(),
+                end: requestEnd.toISOString(),
+                totalDays: 1,
+              },
+              data: [
+                {
+                  date: DateTime.fromJSDate(requestStart, {
+                    zone: SYSTEM_TIMEZONE,
+                  }).toISODate(),
+                  efficiency: Math.round(efficiency * 10000) / 100,
+                },
+              ],
+            },
+            timeRange: {
+              start: requestStart,
+              end: requestEnd,
+            },
+          };
+        }
+
+        const itemSummary = await buildItemSummaryFromCache(
+          db,
+          id,
+          startIso,
+          endIso,
+          serial
+        );
+        const [countByItem, cyclePie, dailyEfficiency] = await Promise.all([
+          buildItemHourlyStackFromCacheForOperator(db, logger, id, startIso, endIso, serial),
+          buildOperatorCyclePieFromCache(db, logger, id, startIso, endIso, serial),
+          buildDailyEfficiencyFromCache(
+            db,
+            logger,
+            id,
+            operatorName,
+            startIso,
+            endIso,
+            serial,
+            SYSTEM_TIMEZONE
+          ),
+        ]);
+
+        if (dailyEfficiency?.operator) {
+          dailyEfficiency.operator.name = operatorName;
+        }
+
+        const transformedItemSummary = itemSummary.sessions.flatMap((session) => {
+          if (!Array.isArray(session.items) || !session.items.length) return [];
+          const machineSerial = session.machine?.serial ?? serial ?? "Unknown";
+          const machineName = session.machine?.name ?? "Unknown";
+          return session.items.map((item) => ({
+            operatorName,
+            machineSerial,
+            machineName,
+            itemName: item.name || "Unknown",
+            count: item.countTotal || 0,
+            misfeed: 0,
+            standard: item.standard || 0,
+            valid: item.countTotal || 0,
+            pph: item.pph || 0,
+            efficiency: item.efficiency || 0,
+            workedTimeFormatted: session.workedTimeFormatted || formatDuration(0),
+          }));
+        });
+
+        return {
+          operator: {
+            id,
+            name: operatorName,
+          },
+          itemSummary: transformedItemSummary,
+          countByItem,
+          cyclePie,
+          dailyEfficiency,
+          timeRange: {
+            start: requestStart,
+            end: requestEnd,
+          },
+        };
+      })
+    );
+
+    return res.json(results.sort((a, b) => a.operator.id - b.operator.id));
+  }
+
   router.get("/status", async (req, res) => {
     res.json({ vendor: "Milnor", status: "ok" });
   });
@@ -1239,12 +2152,30 @@ function constructor(server) {
     }
   });
 
+  router.get("/machine/details", async (req, res) => {
+    try {
+      await buildMachineDetails(req, res);
+    } catch (error) {
+      logger.error("[milnor] Error in /machine/details route:", error);
+      res.status(500).json({ error: "Failed to fetch Milnor machine details" });
+    }
+  });
+
   router.get("/operator/overview", async (req, res) => {
     try {
       await buildOperatorOverview(req, res);
     } catch (error) {
       logger.error("[milnor] Error in /operator/overview route:", error);
       res.status(500).json({ error: "Failed to fetch Milnor operator overview" });
+    }
+  });
+
+  router.get("/operator/details", async (req, res) => {
+    try {
+      await buildOperatorDetails(req, res);
+    } catch (error) {
+      logger.error("[milnor] Error in /operator/details route:", error);
+      res.status(500).json({ error: "Failed to fetch Milnor operator details" });
     }
   });
 
