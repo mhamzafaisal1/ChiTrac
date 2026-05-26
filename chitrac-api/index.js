@@ -221,6 +221,8 @@ async function startServer() {
         routes.init(app, server);
 
         await initializeCollections();
+        const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
+        await ensureAnalyticsIndexes(db, config, logger);
 
         app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
