@@ -2013,31 +2013,37 @@ async function getActiveMachineSerials(db, start, end) {
     const machineSerial = ticker.machine?.serial ?? ticker.machine?.id ?? serialNum;
     const machineName = ticker.machine?.name || "Unknown";
 
-    const rows = await Promise.all(opIds.map(async (opId) => {
-      let s = await osColl.find({
-        "operator.id": opId,
-        $and: [
-          { $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }] },
-          { $or: [{ "timestamps.end": { $exists: false } }, { "timestamps.end": null }] }
-        ]
-      })
-        .project({ _id: 0, operator: 1, machine: 1, timestamps: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1 })
-        .sort({ "timestamps.create": -1 })
-        .limit(1)
-        .toArray();
+    const projection = {
+      _id: 0,
+      operator: 1,
+      machine: 1,
+      timestamps: 1,
+      workTime: 1,
+      totalTimeCredit: 1,
+      totalCount: 1,
+      misfeedCount: 1,
+    };
 
-      if (!s.length) {
-        s = await osColl.find({
+    const rows = await Promise.all(opIds.map(async (opId) => {
+      let doc = await osColl.findOne({
+        "operator.id": opId,
+        $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }],
+        "timestamps.end": null,
+      }, {
+        projection,
+        sort: { "timestamps.create": -1 },
+      });
+
+      if (!doc) {
+        doc = await osColl.findOne({
           "operator.id": opId,
           $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }]
-        })
-          .project({ _id: 0, operator: 1, machine: 1, timestamps: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1 })
-          .sort({ "timestamps.create": -1 })
-          .limit(1)
-          .toArray();
+        }, {
+          projection,
+          sort: { "timestamps.create": -1 },
+        });
       }
 
-      const doc = s[0];
       if (!doc) return null;
 
       const workSec   = safe(doc.workTime);
