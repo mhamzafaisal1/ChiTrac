@@ -7,6 +7,484 @@
   <body>
     <h1>ChiTrac Milnor API</h1>
     <p>Documentation for Milnor-specific ChiTrac API endpoints.</p>
+
+    <h2>Routes</h2>
+
+    <h3>GET /api/milnor/status</h3>
+    <p>Returns a simple health/status payload for the Milnor API.</p>
+
+    <h4>Example Response</h4>
+    <pre><code>{
+  "vendor": "Milnor",
+  "status": "ok"
+}</code></pre>
+
+    <h3>GET /api/milnor/machine/overview</h3>
+    <p>
+      Returns machine overview summary rows in the same shape as the standard
+      machine summary route. The route supports all machines or one machine,
+      and can use today's cache, shift cache, or a custom hybrid of whole-day
+      cache records plus session data for partial days.
+    </p>
+
+    <h4>Query Parameters</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>serial</code></td>
+          <td>integer</td>
+          <td>No</td>
+          <td>Machine serial. If omitted, active machines in the system are returned.</td>
+        </tr>
+        <tr>
+          <td><code>timeframe</code></td>
+          <td>string</td>
+          <td>No</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+        </tr>
+        <tr>
+          <td><code>shift</code></td>
+          <td>integer</td>
+          <td>Only when <code>timeframe=shift</code></td>
+          <td>Public integer shift id from <code>config-shift.id</code>. The matched shift document's <code>_id</code> is used to query <code>totals-shift.shiftId</code>.</td>
+        </tr>
+        <tr>
+          <td><code>start</code></td>
+          <td>ISO 8601 date string</td>
+          <td>Only when <code>timeframe=custom</code></td>
+          <td>Custom window start.</td>
+        </tr>
+        <tr>
+          <td><code>end</code></td>
+          <td>ISO 8601 date string</td>
+          <td>No</td>
+          <td>Custom window end. Used only with <code>timeframe=custom</code>; defaults to now and is clamped to now if future.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Behavior</h4>
+    <ul>
+      <li><code>timeframe=today</code> uses today's plant-local date in <code>America/Chicago</code>, from midnight to now, and queries <code>totals-daily</code>.</li>
+      <li><code>timeframe=shift</code> looks up the shift by integer <code>config-shift.id</code>, uses today's occurrence of that shift in plant-local time, and queries <code>totals-shift</code> by <code>entityType: "machine"</code>, <code>shiftId</code>, and <code>date</code>.</li>
+      <li><code>timeframe=custom</code> queries whole calendar days from <code>totals-daily</code> and computes partial-day ranges from sessions.</li>
+      <li>If a daily or shift cache lookup has no machine-level record for a requested machine, the route falls back to session data for that same window.</li>
+      <li>A valid serial with no matching machine/data returns an empty array.</li>
+    </ul>
+
+    <h4>Example Requests</h4>
+    <pre><code>GET /api/milnor/machine/overview
+GET /api/milnor/machine/overview?serial=90003
+GET /api/milnor/machine/overview?timeframe=shift&amp;shift=1
+GET /api/milnor/machine/overview?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
+
+    <h4>Example Response</h4>
+    <pre><code>[
+  {
+    "machine": {
+      "serial": 90003,
+      "name": "SPF3"
+    },
+    "currentStatus": {
+      "code": 1,
+      "name": "Running",
+      "color": "Green"
+    },
+    "metrics": {
+      "runtime": {
+        "total": 1800000,
+        "formatted": {
+          "hours": 0,
+          "minutes": 30
+        }
+      },
+      "downtime": {
+        "total": 600000,
+        "formatted": {
+          "hours": 0,
+          "minutes": 10
+        }
+      },
+      "output": {
+        "totalCount": 120,
+        "misfeedCount": 2
+      },
+      "performance": {
+        "availability": {
+          "value": 0.75,
+          "percentage": "75.00"
+        },
+        "throughput": {
+          "value": 0.9836065573770492,
+          "percentage": "98.36"
+        },
+        "efficiency": {
+          "value": 0.82,
+          "percentage": "82.00"
+        },
+        "oee": {
+          "value": 0.6049180327868853,
+          "percentage": "60.49"
+        }
+      }
+    },
+    "timeRange": {
+      "start": "2026-05-21T05:00:00.000Z",
+      "end": "2026-05-21T12:00:00.000Z"
+    }
+  }
+]</code></pre>
+
+    <h4>Error Responses</h4>
+    <pre><code>{ "error": "Invalid timeframe" }
+{ "error": "serial must be numeric" }
+{ "error": "shift is required and must be an integer" }
+{ "error": "Shift not found" }
+{ "error": "start must be a valid ISO date string" }</code></pre>
+
+    <h3>GET /api/milnor/operator/overview</h3>
+    <p>
+      Returns operator overview summary rows in the same shape as the standard
+      operators summary route. The route supports all operators or one operator,
+      and can use today's cache, shift cache, or a custom hybrid of whole-day
+      cache records plus operator session data for partial days.
+    </p>
+
+    <h4>Query Parameters</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>operatorid</code></td>
+          <td>integer</td>
+          <td>No</td>
+          <td>Operator id. If omitted, active operators in the system are returned.</td>
+        </tr>
+        <tr>
+          <td><code>timeframe</code></td>
+          <td>string</td>
+          <td>No</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+        </tr>
+        <tr>
+          <td><code>shift</code></td>
+          <td>integer</td>
+          <td>Only when <code>timeframe=shift</code></td>
+          <td>Public integer shift id from <code>config-shift.id</code>. The matched shift document's <code>_id</code> is used to query <code>totals-shift.shiftId</code>.</td>
+        </tr>
+        <tr>
+          <td><code>start</code></td>
+          <td>ISO 8601 date string</td>
+          <td>Only when <code>timeframe=custom</code></td>
+          <td>Custom window start.</td>
+        </tr>
+        <tr>
+          <td><code>end</code></td>
+          <td>ISO 8601 date string</td>
+          <td>No</td>
+          <td>Custom window end. Used only with <code>timeframe=custom</code>; defaults to now and is clamped to now if future.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Behavior</h4>
+    <ul>
+      <li><code>timeframe=today</code> uses today's plant-local date in <code>America/Chicago</code>, from midnight to now, and queries <code>totals-daily</code>.</li>
+      <li><code>timeframe=shift</code> looks up the shift by integer <code>config-shift.id</code>, uses today's occurrence of that shift in plant-local time, and queries <code>totals-shift</code> by <code>entityType: "operator-machine"</code>, <code>shiftId</code>, and <code>date</code>.</li>
+      <li><code>timeframe=custom</code> queries whole calendar days from <code>totals-daily</code> and computes partial-day ranges from operator sessions.</li>
+      <li>If a daily or shift cache lookup has no operator-machine record for a requested operator, the route falls back to operator session data for that same window.</li>
+      <li>A valid operator id with no matching operator/data returns an empty array.</li>
+    </ul>
+
+    <h4>Example Requests</h4>
+    <pre><code>GET /api/milnor/operator/overview
+GET /api/milnor/operator/overview?operatorid=183462
+GET /api/milnor/operator/overview?timeframe=shift&amp;shift=1
+GET /api/milnor/operator/overview?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
+
+    <h4>Example Response</h4>
+    <pre><code>[
+  {
+    "operator": {
+      "id": 183462,
+      "name": "Holly Crawford"
+    },
+    "currentStatus": {
+      "code": 1,
+      "name": "Running",
+      "color": "Green"
+    },
+    "currentMachine": {
+      "serial": 90003,
+      "name": "SPF3"
+    },
+    "metrics": {
+      "runtime": {
+        "total": 1800000,
+        "formatted": {
+          "hours": 0,
+          "minutes": 30
+        }
+      },
+      "downtime": {
+        "total": 600000,
+        "formatted": {
+          "hours": 0,
+          "minutes": 10
+        }
+      },
+      "output": {
+        "totalCount": 120,
+        "misfeedCount": 2
+      },
+      "performance": {
+        "availability": {
+          "value": 0.75,
+          "percentage": "75.00"
+        },
+        "throughput": {
+          "value": 0.9836065573770492,
+          "percentage": "98.36"
+        },
+        "efficiency": {
+          "value": 0.82,
+          "percentage": "82.00"
+        },
+        "oee": {
+          "value": 0.6049180327868853,
+          "percentage": "60.49"
+        }
+      }
+    },
+    "timeRange": {
+      "start": "2026-05-21T05:00:00.000Z",
+      "end": "2026-05-21T12:00:00.000Z"
+    }
+  }
+]</code></pre>
+
+    <h4>Error Responses</h4>
+    <pre><code>{ "error": "Invalid timeframe" }
+{ "error": "operatorid must be numeric" }
+{ "error": "shift is required and must be an integer" }
+{ "error": "Shift not found" }
+{ "error": "start must be a valid ISO date string" }</code></pre>
+
+    <h3>GET /api/milnor/machine/details</h3>
+    <p>
+      Returns machine modal/detail payloads in the same shape as the standard
+      machine dashboard daily cache route. The route supports all active
+      machines or one machine, and uses the same timeframe inputs and
+      cache/session hierarchy as <code>/api/milnor/machine/overview</code>.
+    </p>
+
+    <h4>Query Parameters</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>serial</code></td>
+          <td>integer</td>
+          <td>No</td>
+          <td>Machine serial. If omitted, detail payloads for active machines are returned.</td>
+        </tr>
+        <tr>
+          <td><code>timeframe</code></td>
+          <td>string</td>
+          <td>No</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+        </tr>
+        <tr>
+          <td><code>shift</code></td>
+          <td>integer</td>
+          <td>Only when <code>timeframe=shift</code></td>
+          <td>Public integer shift id from <code>config-shift.id</code>. The matched shift document's <code>_id</code> is used to query <code>totals-shift.shiftId</code>.</td>
+        </tr>
+        <tr>
+          <td><code>start</code></td>
+          <td>ISO 8601 date string</td>
+          <td>Only when <code>timeframe=custom</code></td>
+          <td>Custom window start.</td>
+        </tr>
+        <tr>
+          <td><code>end</code></td>
+          <td>ISO 8601 date string</td>
+          <td>No</td>
+          <td>Custom window end. Used only with <code>timeframe=custom</code>; defaults to now and is clamped to now if future.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Behavior</h4>
+    <ul>
+      <li><code>timeframe=today</code> uses today's plant-local date and builds modal data from <code>totals-daily</code> plus <code>totals-hourly</code>.</li>
+      <li><code>timeframe=shift</code> uses today's occurrence of the requested shift and reads <code>totals-shift</code> rows for <code>machine</code>, <code>machine-item</code>, and <code>operator-machine</code>.</li>
+      <li><code>timeframe=custom</code> uses daily cache rows for whole days and session/count data for partial days.</li>
+      <li>Hourly/chart-style data uses hourly cache for daily windows. Shift windows use shift aggregate rows for the shift bucket, with session/count fallback reserved for partial custom windows.</li>
+      <li>A valid serial with no matching machine/data returns an empty array.</li>
+    </ul>
+
+    <h4>Example Requests</h4>
+    <pre><code>GET /api/milnor/machine/details
+GET /api/milnor/machine/details?serial=90003
+GET /api/milnor/machine/details?timeframe=shift&amp;shift=1
+GET /api/milnor/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
+
+    <h4>Example Response Shape</h4>
+    <pre><code>[
+  {
+    "machine": {
+      "serial": 90003,
+      "name": "SPF3"
+    },
+    "currentStatus": {
+      "code": 1,
+      "name": "Running"
+    },
+    "performance": {},
+    "itemSummary": {},
+    "itemHourlyStack": {},
+    "faultData": {
+      "faultSummaries": [],
+      "faultCycles": []
+    },
+    "operatorEfficiency": [],
+    "currentOperators": [],
+    "timestamp": "2026-05-21T12:00:00.000Z",
+    "sessionStart": "2026-05-21T05:00:00.000Z",
+    "sessionEnd": "2026-05-21T12:00:00.000Z"
+  }
+]</code></pre>
+
+    <h4>Error Responses</h4>
+    <pre><code>{ "error": "Invalid timeframe" }
+{ "error": "serial must be numeric" }
+{ "error": "shift is required and must be an integer" }
+{ "error": "Shift not found" }
+{ "error": "start must be a valid ISO date string" }</code></pre>
+
+    <h3>GET /api/milnor/operator/details</h3>
+    <p>
+      Returns operator modal/detail payloads in the same shape as the standard
+      operator details cache route. The route supports all active operators or
+      one operator, optional machine narrowing with <code>serial</code>, and
+      the same timeframe inputs and cache/session hierarchy as
+      <code>/api/milnor/operator/overview</code>.
+    </p>
+
+    <h4>Query Parameters</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>operatorid</code></td>
+          <td>integer</td>
+          <td>No</td>
+          <td>Operator id. If omitted, detail payloads for active operators are returned.</td>
+        </tr>
+        <tr>
+          <td><code>serial</code></td>
+          <td>integer</td>
+          <td>No</td>
+          <td>Optional machine serial filter for operator detail data.</td>
+        </tr>
+        <tr>
+          <td><code>timeframe</code></td>
+          <td>string</td>
+          <td>No</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+        </tr>
+        <tr>
+          <td><code>shift</code></td>
+          <td>integer</td>
+          <td>Only when <code>timeframe=shift</code></td>
+          <td>Public integer shift id from <code>config-shift.id</code>. The matched shift document's <code>_id</code> is used to query <code>totals-shift.shiftId</code>.</td>
+        </tr>
+        <tr>
+          <td><code>start</code></td>
+          <td>ISO 8601 date string</td>
+          <td>Only when <code>timeframe=custom</code></td>
+          <td>Custom window start.</td>
+        </tr>
+        <tr>
+          <td><code>end</code></td>
+          <td>ISO 8601 date string</td>
+          <td>No</td>
+          <td>Custom window end. Used only with <code>timeframe=custom</code>; defaults to now and is clamped to now if future.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Behavior</h4>
+    <ul>
+      <li><code>timeframe=today</code> uses today's plant-local date and builds modal data from daily/hourly cache where available.</li>
+      <li><code>timeframe=shift</code> uses today's occurrence of the requested shift and reads <code>totals-shift</code> rows for <code>operator-machine</code> and <code>operator-item</code>.</li>
+      <li><code>timeframe=custom</code> uses daily cache rows for whole days and session/count data for partial days.</li>
+      <li>Hourly/chart-style data uses hourly cache for daily windows. Shift windows use shift aggregate rows for the shift bucket, with session/count fallback reserved for partial custom windows.</li>
+      <li>A valid operator id with no matching operator/data returns an empty array.</li>
+    </ul>
+
+    <h4>Example Requests</h4>
+    <pre><code>GET /api/milnor/operator/details
+GET /api/milnor/operator/details?operatorid=183462
+GET /api/milnor/operator/details?operatorid=183462&amp;serial=90003
+GET /api/milnor/operator/details?timeframe=shift&amp;shift=1
+GET /api/milnor/operator/details?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
+
+    <h4>Example Response Shape</h4>
+    <pre><code>[
+  {
+    "operator": {
+      "id": 183462,
+      "name": "Holly Crawford"
+    },
+    "itemSummary": [],
+    "countByItem": {},
+    "cyclePie": [],
+    "dailyEfficiency": {},
+    "timeRange": {
+      "start": "2026-05-21T05:00:00.000Z",
+      "end": "2026-05-21T12:00:00.000Z"
+    }
+  }
+]</code></pre>
+
+    <h4>Error Responses</h4>
+    <pre><code>{ "error": "Invalid timeframe" }
+{ "error": "operatorid must be numeric" }
+{ "error": "serial must be numeric" }
+{ "error": "shift is required and must be an integer" }
+{ "error": "Shift not found" }
+{ "error": "start must be a valid ISO date string" }</code></pre>
   </body>
 </html>
 
