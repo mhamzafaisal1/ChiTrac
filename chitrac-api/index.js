@@ -224,6 +224,9 @@ async function startServer() {
         const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
         await ensureAnalyticsIndexes(db, config, logger);
 
+        const { startWebsocketServer } = require('./modules/websocketServer');
+        server.websocketServer = startWebsocketServer(server);
+
         app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
         });
