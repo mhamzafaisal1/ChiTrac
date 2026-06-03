@@ -154,9 +154,44 @@ function createLogHelpers(server) {
     return { writeLog, writeError };
 }
 
+function sendJson(ws, payload) {
+    ws.send(JSON.stringify(payload));
+}
+
+function broadcastJson(wss, payload) {
+    const message = JSON.stringify(payload);
+
+    wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    });
+}
+
 function startWebsocketServer(server) {
     const { writeLog, writeError } = createLogHelpers(server);
     const wss = new WebSocket.Server({ port: WS_PORT });
+    const subscription = typeof server.subscribe === 'function'
+        ? server.subscribe((event) => {
+            const payload = {
+                type: 'server-change',
+                timestamp: new Date().toISOString(),
+                change: {
+                    type: event.type,
+                    path: event.path,
+                    timestamp: event.timestamp
+                },
+                snapshot: buildServerSnapshot(server)
+            };
+
+            try {
+                broadcastJson(wss, payload);
+                writeLog('server-change', payload.change);
+            } catch (error) {
+                writeError('server-change-broadcast-failed', error, payload.change);
+            }
+        })
+        : null;
 
     wss.on('listening', () => {
         server.logger?.info(`ChiTrac WebSocket server started and listening on port ${WS_PORT}`);
@@ -175,7 +210,7 @@ function startWebsocketServer(server) {
             });
 
             try {
-                ws.send(JSON.stringify(buildServerSnapshot(server)));
+                sendJson(ws, buildServerSnapshot(server));
                 await writeLog('server-info-sent', socketInfo);
             } catch (error) {
                 await writeError('message-response-failed', error, socketInfo);
@@ -197,6 +232,11 @@ function startWebsocketServer(server) {
 
     wss.on('error', (error) => {
         writeError('server-error', error, { port: WS_PORT });
+    });
+
+    wss.on('close', () => {
+        subscription?.unsubscribe();
+        writeLog('server-closed', { port: WS_PORT });
     });
 
     return wss;

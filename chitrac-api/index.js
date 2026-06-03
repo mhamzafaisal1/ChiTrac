@@ -1,5 +1,6 @@
 /** Declare server-level variables */
-var state, server = {};
+const { createObservableServer } = require('./modules/observableServer');
+var state, server = createObservableServer({});
 
 /** Declare reqlib */
 server.appRoot = require('app-root-path');

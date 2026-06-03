@@ -30,6 +30,40 @@
     </mat-card-actions>
   </mat-card>
 
+  <mat-card class="utility-card websocket-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>settings_input_antenna</mat-icon>
+      <mat-card-title>Websocket Testing</mat-card-title>
+      <mat-card-subtitle>Connect to the ChiTrac websocket server on port 50001</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <div class="websocket-status" [class.connected]="websocketStatus === 'connected'" [class.error]="websocketStatus === 'error'">
+        <mat-icon>{{ websocketStatus === 'connected' ? 'check_circle' : websocketStatus === 'error' ? 'error' : 'radio_button_unchecked' }}</mat-icon>
+        <span>{{ websocketStatus | titlecase }}</span>
+      </div>
+
+      <div class="result-message unavailable" *ngIf="websocketError">
+        <mat-icon>info</mat-icon>
+        <span>{{ websocketError }}</span>
+      </div>
+
+      <pre class="websocket-code-box">{{ websocketMessage }}</pre>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <button
+        mat-raised-button
+        [color]="websocketStatus === 'connected' ? 'warn' : 'primary'"
+        (click)="toggleWebsocketConnection()"
+        [disabled]="websocketStatus === 'connecting'">
+        <mat-spinner *ngIf="websocketStatus === 'connecting'" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="websocketStatus !== 'connecting'">{{ websocketStatus === 'connected' ? 'link_off' : 'link' }}</mat-icon>
+        {{ websocketStatus === 'connecting' ? 'Connecting...' : websocketStatus === 'connected' ? 'Disconnect' : 'Connect' }}
+      </button>
+    </mat-card-actions>
+  </mat-card>
+
   <mat-card class="utility-card">
     <mat-card-header>
       <mat-icon mat-card-avatar>restart_alt</mat-icon>
