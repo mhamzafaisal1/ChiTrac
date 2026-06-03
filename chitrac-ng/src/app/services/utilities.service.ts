@@ -24,6 +24,20 @@ export interface MongoUsbBackupResponse {
   details?: string;
 }
 
+export interface DeleteNodeLogsResponse {
+  success: boolean;
+  logPath?: string;
+  cutoffDate?: string;
+  oldestLogDate?: string | null;
+  matchedLogCount?: number;
+  deletedCount?: number;
+  deletedFiles?: string[];
+  failedFiles?: Array<{ filename: string; error: string }>;
+  message?: string;
+  error?: string;
+  details?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -38,5 +52,9 @@ export class UtilitiesService {
 
   backupMongoDbToUsb(): Observable<MongoUsbBackupResponse> {
     return this.http.post<MongoUsbBackupResponse>(`${this.apiUrl}/backup/mongodb-usb`, {});
+  }
+
+  deleteOldNodeLogs(date: string): Observable<DeleteNodeLogsResponse> {
+    return this.http.post<DeleteNodeLogsResponse>(`${this.apiUrl}/logs/delete-old-nodejs`, { date });
   }
 }

@@ -23,6 +23,7 @@ try {
 }
 
 const USB_MOUNT_PATH = "/media/usb";
+const CHITRAC_LOGS_PATH = "/srv/chitrac-server/chitrac-api/logs";
 const DEFAULT_CHITRAC_DATABASE_NAME = "chitrac";
 const USB_MOUNT_RETRY_COUNT = 5;
 const USB_MOUNT_RETRY_DELAY_MS = 1500;
@@ -87,6 +88,70 @@ function constructor(server) {
     );
 
     child.unref();
+  }
+
+  function normalizeLogCutoffDate(dateInput) {
+    const cutoff = DateTime.fromISO(String(dateInput || ""), { zone: "local" }).startOf("day");
+
+    if (!cutoff.isValid) {
+      throw new Error("A valid cleanup date is required.");
+    }
+
+    return cutoff.toFormat("yyyy-MM-dd");
+  }
+
+  function getLogFilenameDate(filename) {
+    const match = filename.match(/^(\d{4}-\d{2}-\d{2})_.+\.log(?:\.gz)?$/);
+
+    if (!match) {
+      return null;
+    }
+
+    const filenameDate = DateTime.fromFormat(match[1], "yyyy-MM-dd");
+    return filenameDate.isValid ? match[1] : null;
+  }
+
+  async function deleteNodeLogsOnOrBefore(dateInput) {
+    const cutoffDate = normalizeLogCutoffDate(dateInput);
+    const directoryEntries = await fs.promises.readdir(CHITRAC_LOGS_PATH, { withFileTypes: true });
+    const logFiles = directoryEntries
+      .filter((entry) => entry.isFile())
+      .map((entry) => ({
+        filename: entry.name,
+        date: getLogFilenameDate(entry.name)
+      }))
+      .filter((entry) => entry.date);
+
+    const oldestLogDate = logFiles.reduce((oldest, entry) => (
+      !oldest || entry.date < oldest ? entry.date : oldest
+    ), null);
+
+    const filesToDelete = logFiles.filter((entry) => entry.date <= cutoffDate);
+    const deletedFiles = [];
+    const failedFiles = [];
+
+    for (const file of filesToDelete) {
+      try {
+        await fs.promises.unlink(path.join(CHITRAC_LOGS_PATH, file.filename));
+        deletedFiles.push(file.filename);
+      } catch (error) {
+        failedFiles.push({
+          filename: file.filename,
+          error: error.message
+        });
+      }
+    }
+
+    return {
+      success: failedFiles.length === 0,
+      logPath: CHITRAC_LOGS_PATH,
+      cutoffDate,
+      oldestLogDate,
+      matchedLogCount: logFiles.length,
+      deletedCount: deletedFiles.length,
+      deletedFiles,
+      failedFiles
+    };
   }
 
   function runCommand(command, args, options = {}) {
@@ -2446,6 +2511,39 @@ function constructor(server) {
         available: true,
         platform,
         error: "Failed to schedule server reboot",
+        details: error.message
+      });
+    }
+  });
+
+  router.post("/logs/delete-old-nodejs", requireRoot, async (req, res) => {
+    try {
+      const result = await deleteNodeLogsOnOrBefore(req.body?.date);
+
+      if (result.failedFiles.length) {
+        logger.error("Failed to delete one or more Node.js log files.", result);
+        return res.status(500).json({
+          ...result,
+          error: "Failed to delete one or more Node.js log files"
+        });
+      }
+
+      logger.warn("Root user deleted old Node.js logs from web utilities route.", {
+        cutoffDate: result.cutoffDate,
+        oldestLogDate: result.oldestLogDate,
+        deletedCount: result.deletedCount,
+        logPath: result.logPath
+      });
+
+      return res.json({
+        ...result,
+        message: `Deleted ${result.deletedCount} Node.js log file${result.deletedCount === 1 ? "" : "s"}.`
+      });
+    } catch (error) {
+      logger.error("Failed to delete old Node.js logs:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to delete old Node.js logs",
         details: error.message
       });
     }
