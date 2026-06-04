@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const crypto = require('crypto');
 
 const WS_PORT = 50001;
 const LOG_COLLECTION = 'ws-log';
@@ -59,6 +60,9 @@ function getCollectionNames(config) {
 
 function buildServerSnapshot(server) {
     const config = server.config || {};
+    const clientSessions = Array.isArray(server.clientSessions)
+        ? server.clientSessions
+        : [];
 
     return {
         type: 'server-info',
@@ -81,7 +85,11 @@ function buildServerSnapshot(server) {
                 showErrorModals: config.showErrorModals
             },
             collections: getCollectionNames(config),
-            scheduledJobs: Object.keys(server.scheduledJobs || {})
+            scheduledJobs: Object.keys(server.scheduledJobs || {}),
+            websocket: {
+                clientSessionCount: clientSessions.length,
+                clientSessions: clientSessions.map(toPublicClientSession)
+            }
         }
     };
 }
@@ -113,6 +121,36 @@ function normalizeMessage(message) {
 function previewMessage(message) {
     const value = normalizeMessage(message).toString('utf8');
     return value.length > 500 ? `${value.slice(0, 500)}...` : value;
+}
+
+function createSessionId() {
+    if (typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return crypto.randomBytes(16).toString('hex');
+}
+
+function toPublicClientSession(session) {
+    return {
+        id: session.id,
+        connectedAt: session.connectedAt,
+        lastMessageAt: session.lastMessageAt,
+        messageCount: session.messageCount || 0,
+        socketInfo: session.socketInfo
+    };
+}
+
+function getOpenSessionById(server, sessionId) {
+    if (!Array.isArray(server.clientSessions)) {
+        return null;
+    }
+
+    return server.clientSessions.find((session) => (
+        session.id === sessionId &&
+        session.ws &&
+        session.ws.readyState === WebSocket.OPEN
+    )) || null;
 }
 
 function createLogHelpers(server) {
@@ -168,9 +206,65 @@ function broadcastJson(wss, payload) {
     });
 }
 
+function sendJsonToClientSession(server, sessionId, payload) {
+    const session = getOpenSessionById(server, sessionId);
+    if (!session) {
+        return false;
+    }
+
+    sendJson(session.ws, payload);
+    return true;
+}
+
+function removeClientSession(server, sessionId) {
+    if (!Array.isArray(server.clientSessions)) {
+        return null;
+    }
+
+    const index = server.clientSessions.findIndex((session) => session.id === sessionId);
+    if (index === -1) {
+        return null;
+    }
+
+    const [removed] = server.clientSessions.splice(index, 1);
+    return removed || null;
+}
+
+function attachServerClientSessionHelpers(server, wss) {
+    if (!Array.isArray(server.clientSessions)) {
+        server.clientSessions = [];
+    }
+
+    if (typeof server.getClientSession !== 'function') {
+        Object.defineProperty(server, 'getClientSession', {
+            enumerable: false,
+            configurable: true,
+            value: (sessionId) => getOpenSessionById(server, sessionId)
+        });
+    }
+
+    if (typeof server.sendToClientSession !== 'function') {
+        Object.defineProperty(server, 'sendToClientSession', {
+            enumerable: false,
+            configurable: true,
+            value: (sessionId, payload) => sendJsonToClientSession(server, sessionId, payload)
+        });
+    }
+
+    if (typeof server.broadcastWebsocket !== 'function') {
+        Object.defineProperty(server, 'broadcastWebsocket', {
+            enumerable: false,
+            configurable: true,
+            value: (payload) => broadcastJson(wss, payload)
+        });
+    }
+}
+
 function startWebsocketServer(server) {
     const { writeLog, writeError } = createLogHelpers(server);
     const wss = new WebSocket.Server({ port: WS_PORT });
+    attachServerClientSessionHelpers(server, wss);
+
     const subscription = typeof server.subscribe === 'function'
         ? server.subscribe((event) => {
             const payload = {
@@ -199,12 +293,39 @@ function startWebsocketServer(server) {
     });
 
     wss.on('connection', (ws, req) => {
+        const sessionId = createSessionId();
         const socketInfo = getSocketInfo(req);
-        writeLog('connection', socketInfo);
+        const session = {
+            id: sessionId,
+            ws,
+            connectedAt: new Date().toISOString(),
+            lastMessageAt: null,
+            messageCount: 0,
+            socketInfo
+        };
+
+        ws.id = sessionId;
+        server.clientSessions.push(session);
+
+        writeLog('connection', {
+            ...socketInfo,
+            sessionId,
+            activeClientSessions: server.clientSessions.length
+        });
+
+        sendJson(ws, {
+            type: 'websocket-session',
+            timestamp: new Date().toISOString(),
+            session: toPublicClientSession(session)
+        });
 
         ws.on('message', async (message) => {
+            session.lastMessageAt = new Date().toISOString();
+            session.messageCount += 1;
+
             await writeLog('message', {
                 ...socketInfo,
+                sessionId,
                 bytes: normalizeMessage(message).byteLength,
                 payloadPreview: previewMessage(message)
             });
@@ -218,15 +339,21 @@ function startWebsocketServer(server) {
         });
 
         ws.on('close', (code, reason) => {
+            removeClientSession(server, sessionId);
             writeLog('close', {
                 ...socketInfo,
+                sessionId,
                 code,
-                reason: reason?.toString()
+                reason: reason?.toString(),
+                activeClientSessions: server.clientSessions.length
             });
         });
 
         ws.on('error', (error) => {
-            writeError('client-error', error, socketInfo);
+            writeError('client-error', error, {
+                ...socketInfo,
+                sessionId
+            });
         });
     });
 
