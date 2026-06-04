@@ -1,12 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const { ObjectId } = require("mongodb");
+const { DateTime } = require("luxon");
 const config = require('../../modules/config');
 const humanNamesSchema = require('../../schemas/human-names');
 const operatorSchema = require('../../schemas/operator');
 
 const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const { getOperatorSessionDataForPartialDays } = require("../../utils/reportFunctions");
 const {
   getOperatorsSummaryRealTime,
   buildItemSummaryFromCache,
@@ -216,6 +219,228 @@ function constructor(server) {
   // Operator analytics routes are defined below in this controller
 
   const getOperatorsSummaryRealTimeHandler = getOperatorsSummaryRealTime(db, logger, config);
+  const totalsShiftCollectionName = "totals-shift";
+
+  async function resolveShift(req, res) {
+    let shiftOid;
+    try {
+      shiftOid = new ObjectId(String(req.query.shiftId));
+    } catch (e) {
+      res.status(400).json({ error: "Invalid shiftId" });
+      return null;
+    }
+
+    const shiftDoc = await db.collection(config.shiftCollectionName).findOne({ _id: shiftOid });
+    if (!shiftDoc) {
+      res.status(404).json({ error: "Shift not found" });
+      return null;
+    }
+
+    return { shiftOid, shiftDoc };
+  }
+
+  function dateStrForShiftCache(start) {
+    const parsed = DateTime.fromJSDate(new Date(start), { zone: SYSTEM_TIMEZONE });
+    return parsed.isValid
+      ? parsed.toISODate()
+      : DateTime.now().setZone(SYSTEM_TIMEZONE).toISODate();
+  }
+
+  async function buildOperatorTickerMap() {
+    const stateTickerData = await db.collection(config.stateTickerCollectionName).find({}).toArray();
+    const operatorTickerMap = new Map();
+
+    for (const stateRecord of stateTickerData) {
+      const machine = stateRecord.machine || {};
+      const status = stateRecord.status || {};
+      const timestamp = new Date(
+        status.timestamp ||
+          stateRecord.timestamp ||
+          (stateRecord.timestamps &&
+            (stateRecord.timestamps.update ||
+              stateRecord.timestamps.active ||
+              stateRecord.timestamps.create)) ||
+          0
+      ).getTime();
+
+      if (Array.isArray(stateRecord.operators)) {
+        for (const op of stateRecord.operators) {
+          if (!op || typeof op.id === "undefined" || op.id === null) continue;
+
+          const operatorKey = typeof op.id === "string" ? Number.parseInt(op.id, 10) : op.id;
+          if (Number.isNaN(operatorKey)) continue;
+
+          const existing = operatorTickerMap.get(operatorKey);
+          if (!existing || existing.timestamp < timestamp) {
+            const serial = machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+            const statusId = status?.id ?? status?.code ?? null;
+            operatorTickerMap.set(operatorKey, {
+              machine:
+                serial !== null && serial !== undefined
+                  ? { serial, name: machine.name || null }
+                  : null,
+              status:
+                typeof statusId !== "undefined" && statusId !== null || typeof status.name !== "undefined"
+                  ? { code: statusId, name: status.name ?? null }
+                  : null,
+              timestamp,
+            });
+          }
+        }
+      }
+    }
+
+    return operatorTickerMap;
+  }
+
+  async function buildOperatorSummaryRows(records, activeShifts, requestStart, requestEnd) {
+    const operatorTickerMap = await buildOperatorTickerMap();
+    const operatorMap = new Map();
+
+    for (const record of records) {
+      const opId = record.operatorId;
+      if (!opId || opId === -1) continue;
+
+      if (!operatorMap.has(opId)) {
+        const operatorNameStr =
+          typeof record.operatorName === "object" && record.operatorName !== null
+            ? `${record.operatorName.first || ""} ${record.operatorName.surname || ""}`.trim() || "Unknown"
+            : record.operatorName || "Unknown";
+
+        operatorMap.set(opId, {
+          operator: { id: opId, name: operatorNameStr },
+          currentStatus: null,
+          currentMachine: null,
+          metrics: {
+            runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+            downtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+            output: { totalCount: 0, misfeedCount: 0 },
+            performance: {
+              availability: { value: 0, percentage: "0.00" },
+              throughput: { value: 0, percentage: "0.00" },
+              efficiency: { value: 0, percentage: "0.00" },
+              oee: { value: 0, percentage: "0.00" },
+            },
+          },
+          timeRange: record.buildRange || record.timeRange || { start: requestStart, end: requestEnd },
+          machines: [],
+          efficiencyData: [],
+        });
+      }
+
+      const operatorData = operatorMap.get(opId);
+      operatorData.machines.push({
+        serial: record.machineSerial,
+        name: record.machineName,
+      });
+
+      const tickerContext = operatorTickerMap.get(opId);
+      operatorData.currentMachine = tickerContext?.machine || null;
+      operatorData.currentStatus = tickerContext?.status || null;
+      operatorData.metrics.runtime.total += record.runtimeMs || 0;
+      operatorData.metrics.output.totalCount += record.totalCounts || 0;
+      operatorData.metrics.output.misfeedCount += record.totalMisfeeds || 0;
+
+      const workTimeMs = record.workedTimeMs || 0;
+      const efficiency = workTimeMs > 0 ? (record.totalTimeCreditMs || 0) / workTimeMs : 0;
+      operatorData.efficiencyData.push({
+        efficiency,
+        weight: workTimeMs,
+      });
+    }
+
+    const results = Array.from(operatorMap.values()).map((operatorData) => {
+      const { runtime, downtime, output } = operatorData.metrics;
+      let rangeStart = new Date(requestStart);
+      let rangeEnd = new Date(requestEnd);
+
+      if (operatorData.timeRange?.start && operatorData.timeRange?.end) {
+        const startDate = new Date(operatorData.timeRange.start);
+        const endDate = new Date(operatorData.timeRange.end);
+        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) && endDate > startDate) {
+          rangeStart = startDate;
+          rangeEnd = endDate;
+        }
+      }
+
+      const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
+      downtime.total = Math.max(shiftElapsedMs - runtime.total, 0);
+      const availability = shiftElapsedMs > 0 ? runtime.total / shiftElapsedMs : 0;
+      const throughput =
+        output.totalCount + output.misfeedCount > 0
+          ? output.totalCount / (output.totalCount + output.misfeedCount)
+          : 0;
+
+      let totalWeightedEfficiency = 0;
+      let totalWeight = 0;
+      for (const effData of operatorData.efficiencyData) {
+        totalWeightedEfficiency += effData.efficiency * effData.weight;
+        totalWeight += effData.weight;
+      }
+
+      const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
+      const oee = availability * throughput * efficiency;
+
+      operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
+      operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
+      operatorData.metrics.performance = {
+        availability: {
+          value: availability,
+          percentage: (availability * 100).toFixed(2),
+        },
+        throughput: {
+          value: throughput,
+          percentage: (throughput * 100).toFixed(2),
+        },
+        efficiency: {
+          value: efficiency,
+          percentage: (efficiency * 100).toFixed(2),
+        },
+        oee: {
+          value: oee,
+          percentage: (oee * 100).toFixed(2),
+        },
+      };
+      operatorData.timeRange = { start: rangeStart, end: rangeEnd };
+
+      delete operatorData.machines;
+      delete operatorData.efficiencyData;
+      return operatorData;
+    });
+
+    const MIN_RUNTIME_TO_SHOW_MS = 3600000;
+    return results.filter((operatorData) => {
+      const hasRuntime = operatorData.metrics.runtime.total > 0;
+      const hasProduction = operatorData.metrics.output.totalCount > 0;
+      const hasCurrentMachine = operatorData.currentMachine !== null;
+      const hasSignificantRuntime = operatorData.metrics.runtime.total >= MIN_RUNTIME_TO_SHOW_MS;
+      return hasRuntime && hasProduction && (hasCurrentMachine || hasSignificantRuntime);
+    });
+  }
+
+  async function buildOperatorSummaryFromSessions(start, end, operatorId, shiftOid, shiftDoc) {
+    const sessionData = await getOperatorSessionDataForPartialDays(
+      db,
+      [{ start, end }],
+      operatorId || undefined,
+      { shiftId: String(shiftOid) }
+    );
+
+    const records = (sessionData.operators || []).map((record) => ({
+      operatorId: record.operatorId,
+      operatorName: record.operatorName,
+      machineSerial: null,
+      machineName: null,
+      runtimeMs: record.runtimeMs || 0,
+      workedTimeMs: record.workedTimeMs || 0,
+      totalCounts: record.totalCounts || 0,
+      totalMisfeeds: record.totalMisfeeds || 0,
+      totalTimeCreditMs: record.totalTimeCreditMs || record.workedTimeMs || 0,
+      timeRange: { start, end },
+    }));
+
+    return buildOperatorSummaryRows(records, [shiftDoc], start, end);
+  }
 
   // GET /api/operator/analytics/operators-summary-daily-cached
   // Returns daily operator summary from totals-daily cache; falls back to real-time if no cache.
@@ -223,6 +448,39 @@ function constructor(server) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
+
+      if (req.query.shiftId) {
+        const resolvedShift = await resolveShift(req, res);
+        if (!resolvedShift) return;
+
+        const { shiftOid, shiftDoc } = resolvedShift;
+        const dateStr = dateStrForShiftCache(start);
+        const filter = {
+          entityType: "operator-machine",
+          date: dateStr,
+          shiftId: String(shiftOid),
+        };
+        if (operatorId && !Number.isNaN(operatorId)) {
+          filter.operatorId = operatorId;
+        }
+
+        const shiftRecords = await db
+          .collection(totalsShiftCollectionName)
+          .find(filter)
+          .toArray();
+
+        if (shiftRecords.length > 0) {
+          logger.info(
+            `[operatorSessions] Retrieved ${shiftRecords.length} shift cached operator records for shift ${shiftOid} on ${dateStr}`
+          );
+          return res.json(await buildOperatorSummaryRows(shiftRecords, [shiftDoc], start, end));
+        }
+
+        logger.warn(
+          `[operatorSessions] No shift cached operator data found for shift ${shiftOid} on ${dateStr}, falling back to sessions`
+        );
+        return res.json(await buildOperatorSummaryFromSessions(start, end, operatorId, shiftOid, shiftDoc));
+      }
 
       const today = new Date();
       const wallClockNow = new Date(

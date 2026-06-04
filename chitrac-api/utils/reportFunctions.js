@@ -458,7 +458,9 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
               $map: {
                 input: {
                   $filter: {
-                    input: "$counts",
+                    input: {
+                      $cond: [{ $isArray: "$counts" }, "$counts", []],
+                    },
                     as: "c",
                     cond: {
                       $and: [

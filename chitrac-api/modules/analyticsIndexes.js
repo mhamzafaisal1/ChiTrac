@@ -9,6 +9,7 @@ async function createIndex(collection, keys, options, logger) {
 async function ensureAnalyticsIndexes(db, config, logger) {
   const totalsDaily = db.collection(config.totalsDailyCollectionName);
   const totalsHourly = db.collection(config.totalsHourlyCollectionName);
+  const totalsShift = db.collection("totals-shift");
   const tickerState = db.collection(config.stateTickerCollectionName);
   const machineSessions = db.collection(config.machineSessionCollectionName);
   const operatorSessions = db.collection(config.operatorSessionCollectionName);
@@ -24,6 +25,18 @@ async function ensureAnalyticsIndexes(db, config, logger) {
       totalsHourly,
       { entityType: 1, date: 1, machineSerial: 1, hour: 1 },
       { name: "machine_dashboard_hourly_lookup" },
+      logger
+    ),
+    createIndex(
+      totalsShift,
+      { shiftId: 1, entityType: 1, date: 1, machineSerial: 1 },
+      { name: "dashboard_shift_machine_lookup" },
+      logger
+    ),
+    createIndex(
+      totalsShift,
+      { shiftId: 1, entityType: 1, date: 1, operatorId: 1 },
+      { name: "dashboard_shift_operator_lookup" },
       logger
     ),
     createIndex(
