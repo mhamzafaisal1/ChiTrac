@@ -35,6 +35,14 @@ server.logDb = logDb;
 server.logger = logger;
 /** Holds scheduled job handles (e.g. alpha testing job scheduler). */
 server.scheduledJobs = {};
+/** Holds active websocket connection sessions. */
+server.clientSessions = [];
+/** Holds in-memory cache payloads maintained by MongoDB watchers. */
+server.cache = {
+    today: {},
+    currentShift: {},
+    watchers: {}
+};
 
 server.defaults = {
     machine: require('./defaults/machine').machine,
@@ -224,6 +232,10 @@ async function startServer() {
         await initializeCollections();
         const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
         await ensureAnalyticsIndexes(db, config, logger);
+        const { startMongoWatchers } = require('./modules/mongoWatchers');
+        await startMongoWatchers(server);
+        const { startWebSocketServer } = require('./modules/websocketServer');
+        startWebSocketServer(server);
 
         const { startWebsocketServer } = require('./modules/websocketServer');
         server.websocketServer = startWebsocketServer(server);

@@ -214,7 +214,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           
           if (timeframe) {
             // Use timeframe-based API call
-            return this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
+            return this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
@@ -223,7 +223,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
               );
           } else {
             // Use regular API call with start/end times
-            return this.operatorService.getOperatorSummary(this.startTime, this.endTime)
+            return this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
@@ -283,7 +283,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     
     if (timeframe) {
       // Use timeframe-based API call
-      this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
+      this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
         .subscribe({
           next: (data: any) => {
             this.updateDashboardData(data);
@@ -297,7 +297,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         });
     } else {
       // Use operator-summary route for initial table data (all operators)
-      this.operatorService.getOperatorSummary(this.startTime, this.endTime)
+      this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
         .subscribe({
           next: (data: any) => {
             this.updateDashboardData(data);
@@ -406,8 +406,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
     // Fetch detailed operator data for the modal
     const summaryObservable = timeframe
-      ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
-      : this.operatorService.getOperatorSummary(this.startTime, this.endTime);
+      ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
+      : this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId());
 
     summaryObservable.subscribe({
       next: (summaryData) => {

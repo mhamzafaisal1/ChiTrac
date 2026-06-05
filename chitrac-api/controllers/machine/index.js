@@ -4,9 +4,14 @@
 /** MODULE REQUIRES */
 const express = require('express');
 const router = express.Router();
+const { ObjectId } = require("mongodb");
 const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const config = require("../../modules/config");
 const { loadActiveShifts, computeShiftElapsedMs, getShiftDayHourEnvelope } = require("../../utils/shiftElapsed");
+const {
+  buildMachineSummaryFromDailyCache,
+  buildMachineSummaryFromShiftCache,
+} = require("../../utils/machineDashboardCache");
 const {
   getMachinesSummaryRealTime,
   buildLatestTickerMap,
@@ -246,169 +251,56 @@ function constructor(server) {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
 
-      const today = new Date();
-      const wallClockNow = new Date(
-        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
-      );
-      const dateStr = wallClockNow.toISOString().split("T")[0];
+      if (req.query.shiftId) {
+        let shiftOid;
+        try {
+          shiftOid = new ObjectId(String(req.query.shiftId));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
 
-      logger.info(
-        `[machineSessions] Fetching daily cached machines summary for date: ${dateStr}, serial: ${
-          serial || "all"
-        }`
-      );
+        const shiftDoc = await db.collection(config.shiftCollectionName).findOne({ _id: shiftOid });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
 
-      const filter = {
-        entityType: "machine",
-        date: dateStr,
-      };
-      if (serial) {
-        filter.machineSerial = parseInt(serial);
+        const result = await buildMachineSummaryFromShiftCache(
+          db,
+          logger,
+          config,
+          { shiftOid, shiftDoc, start, end, serial }
+        );
+
+        if (result.found) {
+          logger.info(
+            `[machineSessions] Retrieved ${result.recordCount} shift cached machine records for shift ${shiftOid} on ${result.dateStr}`
+          );
+        } else {
+          logger.warn(
+            `[machineSessions] No shift cached machine data found for shift ${shiftOid} on ${result.dateStr}, falling back to sessions`
+          );
+        }
+
+        return res.json(result.data);
       }
 
-      const cacheRecords = await db
-        .collection(config.totalsDailyCollectionName)
-        .find(filter)
-        .toArray();
+      const result = await buildMachineSummaryFromDailyCache(db, logger, config, {
+        start,
+        end,
+        serial,
+      });
 
-      if (cacheRecords.length === 0) {
+      if (!result.found) {
         logger.warn(
-          `[machineSessions] No daily cached data found for date: ${dateStr}, falling back to real-time calculation`
+          `[machineSessions] No daily cached data found for date: ${result.dateStr}, falling back to real-time calculation`
         );
         return await getMachinesSummaryRealTimeHandler(req, res);
       }
 
-      const activeShifts = await loadActiveShifts(db).catch(() => []);
-      const shiftElapsedCache = new Map();
-
-      const machineSerials = cacheRecords.map((r) => Number(r.machineSerial));
-
-      const tickers = await db
-        .collection(config.stateTickerCollectionName)
-        .find({ "machine.id": { $in: machineSerials } })
-        .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
-        .toArray();
-
-      const latestTickers = new Map();
-      tickers.forEach((ticker) => {
-        const id = Number(ticker.machine?.id);
-        const ts = new Date(ticker.timestamp || 0);
-        const existing = latestTickers.get(id);
-        if (!existing || ts > new Date(existing.timestamp || 0)) {
-          latestTickers.set(id, ticker);
-        }
-      });
-
-      const statusMap = new Map();
-      for (const [id, ticker] of latestTickers) {
-        const statusId = ticker.status?.id ?? ticker.status?.code ?? 0;
-        statusMap.set(id, {
-          code: statusId,
-          name: ticker.status?.name || "Unknown",
-          color: ticker.status?.softrolColor || "None",
-        });
-      }
-
-      const data = cacheRecords.map((record) => {
-        const currentStatus = statusMap.get(Number(record.machineSerial)) || {
-          code: 0,
-          name: "Unknown",
-        };
-
-        const timeRange = record.buildRange || record.timeRange;
-        let rangeStart, rangeEnd;
-
-        if (timeRange && timeRange.start && timeRange.end) {
-          rangeStart = new Date(timeRange.start);
-          rangeEnd = new Date(timeRange.end);
-        } else {
-          const todayFallback = new Date();
-          const wallClockFallback = new Date(
-            todayFallback.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
-          );
-          rangeStart = new Date(wallClockFallback.setHours(0, 0, 0, 0));
-          rangeEnd = new Date();
-        }
-
-        const shiftKey = `${rangeStart.getTime()}|${rangeEnd.getTime()}`;
-        const shiftElapsedMs = shiftElapsedCache.has(shiftKey)
-          ? shiftElapsedCache.get(shiftKey)
-          : computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
-        shiftElapsedCache.set(shiftKey, shiftElapsedMs);
-
-        const downtimeMs = Math.max(shiftElapsedMs - (record.runtimeMs || 0), 0);
-
-        const availability =
-          shiftElapsedMs > 0
-            ? Math.min(Math.max((record.runtimeMs || 0) / shiftElapsedMs, 0), 1)
-            : 0;
-        const totalOutput = record.totalCounts + record.totalMisfeeds;
-        const throughput =
-          totalOutput > 0 ? record.totalCounts / totalOutput : 0;
-
-        let workTimeMs = record.workedTimeMs || 0;
-        if (workTimeMs === 0 && record.totalTimeCreditMs > 0 && record.runtimeMs > 0) {
-          workTimeMs = record.runtimeMs;
-          logger.debug(
-            `[machineSessions] Machine ${record.machineSerial}: workedTimeMs was 0, using runtimeMs ${workTimeMs}ms as fallback`
-          );
-        }
-
-        const workTimeSec = workTimeMs / 1000;
-        const totalTimeCreditSec = (record.totalTimeCreditMs || 0) / 1000;
-        const efficiency =
-          workTimeSec > 0 ? totalTimeCreditSec / workTimeSec : 0;
-        const oee = availability * throughput * efficiency;
-
-        return {
-          machine: {
-            serial: record.machineSerial,
-            name: record.machineName,
-          },
-          currentStatus: currentStatus,
-          metrics: {
-            runtime: {
-              total: record.runtimeMs,
-              formatted: formatDuration(record.runtimeMs),
-            },
-            downtime: {
-              total: downtimeMs,
-              formatted: formatDuration(downtimeMs),
-            },
-            output: {
-              totalCount: record.totalCounts,
-              misfeedCount: record.totalMisfeeds,
-            },
-            performance: {
-              availability: {
-                value: availability,
-                percentage: (availability * 100).toFixed(2),
-              },
-              throughput: {
-                value: throughput,
-                percentage: (throughput * 100).toFixed(2),
-              },
-              efficiency: {
-                value: efficiency,
-                percentage: (efficiency * 100).toFixed(2),
-              },
-              oee: {
-                value: oee,
-                percentage: (oee * 100).toFixed(2),
-              },
-            },
-          },
-          timeRange: {
-            start: rangeStart,
-            end: rangeEnd,
-          },
-        };
-      });
-
       logger.info(
-        `[machineSessions] Retrieved ${data.length} daily cached machine records for date: ${dateStr}`
+        `[machineSessions] Retrieved ${result.data.length} daily cached machine records for date: ${result.dateStr}`
       );
-      res.json(data);
+      res.json(result.data);
     } catch (err) {
       logger.error(
         `[machineSessions] Error in daily cached machines-summary route:`,

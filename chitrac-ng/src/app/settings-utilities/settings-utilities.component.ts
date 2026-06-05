@@ -3,12 +3,15 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { UtilitiesService, RebootResponse, MongoUsbBackupResponse } from '../services/utilities.service';
+import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
 import { SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { Subject, takeUntil } from 'rxjs';
@@ -21,12 +24,16 @@ import { Subject, takeUntil } from 'rxjs';
     FormsModule,
     MatButtonModule,
     MatCardModule,
+    MatDatepickerModule,
     MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
+    MatNativeDateModule,
     MatSelectModule,
     MatProgressSpinnerModule,
     MatSnackBarModule
   ],
+  providers: [provideNativeDateAdapter()],
   templateUrl: './settings-utilities.component.html',
   styleUrl: './settings-utilities.component.scss'
 })
@@ -35,10 +42,13 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
 
   isRebootLoading = false;
   isBackupLoading = false;
+  isDeleteNodeLogsLoading = false;
   isSavingDashboardTimeframe = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
+  nodeLogsCutoffDate: Date | null = null;
   lastRebootResponse: RebootResponse | null = null;
   lastBackupResponse: MongoUsbBackupResponse | null = null;
+  lastDeleteNodeLogsResponse: DeleteNodeLogsResponse | null = null;
   websocketStatus: WebsocketConnectionStatus = 'disconnected';
   websocketMessage = 'No websocket messages received.';
   websocketError: string | null = null;
@@ -195,5 +205,59 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
         });
       }
     });
+  }
+
+  deleteOldNodeLogs(): void {
+    if (!this.nodeLogsCutoffDate) {
+      this.snackBar.open('Choose a log cleanup date first.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return;
+    }
+
+    const cutoffDate = this.toMidnightDateString(this.nodeLogsCutoffDate);
+    const confirmed = confirm(`Delete Node.js log files dated ${cutoffDate.substring(0, 10)} or earlier?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    this.isDeleteNodeLogsLoading = true;
+    this.lastDeleteNodeLogsResponse = null;
+
+    this.utilitiesService.deleteOldNodeLogs(cutoffDate).subscribe({
+      next: (response) => {
+        this.lastDeleteNodeLogsResponse = response;
+        this.isDeleteNodeLogsLoading = false;
+
+        const message = response.message || `Deleted ${response.deletedCount || 0} Node.js log files.`;
+        this.snackBar.open(message, 'Close', {
+          duration: 7000,
+          panelClass: [response.success ? 'success-snackbar' : 'warning-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.details || error.error?.error || error.error?.message || 'Failed to delete old Node.js logs';
+
+        this.lastDeleteNodeLogsResponse = {
+          success: false,
+          message
+        };
+        this.isDeleteNodeLogsLoading = false;
+
+        this.snackBar.open(message, 'Close', {
+          duration: 7000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  private toMidnightDateString(date: Date): string {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}T00:00:00`;
   }
 }

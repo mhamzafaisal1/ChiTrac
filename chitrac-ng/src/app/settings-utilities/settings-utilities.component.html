@@ -83,7 +83,7 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading">
+        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading">
           <mat-spinner *ngIf="isRebootLoading" diameter="20"></mat-spinner>
           <mat-icon *ngIf="!isRebootLoading">power_settings_new</mat-icon>
           {{ isRebootLoading ? 'Scheduling...' : 'Reboot Server' }}
@@ -123,10 +123,61 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading">
+        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
           <mat-spinner *ngIf="isBackupLoading" diameter="20"></mat-spinner>
           <mat-icon *ngIf="!isBackupLoading">backup</mat-icon>
           {{ isBackupLoading ? 'Backing Up...' : 'Back Up to USB' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <mat-card class="utility-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar>delete_sweep</mat-icon>
+        <mat-card-title>Node.js Log Cleanup</mat-card-title>
+        <mat-card-subtitle>Delete server log files by filename date</mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <p>
+          Deletes log files in /srv/chitrac-server/chitrac-api/logs whose filenames are dated on or before the selected day.
+        </p>
+
+        <mat-form-field class="log-cleanup-date-field">
+          <mat-label>Delete logs dated on or before</mat-label>
+          <input matInput [matDatepicker]="nodeLogsPicker" [(ngModel)]="nodeLogsCutoffDate">
+          <mat-datepicker-toggle matIconSuffix [for]="nodeLogsPicker"></mat-datepicker-toggle>
+          <mat-datepicker #nodeLogsPicker></mat-datepicker>
+        </mat-form-field>
+
+        <div class="result-message" *ngIf="lastDeleteNodeLogsResponse" [class.success]="lastDeleteNodeLogsResponse.success" [class.unavailable]="!lastDeleteNodeLogsResponse.success">
+          <mat-icon>{{ lastDeleteNodeLogsResponse.success ? 'check_circle' : 'info' }}</mat-icon>
+          <span>
+            {{ lastDeleteNodeLogsResponse.success ? (lastDeleteNodeLogsResponse.message || 'Log cleanup completed') : (lastDeleteNodeLogsResponse.message || lastDeleteNodeLogsResponse.error) }}
+          </span>
+        </div>
+
+        <div class="cleanup-details" *ngIf="lastDeleteNodeLogsResponse?.success">
+          <div *ngIf="lastDeleteNodeLogsResponse?.cutoffDate">
+            <strong>Cutoff Date</strong>
+            <span>{{ lastDeleteNodeLogsResponse?.cutoffDate }}</span>
+          </div>
+          <div>
+            <strong>Deleted Files</strong>
+            <span>{{ lastDeleteNodeLogsResponse?.deletedCount || 0 }}</span>
+          </div>
+          <div *ngIf="lastDeleteNodeLogsResponse?.oldestLogDate">
+            <strong>Oldest Filename Date</strong>
+            <span>{{ lastDeleteNodeLogsResponse?.oldestLogDate }}</span>
+          </div>
+        </div>
+      </mat-card-content>
+
+      <mat-card-actions>
+        <button mat-raised-button color="warn" (click)="deleteOldNodeLogs()" [disabled]="isDeleteNodeLogsLoading || isRebootLoading || isBackupLoading || !nodeLogsCutoffDate">
+          <mat-spinner *ngIf="isDeleteNodeLogsLoading" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isDeleteNodeLogsLoading">delete</mat-icon>
+          {{ isDeleteNodeLogsLoading ? 'Deleting...' : 'Delete Old Logs' }}
         </button>
       </mat-card-actions>
     </mat-card>
