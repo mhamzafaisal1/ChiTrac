@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -13,6 +13,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
 import { SettingsService } from '../services/settings.service';
+import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
+import { Subject, takeUntil } from 'rxjs';
 
 @Component({
   selector: 'app-settings-utilities',
@@ -35,7 +37,9 @@ import { SettingsService } from '../services/settings.service';
   templateUrl: './settings-utilities.component.html',
   styleUrl: './settings-utilities.component.scss'
 })
-export class SettingsUtilitiesComponent implements OnInit {
+export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
+  private readonly destroy$ = new Subject<void>();
+
   isRebootLoading = false;
   isBackupLoading = false;
   isDeleteNodeLogsLoading = false;
@@ -45,10 +49,14 @@ export class SettingsUtilitiesComponent implements OnInit {
   lastRebootResponse: RebootResponse | null = null;
   lastBackupResponse: MongoUsbBackupResponse | null = null;
   lastDeleteNodeLogsResponse: DeleteNodeLogsResponse | null = null;
+  websocketStatus: WebsocketConnectionStatus = 'disconnected';
+  websocketMessage = 'No websocket messages received.';
+  websocketError: string | null = null;
 
   constructor(
     private utilitiesService: UtilitiesService,
     private settingsService: SettingsService,
+    private websocketService: WebsocketService,
     private snackBar: MatSnackBar
   ) {}
 
@@ -61,6 +69,39 @@ export class SettingsUtilitiesComponent implements OnInit {
         this.dashboardTimeframe = 'current';
       }
     });
+
+    this.websocketService.status$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((status) => {
+        this.websocketStatus = status;
+      });
+
+    this.websocketService.message$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((message) => {
+        this.websocketMessage = message;
+      });
+
+    this.websocketService.error$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((error) => {
+        this.websocketError = error;
+      });
+  }
+
+  ngOnDestroy(): void {
+    this.websocketService.disconnect();
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  toggleWebsocketConnection(): void {
+    if (this.websocketStatus === 'connected') {
+      this.websocketService.disconnect();
+      return;
+    }
+
+    this.websocketService.connect();
   }
 
   saveDashboardTimeframe(): void {

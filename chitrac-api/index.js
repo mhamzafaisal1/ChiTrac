@@ -1,5 +1,6 @@
 /** Declare server-level variables */
-var state, server = {};
+const { createObservableServer } = require('./modules/observableServer');
+var state, server = createObservableServer({});
 
 /** Declare reqlib */
 server.appRoot = require('app-root-path');
@@ -235,6 +236,9 @@ async function startServer() {
         await startMongoWatchers(server);
         const { startWebSocketServer } = require('./modules/websocketServer');
         startWebSocketServer(server);
+
+        const { startWebsocketServer } = require('./modules/websocketServer');
+        server.websocketServer = startWebsocketServer(server);
 
         app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
