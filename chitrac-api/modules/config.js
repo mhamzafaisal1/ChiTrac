@@ -20,6 +20,11 @@ const userPermissionsLevels = [
   'Operator',
   'Guest'
 ];
+const percentBreakpoints = {
+  poor: 0,
+  okay: 70,
+  good: 90
+};
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV,
@@ -84,13 +89,15 @@ module.exports = {
   systemName,
 
   userPermissionsLevels,
+  percentBreakpoints,
 
   envPreferences: {
     systemName,
     defaultTheme,
     logLevel,
     httpsEnabled,
-    userPermissionsLevels: [...userPermissionsLevels]
+    userPermissionsLevels: [...userPermissionsLevels],
+    percentBreakpoints: { ...percentBreakpoints }
   },
 
   // Softrol API Settings

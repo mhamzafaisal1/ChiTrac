@@ -121,6 +121,9 @@ function constructor(server) {
     if (config.envPreferences) {
       return {
         ...config.envPreferences,
+        percentBreakpoints: config.envPreferences.percentBreakpoints
+          ? { ...config.envPreferences.percentBreakpoints }
+          : undefined,
         userPermissionsLevels: Array.isArray(config.envPreferences.userPermissionsLevels)
           ? [...config.envPreferences.userPermissionsLevels]
           : []
@@ -132,6 +135,7 @@ function constructor(server) {
       defaultTheme: config.defaultTheme,
       logLevel: config.logLevel,
       httpsEnabled: config.httpsEnabled,
+      percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined,
       userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
         ? [...config.userPermissionsLevels]
         : []

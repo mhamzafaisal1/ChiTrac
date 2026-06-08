@@ -19,6 +19,29 @@
           <mat-option value="shift">Current shift</mat-option>
         </mat-select>
       </mat-form-field>
+
+      <div class="percent-breakpoints">
+        <h3>Percent breakpoints</h3>
+        <div class="percent-breakpoint-fields">
+          <mat-form-field>
+            <mat-label>Poor</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="percentBreakpoints.poor">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Okay</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="percentBreakpoints.okay">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Good</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="percentBreakpoints.good">
+            <span matSuffix>%</span>
+          </mat-form-field>
+        </div>
+      </div>
     </mat-card-content>
 
     <mat-card-actions>
@@ -26,6 +49,12 @@
         <mat-spinner *ngIf="isSavingDashboardTimeframe" diameter="20"></mat-spinner>
         <mat-icon *ngIf="!isSavingDashboardTimeframe">save</mat-icon>
         {{ isSavingDashboardTimeframe ? 'Saving...' : 'Save Default' }}
+      </button>
+
+      <button mat-raised-button color="primary" (click)="savePercentBreakpoints()" [disabled]="isSavingPercentBreakpoints">
+        <mat-spinner *ngIf="isSavingPercentBreakpoints" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isSavingPercentBreakpoints">tune</mat-icon>
+        {{ isSavingPercentBreakpoints ? 'Saving...' : 'Save Breakpoints' }}
       </button>
     </mat-card-actions>
   </mat-card>

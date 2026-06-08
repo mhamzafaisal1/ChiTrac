@@ -12,7 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
-import { SettingsService } from '../services/settings.service';
+import { PercentBreakpoints, SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { Subject, takeUntil } from 'rxjs';
 
@@ -44,7 +44,13 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isBackupLoading = false;
   isDeleteNodeLogsLoading = false;
   isSavingDashboardTimeframe = false;
+  isSavingPercentBreakpoints = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
+  percentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 70,
+    good: 90
+  };
   nodeLogsCutoffDate: Date | null = null;
   lastRebootResponse: RebootResponse | null = null;
   lastBackupResponse: MongoUsbBackupResponse | null = null;
@@ -64,9 +70,13 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     this.settingsService.getSystemPreferences().subscribe({
       next: (settings) => {
         this.dashboardTimeframe = settings.dashboardTimeframe === 'shift' ? 'shift' : 'current';
+        this.percentBreakpoints = settings.percentBreakpoints
+          ? { ...settings.percentBreakpoints }
+          : { poor: 0, okay: 70, good: 90 };
       },
       error: () => {
         this.dashboardTimeframe = 'current';
+        this.percentBreakpoints = { poor: 0, okay: 70, good: 90 };
       }
     });
 
@@ -119,6 +129,54 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
       error: (error) => {
         const message = error.error?.error || error.error?.message || 'Failed to save dashboard default timeframe';
         this.isSavingDashboardTimeframe = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  savePercentBreakpoints(): void {
+    const rawValues = [
+      this.percentBreakpoints.poor,
+      this.percentBreakpoints.okay,
+      this.percentBreakpoints.good
+    ];
+    const poor = Number(this.percentBreakpoints.poor);
+    const okay = Number(this.percentBreakpoints.okay);
+    const good = Number(this.percentBreakpoints.good);
+
+    if (rawValues.some((value) => value === null || value === undefined || `${value}`.trim() === '') || ![poor, okay, good].every(Number.isFinite)) {
+      this.snackBar.open('Enter valid percentage breakpoints.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return;
+    }
+
+    if (!(good > okay && okay > poor)) {
+      this.snackBar.open('Percent breakpoints must satisfy Good > Okay > Poor.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return;
+    }
+
+    this.isSavingPercentBreakpoints = true;
+
+    this.settingsService.savePercentBreakpoints({ poor, okay, good }).subscribe({
+      next: () => {
+        this.isSavingPercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('Percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save percent breakpoints';
+        this.isSavingPercentBreakpoints = false;
         this.snackBar.open(message, 'Close', {
           duration: 5000,
           panelClass: ['error-snackbar']

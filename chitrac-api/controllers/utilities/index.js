@@ -2561,7 +2561,8 @@ function constructor(server) {
         defaultTheme: config.defaultTheme,
         systemName: config.systemName,
         httpsEnabled: config.httpsEnabled,
-        dashboardTimeframe: config.dashboardTimeframe || 'current'
+        dashboardTimeframe: config.dashboardTimeframe || 'current',
+        percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined
       });
     } catch (error) {
       logger.error(`Error retrieving settings:`, error);
