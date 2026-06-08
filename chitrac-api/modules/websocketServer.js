@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const { buildDashboardCacheMessage } = require('./mongoWatchers');
 
 const WS_PORT = 50001;
 const LOG_COLLECTION = 'ws-log';
@@ -318,6 +319,7 @@ function startWebsocketServer(server) {
             timestamp: new Date().toISOString(),
             session: toPublicClientSession(session)
         });
+        sendJson(ws, buildDashboardCacheMessage(server, 'initial'));
 
         ws.on('message', async (message) => {
             session.lastMessageAt = new Date().toISOString();

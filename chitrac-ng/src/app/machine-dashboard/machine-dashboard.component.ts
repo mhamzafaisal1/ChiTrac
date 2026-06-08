@@ -20,6 +20,7 @@ import { MachineService } from "../services/machine.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
+import { DashboardCachePayload, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
 import { UseCarouselComponent } from "../use-carousel/use-carousel.component";
@@ -79,6 +80,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private observer!: MutationObserver;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
+  private websocketStatus: WebsocketConnectionStatus = "disconnected";
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -106,7 +108,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
-    private dashboardTimeframeService: DashboardTimeframeService
+    private dashboardTimeframeService: DashboardTimeframeService,
+    private websocketService: WebsocketService
   ) {}
 
   ngOnInit(): void {
@@ -118,6 +121,25 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     // Add dummy loading row initially
     this.addDummyLoadingRow();
+    this.websocketService.ensureConnected();
+    this.websocketService.status$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((status) => {
+        this.websocketStatus = status;
+        if (status === "connected") {
+          this.stopPolling();
+        } else if ((status === "disconnected" || status === "error") && this.liveMode) {
+          this.setupPolling();
+        }
+      });
+
+    this.websocketService.dashboardCache$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((cache) => {
+        if (this.tryApplyWebsocketDashboardData(cache)) {
+          this.stopPolling();
+        }
+      });
 
     if (!isLive && wasConfirmed) {
       this.startTime = this.dateTimeService.getStartTime();
@@ -200,7 +222,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private setupPolling(): void {
-    if (this.liveMode) {
+    if (this.liveMode && this.websocketStatus !== "connected" && !this.pollingSubscription) {
       this.pollingSubscription = this.pollingService
         .poll(
           () => {
@@ -266,6 +288,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   fetchAnalyticsData(): void {
     this.isLoading = true;
+
+    if (this.tryApplyWebsocketDashboardData(null)) {
+      this.isLoading = false;
+      return;
+    }
     
     // Check if we have a timeframe selected
     const timeframe = this.dateTimeService.getTimeframe();
@@ -857,6 +884,64 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const h = String(date.getHours()).padStart(2, "0");
     const min = String(date.getMinutes()).padStart(2, "0");
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private tryApplyWebsocketDashboardData(cache: DashboardCachePayload | null): boolean {
+    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+      return false;
+    }
+
+    const dashboardCache = cache || this.websocketService.getDashboardCacheSnapshot();
+    const envelope = this.dateTimeService.getShiftId()
+      ? dashboardCache?.currentShift
+      : dashboardCache?.today;
+    const data = envelope?.machinesSummary;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return false;
+    }
+
+    const validResponses = data.filter(
+      (response) =>
+        response &&
+        (response.metrics || response.itemSummary || response.performance) &&
+        response.machine &&
+        response.currentStatus
+    );
+
+    if (validResponses.length === 0) {
+      return false;
+    }
+
+    this.machineData = validResponses;
+    const formattedData = validResponses.map((response) => {
+      const totalCount = response.metrics?.output?.totalCount ??
+        response.itemSummary?.machineSummary?.totalCount ?? 0;
+      const misfeedCount = response.metrics?.output?.misfeedCount ??
+        response.itemSummary?.machineSummary?.misfeedCount ?? 0;
+      const runtime = response.metrics?.runtime ?? response.performance?.runtime;
+      const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+      const performance = response.metrics?.performance ?? response.performance;
+
+      return {
+        Status: getStatusDotByCode(response.currentStatus?.code),
+        "Machine Name": response.machine?.name ?? "Unknown",
+        "Serial Number": response.machine?.serial,
+        Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
+        Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        "Total Count": totalCount,
+        "Misfeed Count": misfeedCount,
+        Availability: `${performance?.availability?.percentage ?? "0"}%`,
+        Throughput: `${performance?.throughput?.percentage ?? "0"}%`,
+        Efficiency: `${performance?.efficiency?.percentage ?? "0"}%`,
+        OEE: `${performance?.oee?.percentage ?? "0"}%`,
+      };
+    });
+
+    this.columns = Object.keys(formattedData[0]).filter((col) => col !== "");
+    this.rows = formattedData;
+    this.isLoading = false;
+    return true;
   }
 
   private addDummyLoadingRow(): void {

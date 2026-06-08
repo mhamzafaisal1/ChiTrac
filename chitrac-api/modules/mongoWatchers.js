@@ -5,6 +5,10 @@ const {
   buildMachineSummaryFromDailyCache,
   buildMachineSummaryFromShiftCache,
 } = require("../utils/machineDashboardCache");
+const {
+  buildOperatorSummaryFromDailyCache,
+  buildOperatorSummaryFromShiftCache,
+} = require("../utils/operatorDashboardCache");
 
 const WATCH_REFRESH_INTERVAL_MS = 60_000;
 const REBUILD_DEBOUNCE_MS = 250;
@@ -30,11 +34,33 @@ function serializableShift(shiftDoc) {
 }
 
 function cacheEnvelope(data, meta) {
+  const payload = data && typeof data === "object" && !Array.isArray(data)
+    ? data
+    : { machinesSummary: Array.isArray(data) ? data : [] };
+
   return {
-    machinesSummary: Array.isArray(data) ? data : [],
+    machinesSummary: Array.isArray(payload.machinesSummary) ? payload.machinesSummary : [],
+    operatorsSummary: Array.isArray(payload.operatorsSummary) ? payload.operatorsSummary : [],
     updatedAt: new Date(),
     meta,
   };
+}
+
+function buildDashboardCacheMessage(server, scope) {
+  return {
+    type: "dashboard-cache",
+    timestamp: new Date().toISOString(),
+    scope,
+    cache: {
+      today: server.cache?.today || cacheEnvelope({}, { source: "none" }),
+      currentShift: server.cache?.currentShift || cacheEnvelope({}, { source: "none" }),
+    },
+  };
+}
+
+function broadcastDashboardCache(server, scope) {
+  if (typeof server.broadcastWebsocket !== "function") return;
+  server.broadcastWebsocket(buildDashboardCacheMessage(server, scope));
 }
 
 function debounce(fn, waitMs) {
@@ -59,24 +85,40 @@ async function closeWatcher(watcher, logger, name) {
 
 async function refreshTodayCache(server) {
   const { db, logger, config } = server;
-  const result = await buildMachineSummaryFromDailyCache(db, logger, config);
-  server.cache.today = cacheEnvelope(result.data, {
-    key: result.dateStr,
-    date: result.dateStr,
-    source: result.found ? result.source : "none",
-    found: result.found,
-    recordCount: result.recordCount,
-    start: result.start,
-    end: result.end,
+  const [machineResult, operatorResult] = await Promise.all([
+    buildMachineSummaryFromDailyCache(db, logger, config),
+    buildOperatorSummaryFromDailyCache(db, logger, config),
+  ]);
+  server.cache.today = cacheEnvelope({
+    machinesSummary: machineResult.data,
+    operatorsSummary: operatorResult.data,
+  }, {
+    key: machineResult.dateStr || operatorResult.dateStr,
+    date: machineResult.dateStr || operatorResult.dateStr,
+    source: {
+      machines: machineResult.found ? machineResult.source : "none",
+      operators: operatorResult.found ? operatorResult.source : "none",
+    },
+    found: {
+      machines: machineResult.found,
+      operators: operatorResult.found,
+    },
+    recordCount: {
+      machines: machineResult.recordCount,
+      operators: operatorResult.recordCount,
+    },
+    start: machineResult.start || operatorResult.start,
+    end: machineResult.end || operatorResult.end,
   });
 
   if (logger) {
     logger.info(
-      `[mongoWatchers] Updated server.cache.today with ${result.data.length} machine rows for ${result.dateStr}`
+      `[mongoWatchers] Updated server.cache.today with ${machineResult.data.length} machine rows and ${operatorResult.data.length} operator rows for ${machineResult.dateStr || operatorResult.dateStr}`
     );
   }
 
-  return result;
+  broadcastDashboardCache(server, "today");
+  return { machines: machineResult, operators: operatorResult };
 }
 
 async function refreshCurrentShiftCache(server) {
@@ -84,62 +126,77 @@ async function refreshCurrentShiftCache(server) {
   const context = await resolveCurrentShiftContext(db, config);
 
   if (!context) {
-    server.cache.currentShift = cacheEnvelope([], {
+    server.cache.currentShift = cacheEnvelope({}, {
       key: null,
       source: "none",
-      found: false,
+      found: { machines: false, operators: false },
       shift: null,
       mode: "none",
-      recordCount: 0,
+      recordCount: { machines: 0, operators: 0 },
     });
     if (logger) {
       logger.info("[mongoWatchers] No current or previous shift found for server.cache.currentShift");
     }
+    broadcastDashboardCache(server, "currentShift");
     return null;
   }
 
-  let result;
+  let machineResult;
+  let operatorResult;
+  const errors = {};
   try {
-    result = await buildMachineSummaryFromShiftCache(db, logger, config, context);
+    machineResult = await buildMachineSummaryFromShiftCache(db, logger, config, context);
   } catch (error) {
-    server.cache.currentShift = cacheEnvelope([], {
-      key: `${context.dateStr}|${String(context.shiftOid)}`,
-      date: context.dateStr,
-      shiftId: String(context.shiftOid),
-      shift: serializableShift(context.shiftDoc),
-      mode: context.mode,
-      source: "error",
-      found: false,
-      recordCount: 0,
-      start: context.start,
-      end: context.end,
-      error: error.message,
-    });
+    errors.machines = error.message;
+    machineResult = { data: [], source: "error", found: false, recordCount: 0 };
     if (logger) {
-      logger.error(`[mongoWatchers] Failed to update server.cache.currentShift: ${error.message}`);
+      logger.error(`[mongoWatchers] Failed to update server.cache.currentShift machines: ${error.message}`);
     }
-    return context;
   }
 
-  server.cache.currentShift = cacheEnvelope(result.data, {
+  try {
+    operatorResult = await buildOperatorSummaryFromShiftCache(db, logger, config, context);
+  } catch (error) {
+    errors.operators = error.message;
+    operatorResult = { data: [], source: "error", found: false, recordCount: 0 };
+    if (logger) {
+      logger.error(`[mongoWatchers] Failed to update server.cache.currentShift operators: ${error.message}`);
+    }
+  }
+
+  server.cache.currentShift = cacheEnvelope({
+    machinesSummary: machineResult.data,
+    operatorsSummary: operatorResult.data,
+  }, {
     key: `${context.dateStr}|${String(context.shiftOid)}`,
     date: context.dateStr,
     shiftId: String(context.shiftOid),
     shift: serializableShift(context.shiftDoc),
     mode: context.mode,
-    source: result.source,
-    found: result.found,
-    recordCount: result.recordCount,
+    source: {
+      machines: machineResult.source,
+      operators: operatorResult.source,
+    },
+    found: {
+      machines: machineResult.found,
+      operators: operatorResult.found,
+    },
+    recordCount: {
+      machines: machineResult.recordCount,
+      operators: operatorResult.recordCount,
+    },
     start: context.start,
     end: context.end,
+    errors,
   });
 
   if (logger) {
     logger.info(
-      `[mongoWatchers] Updated server.cache.currentShift with ${result.data.length} machine rows for shift ${context.shiftOid}`
+      `[mongoWatchers] Updated server.cache.currentShift with ${machineResult.data.length} machine rows and ${operatorResult.data.length} operator rows for shift ${context.shiftOid}`
     );
   }
 
+  broadcastDashboardCache(server, "currentShift");
   return context;
 }
 
@@ -195,7 +252,7 @@ async function resetTodayWatcher(server) {
   server.cache.watchers.today = watchCollection(
     server,
     config.totalsDailyCollectionName,
-    { entityType: "machine", date: range.dateStr },
+    { entityType: { $in: ["machine", "operator-machine"] }, date: range.dateStr },
     rebuild,
     "today"
   );
@@ -219,7 +276,7 @@ async function resetCurrentShiftWatcher(server) {
     server,
     TOTALS_SHIFT_COLLECTION,
     {
-      entityType: "machine",
+      entityType: { $in: ["machine", "operator-machine"] },
       date: context.dateStr,
       shiftId: String(context.shiftOid),
     },
@@ -293,4 +350,5 @@ module.exports = {
   stopMongoWatchers,
   refreshTodayCache,
   refreshCurrentShiftCache,
+  buildDashboardCacheMessage,
 };
