@@ -293,47 +293,78 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   async fetchAnalyticsData(): Promise<void> {
     this.isLoading = true;
-    this.subscribeToWebsocketDashboardData();
-    return;
-
-    /*
-    if (!this.startTime || !this.endTime) return;
-
-    this.isLoading = true;
-    
-    // Check if we have a timeframe selected
-    const timeframe = this.dateTimeService.getTimeframe();
-    
-    if (timeframe) {
-      // Use timeframe-based API call
-      this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
-        .subscribe({
-          next: (data: any) => {
-            this.updateDashboardData(data);
-            this.isLoading = false;
-          },
-          error: (error) => {
-            console.error('Error fetching analytics data:', error);
-            this.rows = [];
-            this.isLoading = false;
-          }
-        });
-    } else {
-      // Use operator-summary route for initial table data (all operators)
-      this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
-        .subscribe({
-          next: (data: any) => {
-            this.updateDashboardData(data);
-            this.isLoading = false;
-          },
-          error: (error) => {
-            console.error('Error fetching analytics data:', error);
-            this.rows = [];
-            this.isLoading = false;
-          }
-        });
+    if (this.shouldUseWebsocketDashboardData()) {
+      this.subscribeToWebsocketDashboardData();
+      return;
     }
-    */
+
+    this.fetchRestDashboardData();
+  }
+
+  private fetchRestDashboardData(): void {
+    const timeframe = this.dateTimeService.getTimeframe();
+    const shiftId = this.dateTimeService.getShiftId();
+
+    if (timeframe) {
+      this.operatorService.getOperatorSummaryWithTimeframe(timeframe, shiftId)
+        .subscribe({
+          next: (data: any) => {
+            this.updateDashboardData(data);
+            this.isLoading = false;
+          },
+          error: (error) => {
+            console.error('Error fetching analytics data:', error);
+            this.rows = [];
+            this.isLoading = false;
+          }
+        });
+      return;
+    }
+
+    if (!this.startTime || !this.endTime) {
+      this.rows = [];
+      this.isLoading = false;
+      return;
+    }
+
+    this.operatorService.getOperatorSummary(this.startTime, this.endTime, shiftId)
+      .subscribe({
+        next: (data: any) => {
+          this.updateDashboardData(data);
+          this.isLoading = false;
+        },
+        error: (error) => {
+          console.error('Error fetching analytics data:', error);
+          this.rows = [];
+          this.isLoading = false;
+        }
+      });
+  }
+
+  private shouldUseWebsocketDashboardData(): boolean {
+    if (this.dateTimeService.getLiveMode()) {
+      return true;
+    }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    if (shiftId) {
+      return this.isToday(this.startTime);
+    }
+
+    return this.isToday(this.startTime) && this.isToday(this.endTime);
+  }
+
+  private isToday(value: string): boolean {
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
   }
 
   private subscribeToWebsocketDashboardData(): void {

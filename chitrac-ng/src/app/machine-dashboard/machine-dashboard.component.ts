@@ -235,7 +235,55 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   fetchAnalyticsData(): void {
     this.isLoading = true;
-    this.subscribeToWebsocketDashboardData();
+
+    if (this.shouldUseWebsocketDashboardData()) {
+      this.subscribeToWebsocketDashboardData();
+      return;
+    }
+
+    this.fetchRestDashboardData();
+  }
+
+  private fetchRestDashboardData(): void {
+    const timeframe = this.dateTimeService.getTimeframe();
+    const shiftId = this.dateTimeService.getShiftId();
+
+    if (timeframe) {
+      this.machineService
+        .getMachineSummaryWithTimeframe(timeframe, shiftId)
+        .subscribe({
+          next: (data: any) => {
+            this.updateDashboardData(data);
+            this.isLoading = false;
+          },
+          error: (err: unknown) => {
+            console.error("Error fetching dashboard data:", err);
+            this.rows = [];
+            this.isLoading = false;
+          },
+        });
+      return;
+    }
+
+    if (!this.startTime || !this.endTime) {
+      this.rows = [];
+      this.isLoading = false;
+      return;
+    }
+
+    this.machineService
+      .getMachinesSummary(this.startTime, this.endTime, shiftId)
+      .subscribe({
+        next: (data: any) => {
+          this.updateDashboardData(data);
+          this.isLoading = false;
+        },
+        error: (err: unknown) => {
+          console.error("Error fetching dashboard data:", err);
+          this.rows = [];
+          this.isLoading = false;
+        },
+      });
   }
 
   private subscribeToWebsocketDashboardData(): void {
@@ -255,6 +303,32 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private getDashboardCacheScope(): DashboardCacheScope {
     return this.dateTimeService.getShiftId() ? "currentShift" : "today";
+  }
+
+  private shouldUseWebsocketDashboardData(): boolean {
+    if (this.dateTimeService.getLiveMode()) {
+      return true;
+    }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    if (shiftId) {
+      return this.isToday(this.startTime);
+    }
+
+    return this.isToday(this.startTime) && this.isToday(this.endTime);
+  }
+
+  private isToday(value: string): boolean {
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
   }
 
   private updateDashboardData(data: any): void {
