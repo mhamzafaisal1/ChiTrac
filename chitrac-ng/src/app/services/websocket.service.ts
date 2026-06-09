@@ -3,6 +3,18 @@ import { BehaviorSubject, Observable } from 'rxjs';
 
 export type WebsocketConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
+export interface DashboardCacheEnvelope {
+  machinesSummary: any[];
+  operatorsSummary: any[];
+  updatedAt?: string;
+  meta?: any;
+}
+
+export interface DashboardCachePayload {
+  today?: DashboardCacheEnvelope;
+  currentShift?: DashboardCacheEnvelope;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -11,12 +23,24 @@ export class WebsocketService {
   private readonly statusSubject = new BehaviorSubject<WebsocketConnectionStatus>('disconnected');
   private readonly messageSubject = new BehaviorSubject<string>('No websocket messages received.');
   private readonly errorSubject = new BehaviorSubject<string | null>(null);
+  private readonly dashboardCacheSubject = new BehaviorSubject<DashboardCachePayload | null>(null);
+  private readonly sessionIdSubject = new BehaviorSubject<string | null>(null);
 
   readonly status$: Observable<WebsocketConnectionStatus> = this.statusSubject.asObservable();
   readonly message$: Observable<string> = this.messageSubject.asObservable();
   readonly error$: Observable<string | null> = this.errorSubject.asObservable();
+  readonly dashboardCache$: Observable<DashboardCachePayload | null> = this.dashboardCacheSubject.asObservable();
+  readonly sessionId$: Observable<string | null> = this.sessionIdSubject.asObservable();
 
   constructor(private zone: NgZone) {}
+
+  ensureConnected(): void {
+    this.connect();
+  }
+
+  getDashboardCacheSnapshot(): DashboardCachePayload | null {
+    return this.dashboardCacheSubject.getValue();
+  }
 
   connect(): void {
     if (
@@ -44,6 +68,7 @@ export class WebsocketService {
 
     socket.onmessage = (event) => {
       this.zone.run(() => {
+        this.handleParsedMessage(event.data);
         this.messageSubject.next(this.formatMessage(event.data));
       });
     };
@@ -106,6 +131,24 @@ export class WebsocketService {
       return JSON.stringify(JSON.parse(data), null, 2);
     } catch {
       return data;
+    }
+  }
+
+  private handleParsedMessage(data: unknown): void {
+    if (typeof data !== 'string') {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(data);
+      if (payload?.type === 'dashboard-cache' && payload.cache) {
+        this.dashboardCacheSubject.next(payload.cache);
+      }
+      if (payload?.type === 'websocket-session' && payload.session?.id) {
+        this.sessionIdSubject.next(payload.session.id);
+      }
+    } catch {
+      return;
     }
   }
 }

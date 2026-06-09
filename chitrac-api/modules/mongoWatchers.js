@@ -1,19 +1,24 @@
 const {
-  TOTALS_SHIFT_COLLECTION,
-  getTodayRange,
   resolveCurrentShiftContext,
   buildMachineSummaryFromDailyCache,
   buildMachineSummaryFromShiftCache,
 } = require("../utils/machineDashboardCache");
+const {
+  buildOperatorSummaryFromDailyCache,
+  buildOperatorSummaryFromShiftCache,
+} = require("../utils/operatorDashboardCache");
+const schedule = require("node-schedule");
 
-const WATCH_REFRESH_INTERVAL_MS = 60_000;
-const REBUILD_DEBOUNCE_MS = 250;
+const CACHE_POLL_INTERVAL_MS = 6_000;
+const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
 
 function ensureCache(server) {
   if (!server.cache) server.cache = {};
   if (!server.cache.today) server.cache.today = {};
   if (!server.cache.currentShift) server.cache.currentShift = {};
   if (!server.cache.watchers) server.cache.watchers = {};
+  if (!server.cache.polling) server.cache.polling = {};
+  if (!server.cache.polling.signatures) server.cache.polling.signatures = {};
 }
 
 function serializableShift(shiftDoc) {
@@ -30,53 +35,90 @@ function serializableShift(shiftDoc) {
 }
 
 function cacheEnvelope(data, meta) {
+  const payload = data && typeof data === "object" && !Array.isArray(data)
+    ? data
+    : { machinesSummary: Array.isArray(data) ? data : [] };
+
   return {
-    machinesSummary: Array.isArray(data) ? data : [],
+    machinesSummary: Array.isArray(payload.machinesSummary) ? payload.machinesSummary : [],
+    operatorsSummary: Array.isArray(payload.operatorsSummary) ? payload.operatorsSummary : [],
     updatedAt: new Date(),
     meta,
   };
 }
 
-function debounce(fn, waitMs) {
-  let timer = null;
-  return function debounced() {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      fn().catch(() => {});
-    }, waitMs);
+function buildDashboardCacheMessage(server, scope) {
+  return {
+    type: "dashboard-cache",
+    timestamp: new Date().toISOString(),
+    scope,
+    cache: {
+      today: server.cache?.today || cacheEnvelope({}, { source: "none" }),
+      currentShift: server.cache?.currentShift || cacheEnvelope({}, { source: "none" }),
+    },
   };
 }
 
-async function closeWatcher(watcher, logger, name) {
-  if (!watcher) return;
-  try {
-    await watcher.close();
-  } catch (error) {
-    if (logger) logger.warn(`[mongoWatchers] Failed to close ${name} watcher: ${error.message}`);
-  }
+function broadcastDashboardCache(server, scope) {
+  if (typeof server.broadcastWebsocket !== "function") return;
+  server.broadcastWebsocket(buildDashboardCacheMessage(server, scope));
+}
+
+function buildCacheSignature(cache) {
+  return JSON.stringify({
+    machinesSummary: cache.machinesSummary,
+    operatorsSummary: cache.operatorsSummary,
+    meta: cache.meta,
+  });
+}
+
+function shouldBroadcastCacheUpdate(server, key, cache) {
+  ensureCache(server);
+  const nextSignature = buildCacheSignature(cache);
+  const previousSignature = server.cache.polling.signatures[key];
+  server.cache.polling.signatures[key] = nextSignature;
+  return previousSignature !== undefined && previousSignature !== nextSignature;
 }
 
 async function refreshTodayCache(server) {
   const { db, logger, config } = server;
-  const result = await buildMachineSummaryFromDailyCache(db, logger, config);
-  server.cache.today = cacheEnvelope(result.data, {
-    key: result.dateStr,
-    date: result.dateStr,
-    source: result.found ? result.source : "none",
-    found: result.found,
-    recordCount: result.recordCount,
-    start: result.start,
-    end: result.end,
+  const [machineResult, operatorResult] = await Promise.all([
+    buildMachineSummaryFromDailyCache(db, logger, config),
+    buildOperatorSummaryFromDailyCache(db, logger, config),
+  ]);
+  const nextCache = cacheEnvelope({
+    machinesSummary: machineResult.data,
+    operatorsSummary: operatorResult.data,
+  }, {
+    key: machineResult.dateStr || operatorResult.dateStr,
+    date: machineResult.dateStr || operatorResult.dateStr,
+    source: {
+      machines: machineResult.found ? machineResult.source : "none",
+      operators: operatorResult.found ? operatorResult.source : "none",
+    },
+    found: {
+      machines: machineResult.found,
+      operators: operatorResult.found,
+    },
+    recordCount: {
+      machines: machineResult.recordCount,
+      operators: operatorResult.recordCount,
+    },
+    start: machineResult.start || operatorResult.start,
+    end: machineResult.end || operatorResult.end,
   });
+  server.cache.today = nextCache;
 
   if (logger) {
     logger.info(
-      `[mongoWatchers] Updated server.cache.today with ${result.data.length} machine rows for ${result.dateStr}`
+      `[mongoWatchers] Updated server.cache.today with ${machineResult.data.length} machine rows and ${operatorResult.data.length} operator rows for ${machineResult.dateStr || operatorResult.dateStr}`
     );
   }
 
-  return result;
+  if (shouldBroadcastCacheUpdate(server, "today", nextCache)) {
+    broadcastDashboardCache(server, "today");
+  }
+  return { machines: machineResult, operators: operatorResult };
 }
 
 async function refreshCurrentShiftCache(server) {
@@ -84,207 +126,164 @@ async function refreshCurrentShiftCache(server) {
   const context = await resolveCurrentShiftContext(db, config);
 
   if (!context) {
-    server.cache.currentShift = cacheEnvelope([], {
+    const nextCache = cacheEnvelope({}, {
       key: null,
       source: "none",
-      found: false,
+      found: { machines: false, operators: false },
       shift: null,
       mode: "none",
-      recordCount: 0,
+      recordCount: { machines: 0, operators: 0 },
     });
+    server.cache.currentShift = nextCache;
     if (logger) {
       logger.info("[mongoWatchers] No current or previous shift found for server.cache.currentShift");
+    }
+    if (shouldBroadcastCacheUpdate(server, "currentShift", nextCache)) {
+      broadcastDashboardCache(server, "currentShift");
     }
     return null;
   }
 
-  let result;
+  let machineResult;
+  let operatorResult;
+  const errors = {};
   try {
-    result = await buildMachineSummaryFromShiftCache(db, logger, config, context);
+    machineResult = await buildMachineSummaryFromShiftCache(db, logger, config, context);
   } catch (error) {
-    server.cache.currentShift = cacheEnvelope([], {
-      key: `${context.dateStr}|${String(context.shiftOid)}`,
-      date: context.dateStr,
-      shiftId: String(context.shiftOid),
-      shift: serializableShift(context.shiftDoc),
-      mode: context.mode,
-      source: "error",
-      found: false,
-      recordCount: 0,
-      start: context.start,
-      end: context.end,
-      error: error.message,
-    });
+    errors.machines = error.message;
+    machineResult = { data: [], source: "error", found: false, recordCount: 0 };
     if (logger) {
-      logger.error(`[mongoWatchers] Failed to update server.cache.currentShift: ${error.message}`);
+      logger.error(`[mongoWatchers] Failed to update server.cache.currentShift machines: ${error.message}`);
     }
-    return context;
   }
 
-  server.cache.currentShift = cacheEnvelope(result.data, {
+  try {
+    operatorResult = await buildOperatorSummaryFromShiftCache(db, logger, config, context);
+  } catch (error) {
+    errors.operators = error.message;
+    operatorResult = { data: [], source: "error", found: false, recordCount: 0 };
+    if (logger) {
+      logger.error(`[mongoWatchers] Failed to update server.cache.currentShift operators: ${error.message}`);
+    }
+  }
+
+  const nextCache = cacheEnvelope({
+    machinesSummary: machineResult.data,
+    operatorsSummary: operatorResult.data,
+  }, {
     key: `${context.dateStr}|${String(context.shiftOid)}`,
     date: context.dateStr,
     shiftId: String(context.shiftOid),
     shift: serializableShift(context.shiftDoc),
     mode: context.mode,
-    source: result.source,
-    found: result.found,
-    recordCount: result.recordCount,
+    source: {
+      machines: machineResult.source,
+      operators: operatorResult.source,
+    },
+    found: {
+      machines: machineResult.found,
+      operators: operatorResult.found,
+    },
+    recordCount: {
+      machines: machineResult.recordCount,
+      operators: operatorResult.recordCount,
+    },
     start: context.start,
     end: context.end,
+    errors,
   });
+  server.cache.currentShift = nextCache;
 
   if (logger) {
     logger.info(
-      `[mongoWatchers] Updated server.cache.currentShift with ${result.data.length} machine rows for shift ${context.shiftOid}`
+      `[mongoWatchers] Updated server.cache.currentShift with ${machineResult.data.length} machine rows and ${operatorResult.data.length} operator rows for shift ${context.shiftOid}`
     );
   }
 
+  if (shouldBroadcastCacheUpdate(server, "currentShift", nextCache)) {
+    broadcastDashboardCache(server, "currentShift");
+  }
   return context;
 }
 
-function createWatchPipeline(filter) {
-  return [
-    {
-      $match: {
-        operationType: { $in: ["insert", "update", "replace"] },
-        ...Object.fromEntries(
-          Object.entries(filter).map(([key, value]) => [`fullDocument.${key}`, value])
-        ),
-      },
-    },
-  ];
+async function refreshDashboardCache(server) {
+  await refreshTodayCache(server);
+  await refreshCurrentShiftCache(server);
 }
 
-function watchCollection(server, collectionName, filter, onChange, name) {
-  const { db, logger } = server;
-  const collection = db.collection(collectionName);
-  const pipeline = createWatchPipeline(filter);
-  const stream = collection.watch(pipeline, { fullDocument: "updateLookup" });
+function scheduleNextCachePoll(server) {
+  ensureCache(server);
 
-  stream.on("change", onChange);
-  stream.on("error", (error) => {
-    const changeStreamUnsupported =
-      error.message && error.message.includes("only supported on replica sets");
-    if (logger && changeStreamUnsupported) {
-      logger.warn(
-        `[mongoWatchers] ${name} watcher disabled: MongoDB change streams require a replica set`
-      );
-      return;
+  if (server.cache.polling.stopped) return null;
+
+  const runAt = new Date(Date.now() + CACHE_POLL_INTERVAL_MS);
+  const job = schedule.scheduleJob(runAt, async () => {
+    server.cache.polling.job = null;
+    if (server.scheduledJobs) server.scheduledJobs[DASHBOARD_CACHE_POLL_JOB_KEY] = null;
+
+    try {
+      await refreshDashboardCache(server);
+    } catch (error) {
+      if (server.logger) {
+        server.logger.error(`[mongoWatchers] Dashboard cache polling failed: ${error.message}`);
+      }
+    } finally {
+      scheduleNextCachePoll(server);
     }
-    if (logger) logger.error(`[mongoWatchers] ${name} watcher error: ${error.message}`);
-  });
-  stream.on("close", () => {
-    if (logger) logger.info(`[mongoWatchers] ${name} watcher closed`);
   });
 
-  if (logger) {
-    logger.info(`[mongoWatchers] Started ${name} watcher on ${collectionName}`, filter);
-  }
-
-  return stream;
+  server.cache.polling.job = job;
+  if (!server.scheduledJobs) server.scheduledJobs = {};
+  server.scheduledJobs[DASHBOARD_CACHE_POLL_JOB_KEY] = job;
+  return job;
 }
 
-async function resetTodayWatcher(server) {
-  const { logger, config } = server;
-  const range = getTodayRange();
-  await closeWatcher(server.cache.watchers.today, logger, "today");
+function startCachePolling(server) {
+  ensureCache(server);
 
-  const rebuild = debounce(() => refreshTodayCache(server), REBUILD_DEBOUNCE_MS);
-  server.cache.watchers.todayKey = range.dateStr;
-  server.cache.watchers.today = watchCollection(
-    server,
-    config.totalsDailyCollectionName,
-    { entityType: "machine", date: range.dateStr },
-    rebuild,
-    "today"
-  );
-}
-
-async function resetCurrentShiftWatcher(server) {
-  const { logger } = server;
-  const context = await resolveCurrentShiftContext(server.db, server.config);
-  await closeWatcher(server.cache.watchers.currentShift, logger, "currentShift");
-
-  if (!context) {
-    server.cache.watchers.currentShift = null;
-    server.cache.watchers.currentShiftKey = null;
-    return;
+  if (server.cache.polling.job) {
+    return server.cache.polling.job;
   }
 
-  const rebuild = debounce(() => refreshCurrentShiftCache(server), REBUILD_DEBOUNCE_MS);
-  const key = `${context.dateStr}|${String(context.shiftOid)}`;
-  server.cache.watchers.currentShiftKey = key;
-  server.cache.watchers.currentShift = watchCollection(
-    server,
-    TOTALS_SHIFT_COLLECTION,
-    {
-      entityType: "machine",
-      date: context.dateStr,
-      shiftId: String(context.shiftOid),
-    },
-    rebuild,
-    "currentShift"
-  );
-}
+  server.cache.polling.stopped = false;
+  const job = scheduleNextCachePoll(server);
 
-async function refreshWatcherTargets(server) {
-  const todayKey = getTodayRange().dateStr;
-  if (server.cache.watchers.todayKey !== todayKey) {
-    await refreshTodayCache(server);
-    await resetTodayWatcher(server);
+  if (server.logger) {
+    server.logger.info(
+      `[mongoWatchers] Started dashboard cache polling every ${CACHE_POLL_INTERVAL_MS}ms`
+    );
   }
 
-  const context = await resolveCurrentShiftContext(server.db, server.config);
-  const nextShiftKey = context ? `${context.dateStr}|${String(context.shiftOid)}` : null;
-  if (server.cache.watchers.currentShiftKey !== nextShiftKey) {
-    await refreshCurrentShiftCache(server);
-    await resetCurrentShiftWatcher(server);
+  return job;
+}
+
+function stopCachePolling(server) {
+  if (!server?.cache?.polling) return;
+
+  server.cache.polling.stopped = true;
+  if (server.cache.polling.job && typeof server.cache.polling.job.cancel === "function") {
+    server.cache.polling.job.cancel();
+  }
+  server.cache.polling.job = null;
+
+  if (server.scheduledJobs) {
+    server.scheduledJobs[DASHBOARD_CACHE_POLL_JOB_KEY] = null;
   }
 }
 
 async function startMongoWatchers(server) {
   ensureCache(server);
-  const { logger } = server;
 
   await refreshTodayCache(server);
   await refreshCurrentShiftCache(server);
-
-  try {
-    await resetTodayWatcher(server);
-    await resetCurrentShiftWatcher(server);
-  } catch (error) {
-    if (logger) {
-      logger.warn(
-        `[mongoWatchers] MongoDB change streams unavailable; server.cache will not receive live watcher updates: ${error.message}`
-      );
-    }
-    return server.cache;
-  }
-
-  server.cache.watchers.refreshInterval = setInterval(() => {
-    refreshWatcherTargets(server).catch((error) => {
-      if (logger) logger.error(`[mongoWatchers] Failed to refresh watcher targets: ${error.message}`);
-    });
-  }, WATCH_REFRESH_INTERVAL_MS);
-
-  if (typeof server.cache.watchers.refreshInterval.unref === "function") {
-    server.cache.watchers.refreshInterval.unref();
-  }
+  startCachePolling(server);
 
   return server.cache;
 }
 
 async function stopMongoWatchers(server) {
-  if (!server?.cache?.watchers) return;
-  const { logger } = server;
-  if (server.cache.watchers.refreshInterval) {
-    clearInterval(server.cache.watchers.refreshInterval);
-  }
-  await Promise.all([
-    closeWatcher(server.cache.watchers.today, logger, "today"),
-    closeWatcher(server.cache.watchers.currentShift, logger, "currentShift"),
-  ]);
+  if (!server?.cache) return;
+  stopCachePolling(server);
   server.cache.watchers = {};
 }
 
@@ -293,4 +292,6 @@ module.exports = {
   stopMongoWatchers,
   refreshTodayCache,
   refreshCurrentShiftCache,
+  refreshDashboardCache,
+  buildDashboardCacheMessage,
 };
