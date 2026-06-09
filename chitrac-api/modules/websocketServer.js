@@ -94,6 +94,20 @@ function buildServerSnapshot(server) {
     };
 }
 
+function buildDashboardCacheSnapshot(server) {
+    const cache = server.cache || {};
+
+    return {
+        type: 'dashboard-cache-update',
+        timestamp: new Date().toISOString(),
+        scope: 'all',
+        cache: {
+            today: cache.today || {},
+            currentShift: cache.currentShift || {}
+        }
+    };
+}
+
 function getSocketInfo(req) {
     return {
         remoteAddress: req.socket?.remoteAddress,
@@ -318,6 +332,7 @@ function startWebsocketServer(server) {
             timestamp: new Date().toISOString(),
             session: toPublicClientSession(session)
         });
+        sendJson(ws, buildDashboardCacheSnapshot(server));
 
         ws.on('message', async (message) => {
             session.lastMessageAt = new Date().toISOString();
@@ -332,6 +347,7 @@ function startWebsocketServer(server) {
 
             try {
                 sendJson(ws, buildServerSnapshot(server));
+                sendJson(ws, buildDashboardCacheSnapshot(server));
                 await writeLog('server-info-sent', socketInfo);
             } catch (error) {
                 await writeError('message-response-failed', error, socketInfo);
@@ -371,5 +387,6 @@ function startWebsocketServer(server) {
 
 module.exports = {
     startWebsocketServer,
-    buildServerSnapshot
+    buildServerSnapshot,
+    buildDashboardCacheSnapshot
 };

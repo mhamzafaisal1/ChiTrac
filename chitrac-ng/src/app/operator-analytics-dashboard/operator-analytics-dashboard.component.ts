@@ -8,7 +8,7 @@ import { MatTableModule } from '@angular/material/table';
 import { MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
@@ -17,6 +17,7 @@ import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { DashboardCacheScope, WebsocketService } from '../services/websocket.service';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -86,7 +87,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
     private cdr: ChangeDetectorRef,
-    private percentBreakpointService: PercentBreakpointService
+    private percentBreakpointService: PercentBreakpointService,
+    private websocketService: WebsocketService
   ) {}
 
   ngOnInit(): void {
@@ -98,6 +100,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   
     // Add dummy loading row initially
     this.addDummyLoadingRow();
+    this.websocketService.connect();
 
     if (!isLive && wasConfirmed) {
       this.startTime = this.dateTimeService.getStartTime();
@@ -205,6 +208,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private setupPolling(): void {
     if (this.liveMode) {
+      this.subscribeToWebsocketDashboardData();
+      return;
+
+      /*
       // Setup polling for subsequent updates
       this.pollingSubscription = this.pollingService.poll(
         () => {
@@ -239,6 +246,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         false,  // isModal
         false   // 👈 prevents immediate call
       ).subscribe();
+      */
       
     }
   }
@@ -251,31 +259,44 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateDashboardData(data: any): void {
-    this.operatorData = Array.isArray(data) ? data : [data];
-    
+    const responses = Array.isArray(data) ? data : [data];
+    this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
+
+    if (this.operatorData.length === 0) {
+      this.rows = [];
+      this.cdr.markForCheck();
+      return;
+    }
+
     this.rows = this.operatorData.map(response => ({
       'Status': getStatusDotByCode(response.currentStatus?.code),
-      'Operator Name': response.operator.name,
-      'Operator ID': response.operator.id,
+      'Operator Name': this.formatOperatorName(response.operator?.name),
+      'Operator ID': response.operator?.id,
       'Current Machine': response.currentMachine?.name || '',
       'Current Machine Serial': response.currentMachine?.serial || '',
-      'Runtime': `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
-      'Downtime': `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
-      'Total Count': response.metrics.output.totalCount,
-      'Misfeed Count': response.metrics.output.misfeedCount,
-      'Availability': `${response.metrics.performance.availability.percentage}%`,
-      'Throughput': `${response.metrics.performance.throughput.percentage}%`,
-      'Efficiency': `${`${response.metrics.performance.efficiency.percentage}%`}%`,
-      'OEE': `${response.metrics.performance.oee.percentage}%`,
+      'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
+      'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Total Count': response.metrics.output?.totalCount ?? 0,
+      'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
+      'Availability': `${response.metrics.performance?.availability?.percentage ?? 0}%`,
+      'Throughput': `${response.metrics.performance?.throughput?.percentage ?? 0}%`,
+      'Efficiency': `${response.metrics.performance?.efficiency?.percentage ?? 0}%`,
+      'OEE': `${response.metrics.performance?.oee?.percentage ?? 0}%`,
       'Time Range': `${this.startTime} to ${this.endTime}`
     }));
 
     const allColumns = Object.keys(this.rows[0]);
     const columnsToHide = ['Operator ID', 'Time Range'];
     this.columns = allColumns.filter(col => !columnsToHide.includes(col));
+    this.cdr.markForCheck();
   }
 
   async fetchAnalyticsData(): Promise<void> {
+    this.isLoading = true;
+    this.subscribeToWebsocketDashboardData();
+    return;
+
+    /*
     if (!this.startTime || !this.endTime) return;
 
     this.isLoading = true;
@@ -312,6 +333,33 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           }
         });
     }
+    */
+  }
+
+  private subscribeToWebsocketDashboardData(): void {
+    this.websocketService.connect();
+    this.stopPolling();
+
+    const scope = this.getDashboardCacheScope();
+    this.pollingSubscription = this.websocketService
+      .operatorDashboardData$(scope)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((data) => {
+        this.updateDashboardData(data);
+        this.isLoading = false;
+      });
+  }
+
+  private getDashboardCacheScope(): DashboardCacheScope {
+    return this.dateTimeService.getShiftId() ? 'currentShift' : 'today';
+  }
+
+  private formatOperatorName(name: any): string {
+    if (!name) return 'Unknown';
+    if (typeof name === 'string') return name;
+    if (name.first && name.surname) return `${name.first} ${name.surname}`;
+    if (name.first) return name.first;
+    return 'Unknown';
   }
 
   onDateChange(): void {

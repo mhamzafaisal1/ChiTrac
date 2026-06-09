@@ -234,8 +234,6 @@ async function startServer() {
         await ensureAnalyticsIndexes(db, config, logger);
         const { startMongoWatchers } = require('./modules/mongoWatchers');
         await startMongoWatchers(server);
-        const { startWebSocketServer } = require('./modules/websocketServer');
-        startWebSocketServer(server);
 
         const { startWebsocketServer } = require('./modules/websocketServer');
         server.websocketServer = startWebsocketServer(server);
