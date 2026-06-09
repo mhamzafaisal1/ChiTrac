@@ -16,6 +16,7 @@ import { getStatusDotByCode } from '../../utils/status-utils';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -84,7 +85,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -548,16 +550,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   
   }
 
-  getEfficiencyClass(value: any, column: string): string {
+  getEfficiencyClass = (value: any, column: string): string => {
     if ((column === 'Efficiency' || column === 'OEE' || column === 'Availability' || column === 'Throughput') && typeof value === 'string' && value.includes('%')) {
-      const num = parseInt(value.replace('%', ''));
-      if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      return this.percentBreakpointService.getColorClass(value);
     }
     return '';
-  }
+  };
 
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();

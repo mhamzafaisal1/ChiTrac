@@ -20,6 +20,7 @@ import { MachineService } from "../services/machine.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
+import { PercentBreakpointService } from "../services/percent-breakpoint.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
 import { UseCarouselComponent } from "../use-carousel/use-carousel.component";
@@ -106,7 +107,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
-    private dashboardTimeframeService: DashboardTimeframeService
+    private dashboardTimeframeService: DashboardTimeframeService,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -841,14 +843,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  getEfficiencyClass(value: any): string {
+  getEfficiencyClass = (value: any): string => {
     if (typeof value !== "string" || !value.includes("%")) return "";
-    const num = parseInt(value.replace("%", ""));
-    if (isNaN(num)) return "";
-    if (num >= 90) return "green";
-    if (num >= 70) return "yellow";
-    return "red";
-  }
+    return this.percentBreakpointService.getColorClass(value);
+  };
 
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
