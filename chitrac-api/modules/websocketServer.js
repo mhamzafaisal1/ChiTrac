@@ -103,9 +103,15 @@ function buildDashboardCacheSnapshot(server) {
         scope: 'all',
         cache: {
             today: cache.today || {},
-            currentShift: cache.currentShift || {}
+            currentShift: cache.currentShift || {},
+            dashboard: cache.dashboard || {}
         }
     };
+}
+
+function shouldBroadcastServerChange(event) {
+    const path = Array.isArray(event?.path) ? event.path.join('.') : String(event?.path || '');
+    return !path.startsWith('cache.');
 }
 
 function getSocketInfo(req) {
@@ -281,6 +287,10 @@ function startWebsocketServer(server) {
 
     const subscription = typeof server.subscribe === 'function'
         ? server.subscribe((event) => {
+            if (!shouldBroadcastServerChange(event)) {
+                return;
+            }
+
             const payload = {
                 type: 'server-change',
                 timestamp: new Date().toISOString(),

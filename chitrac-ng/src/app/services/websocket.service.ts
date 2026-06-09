@@ -15,12 +15,23 @@ export interface DashboardCacheEnvelope {
 export interface DashboardCacheState {
   today?: DashboardCacheEnvelope;
   currentShift?: DashboardCacheEnvelope;
+  dashboard?: {
+    machines?: {
+      today?: DashboardCacheEnvelope;
+      shifts?: DashboardCacheEnvelope[];
+    };
+    operators?: {
+      today?: DashboardCacheEnvelope;
+      shifts?: DashboardCacheEnvelope[];
+    };
+  };
 }
 
 interface DashboardCacheMessage {
   type: 'dashboard-cache-update';
-  scope?: DashboardCacheScope | 'all';
+  scope?: DashboardCacheScope | 'all' | 'dashboard';
   cache?: DashboardCacheEnvelope | DashboardCacheState;
+  dashboard?: DashboardCacheState['dashboard'];
 }
 
 @Injectable({
@@ -121,15 +132,17 @@ export class WebsocketService {
     );
   }
 
-  machineDashboardData$(scope: DashboardCacheScope): Observable<any[]> {
-    return this.dashboardCacheScope$(scope).pipe(
-      map((cache) => Array.isArray(cache?.machinesSummary) ? cache.machinesSummary : [])
+  machineDashboardData$(scope: DashboardCacheScope, shiftId?: string | null): Observable<any[]> {
+    return this.dashboardCache$.pipe(
+      map((cache) => this.resolveDashboardEnvelope(cache, 'machines', scope, shiftId)),
+      map((envelope) => Array.isArray(envelope?.machinesSummary) ? envelope.machinesSummary : [])
     );
   }
 
-  operatorDashboardData$(scope: DashboardCacheScope): Observable<any[]> {
-    return this.dashboardCacheScope$(scope).pipe(
-      map((cache) => Array.isArray(cache?.operatorsSummary) ? cache.operatorsSummary : [])
+  operatorDashboardData$(scope: DashboardCacheScope, shiftId?: string | null): Observable<any[]> {
+    return this.dashboardCache$.pipe(
+      map((cache) => this.resolveDashboardEnvelope(cache, 'operators', scope, shiftId)),
+      map((envelope) => Array.isArray(envelope?.operatorsSummary) ? envelope.operatorsSummary : [])
     );
   }
 
@@ -155,7 +168,16 @@ export class WebsocketService {
       const cache = message.cache as DashboardCacheState | undefined;
       this.dashboardCacheSubject.next({
         today: cache?.today || current.today,
-        currentShift: cache?.currentShift || current.currentShift
+        currentShift: cache?.currentShift || current.currentShift,
+        dashboard: message.dashboard || cache?.dashboard || current.dashboard
+      });
+      return;
+    }
+
+    if (message.scope === 'dashboard') {
+      this.dashboardCacheSubject.next({
+        ...current,
+        dashboard: message.dashboard || (message.cache as DashboardCacheState | undefined)?.dashboard || current.dashboard
       });
       return;
     }
@@ -163,9 +185,25 @@ export class WebsocketService {
     if (message.scope === 'today' || message.scope === 'currentShift') {
       this.dashboardCacheSubject.next({
         ...current,
-        [message.scope]: message.cache as DashboardCacheEnvelope
+        [message.scope]: message.cache as DashboardCacheEnvelope,
+        dashboard: message.dashboard || current.dashboard
       });
     }
+  }
+
+  private resolveDashboardEnvelope(
+    cache: DashboardCacheState,
+    dashboard: 'machines' | 'operators',
+    scope: DashboardCacheScope,
+    shiftId?: string | null
+  ): DashboardCacheEnvelope | undefined {
+    const dashboardCache = cache.dashboard?.[dashboard];
+
+    if (scope === 'today' || !shiftId) {
+      return dashboardCache?.today || cache.today;
+    }
+
+    return dashboardCache?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) || cache.currentShift;
   }
 
   private parseMessage(data: unknown): any | null {

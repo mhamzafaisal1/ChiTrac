@@ -243,8 +243,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.stopPolling();
 
     const scope = this.getDashboardCacheScope();
+    const shiftId = this.dateTimeService.getShiftId();
     this.pollingSubscription = this.websocketService
-      .machineDashboardData$(scope)
+      .machineDashboardData$(scope, shiftId)
       .pipe(takeUntil(this.destroy$))
       .subscribe((data) => {
         this.updateDashboardData(data);

@@ -1,3 +1,5 @@
+const { ObjectId } = require("mongodb");
+const { DateTime } = require("luxon");
 const {
   TOTALS_SHIFT_COLLECTION,
   getTodayRange,
@@ -7,7 +9,7 @@ const {
 } = require("../utils/machineDashboardCache");
 const { getCachedOperatorResults } = require("../utils/dashboardFunctions");
 const { getOperatorSessionDataForPartialDays } = require("../utils/reportFunctions");
-const { formatDuration } = require("../utils/time");
+const { formatDuration, SYSTEM_TIMEZONE } = require("../utils/time");
 
 const WATCH_REFRESH_INTERVAL_MS = 60_000;
 const REBUILD_DEBOUNCE_MS = 250;
@@ -17,6 +19,11 @@ function ensureCache(server) {
   if (!server.cache) server.cache = {};
   if (!server.cache.today) server.cache.today = {};
   if (!server.cache.currentShift) server.cache.currentShift = {};
+  if (!server.cache.dashboard) server.cache.dashboard = {};
+  if (!server.cache.dashboard.machines) server.cache.dashboard.machines = {};
+  if (!server.cache.dashboard.operators) server.cache.dashboard.operators = {};
+  if (!Array.isArray(server.cache.dashboard.machines.shifts)) server.cache.dashboard.machines.shifts = [];
+  if (!Array.isArray(server.cache.dashboard.operators.shifts)) server.cache.dashboard.operators.shifts = [];
   if (!server.cache.watchers) server.cache.watchers = {};
 }
 
@@ -42,6 +49,35 @@ function cacheEnvelope({ machinesSummary, operatorsSummary }, meta) {
   };
 }
 
+function machineDashboardEnvelope(machinesSummary, meta) {
+  return {
+    machinesSummary: Array.isArray(machinesSummary) ? machinesSummary : [],
+    updatedAt: new Date(),
+    meta,
+  };
+}
+
+function operatorDashboardEnvelope(operatorsSummary, meta) {
+  return {
+    operatorsSummary: Array.isArray(operatorsSummary) ? operatorsSummary : [],
+    updatedAt: new Date(),
+    meta,
+  };
+}
+
+function upsertShift(envelopes, shiftEnvelope) {
+  const next = Array.isArray(envelopes) ? [...envelopes] : [];
+  const index = next.findIndex((item) => item?.meta?.key === shiftEnvelope?.meta?.key);
+
+  if (index === -1) {
+    next.push(shiftEnvelope);
+  } else {
+    next[index] = shiftEnvelope;
+  }
+
+  return next.sort((a, b) => new Date(a?.meta?.start || 0) - new Date(b?.meta?.start || 0));
+}
+
 function broadcastCacheUpdate(server, scope) {
   if (typeof server.broadcastWebsocket !== "function") return;
 
@@ -50,6 +86,18 @@ function broadcastCacheUpdate(server, scope) {
     timestamp: new Date().toISOString(),
     scope,
     cache: server.cache?.[scope] || {},
+    dashboard: server.cache?.dashboard || {},
+  });
+}
+
+function broadcastDashboardCacheUpdate(server) {
+  if (typeof server.broadcastWebsocket !== "function") return;
+
+  server.broadcastWebsocket({
+    type: "dashboard-cache-update",
+    timestamp: new Date().toISOString(),
+    scope: "dashboard",
+    dashboard: server.cache?.dashboard || {},
   });
 }
 
@@ -149,6 +197,99 @@ async function buildCurrentShiftOperatorSummary(db, config, context) {
   return mapShiftOperatorSessionSummary(sessionData, operatorTickerMap);
 }
 
+function isValidShift(shift) {
+  return (
+    shift &&
+    shift._id &&
+    shift.startTime &&
+    shift.endTime &&
+    typeof shift.startTime.hour === "number" &&
+    typeof shift.startTime.minute === "number" &&
+    typeof shift.endTime.hour === "number" &&
+    typeof shift.endTime.minute === "number"
+  );
+}
+
+function toShiftDateTime(day, time) {
+  return day.set({
+    hour: Number(time.hour),
+    minute: Number(time.minute),
+    second: 0,
+    millisecond: 0,
+  });
+}
+
+async function resolveTodayShiftContexts(db, config, nowInput = new Date()) {
+  const now = DateTime.fromJSDate(new Date(nowInput), { zone: SYSTEM_TIMEZONE });
+  if (!now.isValid) return [];
+
+  const shifts = await db
+    .collection(config.shiftCollectionName)
+    .find({ active: { $ne: false } })
+    .toArray();
+
+  const today = now.weekday;
+  const day = now.startOf("day");
+
+  return shifts
+    .filter(isValidShift)
+    .filter((shift) => {
+      const activeDays = Array.isArray(shift.activeDays) ? shift.activeDays : [];
+      return activeDays.length === 0 || activeDays.includes(today);
+    })
+    .map((shift) => {
+      const start = toShiftDateTime(day, shift.startTime);
+      const end = toShiftDateTime(day, shift.endTime);
+      if (now < start) return null;
+
+      const isCurrent = now >= start && now < end;
+      const effectiveEnd = isCurrent ? now : end;
+
+      return {
+        shiftDoc: shift,
+        shiftOid: new ObjectId(String(shift._id)),
+        dateStr: now.toISODate(),
+        start: start.toJSDate(),
+        end: effectiveEnd.toJSDate(),
+        mode: isCurrent ? "current" : "complete",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.start - b.start);
+}
+
+function shiftMeta(context, result, sourceOverride) {
+  return {
+    key: `${context.dateStr}|${String(context.shiftOid)}`,
+    date: context.dateStr,
+    shiftId: String(context.shiftOid),
+    shift: serializableShift(context.shiftDoc),
+    mode: context.mode,
+    source: sourceOverride || result?.source || "none",
+    found: Boolean(result?.found),
+    recordCount: result?.recordCount || 0,
+    start: context.start,
+    end: context.end,
+  };
+}
+
+async function buildShiftDashboardEnvelopes(server, context) {
+  const { db, logger, config } = server;
+  const result = await buildMachineSummaryFromShiftCache(db, logger, config, context);
+  const operatorsSummary = await safeBuildOperatorSummary(
+    logger,
+    `shift ${context.shiftOid}`,
+    () => buildCurrentShiftOperatorSummary(db, config, context)
+  );
+  const meta = shiftMeta(context, result);
+
+  return {
+    machines: machineDashboardEnvelope(result.data, meta),
+    operators: operatorDashboardEnvelope(operatorsSummary, meta),
+    result,
+  };
+}
+
 function debounce(fn, waitMs) {
   let timer = null;
   return function debounced() {
@@ -189,6 +330,8 @@ async function refreshTodayCache(server) {
     start: result.start,
     end: result.end,
   });
+  server.cache.dashboard.machines.today = machineDashboardEnvelope(result.data, server.cache.today.meta);
+  server.cache.dashboard.operators.today = operatorDashboardEnvelope(operatorsSummary, server.cache.today.meta);
   broadcastCacheUpdate(server, "today");
 
   if (logger) {
@@ -216,6 +359,8 @@ async function refreshCurrentShiftCache(server) {
       mode: "none",
       recordCount: 0,
     });
+    server.cache.dashboard.machines.shifts = [];
+    server.cache.dashboard.operators.shifts = [];
     broadcastCacheUpdate(server, "currentShift");
     if (logger) {
       logger.info("[mongoWatchers] No current or previous shift found for server.cache.currentShift");
@@ -270,6 +415,16 @@ async function refreshCurrentShiftCache(server) {
     start: context.start,
     end: context.end,
   });
+  const machineShiftEnvelope = machineDashboardEnvelope(result.data, server.cache.currentShift.meta);
+  const operatorShiftEnvelope = operatorDashboardEnvelope(operatorsSummary, server.cache.currentShift.meta);
+  server.cache.dashboard.machines.shifts = upsertShift(
+    server.cache.dashboard.machines.shifts,
+    machineShiftEnvelope
+  );
+  server.cache.dashboard.operators.shifts = upsertShift(
+    server.cache.dashboard.operators.shifts,
+    operatorShiftEnvelope
+  );
   broadcastCacheUpdate(server, "currentShift");
 
   if (logger) {
@@ -279,6 +434,37 @@ async function refreshCurrentShiftCache(server) {
   }
 
   return context;
+}
+
+async function refreshTodayShiftCaches(server) {
+  const { logger } = server;
+  const contexts = await resolveTodayShiftContexts(server.db, server.config);
+  const machineShifts = [];
+  const operatorShifts = [];
+
+  for (const context of contexts) {
+    try {
+      const envelopes = await buildShiftDashboardEnvelopes(server, context);
+      machineShifts.push(envelopes.machines);
+      operatorShifts.push(envelopes.operators);
+    } catch (error) {
+      if (logger) {
+        logger.error(`[mongoWatchers] Failed to update dashboard shift cache for ${context.shiftOid}: ${error.message}`);
+      }
+    }
+  }
+
+  server.cache.dashboard.machines.shifts = machineShifts;
+  server.cache.dashboard.operators.shifts = operatorShifts;
+  broadcastDashboardCacheUpdate(server);
+
+  if (logger) {
+    logger.info(
+      `[mongoWatchers] Updated dashboard shift caches with ${machineShifts.length} machine shift entries and ${operatorShifts.length} operator shift entries`
+    );
+  }
+
+  return contexts;
 }
 
 function createWatchPipeline(filter) {
@@ -378,6 +564,7 @@ async function refreshWatcherTargets(server) {
   const todayKey = getTodayRange().dateStr;
   if (server.cache.watchers.todayKey !== todayKey) {
     await refreshTodayCache(server);
+    await refreshTodayShiftCaches(server);
     await resetTodayWatcher(server);
   }
 
@@ -385,6 +572,7 @@ async function refreshWatcherTargets(server) {
   const nextShiftKey = context ? `${context.dateStr}|${String(context.shiftOid)}` : null;
   if (server.cache.watchers.currentShiftKey !== nextShiftKey) {
     await refreshCurrentShiftCache(server);
+    await refreshTodayShiftCaches(server);
     await resetCurrentShiftWatcher(server);
   }
 }
@@ -394,7 +582,12 @@ async function startMongoWatchers(server) {
   const { logger } = server;
 
   await refreshTodayCache(server);
-  await refreshCurrentShiftCache(server);
+  refreshCurrentShiftCache(server).catch((error) => {
+    if (logger) logger.error(`[mongoWatchers] Failed to warm current shift cache: ${error.message}`);
+  });
+  refreshTodayShiftCaches(server).catch((error) => {
+    if (logger) logger.error(`[mongoWatchers] Failed to warm dashboard shift caches: ${error.message}`);
+  });
 
   try {
     await resetTodayWatcher(server);

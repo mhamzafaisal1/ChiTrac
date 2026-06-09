@@ -341,8 +341,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.stopPolling();
 
     const scope = this.getDashboardCacheScope();
+    const shiftId = this.dateTimeService.getShiftId();
     this.pollingSubscription = this.websocketService
-      .operatorDashboardData$(scope)
+      .operatorDashboardData$(scope, shiftId)
       .pipe(takeUntil(this.destroy$))
       .subscribe((data) => {
         this.updateDashboardData(data);
