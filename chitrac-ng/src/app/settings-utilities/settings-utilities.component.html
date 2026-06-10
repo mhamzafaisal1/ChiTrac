@@ -42,6 +42,29 @@
           </mat-form-field>
         </div>
       </div>
+
+      <div class="percent-breakpoints">
+        <h3>OE percent breakpoints</h3>
+        <div class="percent-breakpoint-fields">
+          <mat-form-field>
+            <mat-label>Poor</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="oePercentBreakpoints.poor">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Okay</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="oePercentBreakpoints.okay">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Good</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="oePercentBreakpoints.good">
+            <span matSuffix>%</span>
+          </mat-form-field>
+        </div>
+      </div>
     </mat-card-content>
 
     <mat-card-actions>
@@ -55,6 +78,12 @@
         <mat-spinner *ngIf="isSavingPercentBreakpoints" diameter="20"></mat-spinner>
         <mat-icon *ngIf="!isSavingPercentBreakpoints">tune</mat-icon>
         {{ isSavingPercentBreakpoints ? 'Saving...' : 'Save Breakpoints' }}
+      </button>
+
+      <button mat-raised-button color="primary" (click)="saveOePercentBreakpoints()" [disabled]="isSavingOePercentBreakpoints">
+        <mat-spinner *ngIf="isSavingOePercentBreakpoints" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isSavingOePercentBreakpoints">speed</mat-icon>
+        {{ isSavingOePercentBreakpoints ? 'Saving...' : 'Save OE Breakpoints' }}
       </button>
     </mat-card-actions>
   </mat-card>

@@ -7,6 +7,12 @@ const DEFAULT_PERCENT_BREAKPOINTS: PercentBreakpoints = {
   good: 90
 };
 
+const DEFAULT_OE_PERCENT_BREAKPOINTS: PercentBreakpoints = {
+  poor: 0,
+  okay: 60,
+  good: 80
+};
+
 @Injectable({
   providedIn: 'root'
 })
@@ -23,11 +29,28 @@ export class PercentBreakpointService {
     return DEFAULT_PERCENT_BREAKPOINTS;
   }
 
+  getOeBreakpoints(): PercentBreakpoints {
+    const configured = this.settingsService.getSettings()?.oePercentBreakpoints;
+
+    if (this.isValid(configured)) {
+      return configured;
+    }
+
+    return DEFAULT_OE_PERCENT_BREAKPOINTS;
+  }
+
   getColorClass(value: unknown): string {
+    return this.getColorClassForBreakpoints(value, this.getBreakpoints());
+  }
+
+  getOeColorClass(value: unknown): string {
+    return this.getColorClassForBreakpoints(value, this.getOeBreakpoints());
+  }
+
+  private getColorClassForBreakpoints(value: unknown, breakpoints: PercentBreakpoints): string {
     const percentage = this.parsePercentage(value);
     if (percentage === null) return '';
 
-    const breakpoints = this.getBreakpoints();
     if (percentage >= breakpoints.good) return 'green';
     if (percentage >= breakpoints.okay) return 'yellow';
     if (percentage >= breakpoints.poor) return 'red';
@@ -36,6 +59,15 @@ export class PercentBreakpointService {
 
   getDashboardColor(value: unknown): 'green' | 'orange' | 'red' {
     const colorClass = this.getColorClass(value);
+    return this.dashboardColorFromClass(colorClass);
+  }
+
+  getOeDashboardColor(value: unknown): 'green' | 'orange' | 'red' {
+    const colorClass = this.getOeColorClass(value);
+    return this.dashboardColorFromClass(colorClass);
+  }
+
+  private dashboardColorFromClass(colorClass: string): 'green' | 'orange' | 'red' {
     if (colorClass === 'green') return 'green';
     if (colorClass === 'yellow') return 'orange';
     return 'red';
@@ -43,6 +75,15 @@ export class PercentBreakpointService {
 
   getColorHex(value: unknown): string {
     const colorClass = this.getColorClass(value);
+    return this.hexFromClass(colorClass);
+  }
+
+  getOeColorHex(value: unknown): string {
+    const colorClass = this.getOeColorClass(value);
+    return this.hexFromClass(colorClass);
+  }
+
+  private hexFromClass(colorClass: string): string {
     if (colorClass === 'green') return '#66bb6a';
     if (colorClass === 'yellow') return '#ffca28';
     return '#ef5350';
@@ -50,6 +91,15 @@ export class PercentBreakpointService {
 
   getLegacyColorHex(value: unknown): string {
     const colorClass = this.getColorClass(value);
+    return this.legacyHexFromClass(colorClass);
+  }
+
+  getOeLegacyColorHex(value: unknown): string {
+    const colorClass = this.getOeColorClass(value);
+    return this.legacyHexFromClass(colorClass);
+  }
+
+  private legacyHexFromClass(colorClass: string): string {
     if (colorClass === 'green') return '#008000';
     if (colorClass === 'yellow') return '#F89406';
     return '#FF0000';

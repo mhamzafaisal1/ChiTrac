@@ -115,6 +115,7 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   /** Derive color from efficiency value (frontend-controlled: ≥90 green, 70-89 yellow, <70 red). */
   getColor(value: number | undefined | null): 'green' | 'orange' | 'red' {
     const v = value ?? 0;
+    if (this.mode === 'oee') return this.percentBreakpointService.getOeDashboardColor(v);
     return this.percentBreakpointService.getDashboardColor(v);
   }
 

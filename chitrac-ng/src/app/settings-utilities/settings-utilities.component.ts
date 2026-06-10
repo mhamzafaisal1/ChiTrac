@@ -45,11 +45,17 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isDeleteNodeLogsLoading = false;
   isSavingDashboardTimeframe = false;
   isSavingPercentBreakpoints = false;
+  isSavingOePercentBreakpoints = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
   percentBreakpoints: PercentBreakpoints = {
     poor: 0,
     okay: 70,
     good: 90
+  };
+  oePercentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 60,
+    good: 80
   };
   nodeLogsCutoffDate: Date | null = null;
   lastRebootResponse: RebootResponse | null = null;
@@ -73,10 +79,14 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
         this.percentBreakpoints = settings.percentBreakpoints
           ? { ...settings.percentBreakpoints }
           : { poor: 0, okay: 70, good: 90 };
+        this.oePercentBreakpoints = settings.oePercentBreakpoints
+          ? { ...settings.oePercentBreakpoints }
+          : { poor: 0, okay: 60, good: 80 };
       },
       error: () => {
         this.dashboardTimeframe = 'current';
         this.percentBreakpoints = { poor: 0, okay: 70, good: 90 };
+        this.oePercentBreakpoints = { poor: 0, okay: 60, good: 80 };
       }
     });
 
@@ -138,34 +148,12 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   }
 
   savePercentBreakpoints(): void {
-    const rawValues = [
-      this.percentBreakpoints.poor,
-      this.percentBreakpoints.okay,
-      this.percentBreakpoints.good
-    ];
-    const poor = Number(this.percentBreakpoints.poor);
-    const okay = Number(this.percentBreakpoints.okay);
-    const good = Number(this.percentBreakpoints.good);
-
-    if (rawValues.some((value) => value === null || value === undefined || `${value}`.trim() === '') || ![poor, okay, good].every(Number.isFinite)) {
-      this.snackBar.open('Enter valid percentage breakpoints.', 'Close', {
-        duration: 5000,
-        panelClass: ['warning-snackbar']
-      });
-      return;
-    }
-
-    if (!(good > okay && okay > poor)) {
-      this.snackBar.open('Percent breakpoints must satisfy Good > Okay > Poor.', 'Close', {
-        duration: 5000,
-        panelClass: ['warning-snackbar']
-      });
-      return;
-    }
+    const breakpoints = this.normalizeBreakpoints(this.percentBreakpoints);
+    if (!breakpoints) return;
 
     this.isSavingPercentBreakpoints = true;
 
-    this.settingsService.savePercentBreakpoints({ poor, okay, good }).subscribe({
+    this.settingsService.savePercentBreakpoints(breakpoints).subscribe({
       next: () => {
         this.isSavingPercentBreakpoints = false;
         this.settingsService.loadSettings().subscribe();
@@ -183,6 +171,61 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
         });
       }
     });
+  }
+
+  saveOePercentBreakpoints(): void {
+    const breakpoints = this.normalizeBreakpoints(this.oePercentBreakpoints);
+    if (!breakpoints) return;
+
+    this.isSavingOePercentBreakpoints = true;
+
+    this.settingsService.saveOePercentBreakpoints(breakpoints).subscribe({
+      next: () => {
+        this.isSavingOePercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('OE percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save OE percent breakpoints';
+        this.isSavingOePercentBreakpoints = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  private normalizeBreakpoints(source: PercentBreakpoints): PercentBreakpoints | null {
+    const rawValues = [
+      source.poor,
+      source.okay,
+      source.good
+    ];
+    const poor = Number(source.poor);
+    const okay = Number(source.okay);
+    const good = Number(source.good);
+
+    if (rawValues.some((value) => value === null || value === undefined || `${value}`.trim() === '') || ![poor, okay, good].every(Number.isFinite)) {
+      this.snackBar.open('Enter valid percentage breakpoints.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    if (!(good > okay && okay > poor)) {
+      this.snackBar.open('Percent breakpoints must satisfy Good > Okay > Poor.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    return { poor, okay, good };
   }
 
   scheduleReboot(): void {

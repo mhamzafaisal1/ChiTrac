@@ -228,7 +228,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   }
 
   private getOeeColor(oee: number): string {
-    return this.percentBreakpointService.getColorHex(oee);
+    return this.percentBreakpointService.getOeColorHex(oee);
   }
 
   private enterDummy(): void {

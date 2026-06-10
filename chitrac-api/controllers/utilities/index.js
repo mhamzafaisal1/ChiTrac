@@ -2562,7 +2562,8 @@ function constructor(server) {
         systemName: config.systemName,
         httpsEnabled: config.httpsEnabled,
         dashboardTimeframe: config.dashboardTimeframe || 'current',
-        percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined
+        percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined,
+        oePercentBreakpoints: config.oePercentBreakpoints ? { ...config.oePercentBreakpoints } : undefined
       });
     } catch (error) {
       logger.error(`Error retrieving settings:`, error);

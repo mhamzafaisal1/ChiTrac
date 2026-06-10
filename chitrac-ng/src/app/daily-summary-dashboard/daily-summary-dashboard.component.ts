@@ -657,6 +657,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   // Add this helper for dynamic color coding
   getPerformanceClass = (value: any, column?: string): string => {
     if (column !== 'OEE' && column !== 'Efficiency') return '';
+    if (column === 'OEE') return this.percentBreakpointService.getOeColorClass(value);
     return this.percentBreakpointService.getColorClass(value);
   };
 

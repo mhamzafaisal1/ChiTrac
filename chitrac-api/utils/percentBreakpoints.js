@@ -4,9 +4,13 @@ const DEFAULT_PERCENT_BREAKPOINTS = {
   good: 90
 };
 
-function getPercentBreakpoints(config = {}) {
-  const configured = config.percentBreakpoints;
+const DEFAULT_OE_PERCENT_BREAKPOINTS = {
+  poor: 0,
+  okay: 60,
+  good: 80
+};
 
+function isValidBreakpoints(configured) {
   if (
     configured &&
     Number.isFinite(configured.poor) &&
@@ -15,10 +19,33 @@ function getPercentBreakpoints(config = {}) {
     configured.good > configured.okay &&
     configured.okay > configured.poor
   ) {
-    return configured;
+    return true;
   }
 
-  return DEFAULT_PERCENT_BREAKPOINTS;
+  return false;
+}
+
+function getConfiguredBreakpoints(configured, defaults) {
+  if (isValidBreakpoints(configured)) return configured;
+  return defaults;
+}
+
+function getPercentBreakpoints(config = {}) {
+  return getConfiguredBreakpoints(config.percentBreakpoints, DEFAULT_PERCENT_BREAKPOINTS);
+}
+
+function getOePercentBreakpoints(config = {}) {
+  return getConfiguredBreakpoints(config.oePercentBreakpoints, DEFAULT_OE_PERCENT_BREAKPOINTS);
+}
+
+function getColorForBreakpoints(value, breakpoints) {
+  const percentage = normalizePercentValue(value);
+  if (percentage === null) return 'red';
+
+  if (percentage >= breakpoints.good) return 'green';
+  if (percentage >= breakpoints.okay) return 'orange';
+  if (percentage >= breakpoints.poor) return 'red';
+  return 'red';
 }
 
 function normalizePercentValue(value) {
@@ -28,18 +55,18 @@ function normalizePercentValue(value) {
 }
 
 function getPercentBreakpointColor(value, config = {}) {
-  const percentage = normalizePercentValue(value);
-  if (percentage === null) return 'red';
+  return getColorForBreakpoints(value, getPercentBreakpoints(config));
+}
 
-  const breakpoints = getPercentBreakpoints(config);
-  if (percentage >= breakpoints.good) return 'green';
-  if (percentage >= breakpoints.okay) return 'orange';
-  if (percentage >= breakpoints.poor) return 'red';
-  return 'red';
+function getOePercentBreakpointColor(value, config = {}) {
+  return getColorForBreakpoints(value, getOePercentBreakpoints(config));
 }
 
 module.exports = {
   DEFAULT_PERCENT_BREAKPOINTS,
+  DEFAULT_OE_PERCENT_BREAKPOINTS,
   getPercentBreakpoints,
-  getPercentBreakpointColor
+  getOePercentBreakpoints,
+  getPercentBreakpointColor,
+  getOePercentBreakpointColor
 };

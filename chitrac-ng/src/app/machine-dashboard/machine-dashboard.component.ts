@@ -767,8 +767,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  getEfficiencyClass = (value: any): string => {
+  getEfficiencyClass = (value: any, column?: string): string => {
     if (typeof value !== "string" || !value.includes("%")) return "";
+    if (column === "OEE") return this.percentBreakpointService.getOeColorClass(value);
     return this.percentBreakpointService.getColorClass(value);
   };
 

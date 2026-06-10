@@ -632,6 +632,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   getEfficiencyClass = (value: any, column: string): string => {
     if ((column === 'Efficiency' || column === 'OEE' || column === 'Availability' || column === 'Throughput') && typeof value === 'string' && value.includes('%')) {
+      if (column === 'OEE') return this.percentBreakpointService.getOeColorClass(value);
       return this.percentBreakpointService.getColorClass(value);
     }
     return '';

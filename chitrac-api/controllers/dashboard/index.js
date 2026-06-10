@@ -55,7 +55,10 @@ const {
   liveAvailabilityRatioFromRuntimeSec,
   liveAvailabilityRatioFromMs,
 } = require("../../utils/availabilityLive");
-const { getPercentBreakpointColor } = require("../../utils/percentBreakpoints");
+const {
+  getPercentBreakpointColor,
+  getOePercentBreakpointColor
+} = require("../../utils/percentBreakpoints");
 
 async function resolveShiftIdString(req, db) {
   const raw = req.query.shiftId;
@@ -986,7 +989,7 @@ module.exports = function (server) {
             oeeObj[key] = {
               value: Math.round(oeeVal * 100),
               label,
-              color: getPercentBreakpointColor(oeeVal, config),
+              color: getOePercentBreakpointColor(oeeVal, config),
             };
           }
 
@@ -1014,7 +1017,7 @@ module.exports = function (server) {
           oeeObj.today = {
             value: Math.round(todayOee * 100),
             label: "All Day",
-            color: getPercentBreakpointColor(todayOee, config),
+            color: getOePercentBreakpointColor(todayOee, config),
           };
 
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -1222,7 +1225,7 @@ module.exports = function (server) {
             oeeObj[key] = {
               value: Math.round(oeeVal * 100),
               label,
-              color: getPercentBreakpointColor(oeeVal, config),
+              color: getOePercentBreakpointColor(oeeVal, config),
             };
           }
 
@@ -1250,7 +1253,7 @@ module.exports = function (server) {
           oeeObj.today = {
             value: Math.round(todayOee * 100),
             label: "All Day",
-            color: getPercentBreakpointColor(todayOee, config),
+            color: getOePercentBreakpointColor(todayOee, config),
           };
 
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -1496,7 +1499,7 @@ module.exports = function (server) {
         oeeObj[key] = {
           value: Math.round(oeeVal * 100),
           label,
-          color: getPercentBreakpointColor(oeeVal, config),
+          color: getOePercentBreakpointColor(oeeVal, config),
         };
       }
 
@@ -1529,7 +1532,7 @@ module.exports = function (server) {
       oeeObj.today = {
         value: Math.round(todayOee * 100),
         label: "All Day",
-        color: getPercentBreakpointColor(todayOee, config),
+        color: getOePercentBreakpointColor(todayOee, config),
       };
 
       const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);

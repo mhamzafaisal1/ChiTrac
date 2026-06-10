@@ -18,6 +18,41 @@ const DEFAULT_PERCENT_BREAKPOINTS = {
   good: 90
 };
 
+const DEFAULT_OE_PERCENT_BREAKPOINTS = {
+  poor: 0,
+  okay: 60,
+  good: 80
+};
+
+function buildPercentBreakpointSchema(descriptionPrefix) {
+  return {
+    type: 'object',
+    required: ['poor', 'okay', 'good'],
+    properties: {
+      poor: {
+        type: 'number',
+        minimum: 0,
+        maximum: 100,
+        description: `${descriptionPrefix} poor/red dashboard color coding`
+      },
+      okay: {
+        type: 'number',
+        minimum: 0,
+        maximum: 100,
+        description: `${descriptionPrefix} okay/yellow-orange dashboard color coding`
+      },
+      good: {
+        type: 'number',
+        minimum: 0,
+        maximum: 100,
+        description: `${descriptionPrefix} good/green dashboard color coding`
+      }
+    },
+    additionalProperties: false,
+    description: 'Dashboard percentage breakpoints. If present, poor, okay, and good are all required.'
+  };
+}
+
 const schema = {
   type: 'object',
   required: ['userPermissionsLevels'],
@@ -47,32 +82,8 @@ const schema = {
       enum: ['current', 'shift', null],
       description: "Default dashboard timeframe. 'current' uses midnight-to-now; 'shift' uses the active/current shift when available."
     },
-    percentBreakpoints: {
-      type: 'object',
-      required: ['poor', 'okay', 'good'],
-      properties: {
-        poor: {
-          type: 'number',
-          minimum: 0,
-          maximum: 100,
-          description: 'Percentage threshold for poor/red dashboard color coding'
-        },
-        okay: {
-          type: 'number',
-          minimum: 0,
-          maximum: 100,
-          description: 'Percentage threshold for okay/yellow-orange dashboard color coding'
-        },
-        good: {
-          type: 'number',
-          minimum: 0,
-          maximum: 100,
-          description: 'Percentage threshold for good/green dashboard color coding'
-        }
-      },
-      additionalProperties: false,
-      description: 'Dashboard percentage breakpoints. If present, poor, okay, and good are all required.'
-    },
+    percentBreakpoints: buildPercentBreakpointSchema('Percentage threshold for'),
+    oePercentBreakpoints: buildPercentBreakpointSchema('OE percentage threshold for'),
     userPermissionsLevels: {
       type: 'array',
       minItems: 8,
@@ -103,6 +114,7 @@ function buildDefaultPreferences(config = {}) {
     logLevel: config.logLevel || 'info',
     dashboardTimeframe: 'current',
     percentBreakpoints: config.percentBreakpoints || { ...DEFAULT_PERCENT_BREAKPOINTS },
+    oePercentBreakpoints: config.oePercentBreakpoints || { ...DEFAULT_OE_PERCENT_BREAKPOINTS },
     userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
       ? [...config.userPermissionsLevels]
       : [...DEFAULT_USER_PERMISSION_LEVELS],
@@ -111,20 +123,20 @@ function buildDefaultPreferences(config = {}) {
   };
 }
 
-function normalizePercentBreakpoints(input) {
+function normalizePercentBreakpoints(input, fieldName = 'percentBreakpoints') {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return input;
   }
 
   if (!['poor', 'okay', 'good'].every((key) => Object.prototype.hasOwnProperty.call(input, key))) {
-    const error = new Error('Schema validation failed: percentBreakpoints requires poor, okay, and good');
+    const error = new Error(`Schema validation failed: ${fieldName} requires poor, okay, and good`);
     error.status = 400;
     throw error;
   }
 
   for (const key of ['poor', 'okay', 'good']) {
     if (input[key] === null || input[key] === '') {
-      const error = new Error('Schema validation failed: percentBreakpoints values must be finite numbers');
+      const error = new Error(`Schema validation failed: ${fieldName} values must be finite numbers`);
       error.status = 400;
       throw error;
     }
@@ -137,20 +149,20 @@ function normalizePercentBreakpoints(input) {
   };
 }
 
-function validatePercentBreakpointOrder(preferences) {
-  const breakpoints = preferences.percentBreakpoints;
+function validatePercentBreakpointOrder(preferences, fieldName = 'percentBreakpoints') {
+  const breakpoints = preferences[fieldName];
   if (!breakpoints) return;
 
   const { poor, okay, good } = breakpoints;
 
   if (![poor, okay, good].every(Number.isFinite)) {
-    const error = new Error('Schema validation failed: percentBreakpoints values must be finite numbers');
+    const error = new Error(`Schema validation failed: ${fieldName} values must be finite numbers`);
     error.status = 400;
     throw error;
   }
 
   if (!(good > okay && okay > poor)) {
-    const error = new Error('Schema validation failed: percentBreakpoints must satisfy good > okay > poor');
+    const error = new Error(`Schema validation failed: ${fieldName} must satisfy good > okay > poor`);
     error.status = 400;
     throw error;
   }
@@ -163,8 +175,11 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     ? input.userPermissionsLevels.map(label => `${label}`.trim())
     : existing.userPermissionsLevels || defaults.userPermissionsLevels;
   const percentBreakpoints = Object.prototype.hasOwnProperty.call(input, 'percentBreakpoints')
-    ? normalizePercentBreakpoints(input.percentBreakpoints)
+    ? normalizePercentBreakpoints(input.percentBreakpoints, 'percentBreakpoints')
     : existing.percentBreakpoints || defaults.percentBreakpoints;
+  const oePercentBreakpoints = Object.prototype.hasOwnProperty.call(input, 'oePercentBreakpoints')
+    ? normalizePercentBreakpoints(input.oePercentBreakpoints, 'oePercentBreakpoints')
+    : existing.oePercentBreakpoints || defaults.oePercentBreakpoints;
 
   const preferences = {
     _id: 'system-preferences',
@@ -173,6 +188,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     logLevel: input.logLevel ?? existing.logLevel ?? defaults.logLevel,
     dashboardTimeframe: input.dashboardTimeframe ?? existing.dashboardTimeframe ?? defaults.dashboardTimeframe,
     percentBreakpoints,
+    oePercentBreakpoints,
     userPermissionsLevels,
     createdAt: existing.createdAt || defaults.createdAt,
     updatedAt: now
@@ -184,7 +200,8 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     preferences.httpsEnabled = existing.httpsEnabled;
   }
 
-  validatePercentBreakpointOrder(preferences);
+  validatePercentBreakpointOrder(preferences, 'percentBreakpoints');
+  validatePercentBreakpointOrder(preferences, 'oePercentBreakpoints');
 
   const valid = validate(preferences);
   if (!valid) {
@@ -202,6 +219,7 @@ module.exports = {
   utils: {
     DEFAULT_USER_PERMISSION_LEVELS,
     DEFAULT_PERCENT_BREAKPOINTS,
+    DEFAULT_OE_PERCENT_BREAKPOINTS,
     buildDefaultPreferences,
     normalizePreferences
   }

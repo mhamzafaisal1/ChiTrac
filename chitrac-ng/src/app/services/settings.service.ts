@@ -11,6 +11,7 @@ export interface AppSettings {
   httpsEnabled: boolean;
   dashboardTimeframe?: 'current' | 'shift' | null;
   percentBreakpoints?: PercentBreakpoints;
+  oePercentBreakpoints?: PercentBreakpoints;
 }
 
 export interface PercentBreakpoints {
@@ -69,6 +70,17 @@ export class SettingsService {
         const current = this.settingsSubject.value;
         if (current) {
           this.settingsSubject.next({ ...current, percentBreakpoints });
+        }
+      })
+    );
+  }
+
+  saveOePercentBreakpoints(oePercentBreakpoints: PercentBreakpoints): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { oePercentBreakpoints }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, oePercentBreakpoints });
         }
       })
     );
