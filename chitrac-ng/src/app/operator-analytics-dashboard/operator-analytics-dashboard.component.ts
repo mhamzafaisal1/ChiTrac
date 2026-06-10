@@ -51,6 +51,16 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   operatorId?: number;
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    Runtime: 'Amount of time operator has been running across all machines',
+    Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
+    'Total Count': 'Amount of pieces fed by operator',
+    'Misfeed Count': 'Amount of pieces misfed or rejected by the operator.',
+    Availability: 'Percent of time operator was active on a running machine.',
+    Throughput: 'Percent of pieces fed which were good quality (not misfed or rejected).',
+    Efficiency: 'Percent of goal pace being achieved.',
+    OEE: 'Overall Equipment Efficiency, combination of Availability, Efficiency, and Throughput',
+  };
   selectedRow: any = null;
   operatorData: any[] = []; // Store the raw dashboard data
   liveMode: boolean = false;

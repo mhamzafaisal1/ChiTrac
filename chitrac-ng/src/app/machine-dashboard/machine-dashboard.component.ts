@@ -51,6 +51,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   machineData: any[] = [];
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    Runtime: "Amount of time machine has been running",
+    Downtime: "Amount of time machine has been paused, faulted, or offline.",
+    "Total Count": "Amount of pieces fed into the machine/line.",
+    "Misfeed Count": "Amount of pieces misfed or rejected by the machine/line.",
+    Availability: "Percent of time machine was running.",
+    Throughput: "Percent of pieces fed which were good quality (not misfed or rejected).",
+    Efficiency: "Percent of goal pace being achieved.",
+    OEE: "Overall Equipment Efficiency, combination of Availability, Efficiency, and Throughput",
+  };
   selectedRow: any | null = null;
   isDarkTheme: boolean = false;
   liveMode: boolean = false;

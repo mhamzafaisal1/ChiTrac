@@ -14,6 +14,7 @@ import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 
 interface ItemSummary {
+  itemId?: number | string;
   itemName: string;
   workedTimeFormatted: { hours: number; minutes: number };
   count: number;
@@ -43,6 +44,13 @@ export class ItemReportComponent implements OnInit, OnDestroy {
   endTime: string = '';
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    'Worked Time': 'Amount of time item has been run across all machines.',
+    'Count Total': 'Amount of pieces fed for this item.',
+    'PPH': 'Pieces Per Hour',
+    'Standard': 'Pieces Per Hour Goal',
+    'Efficiency': 'Percent of goal pace being achieved.',
+  };
   isDarkTheme: boolean = false;
   isLoading: boolean = false;
   isDownloading: boolean = false;
@@ -104,10 +112,11 @@ export class ItemReportComponent implements OnInit, OnDestroy {
           'Count Total': item.count,
           'PPH': item.pph,
           'Standard': item.standard,
-          'Efficiency': `${item.efficiency}%`
+          'Efficiency': `${item.efficiency}%`,
+          '_tooltipItemId': item.itemId ?? ''
         }));
 
-        this.columns = Object.keys(formattedData[0]);
+        this.columns = ['Item Name', 'Worked Time', 'Count Total', 'PPH', 'Standard', 'Efficiency'];
         this.rows = formattedData;
         this.isLoading = false;
       },
@@ -214,6 +223,13 @@ export class ItemReportComponent implements OnInit, OnDestroy {
         }, 500);
       }
     }, 100);
+  }
+
+  getCellTooltip(row: any, column: string): string {
+    if (column === 'Item Name' && row?._tooltipItemId != null && row._tooltipItemId !== '') {
+      return `Item ID: ${row._tooltipItemId}`;
+    }
+    return '';
   }
 
   private formatDateForInput(date: Date): string {

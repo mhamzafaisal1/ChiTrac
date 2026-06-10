@@ -38,6 +38,13 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   endTime: string = '';
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    'Total Time (Runtime)': 'Amount of time machine has been running',
+    'Total Count': 'Amount of pieces fed into the machine/line.',
+    'PPH': 'Pieces Per Hour',
+    'Standard': 'Pieces Per Hour Goal',
+    'Efficiency': 'Percent of goal pace being achieved.',
+  };
   isDarkTheme: boolean = false;
   isLoading: boolean = false;
   isDownloading: boolean = false;
@@ -122,7 +129,9 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       if (!summary) return;
 
       const itemSummaries = summary.itemSummaries;
-      const items = itemSummaries != null ? Object.values(itemSummaries) : [];
+      const items = itemSummaries != null
+        ? Object.entries(itemSummaries).map(([itemId, item]: [string, any]) => ({ ...item, itemId }))
+        : [];
 
       const totalItem = items.find((item: any) => item.name === 'Total');
       const otherItems = items.filter((item: any) => item.name !== 'Total');
@@ -140,13 +149,25 @@ export class MachineReportComponent implements OnInit, OnDestroy {
           'Total Count': item.countTotal ?? 0,
           'PPH': item.pph ?? 0,
           'Standard': item.standard != null ? Number(item.standard).toFixed(2) : '',
-          'Efficiency': item.efficiency != null ? `${item.efficiency}%` : ''
+          'Efficiency': item.efficiency != null ? `${item.efficiency}%` : '',
+          '_tooltipMachineSerial': machine.machine?.serial ?? '',
+          '_tooltipItemId': item.name === 'Total' ? '' : item.itemId
         });
       });
     });
 
-    this.columns = formattedData.length ? Object.keys(formattedData[0]) : ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+    this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
+  }
+
+  getCellTooltip(row: any, column: string): string {
+    if (column === 'Machine' && row?._tooltipMachineSerial != null && row._tooltipMachineSerial !== '') {
+      return `Serial: ${row._tooltipMachineSerial}`;
+    }
+    if (column === 'Item' && row?._tooltipItemId != null && row._tooltipItemId !== '') {
+      return `Item ID: ${row._tooltipItemId}`;
+    }
+    return '';
   }
 
   getEfficiencyClass(value: any, column: string): string {
