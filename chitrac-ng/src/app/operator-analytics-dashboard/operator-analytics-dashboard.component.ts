@@ -8,7 +8,7 @@ import { MatTableModule } from '@angular/material/table';
 import { MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { Subject, takeUntil } from 'rxjs';
+import { delay, Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
@@ -17,7 +17,7 @@ import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
-import { DashboardCacheScope, WebsocketService } from '../services/websocket.service';
+import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -60,6 +60,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   isOpeningModal: boolean = false;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
+  private websocketStatus: WebsocketConnectionStatus = 'disconnected';
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
 
   // Chart dimensions
@@ -100,7 +101,25 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   
     // Add dummy loading row initially
     this.addDummyLoadingRow();
-    this.websocketService.connect();
+    this.websocketService.ensureConnected();
+    this.websocketService.status$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((status) => {
+        this.websocketStatus = status;
+        if (status === 'connected') {
+          this.stopPolling();
+        } else if ((status === 'disconnected' || status === 'error') && this.liveMode) {
+          this.setupPolling();
+        }
+      });
+
+    this.websocketService.dashboardCache$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((cache) => {
+        if (this.tryApplyWebsocketDashboardData(cache)) {
+          this.stopPolling();
+        }
+      });
 
     if (!isLive && wasConfirmed) {
       this.startTime = this.dateTimeService.getStartTime();
@@ -207,11 +226,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private setupPolling(): void {
-    if (this.liveMode) {
-      this.subscribeToWebsocketDashboardData();
-      return;
-
-      /*
+    if (this.liveMode && this.websocketStatus !== 'connected' && !this.pollingSubscription) {
       // Setup polling for subsequent updates
       this.pollingSubscription = this.pollingService.poll(
         () => {
@@ -246,8 +261,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         false,  // isModal
         false   // 👈 prevents immediate call
       ).subscribe();
-      */
-      
     }
   }
 
@@ -293,9 +306,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   async fetchAnalyticsData(): Promise<void> {
     this.isLoading = true;
+
     if (this.shouldUseWebsocketDashboardData()) {
-      this.subscribeToWebsocketDashboardData();
-      return;
+      this.websocketService.ensureConnected();
+      if (this.tryApplyWebsocketDashboardData(null)) {
+        return;
+      }
     }
 
     this.fetchRestDashboardData();
@@ -645,6 +661,26 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
+    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+      return false;
+    }
+
+    const dashboardCache = cache || this.websocketService.getDashboardCacheSnapshot();
+    const envelope = this.dateTimeService.getShiftId()
+      ? dashboardCache?.currentShift
+      : dashboardCache?.today;
+    const data = envelope?.operatorsSummary;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return false;
+    }
+
+    this.updateDashboardData(data);
+    this.isLoading = false;
+    return true;
   }
 
   private addDummyLoadingRow(): void {

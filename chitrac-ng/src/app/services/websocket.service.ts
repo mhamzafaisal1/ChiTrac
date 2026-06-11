@@ -28,8 +28,8 @@ export interface DashboardCacheState {
 }
 
 interface DashboardCacheMessage {
-  type: 'dashboard-cache-update';
-  scope?: DashboardCacheScope | 'all' | 'dashboard';
+  type: 'dashboard-cache-update' | 'dashboard-cache';
+  scope?: DashboardCacheScope | 'all' | 'dashboard' | 'initial';
   cache?: DashboardCacheEnvelope | DashboardCacheState;
   dashboard?: DashboardCacheState['dashboard'];
 }
@@ -43,13 +43,23 @@ export class WebsocketService {
   private readonly messageSubject = new BehaviorSubject<string>('No websocket messages received.');
   private readonly errorSubject = new BehaviorSubject<string | null>(null);
   private readonly dashboardCacheSubject = new BehaviorSubject<DashboardCacheState>({});
+  private readonly sessionIdSubject = new BehaviorSubject<string | null>(null);
 
   readonly status$: Observable<WebsocketConnectionStatus> = this.statusSubject.asObservable();
   readonly message$: Observable<string> = this.messageSubject.asObservable();
   readonly error$: Observable<string | null> = this.errorSubject.asObservable();
   readonly dashboardCache$: Observable<DashboardCacheState> = this.dashboardCacheSubject.asObservable();
+  readonly sessionId$: Observable<string | null> = this.sessionIdSubject.asObservable();
 
   constructor(private zone: NgZone) {}
+
+  ensureConnected(): void {
+    this.connect();
+  }
+
+  getDashboardCacheSnapshot(): DashboardCacheState {
+    return this.dashboardCacheSubject.getValue();
+  }
 
   connect(): void {
     if (
@@ -154,18 +164,22 @@ export class WebsocketService {
 
   private handleMessage(data: unknown): void {
     const parsed = this.parseMessage(data);
-    if (!parsed || parsed.type !== 'dashboard-cache-update') {
-      return;
+    if (!parsed) return;
+
+    if ((parsed.type === 'dashboard-cache-update' || parsed.type === 'dashboard-cache') && parsed.cache) {
+      this.storeDashboardCache(parsed as DashboardCacheMessage);
     }
 
-    this.storeDashboardCache(parsed as DashboardCacheMessage);
+    if (parsed.type === 'websocket-session' && parsed.session?.id) {
+      this.sessionIdSubject.next(parsed.session.id);
+    }
   }
 
   private storeDashboardCache(message: DashboardCacheMessage): void {
     const current = this.dashboardCacheSubject.value;
+    const cache = message.cache as DashboardCacheState | undefined;
 
-    if (message.scope === 'all') {
-      const cache = message.cache as DashboardCacheState | undefined;
+    if (message.scope === 'all' || message.scope === 'initial' || message.type === 'dashboard-cache') {
       this.dashboardCacheSubject.next({
         today: cache?.today || current.today,
         currentShift: cache?.currentShift || current.currentShift,
@@ -177,7 +191,7 @@ export class WebsocketService {
     if (message.scope === 'dashboard') {
       this.dashboardCacheSubject.next({
         ...current,
-        dashboard: message.dashboard || (message.cache as DashboardCacheState | undefined)?.dashboard || current.dashboard
+        dashboard: message.dashboard || cache?.dashboard || current.dashboard
       });
       return;
     }
