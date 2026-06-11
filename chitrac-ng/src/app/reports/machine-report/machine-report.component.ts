@@ -14,6 +14,7 @@ import { BaseTableComponent } from '../../components/base-table/base-table.compo
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { getStatusDotByCode } from '../../../utils/status-utils';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 @Component({
     selector: 'app-machine-report',
@@ -56,7 +57,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   constructor(
     private reportsService: ReportsService,
     private renderer: Renderer2,
-    private elRef: ElementRef
+    private elRef: ElementRef,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -153,9 +155,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     if (column === 'Efficiency' && typeof value === 'string' && value.includes('%')) {
       const num = parseInt(value.replace('%', ''));
       if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      return this.percentBreakpointService.getColorClass(num);
     }
     return '';
   }

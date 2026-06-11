@@ -12,7 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
-import { SettingsService } from '../services/settings.service';
+import { PercentBreakpoints, SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { Subject, takeUntil } from 'rxjs';
 
@@ -44,7 +44,19 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isBackupLoading = false;
   isDeleteNodeLogsLoading = false;
   isSavingDashboardTimeframe = false;
+  isSavingPercentBreakpoints = false;
+  isSavingOePercentBreakpoints = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
+  percentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 70,
+    good: 90
+  };
+  oePercentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 60,
+    good: 80
+  };
   nodeLogsCutoffDate: Date | null = null;
   lastRebootResponse: RebootResponse | null = null;
   lastBackupResponse: MongoUsbBackupResponse | null = null;
@@ -64,9 +76,17 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     this.settingsService.getSystemPreferences().subscribe({
       next: (settings) => {
         this.dashboardTimeframe = settings.dashboardTimeframe === 'shift' ? 'shift' : 'current';
+        this.percentBreakpoints = settings.percentBreakpoints
+          ? { ...settings.percentBreakpoints }
+          : { poor: 0, okay: 70, good: 90 };
+        this.oePercentBreakpoints = settings.oePercentBreakpoints
+          ? { ...settings.oePercentBreakpoints }
+          : { poor: 0, okay: 60, good: 80 };
       },
       error: () => {
         this.dashboardTimeframe = 'current';
+        this.percentBreakpoints = { poor: 0, okay: 70, good: 90 };
+        this.oePercentBreakpoints = { poor: 0, okay: 60, good: 80 };
       }
     });
 
@@ -125,6 +145,87 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
         });
       }
     });
+  }
+
+  savePercentBreakpoints(): void {
+    const breakpoints = this.normalizeBreakpoints(this.percentBreakpoints);
+    if (!breakpoints) return;
+
+    this.isSavingPercentBreakpoints = true;
+
+    this.settingsService.savePercentBreakpoints(breakpoints).subscribe({
+      next: () => {
+        this.isSavingPercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('Percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save percent breakpoints';
+        this.isSavingPercentBreakpoints = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  saveOePercentBreakpoints(): void {
+    const breakpoints = this.normalizeBreakpoints(this.oePercentBreakpoints);
+    if (!breakpoints) return;
+
+    this.isSavingOePercentBreakpoints = true;
+
+    this.settingsService.saveOePercentBreakpoints(breakpoints).subscribe({
+      next: () => {
+        this.isSavingOePercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('OE percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save OE percent breakpoints';
+        this.isSavingOePercentBreakpoints = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  private normalizeBreakpoints(source: PercentBreakpoints): PercentBreakpoints | null {
+    const rawValues = [
+      source.poor,
+      source.okay,
+      source.good
+    ];
+    const poor = Number(source.poor);
+    const okay = Number(source.okay);
+    const good = Number(source.good);
+
+    if (rawValues.some((value) => value === null || value === undefined || `${value}`.trim() === '') || ![poor, okay, good].every(Number.isFinite)) {
+      this.snackBar.open('Enter valid percentage breakpoints.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    if (!(good > okay && okay > poor)) {
+      this.snackBar.open('Percent breakpoints must satisfy Good > Okay > Poor.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    return { poor, okay, good };
   }
 
   scheduleReboot(): void {

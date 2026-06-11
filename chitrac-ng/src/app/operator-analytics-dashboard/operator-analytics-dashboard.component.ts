@@ -8,7 +8,7 @@ import { MatTableModule } from '@angular/material/table';
 import { MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
+import { delay, Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
@@ -16,7 +16,8 @@ import { getStatusDotByCode } from '../../utils/status-utils';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
-import { DashboardCachePayload, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -87,6 +88,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
     private cdr: ChangeDetectorRef,
+    private percentBreakpointService: PercentBreakpointService,
     private websocketService: WebsocketService
   ) {}
 
@@ -259,7 +261,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         false,  // isModal
         false   // 👈 prevents immediate call
       ).subscribe();
-      
     }
   }
 
@@ -271,72 +272,142 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateDashboardData(data: any): void {
-    this.operatorData = Array.isArray(data) ? data : [data];
-    
+    const responses = Array.isArray(data) ? data : [data];
+    this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
+
+    if (this.operatorData.length === 0) {
+      this.rows = [];
+      this.cdr.markForCheck();
+      return;
+    }
+
     this.rows = this.operatorData.map(response => ({
       'Status': getStatusDotByCode(response.currentStatus?.code),
-      'Operator Name': response.operator.name,
-      'Operator ID': response.operator.id,
+      'Operator Name': this.formatOperatorName(response.operator?.name),
+      'Operator ID': response.operator?.id,
       'Current Machine': response.currentMachine?.name || '',
       'Current Machine Serial': response.currentMachine?.serial || '',
-      'Runtime': `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
-      'Downtime': `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
-      'Total Count': response.metrics.output.totalCount,
-      'Misfeed Count': response.metrics.output.misfeedCount,
-      'Availability': `${response.metrics.performance.availability.percentage}%`,
-      'Throughput': `${response.metrics.performance.throughput.percentage}%`,
-      'Efficiency': `${`${response.metrics.performance.efficiency.percentage}%`}%`,
-      'OEE': `${response.metrics.performance.oee.percentage}%`,
+      'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
+      'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Total Count': response.metrics.output?.totalCount ?? 0,
+      'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
+      'Availability': `${response.metrics.performance?.availability?.percentage ?? 0}%`,
+      'Throughput': `${response.metrics.performance?.throughput?.percentage ?? 0}%`,
+      'Efficiency': `${response.metrics.performance?.efficiency?.percentage ?? 0}%`,
+      'OEE': `${response.metrics.performance?.oee?.percentage ?? 0}%`,
       'Time Range': `${this.startTime} to ${this.endTime}`
     }));
 
     const allColumns = Object.keys(this.rows[0]);
     const columnsToHide = ['Operator ID', 'Time Range'];
     this.columns = allColumns.filter(col => !columnsToHide.includes(col));
+    this.cdr.markForCheck();
   }
 
   async fetchAnalyticsData(): Promise<void> {
-    if (!this.startTime || !this.endTime) return;
-
     this.isLoading = true;
 
-    if (this.tryApplyWebsocketDashboardData(null)) {
+    if (this.shouldUseWebsocketDashboardData()) {
+      this.websocketService.ensureConnected();
+      if (this.tryApplyWebsocketDashboardData(null)) {
+        return;
+      }
+    }
+
+    this.fetchRestDashboardData();
+  }
+
+  private fetchRestDashboardData(): void {
+    const timeframe = this.dateTimeService.getTimeframe();
+    const shiftId = this.dateTimeService.getShiftId();
+
+    if (timeframe) {
+      this.operatorService.getOperatorSummaryWithTimeframe(timeframe, shiftId)
+        .subscribe({
+          next: (data: any) => {
+            this.updateDashboardData(data);
+            this.isLoading = false;
+          },
+          error: (error) => {
+            console.error('Error fetching analytics data:', error);
+            this.rows = [];
+            this.isLoading = false;
+          }
+        });
+      return;
+    }
+
+    if (!this.startTime || !this.endTime) {
+      this.rows = [];
       this.isLoading = false;
       return;
     }
-    
-    // Check if we have a timeframe selected
-    const timeframe = this.dateTimeService.getTimeframe();
-    
-    if (timeframe) {
-      // Use timeframe-based API call
-      this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
-        .subscribe({
-          next: (data: any) => {
-            this.updateDashboardData(data);
-            this.isLoading = false;
-          },
-          error: (error) => {
-            console.error('Error fetching analytics data:', error);
-            this.rows = [];
-            this.isLoading = false;
-          }
-        });
-    } else {
-      // Use operator-summary route for initial table data (all operators)
-      this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
-        .subscribe({
-          next: (data: any) => {
-            this.updateDashboardData(data);
-            this.isLoading = false;
-          },
-          error: (error) => {
-            console.error('Error fetching analytics data:', error);
-            this.rows = [];
-            this.isLoading = false;
-          }
-        });
+
+    this.operatorService.getOperatorSummary(this.startTime, this.endTime, shiftId)
+      .subscribe({
+        next: (data: any) => {
+          this.updateDashboardData(data);
+          this.isLoading = false;
+        },
+        error: (error) => {
+          console.error('Error fetching analytics data:', error);
+          this.rows = [];
+          this.isLoading = false;
+        }
+      });
+  }
+
+  private shouldUseWebsocketDashboardData(): boolean {
+    if (this.dateTimeService.getLiveMode()) {
+      return true;
     }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    if (shiftId) {
+      return this.isToday(this.startTime);
+    }
+
+    return this.isToday(this.startTime) && this.isToday(this.endTime);
+  }
+
+  private isToday(value: string): boolean {
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
+  }
+
+  private subscribeToWebsocketDashboardData(): void {
+    this.websocketService.connect();
+    this.stopPolling();
+
+    const scope = this.getDashboardCacheScope();
+    const shiftId = this.dateTimeService.getShiftId();
+    this.pollingSubscription = this.websocketService
+      .operatorDashboardData$(scope, shiftId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((data) => {
+        this.updateDashboardData(data);
+        this.isLoading = false;
+      });
+  }
+
+  private getDashboardCacheScope(): DashboardCacheScope {
+    return this.dateTimeService.getShiftId() ? 'currentShift' : 'today';
+  }
+
+  private formatOperatorName(name: any): string {
+    if (!name) return 'Unknown';
+    if (typeof name === 'string') return name;
+    if (name.first && name.surname) return `${name.first} ${name.surname}`;
+    if (name.first) return name.first;
+    return 'Unknown';
   }
 
   onDateChange(): void {
@@ -575,16 +646,13 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   
   }
 
-  getEfficiencyClass(value: any, column: string): string {
+  getEfficiencyClass = (value: any, column: string): string => {
     if ((column === 'Efficiency' || column === 'OEE' || column === 'Availability' || column === 'Throughput') && typeof value === 'string' && value.includes('%')) {
-      const num = parseInt(value.replace('%', ''));
-      if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      if (column === 'OEE') return this.percentBreakpointService.getOeColorClass(value);
+      return this.percentBreakpointService.getColorClass(value);
     }
     return '';
-  }
+  };
 
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
@@ -595,7 +663,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     return `${y}-${m}-${d}T${h}:${min}`;
   }
 
-  private tryApplyWebsocketDashboardData(cache: DashboardCachePayload | null): boolean {
+  private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
     if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
       return false;
     }

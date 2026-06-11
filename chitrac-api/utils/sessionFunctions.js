@@ -6,6 +6,7 @@
  */
 
 const config = require('../modules/config');
+const { getPercentBreakpointColor } = require('./percentBreakpoints');
 const {
   buildMachinePerformance,
   buildMachineItemSummary,
@@ -280,10 +281,10 @@ async function resolveBatchItemFromSessions(db, serialNum, operatorId) {
  */
 function buildZeroEfficiencyPayload() {
   return {
-    lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'yellow' },
-    lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'yellow' },
-    lastHour: { value: 0, label: 'Last Hour', color: 'yellow' },
-    today: { value: 0, label: 'All Day', color: 'yellow' }
+    lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: getPercentBreakpointColor(0, config) },
+    lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: getPercentBreakpointColor(0, config) },
+    lastHour: { value: 0, label: 'Last Hour', color: getPercentBreakpointColor(0, config) },
+    today: { value: 0, label: 'All Day', color: getPercentBreakpointColor(0, config) }
   };
 }
 
@@ -494,10 +495,10 @@ function calcTimeCredit(counts) {
  */
 function zeroEff() {
   return {
-    lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: 'yellow' },
-    lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: 'yellow' },
-    lastHour: { value: 0, label: 'Last Hour', color: 'yellow' },
-    today: { value: 0, label: 'All Day', color: 'yellow' }
+    lastSixMinutes: { value: 0, label: 'Last 6 Mins', color: getPercentBreakpointColor(0, config) },
+    lastFifteenMinutes: { value: 0, label: 'Last 15 Mins', color: getPercentBreakpointColor(0, config) },
+    lastHour: { value: 0, label: 'Last Hour', color: getPercentBreakpointColor(0, config) },
+    today: { value: 0, label: 'All Day', color: getPercentBreakpointColor(0, config) }
   };
 }
 

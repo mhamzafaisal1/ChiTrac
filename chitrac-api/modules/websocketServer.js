@@ -1,6 +1,5 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
-const { buildDashboardCacheMessage } = require('./mongoWatchers');
 
 const WS_PORT = 50001;
 const LOG_COLLECTION = 'ws-log';
@@ -93,6 +92,26 @@ function buildServerSnapshot(server) {
             }
         }
     };
+}
+
+function buildDashboardCacheSnapshot(server) {
+    const cache = server.cache || {};
+
+    return {
+        type: 'dashboard-cache-update',
+        timestamp: new Date().toISOString(),
+        scope: 'all',
+        cache: {
+            today: cache.today || {},
+            currentShift: cache.currentShift || {},
+            dashboard: cache.dashboard || {}
+        }
+    };
+}
+
+function shouldBroadcastServerChange(event) {
+    const path = Array.isArray(event?.path) ? event.path.join('.') : String(event?.path || '');
+    return !path.startsWith('cache.');
 }
 
 function getSocketInfo(req) {
@@ -268,6 +287,10 @@ function startWebsocketServer(server) {
 
     const subscription = typeof server.subscribe === 'function'
         ? server.subscribe((event) => {
+            if (!shouldBroadcastServerChange(event)) {
+                return;
+            }
+
             const payload = {
                 type: 'server-change',
                 timestamp: new Date().toISOString(),
@@ -319,7 +342,7 @@ function startWebsocketServer(server) {
             timestamp: new Date().toISOString(),
             session: toPublicClientSession(session)
         });
-        sendJson(ws, buildDashboardCacheMessage(server, 'initial'));
+        sendJson(ws, buildDashboardCacheSnapshot(server));
 
         ws.on('message', async (message) => {
             session.lastMessageAt = new Date().toISOString();
@@ -334,6 +357,7 @@ function startWebsocketServer(server) {
 
             try {
                 sendJson(ws, buildServerSnapshot(server));
+                sendJson(ws, buildDashboardCacheSnapshot(server));
                 await writeLog('server-info-sent', socketInfo);
             } catch (error) {
                 await writeError('message-response-failed', error, socketInfo);
@@ -373,5 +397,6 @@ function startWebsocketServer(server) {
 
 module.exports = {
     startWebsocketServer,
-    buildServerSnapshot
+    buildServerSnapshot,
+    buildDashboardCacheSnapshot
 };

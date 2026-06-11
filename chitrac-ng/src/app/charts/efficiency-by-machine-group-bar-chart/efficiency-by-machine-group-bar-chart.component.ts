@@ -5,6 +5,7 @@ import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cart
 import { DashboardService } from '../../services/dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
@@ -49,7 +50,8 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   constructor(
     private dashboardService: DashboardService,
     private pollingService: PollingService,
-    private dateTimeService: DateTimeService
+    private dateTimeService: DateTimeService,
+    private percentBreakpointService: PercentBreakpointService
   ) {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
     new MutationObserver(() => {
@@ -238,9 +240,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   }
 
   private getEfficiencyColor(efficiency: number): string {
-    if (efficiency >= 85) return '#66bb6a';
-    if (efficiency >= 60) return '#ffca28';
-    return '#ef5350';
+    return this.percentBreakpointService.getColorHex(efficiency);
   }
 
   private enterDummy(): void {

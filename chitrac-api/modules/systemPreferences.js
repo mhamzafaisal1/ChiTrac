@@ -48,6 +48,14 @@ function applySystemPreferences(config, preferences = {}) {
     config.dashboardTimeframe = 'current';
   }
 
+  if (preferences.percentBreakpoints) {
+    config.percentBreakpoints = { ...preferences.percentBreakpoints };
+  }
+
+  if (preferences.oePercentBreakpoints) {
+    config.oePercentBreakpoints = { ...preferences.oePercentBreakpoints };
+  }
+
   if (Array.isArray(preferences.userPermissionsLevels)) {
     config.userPermissionsLevels = preferences.userPermissionsLevels.map(label => `${label}`.trim());
   }

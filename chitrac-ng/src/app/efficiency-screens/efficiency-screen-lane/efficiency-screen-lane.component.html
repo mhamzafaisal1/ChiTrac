@@ -5,7 +5,7 @@
       <div class="lane-inner">
         <div class="operator-block" [ngClass]="{
           'no-operator': isNoOperator,
-          'yellow': getSlots().lastSixMinutes.color === 'yellow',
+          'red': getSlots().lastSixMinutes.color === 'red',
           'green': getSlots().lastSixMinutes.color === 'green',
           'orange': getSlots().lastSixMinutes.color === 'orange'
         }">
@@ -15,7 +15,7 @@
         </div>
         <div class="data-block">
           <div class="efficiency-value" [ngClass]="{
-            'yellow': getSlots().lastSixMinutes.color === 'yellow',
+            'red': getSlots().lastSixMinutes.color === 'red',
             'green': getSlots().lastSixMinutes.color === 'green',
             'orange': getSlots().lastSixMinutes.color === 'orange'
           }">
@@ -27,7 +27,7 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastFifteenMinutes.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastFifteenMinutes.value" [ngClass]="{
-                    'yellow': getSlots().lastFifteenMinutes.color === 'yellow',
+                    'red': getSlots().lastFifteenMinutes.color === 'red',
                     'green': getSlots().lastFifteenMinutes.color === 'green',
                     'orange': getSlots().lastFifteenMinutes.color === 'orange'
                   }"></div>
@@ -38,7 +38,7 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastHour.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastHour.value" [ngClass]="{
-                    'yellow': getSlots().lastHour.color === 'yellow',
+                    'red': getSlots().lastHour.color === 'red',
                     'green': getSlots().lastHour.color === 'green',
                     'orange': getSlots().lastHour.color === 'orange'
                   }"></div>
@@ -49,7 +49,7 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().today.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().today.value" [ngClass]="{
-                    'yellow': getSlots().today.color === 'yellow',
+                    'red': getSlots().today.color === 'red',
                     'green': getSlots().today.color === 'green',
                     'orange': getSlots().today.color === 'orange'
                   }"></div>
@@ -70,7 +70,7 @@
     <div class="lane-background lane-running-bg">
       <div class="lane-inner">
         <div class="operator-block" [ngClass]="{
-          'yellow': getSlots().lastSixMinutes.color === 'yellow',
+          'red': getSlots().lastSixMinutes.color === 'red',
           'green': getSlots().lastSixMinutes.color === 'green',
           'orange': getSlots().lastSixMinutes.color === 'orange'
         }">
@@ -80,7 +80,7 @@
         </div>
         <div class="data-block">
           <div class="efficiency-value" [ngClass]="{
-            'yellow': getSlots().lastSixMinutes.color === 'yellow',
+            'red': getSlots().lastSixMinutes.color === 'red',
             'green': getSlots().lastSixMinutes.color === 'green',
             'orange': getSlots().lastSixMinutes.color === 'orange'
           }">
@@ -92,7 +92,7 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastFifteenMinutes.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastFifteenMinutes.value" [ngClass]="{
-                    'yellow': getSlots().lastFifteenMinutes.color === 'yellow',
+                    'red': getSlots().lastFifteenMinutes.color === 'red',
                     'green': getSlots().lastFifteenMinutes.color === 'green',
                     'orange': getSlots().lastFifteenMinutes.color === 'orange'
                   }"></div>
@@ -103,7 +103,7 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().lastHour.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().lastHour.value" [ngClass]="{
-                    'yellow': getSlots().lastHour.color === 'yellow',
+                    'red': getSlots().lastHour.color === 'red',
                     'green': getSlots().lastHour.color === 'green',
                     'orange': getSlots().lastHour.color === 'orange'
                   }"></div>
@@ -114,7 +114,7 @@
                 <div class="bar-chart">
                   <div class="bar-value">{{ getSlots().today.value | number: '1.0-0' }}%</div>
                   <div class="bar-fill" [style.height.%]="getSlots().today.value" [ngClass]="{
-                    'yellow': getSlots().today.color === 'yellow',
+                    'red': getSlots().today.color === 'red',
                     'green': getSlots().today.color === 'green',
                     'orange': getSlots().today.color === 'orange'
                   }"></div>

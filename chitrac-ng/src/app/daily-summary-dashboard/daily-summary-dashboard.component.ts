@@ -30,6 +30,7 @@ import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { OperatorService } from '../services/operator.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 
 @Component({
     selector: "app-daily-summary-dashboard",
@@ -88,7 +89,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     private dashboardTimeframeService: DashboardTimeframeService,
     private cdr: ChangeDetectorRef,
     private machineService: MachineService,
-    private operatorService: OperatorService
+    private operatorService: OperatorService,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -653,17 +655,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   // Add this helper for dynamic color coding
-  getPerformanceClass(value: any, column?: string): string {
+  getPerformanceClass = (value: any, column?: string): string => {
     if (column !== 'OEE' && column !== 'Efficiency') return '';
-    let num = value;
-    if (typeof value === 'string') {
-      num = parseFloat(value.replace('%', ''));
-    }
-    if (isNaN(num)) return '';
-    if (num >= 85) return 'green';
-    if (num >= 60) return 'yellow';
-    return 'red';
-  }
+    if (column === 'OEE') return this.percentBreakpointService.getOeColorClass(value);
+    return this.percentBreakpointService.getColorClass(value);
+  };
 
   private addDummyLoadingRows(): void {
     // Add dummy loading rows for machines
