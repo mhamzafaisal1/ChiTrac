@@ -29,6 +29,13 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
   endTime = '';
   rows: any[] = [];
   columns: string[] = [];
+  columnTooltips: { [column: string]: string } = {
+    'Worked Time': 'Amount of time item has been run across all machines.',
+    Count: 'Amount of pieces fed for this item.',
+    PPH: 'Pieces per hour for this item.',
+    Standard: 'Goal pace for this item.',
+    'Efficiency (%)': 'Percent of goal pace being achieved.',
+  };
   isDarkTheme: boolean = false;
   isLoading: boolean = false;
   liveMode: boolean = false;

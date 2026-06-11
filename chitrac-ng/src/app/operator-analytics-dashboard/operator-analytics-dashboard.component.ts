@@ -52,6 +52,17 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   operatorId?: number;
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    Runtime: 'Amount of time operator has been running across all machines',
+    Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
+    'Total Count': 'Amount of pieces fed by operator',
+    'Misfeed Count': 'Amount of pieces misfed or rejected by the operator.',
+    PPH: 'Pieces Per Hour',
+    Availability: 'Percent of time operator was active on a running machine.',
+    Throughput: 'Percent of pieces fed which were good quality (not misfed or rejected).',
+    Efficiency: 'Percent of goal pace being achieved.',
+    OEE: 'Overall Equipment Efficiency, combination of Availability, Efficiency, and Throughput',
+  };
   selectedRow: any = null;
   operatorData: any[] = []; // Store the raw dashboard data
   liveMode: boolean = false;
@@ -291,6 +302,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
       'Total Count': response.metrics.output?.totalCount ?? 0,
       'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
+      'PPH': this.formatPph(response),
       'Availability': `${response.metrics.performance?.availability?.percentage ?? 0}%`,
       'Throughput': `${response.metrics.performance?.throughput?.percentage ?? 0}%`,
       'Efficiency': `${response.metrics.performance?.efficiency?.percentage ?? 0}%`,
@@ -654,6 +666,17 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     return '';
   };
 
+  private formatPph(response: any): number {
+    const pph =
+      response?.operatorSummary?.pph ??
+      response?.metrics?.performance?.piecesPerHour?.value ??
+      response?.metrics?.performance?.pph ??
+      response?.performance?.pph;
+
+    const numericPph = Number(pph);
+    return Number.isFinite(numericPph) ? Math.round(numericPph) : 0;
+  }
+
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -696,6 +719,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -713,6 +737,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -730,6 +755,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -747,6 +773,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -764,6 +791,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -785,6 +813,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime',
         'Total Count',
         'Misfeed Count',
+        'PPH',
         'Availability',
         'Throughput',
         'Efficiency',

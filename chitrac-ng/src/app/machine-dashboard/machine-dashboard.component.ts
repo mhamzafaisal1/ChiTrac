@@ -52,6 +52,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   machineData: any[] = [];
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    Runtime: "Amount of time machine has been running",
+    Downtime: "Amount of time machine has been paused, faulted, or offline.",
+    "Total Count": "Amount of pieces fed into the machine/line.",
+    "Misfeed Count": "Amount of pieces misfed or rejected by the machine/line.",
+    PPH: "Pieces Per Hour",
+    Availability: "Percent of time machine was running.",
+    Throughput: "Percent of pieces fed which were good quality (not misfed or rejected).",
+    Efficiency: "Percent of goal pace being achieved.",
+    OEE: "Overall Equipment Efficiency, combination of Availability, Efficiency, and Throughput",
+  };
   selectedRow: any | null = null;
   isDarkTheme: boolean = false;
   liveMode: boolean = false;
@@ -245,6 +256,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     Downtime: `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
                     "Total Count": response.metrics.output.totalCount,
                     "Misfeed Count": response.metrics.output.misfeedCount,
+                    PPH: this.formatPph(response),
                     Availability: `${response.metrics.performance.availability.percentage}%`,
                     Throughput: `${response.metrics.performance.throughput.percentage}%`,
                     Efficiency: `${response.metrics.performance.efficiency.percentage}%`,
@@ -830,6 +842,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return this.percentBreakpointService.getColorClass(value);
   };
 
+  private formatPph(response: any): number {
+    const pph =
+      response?.itemSummary?.machineSummary?.pph ??
+      response?.machineSummary?.pph ??
+      response?.metrics?.performance?.piecesPerHour?.value ??
+      response?.metrics?.performance?.pph ??
+      response?.performance?.pph;
+
+    const numericPph = Number(pph);
+    return Number.isFinite(numericPph) ? Math.round(numericPph) : 0;
+  }
+
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -884,6 +908,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
         "Total Count": totalCount,
         "Misfeed Count": misfeedCount,
+        PPH: this.formatPph(response),
         Availability: `${performance?.availability?.percentage ?? "0"}%`,
         Throughput: `${performance?.throughput?.percentage ?? "0"}%`,
         Efficiency: `${performance?.efficiency?.percentage ?? "0"}%`,
@@ -909,6 +934,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -925,6 +951,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -941,6 +968,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -957,6 +985,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -973,6 +1002,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -992,6 +1022,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Downtime",
         "Total Count",
         "Misfeed Count",
+        "PPH",
         "Availability",
         "Throughput",
         "Efficiency",
