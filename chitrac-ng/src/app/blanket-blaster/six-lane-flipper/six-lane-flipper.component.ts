@@ -15,6 +15,7 @@ import { BlanketBlasterModule } from '../blanket-blaster.module';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { DateTimeService } from '../../services/date-time.service';
 import { PollingService } from '../../services/polling-service.service';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 @Component({
     selector: 'ct-six-lane-flipper',
@@ -55,7 +56,8 @@ export class SixLaneFlipperComponent implements OnInit, OnDestroy {
   constructor(
     private demoFlipperService: DemoFlipperService,
     private dateTimeService: DateTimeService,
-    private pollingService: PollingService
+    private pollingService: PollingService,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
   
   ident(index: number, lane: any): number {
@@ -193,17 +195,10 @@ export class SixLaneFlipperComponent implements OnInit, OnDestroy {
     }
   }
 
-  public colorPicker = function(result: any) {
+  public colorPicker = (result: any) => {
     if ((result.runTime < ((result.timeframe * 60) * 0.85)) && (result.timeframe != 1440 && result.timeframe != 5)) {
       return '#555';
-    } else {
-      if (result.efficiency >= 85) {
-        return '#008000';
-      } else if (result.efficiency >= 50) {
-        return '#F89406';
-      } else {
-        return '#FF0000';
-      }
     }
+    return this.percentBreakpointService.getLegacyColorHex(result.efficiency);
   };
 }

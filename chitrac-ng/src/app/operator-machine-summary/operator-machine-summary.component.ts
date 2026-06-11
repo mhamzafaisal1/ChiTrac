@@ -20,6 +20,7 @@ import {
   import { PollingService } from '../services/polling-service.service';
   import { DateTimeService } from '../services/date-time.service';
   import { OperatorService } from '../services/operator.service';
+  import { PercentBreakpointService } from '../services/percent-breakpoint.service';
   
   type OperatorMachineSummaryResponse = {
     context: { operatorId: number; start: string; end: string };
@@ -67,6 +68,7 @@ import {
       private renderer: Renderer2,
       private elRef: ElementRef,
       private operatorService: OperatorService,
+      private percentBreakpointService: PercentBreakpointService,
       @Inject(MAT_DIALOG_DATA) private data: any
     ) {
       if (data) {
@@ -262,15 +264,11 @@ import {
       return `${sec}s`;
     }
 
-    getEfficiencyClass(value: any, column: string): string {
+    getEfficiencyClass = (value: any, column: string): string => {
       if ((column === 'Efficiency %') && typeof value === 'string' && value.includes('%')) {
-        const num = parseFloat(value.replace('%', ''));
-        if (isNaN(num)) return '';
-        if (num >= 90) return 'green';
-        if (num >= 70) return 'yellow';
-        return 'red';
+        return this.percentBreakpointService.getColorClass(value);
       }
       return '';
-    }
+    };
   }
   

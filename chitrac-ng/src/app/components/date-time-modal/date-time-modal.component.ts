@@ -202,6 +202,7 @@ export class DateTimeModalComponent implements OnInit {
     this.dateTimeService.setEndTime(this.endDateTime.toISOString());
     this.dateTimeService.setLiveMode(false);
     this.dateTimeService.setShiftId(this.selectedShiftId || '');
+    this.dateTimeService.setTimeframe(this.selectedTimeframe || '');
     this.dateTimeService.setConfirmed(true);
     this.dateTimeService.triggerConfirm();
     this.closeModal.emit();

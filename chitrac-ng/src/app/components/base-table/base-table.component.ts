@@ -14,6 +14,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 @Component({
   selector: 'base-table',
@@ -39,6 +40,8 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   visibleColumns: string[] = [];
 
   private readonly handleResize = this.updateVisibleColumns.bind(this);
+
+  constructor(private percentBreakpointService: PercentBreakpointService) {}
 
   ngOnInit() {
     this.updateData();
@@ -117,11 +120,7 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
 
   getEfficiencyClass(value: any): string {
     if (typeof value !== 'string' || !value.includes('%')) return '';
-    const num = parseInt(value.replace('%', ''));
-    if (isNaN(num)) return '';
-    if (num >= 90) return 'green';
-    if (num >= 70) return 'yellow';
-    return 'red';
+    return this.percentBreakpointService.getColorClass(value);
   }
 
   getCellClassForColumn(value: any, column: string): string {

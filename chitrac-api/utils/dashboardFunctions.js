@@ -730,11 +730,12 @@ async function getCachedOperatorResults(db, completeDays) {
         const existing = operatorTickerMap.get(operatorKey);
         if (!existing || existing.timestamp < timestamp) {
           const serial = machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+          const statusCode = status.id ?? status.code ?? null;
           operatorTickerMap.set(operatorKey, {
             machine: serial != null ? { serial, name: machine.name || null } : null,
             status:
-              status.code !== undefined || status.name !== undefined
-                ? { code: status.code ?? null, name: status.name ?? null }
+              statusCode !== null || status.name !== undefined
+                ? { code: statusCode, name: status.name ?? null }
                 : null,
             timestamp
           });

@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as d3 from 'd3';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 export interface BarChartDataPoint {
   hour: number;
@@ -40,6 +41,8 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
   @ViewChild('chartContainer', { static: true }) chartContainer!: ElementRef;
 
   private observer!: MutationObserver;
+
+  constructor(private percentBreakpointService: PercentBreakpointService) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if ((changes['data'] && this.data.length > 0) || 
@@ -162,8 +165,6 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
     if (this.mode === 'count') {
       return '#42a5f5';
     }
-    if (value >= 85) return '#66bb6a';
-    if (value >= 60) return '#ffca28';
-    return '#ef5350';
+    return this.percentBreakpointService.getColorHex(value);
   }
 }

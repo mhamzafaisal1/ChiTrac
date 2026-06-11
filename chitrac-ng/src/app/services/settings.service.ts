@@ -10,6 +10,14 @@ export interface AppSettings {
   systemName: string;
   httpsEnabled: boolean;
   dashboardTimeframe?: 'current' | 'shift' | null;
+  percentBreakpoints?: PercentBreakpoints;
+  oePercentBreakpoints?: PercentBreakpoints;
+}
+
+export interface PercentBreakpoints {
+  poor: number;
+  okay: number;
+  good: number;
 }
 
 export interface ThemeResponse {
@@ -51,6 +59,28 @@ export class SettingsService {
         const current = this.settingsSubject.value;
         if (current) {
           this.settingsSubject.next({ ...current, dashboardTimeframe });
+        }
+      })
+    );
+  }
+
+  savePercentBreakpoints(percentBreakpoints: PercentBreakpoints): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { percentBreakpoints }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, percentBreakpoints });
+        }
+      })
+    );
+  }
+
+  saveOePercentBreakpoints(oePercentBreakpoints: PercentBreakpoints): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { oePercentBreakpoints }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, oePercentBreakpoints });
         }
       })
     );

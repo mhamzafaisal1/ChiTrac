@@ -16,6 +16,7 @@ import autoTable from 'jspdf-autotable';
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 @Component({
   selector: 'app-shift-machine-report',
@@ -62,7 +63,8 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
-    private shiftService: ShiftService
+    private shiftService: ShiftService,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -176,9 +178,7 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
     if (column === 'Efficiency' && typeof value === 'string' && value.includes('%')) {
       const num = parseInt(value.replace('%', ''), 10);
       if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      return this.percentBreakpointService.getColorClass(num);
     }
     return '';
   }

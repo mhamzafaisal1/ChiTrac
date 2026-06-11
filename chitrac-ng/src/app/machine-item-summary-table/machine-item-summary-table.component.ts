@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { MachineService } from '../services/machine.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 
 @Component({
     selector: 'app-machine-item-summary-table',
@@ -24,7 +25,10 @@ export class MachineItemSummaryTableComponent implements OnInit {
   loading: boolean = false;
   isDarkTheme: boolean = false;
 
-  constructor(private machineService: MachineService) {}
+  constructor(
+    private machineService: MachineService,
+    private percentBreakpointService: PercentBreakpointService
+  ) {}
 
   ngOnInit(): void {
     if (!this.startTime || !this.endTime) {
@@ -113,15 +117,11 @@ export class MachineItemSummaryTableComponent implements OnInit {
     });
   }
 
-  getEfficiencyClass(value: any, column: string): string {
+  getEfficiencyClass = (value: any, column: string): string => {
     if ((column === 'Efficiency') && typeof value === 'string' && value.includes('%')) {
-      const num = parseFloat(value.replace('%', ''));
-      if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      return this.percentBreakpointService.getColorClass(value);
     }
     return '';
-  }
+  };
 }
 
