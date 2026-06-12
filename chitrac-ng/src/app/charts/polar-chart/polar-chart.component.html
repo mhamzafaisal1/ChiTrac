@@ -1,0 +1,14 @@
+<div class="polar-chart-outer">
+  <div #chartContainer class="polar-chart-svg"></div>
+
+  <div *ngIf="!hasRenderableData()" class="polar-chart-empty">
+    No polar chart data available
+  </div>
+
+  <div *ngIf="showLegend && data?.series?.length" class="polar-chart-legend">
+    <span *ngFor="let series of data?.series; let i = index" class="legend-item">
+      <span class="legend-swatch" [style.background]="getSeriesColor(series, i)"></span>
+      <span class="legend-label">{{ series.name }}</span>
+    </span>
+  </div>
+</div>

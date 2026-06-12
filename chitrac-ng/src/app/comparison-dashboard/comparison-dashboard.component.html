@@ -1,0 +1,135 @@
+<div class="comparison-dashboard">
+  <header class="page-header">
+    <div>
+      <h1>Comparison Dashboard</h1>
+      <p>Compare machines or operators across shared or separate timeframes.</p>
+    </div>
+  </header>
+
+  <div *ngIf="errorMessage" class="error-message">{{ errorMessage }}</div>
+
+  <section *ngIf="step === 'chooseType'" class="wizard-panel choice-panel">
+    <button mat-flat-button color="primary" class="choice-button" (click)="selectEntityType('machines')" [disabled]="isLoadingOptions">
+      <mat-icon>local_laundry_service</mat-icon>
+      Machines
+    </button>
+    <button mat-flat-button color="primary" class="choice-button" (click)="selectEntityType('operators')" [disabled]="isLoadingOptions">
+      <mat-icon>person</mat-icon>
+      Operators
+    </button>
+    <mat-spinner *ngIf="isLoadingOptions" diameter="32"></mat-spinner>
+  </section>
+
+  <section *ngIf="step === 'chooseEntities'" class="wizard-panel">
+    <button mat-stroked-button type="button" (click)="back()">
+      <mat-icon>arrow_back</mat-icon>
+      Back
+    </button>
+
+    <div class="selection-row">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ entityType === 'machines' ? 'First Machine' : 'First Operator' }}</mat-label>
+        <mat-select [(ngModel)]="leftSelectionId" (selectionChange)="onSelectionChange('left')">
+          <mat-option *ngFor="let option of options" [value]="option.id">{{ option.label }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ entityType === 'machines' ? 'Second Machine' : 'Second Operator' }}</mat-label>
+        <mat-select [(ngModel)]="rightSelectionId" (selectionChange)="onSelectionChange('right')">
+          <mat-option *ngFor="let option of options" [value]="option.id">{{ option.label }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <button mat-flat-button color="primary" type="button" (click)="next()" [disabled]="getNextDisabled()">
+        Next
+        <mat-icon>arrow_forward</mat-icon>
+      </button>
+    </div>
+  </section>
+
+  <section *ngIf="step === 'chooseTimeframes'" class="wizard-panel">
+    <div class="step-actions">
+      <button mat-stroked-button type="button" (click)="back()">
+        <mat-icon>arrow_back</mat-icon>
+        Back
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="next()" [disabled]="getNextDisabled()">
+        Next
+        <mat-icon>arrow_forward</mat-icon>
+      </button>
+    </div>
+
+    <div class="timeframe-buttons">
+      <button mat-stroked-button type="button" (click)="openPicker('primary')">
+        <mat-icon>calendar_today</mat-icon>
+        {{ getPrimaryPickerLabel() }}
+      </button>
+      <button *ngIf="isSameEntityComparison()" mat-stroked-button type="button" (click)="openPicker('secondary')">
+        <mat-icon>calendar_today</mat-icon>
+        {{ getSecondaryPickerLabel() }}
+      </button>
+    </div>
+
+    <div *ngIf="activePicker" class="local-picker">
+      <mat-form-field appearance="outline">
+        <mat-label>Start Date</mat-label>
+        <input matInput [matDatepicker]="startPicker" [(ngModel)]="pickerStart" />
+        <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+        <mat-datepicker #startPicker></mat-datepicker>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>End Date</mat-label>
+        <input matInput [matDatepicker]="endPicker" [(ngModel)]="pickerEnd" />
+        <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+        <mat-datepicker #endPicker></mat-datepicker>
+      </mat-form-field>
+
+      <button mat-flat-button color="primary" type="button" (click)="confirmPicker()" [disabled]="pickerEnd <= pickerStart">
+        <mat-icon>done</mat-icon>
+        Confirm
+      </button>
+    </div>
+  </section>
+
+  <section *ngIf="step === 'results'" class="results-section">
+    <div *ngIf="isLoadingResults" class="loading-results">
+      <mat-spinner diameter="36"></mat-spinner>
+    </div>
+
+    <section *ngIf="!isLoadingResults && polarChartData" class="polar-comparison-section">
+      <app-polar-chart
+        [data]="polarChartData"
+        title="Metric Comparison"
+        axisDirection="counterclockwise">
+      </app-polar-chart>
+    </section>
+
+    <div *ngIf="!isLoadingResults" class="comparison-columns">
+      <article *ngFor="let column of resultColumns" class="comparison-column">
+        <h2>{{ column.title }}</h2>
+        <p>{{ column.subtitle }}</p>
+        <table>
+          <tbody>
+            <tr *ngFor="let row of column.rows">
+              <th>{{ row.label }}</th>
+              <td>{{ row.value }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+    </div>
+
+    <div class="bottom-actions">
+      <button mat-stroked-button type="button" (click)="back()">
+        <mat-icon>arrow_back</mat-icon>
+        Back
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="startOver()">
+        <mat-icon>restart_alt</mat-icon>
+        Start Over
+      </button>
+    </div>
+  </section>
+</div>
