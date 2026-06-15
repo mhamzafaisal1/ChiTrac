@@ -19,17 +19,29 @@ export interface DashboardCacheState {
     machines?: {
       today?: DashboardCacheEnvelope;
       shifts?: DashboardCacheEnvelope[];
+      history?: {
+        days?: DashboardCacheEnvelope[];
+        shifts?: DashboardCacheEnvelope[];
+        updatedAt?: string | Date;
+        meta?: any;
+      };
     };
     operators?: {
       today?: DashboardCacheEnvelope;
       shifts?: DashboardCacheEnvelope[];
+      history?: {
+        days?: DashboardCacheEnvelope[];
+        shifts?: DashboardCacheEnvelope[];
+        updatedAt?: string | Date;
+        meta?: any;
+      };
     };
   };
 }
 
 interface DashboardCacheMessage {
   type: 'dashboard-cache-update' | 'dashboard-cache';
-  scope?: DashboardCacheScope | 'all' | 'dashboard' | 'initial';
+  scope?: DashboardCacheScope | 'all' | 'dashboard' | 'dashboardHistory' | 'initial';
   cache?: DashboardCacheEnvelope | DashboardCacheState;
   dashboard?: DashboardCacheState['dashboard'];
 }
@@ -188,7 +200,7 @@ export class WebsocketService {
       return;
     }
 
-    if (message.scope === 'dashboard') {
+    if (message.scope === 'dashboard' || message.scope === 'dashboardHistory') {
       this.dashboardCacheSubject.next({
         ...current,
         dashboard: message.dashboard || cache?.dashboard || current.dashboard
