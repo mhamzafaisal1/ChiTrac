@@ -35,6 +35,7 @@ import { ServerLogsInterfaceComponent } from './server-logs-interface/server-log
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
 import { PermissionLevels } from './user.service';
+import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
 
 export const routes: Routes = [
 	// Settings pages
@@ -58,6 +59,7 @@ export const routes: Routes = [
 	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
 	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
 	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
+	{ path: 'ng/comparison-dashboard', component: ComparisonDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
 	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
 	
 	// Reports

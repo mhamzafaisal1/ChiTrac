@@ -1,0 +1,119 @@
+.polar-chart-outer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 1rem;
+  color: var(--text-color, #f8fafc);
+}
+
+.polar-chart-svg {
+  position: relative;
+  width: 100%;
+  min-height: 410px;
+}
+
+.polar-chart-empty {
+  position: absolute;
+  inset: 1rem;
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  color: var(--text-color-secondary, #cbd5e1);
+  font-size: 0.95rem;
+}
+
+.polar-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 24px;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.legend-label {
+  font-weight: 500;
+  color: var(--text-color, #f8fafc);
+}
+
+:host ::ng-deep .polar-chart-svg-title {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+:host ::ng-deep .polar-chart-axis-label {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+:host ::ng-deep .polar-chart-level-label {
+  font-size: 10px;
+}
+
+:host ::ng-deep .polar-chart-area {
+  transition: fill-opacity 120ms ease, stroke-width 120ms ease;
+}
+
+:host ::ng-deep .polar-chart-area:hover {
+  fill-opacity: 0.34;
+  stroke-width: 3px;
+}
+
+:host ::ng-deep .polar-chart-point {
+  cursor: pointer;
+}
+
+:host ::ng-deep .polar-chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  max-width: 240px;
+  padding: 0.5rem 0.65rem;
+  pointer-events: none;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.96);
+  color: #ffffff;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34);
+  transition: opacity 100ms ease;
+}
+
+:host ::ng-deep .polar-chart-tooltip .tooltip-title {
+  margin-bottom: 0.15rem;
+  font-weight: 700;
+}
+
+:host-context(body:not(.dark-theme)) {
+  .polar-chart-outer,
+  .legend-label {
+    color: var(--text-color, #1f2937);
+  }
+
+  .polar-chart-empty {
+    color: var(--text-color-secondary, #64748b);
+  }
+
+  .legend-swatch {
+    border-color: rgba(15, 23, 42, 0.18);
+  }
+}
