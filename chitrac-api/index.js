@@ -127,7 +127,7 @@ app.use(morganMiddleware);
 /**** Initial Collection Setup */
 async function initializeCollections() {
     logger.debug('Initializing machine collection...');
-    await cm.createCollection('machine').then(() => {
+    await cm.createCollection('config-machine').then(() => {
         const collection = db.collection('machine');
         collection.insertMany(server.defaults.machine);
         logger.debug('Machine collection initialized!');
@@ -140,7 +140,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing item collection...');
-    await cm.createCollection('item').then(() => {
+    await cm.createCollection('config-item').then(() => {
         const collection = db.collection('item');
         collection.insertMany(server.defaults.item);
         logger.debug('Item collection initialized!');
@@ -153,7 +153,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing fault collection...');
-    await cm.createCollection('fault').then(() => {
+    await cm.createCollection('config-fault').then(() => {
         const collection = db.collection('fault');
         collection.insertMany(server.defaults.fault);
         logger.debug('Fault collection initialized!');
@@ -166,7 +166,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing status collection...');
-    await cm.createCollection('status').then(() => {
+    await cm.createCollection('config-status').then(() => {
         const collection = db.collection('status');
         collection.insertMany(server.defaults.status);
         logger.debug('Status collection initialized!');
@@ -179,7 +179,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing operator collection...');
-    await cm.createCollection('operator').then(() => {
+    await cm.createCollection('config-operator').then(() => {
         const collection = db.collection('operator');
         collection.insertMany(server.defaults.operator);
         logger.debug('Operators collection initialized!');
