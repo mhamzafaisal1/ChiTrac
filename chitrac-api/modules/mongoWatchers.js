@@ -14,6 +14,8 @@ const { SYSTEM_TIMEZONE } = require("../utils/time");
 
 const CACHE_POLL_INTERVAL_MS = 6_000;
 const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
+const DASHBOARD_HISTORY_REFRESH_JOB_KEY = "dashboardHistoryRefresh";
+const DASHBOARD_HISTORY_DAYS = 7;
 
 function ensureCache(server) {
   if (!server.cache) server.cache = {};
@@ -24,9 +26,16 @@ function ensureCache(server) {
   if (!server.cache.dashboard.operators) server.cache.dashboard.operators = {};
   if (!Array.isArray(server.cache.dashboard.machines.shifts)) server.cache.dashboard.machines.shifts = [];
   if (!Array.isArray(server.cache.dashboard.operators.shifts)) server.cache.dashboard.operators.shifts = [];
+  if (!server.cache.dashboard.machines.history) server.cache.dashboard.machines.history = {};
+  if (!server.cache.dashboard.operators.history) server.cache.dashboard.operators.history = {};
+  if (!Array.isArray(server.cache.dashboard.machines.history.days)) server.cache.dashboard.machines.history.days = [];
+  if (!Array.isArray(server.cache.dashboard.machines.history.shifts)) server.cache.dashboard.machines.history.shifts = [];
+  if (!Array.isArray(server.cache.dashboard.operators.history.days)) server.cache.dashboard.operators.history.days = [];
+  if (!Array.isArray(server.cache.dashboard.operators.history.shifts)) server.cache.dashboard.operators.history.shifts = [];
   if (!server.cache.watchers) server.cache.watchers = {};
   if (!server.cache.polling) server.cache.polling = {};
   if (!server.cache.polling.signatures) server.cache.polling.signatures = {};
+  if (!server.cache.history) server.cache.history = {};
 }
 
 function serializableShift(shiftDoc) {
@@ -383,6 +392,168 @@ async function refreshTodayShiftCaches(server) {
   return contexts;
 }
 
+function getLastFullDayStarts(nowInput = new Date(), days = DASHBOARD_HISTORY_DAYS) {
+  const now = DateTime.fromJSDate(new Date(nowInput), { zone: SYSTEM_TIMEZONE });
+  if (!now.isValid) return [];
+
+  const todayStart = now.startOf("day");
+  return Array.from({ length: days }, (_, index) => (
+    todayStart.minus({ days: days - index })
+  ));
+}
+
+function isShiftActiveOnDay(shift, weekday) {
+  const activeDays = Array.isArray(shift.activeDays) ? shift.activeDays : [];
+  return activeDays.length === 0 || activeDays.includes(weekday);
+}
+
+function resolveShiftContextForDay(shift, day) {
+  const start = toShiftDateTime(day, shift.startTime);
+  let end = toShiftDateTime(day, shift.endTime);
+  if (end <= start) {
+    end = end.plus({ days: 1 });
+  }
+
+  return {
+    shiftDoc: shift,
+    shiftOid: new ObjectId(String(shift._id)),
+    dateStr: day.toISODate(),
+    start: start.toJSDate(),
+    end: end.toJSDate(),
+    mode: "history",
+  };
+}
+
+async function resolveHistoryShiftContexts(db, config, dayStarts) {
+  const shifts = await db
+    .collection(config.shiftCollectionName)
+    .find({ active: { $ne: false } })
+    .toArray();
+
+  const activeShifts = shifts.filter(isValidShift);
+  return dayStarts
+    .flatMap((day) => activeShifts
+      .filter((shift) => isShiftActiveOnDay(shift, day.weekday))
+      .map((shift) => resolveShiftContextForDay(shift, day))
+    )
+    .sort((a, b) => a.start - b.start);
+}
+
+function buildHistoryMeta(dayStarts, dayCount, shiftCount) {
+  const now = new Date();
+  return {
+    mode: "history",
+    days: dayCount,
+    shifts: shiftCount,
+    start: dayStarts[0]?.startOf("day").toJSDate() || null,
+    end: dayStarts[dayStarts.length - 1]?.endOf("day").toJSDate() || null,
+    refreshedAt: now,
+  };
+}
+
+async function refreshLastWeekDashboardCache(server) {
+  ensureCache(server);
+  const { db, logger, config } = server;
+  const dayStarts = getLastFullDayStarts(new Date());
+  const machineDays = [];
+  const operatorDays = [];
+  const machineShifts = [];
+  const operatorShifts = [];
+
+  for (const day of dayStarts) {
+    const dateStr = day.toISODate();
+    const start = day.startOf("day").toJSDate();
+    const end = day.endOf("day").toJSDate();
+
+    try {
+      const [machineResult, operatorResult] = await Promise.all([
+        buildMachineSummaryFromDailyCache(db, logger, config, { start, end, dateStr }),
+        buildOperatorSummaryFromDailyCache(db, logger, config, { start, end, dateStr }),
+      ]);
+      const meta = {
+        ...resultMeta(machineResult, operatorResult),
+        mode: "history",
+      };
+
+      machineDays.push(machineDashboardEnvelope(machineResult.data, meta));
+      operatorDays.push(operatorDashboardEnvelope(operatorResult.data, meta));
+    } catch (error) {
+      if (logger) {
+        logger.error(`[mongoWatchers] Failed to update dashboard history day cache for ${dateStr}: ${error.message}`);
+      }
+    }
+  }
+
+  const shiftContexts = await resolveHistoryShiftContexts(db, config, dayStarts);
+  for (const context of shiftContexts) {
+    try {
+      const [machineResult, operatorResult] = await Promise.all([
+        buildMachineSummaryFromShiftCache(db, logger, config, context),
+        buildOperatorSummaryFromShiftCache(db, logger, config, context),
+      ]);
+      const meta = {
+        key: `${context.dateStr}|${String(context.shiftOid)}`,
+        date: context.dateStr,
+        shiftId: String(context.shiftOid),
+        shift: serializableShift(context.shiftDoc),
+        mode: context.mode,
+        source: {
+          machines: machineResult.source,
+          operators: operatorResult.source,
+        },
+        found: {
+          machines: machineResult.found,
+          operators: operatorResult.found,
+        },
+        recordCount: {
+          machines: machineResult.recordCount,
+          operators: operatorResult.recordCount,
+        },
+        start: context.start,
+        end: context.end,
+      };
+
+      machineShifts.push(machineDashboardEnvelope(machineResult.data, meta));
+      operatorShifts.push(operatorDashboardEnvelope(operatorResult.data, meta));
+    } catch (error) {
+      if (logger) {
+        logger.error(`[mongoWatchers] Failed to update dashboard history shift cache for ${context.dateStr}|${context.shiftOid}: ${error.message}`);
+      }
+    }
+  }
+
+  const historyMeta = buildHistoryMeta(dayStarts, machineDays.length, machineShifts.length);
+  server.cache.dashboard.machines.history = {
+    days: machineDays,
+    shifts: machineShifts,
+    updatedAt: new Date(),
+    meta: historyMeta,
+  };
+  server.cache.dashboard.operators.history = {
+    days: operatorDays,
+    shifts: operatorShifts,
+    updatedAt: new Date(),
+    meta: buildHistoryMeta(dayStarts, operatorDays.length, operatorShifts.length),
+  };
+
+  if (logger) {
+    logger.info(
+      `[mongoWatchers] Updated dashboard history cache with ${machineDays.length} machine days, ${operatorDays.length} operator days, ${machineShifts.length} machine shifts, and ${operatorShifts.length} operator shifts`
+    );
+  }
+
+  if (shouldBroadcastCacheUpdate(server, "dashboardHistory", { dashboard: server.cache.dashboard })) {
+    broadcastDashboardCache(server, "dashboardHistory");
+  }
+
+  return {
+    machineDays,
+    operatorDays,
+    machineShifts,
+    operatorShifts,
+  };
+}
+
 async function refreshDashboardCache(server) {
   await refreshTodayCache(server);
   await refreshCurrentShiftCache(server);
@@ -434,6 +605,40 @@ function startCachePolling(server) {
   return job;
 }
 
+function startHistoryRefreshSchedule(server) {
+  ensureCache(server);
+
+  if (server.cache.history.job) {
+    return server.cache.history.job;
+  }
+
+  const rule = new schedule.RecurrenceRule();
+  rule.tz = SYSTEM_TIMEZONE;
+  rule.hour = 0;
+  rule.minute = 0;
+  rule.second = 0;
+
+  const job = schedule.scheduleJob(rule, async () => {
+    try {
+      await refreshLastWeekDashboardCache(server);
+    } catch (error) {
+      if (server.logger) {
+        server.logger.error(`[mongoWatchers] Dashboard history refresh failed: ${error.message}`);
+      }
+    }
+  });
+
+  server.cache.history.job = job;
+  if (!server.scheduledJobs) server.scheduledJobs = {};
+  server.scheduledJobs[DASHBOARD_HISTORY_REFRESH_JOB_KEY] = job;
+
+  if (server.logger) {
+    server.logger.info(`[mongoWatchers] Scheduled dashboard history refresh at midnight ${SYSTEM_TIMEZONE}`);
+  }
+
+  return job;
+}
+
 function stopCachePolling(server) {
   if (!server?.cache?.polling) return;
 
@@ -448,10 +653,25 @@ function stopCachePolling(server) {
   }
 }
 
+function stopHistoryRefreshSchedule(server) {
+  if (!server?.cache?.history) return;
+
+  if (server.cache.history.job && typeof server.cache.history.job.cancel === "function") {
+    server.cache.history.job.cancel();
+  }
+  server.cache.history.job = null;
+
+  if (server.scheduledJobs) {
+    server.scheduledJobs[DASHBOARD_HISTORY_REFRESH_JOB_KEY] = null;
+  }
+}
+
 async function startMongoWatchers(server) {
   ensureCache(server);
 
+  await refreshLastWeekDashboardCache(server);
   await refreshDashboardCache(server);
+  startHistoryRefreshSchedule(server);
   startCachePolling(server);
 
   return server.cache;
@@ -460,6 +680,7 @@ async function startMongoWatchers(server) {
 async function stopMongoWatchers(server) {
   if (!server?.cache) return;
   stopCachePolling(server);
+  stopHistoryRefreshSchedule(server);
   server.cache.watchers = {};
 }
 
@@ -468,6 +689,7 @@ module.exports = {
   stopMongoWatchers,
   refreshTodayCache,
   refreshCurrentShiftCache,
+  refreshLastWeekDashboardCache,
   refreshDashboardCache,
   buildDashboardCacheMessage,
 };
