@@ -37,6 +37,15 @@ interface ComparisonTimeframe {
 interface MetricRow {
   label: string;
   value: string;
+  rawValue: number;
+  delta?: MetricDelta | null;
+  format: 'percent' | 'duration' | 'number';
+}
+
+interface MetricDelta {
+  direction: 'up' | 'down';
+  icon: 'arrow_drop_up' | 'arrow_drop_down';
+  display: string;
 }
 
 interface ComparisonColumn {
@@ -242,6 +251,17 @@ export class ComparisonDashboardComponent implements OnInit {
     return true;
   }
 
+  getEntityTypeLabel(): string {
+    return this.entityType === 'machines' ? 'machines' : this.entityType === 'operators' ? 'operators' : 'items';
+  }
+
+  getComparisonModeLabel(): string {
+    if (!this.canContinueFromEntities()) return '';
+    return this.isSameEntityComparison()
+      ? 'Compare one selection across two timeframes'
+      : 'Compare two selections across one timeframe';
+  }
+
   private loadOptions(): void {
     this.isLoadingOptions = true;
     forkJoin({
@@ -297,7 +317,7 @@ export class ComparisonDashboardComponent implements OnInit {
       next: ([firstRows, secondRows]) => {
         const firstData = this.findSummaryRow(firstRows, leftId);
         const secondData = this.findSummaryRow(secondRows, rightId);
-        this.resultColumns = [
+        const nextColumns = [
           {
             title: sameEntity ? this.getOptionLabel(leftId) : this.getOptionLabel(leftId),
             subtitle: sameEntity ? this.formatTimeframe(firstFrame) : this.formatTimeframe(this.primaryTimeframe!),
@@ -311,6 +331,7 @@ export class ComparisonDashboardComponent implements OnInit {
             rawData: secondData
           }
         ];
+        this.resultColumns = this.applyDifferenceIndicators(nextColumns);
         this.polarChartData = this.buildPolarChartData(this.resultColumns);
         this.isLoadingResults = false;
       },
@@ -345,13 +366,89 @@ export class ComparisonDashboardComponent implements OnInit {
     const runtime = row?.metrics?.runtime || {};
 
     return [
-      { label: 'Availability%', value: this.percentValue(performance.availability) },
-      { label: 'Efficiency%', value: this.percentValue(performance.efficiency) },
-      { label: 'Throughput%', value: this.percentValue(performance.throughput) },
-      { label: 'OEE%', value: this.percentValue(performance.oee) },
-      { label: 'Runtime', value: this.durationValue(runtime) },
-      { label: 'Total Count', value: this.numberValue(output.totalCount) }
+      {
+        label: 'Availability%',
+        value: this.percentValue(performance.availability),
+        rawValue: this.percentNumber(performance.availability),
+        format: 'percent'
+      },
+      {
+        label: 'Efficiency%',
+        value: this.percentValue(performance.efficiency),
+        rawValue: this.percentNumber(performance.efficiency),
+        format: 'percent'
+      },
+      {
+        label: 'Throughput%',
+        value: this.percentValue(performance.throughput),
+        rawValue: this.percentNumber(performance.throughput),
+        format: 'percent'
+      },
+      {
+        label: 'OEE%',
+        value: this.percentValue(performance.oee),
+        rawValue: this.percentNumber(performance.oee),
+        format: 'percent'
+      },
+      {
+        label: 'Runtime',
+        value: this.durationValue(runtime),
+        rawValue: this.runtimeMsValue(runtime),
+        format: 'duration'
+      },
+      {
+        label: 'Total Count',
+        value: this.numberValue(output.totalCount),
+        rawValue: Number(output.totalCount || 0),
+        format: 'number'
+      }
     ];
+  }
+
+  private applyDifferenceIndicators(columns: ComparisonColumn[]): ComparisonColumn[] {
+    if (columns.length !== 2) return columns;
+
+    const [leftColumn, rightColumn] = columns;
+    const leftRows = leftColumn.rows.map((leftRow, index) => {
+      const rightRow = rightColumn.rows[index];
+      return {
+        ...leftRow,
+        delta: this.buildMetricDelta(leftRow.rawValue, rightRow?.rawValue ?? 0, leftRow.format)
+      };
+    });
+    const rightRows = rightColumn.rows.map((rightRow, index) => {
+      const leftRow = leftColumn.rows[index];
+      return {
+        ...rightRow,
+        delta: this.buildMetricDelta(rightRow.rawValue, leftRow?.rawValue ?? 0, rightRow.format)
+      };
+    });
+
+    return [
+      { ...leftColumn, rows: leftRows },
+      { ...rightColumn, rows: rightRows }
+    ];
+  }
+
+  private buildMetricDelta(value: number, comparisonValue: number, format: MetricRow['format']): MetricDelta | null {
+    const diff = value - comparisonValue;
+    if (Math.abs(diff) < 0.0001) return null;
+
+    return {
+      direction: diff > 0 ? 'up' : 'down',
+      icon: diff > 0 ? 'arrow_drop_up' : 'arrow_drop_down',
+      display: `${diff > 0 ? '+' : '-'}${this.formatDeltaValue(Math.abs(diff), format)}`
+    };
+  }
+
+  private formatDeltaValue(value: number, format: MetricRow['format']): string {
+    if (format === 'percent') {
+      return `${value.toFixed(2)}%`;
+    }
+    if (format === 'duration') {
+      return this.durationFromMs(value);
+    }
+    return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
   }
 
   private buildPolarChartData(columns: ComparisonColumn[]): PolarChartData {
@@ -413,7 +510,15 @@ export class ComparisonDashboardComponent implements OnInit {
       const minutes = runtime.formatted.minutes || 0;
       return `${hours}h ${minutes}m`;
     }
-    const totalMs = Number(runtime?.total || 0);
+    const totalMs = this.runtimeMsValue(runtime);
+    return this.durationFromMs(totalMs);
+  }
+
+  private runtimeMsValue(runtime: any): number {
+    return Number(runtime?.total || 0);
+  }
+
+  private durationFromMs(totalMs: number): string {
     const totalMinutes = Math.floor(totalMs / 60000);
     return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
   }

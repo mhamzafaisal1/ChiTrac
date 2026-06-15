@@ -6,25 +6,65 @@
     </div>
   </header>
 
+  <nav class="wizard-progress" aria-label="Comparison setup progress">
+    <span class="progress-step" [class.active]="step === 'chooseType'" [class.complete]="step !== 'chooseType'">
+      <span class="step-number">1</span>
+      Type
+    </span>
+    <span class="progress-step" [class.active]="step === 'chooseEntities'" [class.complete]="step === 'chooseTimeframes' || step === 'results'">
+      <span class="step-number">2</span>
+      Selections
+    </span>
+    <span class="progress-step" [class.active]="step === 'chooseTimeframes'" [class.complete]="step === 'results'">
+      <span class="step-number">3</span>
+      Timeframe
+    </span>
+    <span class="progress-step" [class.active]="step === 'results'">
+      <span class="step-number">4</span>
+      Results
+    </span>
+  </nav>
+
   <div *ngIf="errorMessage" class="error-message">{{ errorMessage }}</div>
 
   <section *ngIf="step === 'chooseType'" class="wizard-panel choice-panel">
-    <button mat-flat-button color="primary" class="choice-button" (click)="selectEntityType('machines')" [disabled]="isLoadingOptions">
-      <mat-icon>local_laundry_service</mat-icon>
-      Machines
-    </button>
-    <button mat-flat-button color="primary" class="choice-button" (click)="selectEntityType('operators')" [disabled]="isLoadingOptions">
-      <mat-icon>person</mat-icon>
-      Operators
-    </button>
+    <div class="panel-intro">
+      <span class="eyebrow">Start Comparison</span>
+      <h2>What do you want to compare?</h2>
+      <p>Choose the dataset first, then pick one or two entries and the timeframe to compare.</p>
+    </div>
+
+    <div class="choice-grid">
+      <button mat-flat-button class="choice-button" (click)="selectEntityType('machines')" [disabled]="isLoadingOptions">
+        <mat-icon>local_laundry_service</mat-icon>
+        <span>
+          <strong>Machines</strong>
+          <small>Compare machine performance or one machine across time.</small>
+        </span>
+      </button>
+      <button mat-flat-button class="choice-button" (click)="selectEntityType('operators')" [disabled]="isLoadingOptions">
+        <mat-icon>person</mat-icon>
+        <span>
+          <strong>Operators</strong>
+          <small>Compare operator performance or one operator across time.</small>
+        </span>
+      </button>
+    </div>
     <mat-spinner *ngIf="isLoadingOptions" diameter="32"></mat-spinner>
   </section>
 
   <section *ngIf="step === 'chooseEntities'" class="wizard-panel">
-    <button mat-stroked-button type="button" (click)="back()">
-      <mat-icon>arrow_back</mat-icon>
-      Back
-    </button>
+    <div class="panel-toolbar">
+      <div class="panel-intro compact">
+        <span class="eyebrow">{{ getEntityTypeLabel() }}</span>
+        <h2>Choose comparison targets</h2>
+        <p>{{ getComparisonModeLabel() || 'Pick the first target and the second dropdown will match it automatically.' }}</p>
+      </div>
+      <button mat-stroked-button type="button" (click)="back()">
+        <mat-icon>arrow_back</mat-icon>
+        Back
+      </button>
+    </div>
 
     <div class="selection-row">
       <mat-form-field appearance="outline">
@@ -46,50 +86,99 @@
         <mat-icon>arrow_forward</mat-icon>
       </button>
     </div>
+
+    <div *ngIf="canContinueFromEntities()" class="selection-summary">
+      <mat-icon>compare_arrows</mat-icon>
+      <span>{{ getOptionLabel(leftSelectionId) }}</span>
+      <strong>vs</strong>
+      <span>{{ getOptionLabel(rightSelectionId) }}</span>
+    </div>
   </section>
 
   <section *ngIf="step === 'chooseTimeframes'" class="wizard-panel">
-    <div class="step-actions">
-      <button mat-stroked-button type="button" (click)="back()">
-        <mat-icon>arrow_back</mat-icon>
-        Back
-      </button>
-      <button mat-flat-button color="primary" type="button" (click)="next()" [disabled]="getNextDisabled()">
-        Next
-        <mat-icon>arrow_forward</mat-icon>
-      </button>
+    <div class="panel-toolbar">
+      <div class="panel-intro compact">
+        <span class="eyebrow">{{ getComparisonModeLabel() }}</span>
+        <h2>Select timeframe{{ isSameEntityComparison() ? 's' : '' }}</h2>
+        <p>
+          {{ isSameEntityComparison()
+            ? 'Choose two isolated timeframes for the same selection.'
+            : 'Choose one isolated timeframe for both selections.' }}
+        </p>
+      </div>
+      <div class="step-actions">
+        <button mat-stroked-button type="button" (click)="back()">
+          <mat-icon>arrow_back</mat-icon>
+          Back
+        </button>
+        <button mat-flat-button color="primary" type="button" (click)="next()" [disabled]="getNextDisabled()">
+          Next
+          <mat-icon>arrow_forward</mat-icon>
+        </button>
+      </div>
+    </div>
+
+    <div class="selection-summary timeframe-context">
+      <mat-icon>compare_arrows</mat-icon>
+      <span>{{ getOptionLabel(leftSelectionId) }}</span>
+      <strong>vs</strong>
+      <span>{{ getOptionLabel(rightSelectionId) }}</span>
     </div>
 
     <div class="timeframe-buttons">
-      <button mat-stroked-button type="button" (click)="openPicker('primary')">
+      <button
+        mat-stroked-button
+        type="button"
+        class="timeframe-card"
+        [class.selected]="primaryTimeframe"
+        (click)="openPicker('primary')">
         <mat-icon>calendar_today</mat-icon>
-        {{ getPrimaryPickerLabel() }}
+        <span>
+          <strong>{{ isSameEntityComparison() ? 'First timeframe' : 'Shared timeframe' }}</strong>
+          <small>{{ getPrimaryPickerLabel() }}</small>
+        </span>
       </button>
-      <button *ngIf="isSameEntityComparison()" mat-stroked-button type="button" (click)="openPicker('secondary')">
-        <mat-icon>calendar_today</mat-icon>
-        {{ getSecondaryPickerLabel() }}
+      <button
+        *ngIf="isSameEntityComparison()"
+        mat-stroked-button
+        type="button"
+        class="timeframe-card"
+        [class.selected]="secondaryTimeframe"
+        (click)="openPicker('secondary')">
+        <mat-icon>event_repeat</mat-icon>
+        <span>
+          <strong>Second timeframe</strong>
+          <small>{{ getSecondaryPickerLabel() }}</small>
+        </span>
       </button>
     </div>
 
     <div *ngIf="activePicker" class="local-picker">
-      <mat-form-field appearance="outline">
-        <mat-label>Start Date</mat-label>
-        <input matInput [matDatepicker]="startPicker" [(ngModel)]="pickerStart" />
-        <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
-        <mat-datepicker #startPicker></mat-datepicker>
-      </mat-form-field>
+      <div class="picker-heading">
+        <mat-icon>edit_calendar</mat-icon>
+        <span>{{ activePicker === 'primary' ? getPrimaryPickerLabel() : getSecondaryPickerLabel() }}</span>
+      </div>
 
-      <mat-form-field appearance="outline">
-        <mat-label>End Date</mat-label>
-        <input matInput [matDatepicker]="endPicker" [(ngModel)]="pickerEnd" />
-        <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
-        <mat-datepicker #endPicker></mat-datepicker>
-      </mat-form-field>
+      <div class="picker-fields">
+        <mat-form-field appearance="outline">
+          <mat-label>Start Date</mat-label>
+          <input matInput [matDatepicker]="startPicker" [(ngModel)]="pickerStart" />
+          <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker></mat-datepicker>
+        </mat-form-field>
 
-      <button mat-flat-button color="primary" type="button" (click)="confirmPicker()" [disabled]="pickerEnd <= pickerStart">
-        <mat-icon>done</mat-icon>
-        Confirm
-      </button>
+        <mat-form-field appearance="outline">
+          <mat-label>End Date</mat-label>
+          <input matInput [matDatepicker]="endPicker" [(ngModel)]="pickerEnd" />
+          <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker></mat-datepicker>
+        </mat-form-field>
+
+        <button mat-flat-button color="primary" type="button" (click)="confirmPicker()" [disabled]="pickerEnd <= pickerStart">
+          <mat-icon>done</mat-icon>
+          Confirm
+        </button>
+      </div>
     </div>
   </section>
 
@@ -114,7 +203,17 @@
           <tbody>
             <tr *ngFor="let row of column.rows">
               <th>{{ row.label }}</th>
-              <td>{{ row.value }}</td>
+              <td>
+                <span class="metric-value">{{ row.value }}</span>
+                <span
+                  *ngIf="row.delta"
+                  class="difference-indicator"
+                  [class.positive]="row.delta.direction === 'up'"
+                  [class.negative]="row.delta.direction === 'down'">
+                  <mat-icon>{{ row.delta.icon }}</mat-icon>
+                  <span>{{ row.delta.display }}</span>
+                </span>
+              </td>
             </tr>
           </tbody>
         </table>
