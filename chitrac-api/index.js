@@ -233,8 +233,6 @@ async function startServer() {
         await initializeCollections();
         const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
         await ensureAnalyticsIndexes(db, config, logger);
-        const { startMongoWatchers } = require('./modules/mongoWatchers');
-        await startMongoWatchers(server);
         const { startWebsocketServer } = require('./modules/websocketServer');
         server.websocketServer = startWebsocketServer(server);
 
@@ -253,6 +251,15 @@ async function startServer() {
                 });
             }
         }
+
+        const { startMongoWatchers } = require('./modules/mongoWatchers');
+        startMongoWatchers(server)
+            .then(() => {
+                logger.info('Dashboard cache warmup completed');
+            })
+            .catch((error) => {
+                logger.error(`Dashboard cache warmup failed: ${error.message}`);
+            });
     } catch (e) {
         logger.error(`Server startup failed: ${e.message}`);
         throw e;

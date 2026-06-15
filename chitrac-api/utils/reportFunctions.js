@@ -832,7 +832,9 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
       })
       .toArray();
 
-    console.log(`[SESSION-AGG] Got ${sessions.length} sessions for ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
+    options.logger?.debug?.(
+      `[SESSION-AGG] Got ${sessions.length} sessions for ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`
+    );
 
     // Group by operator and sum up the totals
     const grouped = new Map();
@@ -934,7 +936,7 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
     }
   }
 
-  console.log(`[SESSION-AGG] Returning ${operators.length} operators`);
+  options.logger?.debug?.(`[SESSION-AGG] Returning ${operators.length} operators`);
   return { operators };
 }
 
