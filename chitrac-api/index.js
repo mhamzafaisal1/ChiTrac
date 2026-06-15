@@ -41,6 +41,7 @@ server.clientSessions = [];
 server.cache = {
     today: {},
     currentShift: {},
+    lastSevenDays: {},
     watchers: {}
 };
 

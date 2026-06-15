@@ -104,6 +104,7 @@ function buildDashboardCacheSnapshot(server) {
         cache: {
             today: cache.today || {},
             currentShift: cache.currentShift || {},
+            lastSevenDays: cache.lastSevenDays || {},
             dashboard: cache.dashboard || {}
         }
     };

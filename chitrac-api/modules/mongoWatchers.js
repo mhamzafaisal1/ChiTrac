@@ -16,11 +16,14 @@ const CACHE_POLL_INTERVAL_MS = 6_000;
 const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
 const DASHBOARD_HISTORY_REFRESH_JOB_KEY = "dashboardHistoryRefresh";
 const DASHBOARD_HISTORY_DAYS = 7;
+const LAST_SEVEN_DAYS_CACHE_JOB_KEY = "lastSevenDaysCacheRefresh";
+const HISTORICAL_DAY_COUNT = 7;
 
 function ensureCache(server) {
   if (!server.cache) server.cache = {};
   if (!server.cache.today) server.cache.today = {};
   if (!server.cache.currentShift) server.cache.currentShift = {};
+  if (!server.cache.lastSevenDays) server.cache.lastSevenDays = {};
   if (!server.cache.dashboard) server.cache.dashboard = {};
   if (!server.cache.dashboard.machines) server.cache.dashboard.machines = {};
   if (!server.cache.dashboard.operators) server.cache.dashboard.operators = {};
@@ -32,6 +35,8 @@ function ensureCache(server) {
   if (!Array.isArray(server.cache.dashboard.machines.history.shifts)) server.cache.dashboard.machines.history.shifts = [];
   if (!Array.isArray(server.cache.dashboard.operators.history.days)) server.cache.dashboard.operators.history.days = [];
   if (!Array.isArray(server.cache.dashboard.operators.history.shifts)) server.cache.dashboard.operators.history.shifts = [];
+  if (!Array.isArray(server.cache.dashboard.machines.lastSevenDays)) server.cache.dashboard.machines.lastSevenDays = [];
+  if (!Array.isArray(server.cache.dashboard.operators.lastSevenDays)) server.cache.dashboard.operators.lastSevenDays = [];
   if (!server.cache.watchers) server.cache.watchers = {};
   if (!server.cache.polling) server.cache.polling = {};
   if (!server.cache.polling.signatures) server.cache.polling.signatures = {};
@@ -88,6 +93,7 @@ function buildDashboardCacheMessage(server, scope = "all") {
     cache: {
       today: server.cache?.today || cacheEnvelope({}, { source: "none" }),
       currentShift: server.cache?.currentShift || cacheEnvelope({}, { source: "none" }),
+      lastSevenDays: server.cache?.lastSevenDays || {},
       dashboard: server.cache?.dashboard || {},
     },
     dashboard: server.cache?.dashboard || {},
@@ -103,6 +109,7 @@ function buildCacheSignature(cache) {
   return JSON.stringify({
     machinesSummary: cache?.machinesSummary,
     operatorsSummary: cache?.operatorsSummary,
+    days: cache?.days,
     dashboard: cache?.dashboard,
     meta: cache?.meta,
   });
@@ -554,10 +561,239 @@ async function refreshLastWeekDashboardCache(server) {
   };
 }
 
+async function resolveShiftContextsForDay(db, config, dayInput) {
+  const day = DateTime.isDateTime(dayInput)
+    ? dayInput.setZone(SYSTEM_TIMEZONE).startOf("day")
+    : DateTime.fromJSDate(new Date(dayInput), { zone: SYSTEM_TIMEZONE }).startOf("day");
+
+  if (!day.isValid) return [];
+
+  const shifts = await db
+    .collection(config.shiftCollectionName)
+    .find({ active: { $ne: false } })
+    .toArray();
+  const weekday = day.weekday;
+
+  return shifts
+    .filter(isValidShift)
+    .filter((shift) => {
+      const activeDays = Array.isArray(shift.activeDays) ? shift.activeDays : [];
+      return activeDays.length === 0 || activeDays.includes(weekday);
+    })
+    .map((shift) => {
+      const start = toShiftDateTime(day, shift.startTime);
+      const end = toShiftDateTime(day, shift.endTime);
+      return {
+        shiftDoc: shift,
+        shiftOid: new ObjectId(String(shift._id)),
+        dateStr: day.toISODate(),
+        start: start.toJSDate(),
+        end: end.toJSDate(),
+        mode: "complete",
+      };
+    })
+    .filter((context) => context.end > context.start)
+    .sort((a, b) => a.start - b.start);
+}
+
+function historicalDayEnvelope(dateStr, allDay, shifts, meta) {
+  return {
+    date: dateStr,
+    allDay,
+    shifts,
+    updatedAt: new Date(),
+    meta,
+  };
+}
+
+async function buildHistoricalDayCache(server, day) {
+  const { db, logger, config } = server;
+  const dayStart = day.setZone(SYSTEM_TIMEZONE).startOf("day");
+  const dayEnd = dayStart.plus({ days: 1 });
+  const dateStr = dayStart.toISODate();
+  const start = dayStart.toJSDate();
+  const end = dayEnd.toJSDate();
+
+  const [machineResult, operatorResult] = await Promise.all([
+    buildMachineSummaryFromDailyCache(db, logger, config, { start, end, dateStr }),
+    buildOperatorSummaryFromDailyCache(db, logger, config, { start, end, dateStr }),
+  ]);
+  const allDayMeta = resultMeta(machineResult, operatorResult);
+  const allDay = cacheEnvelope({
+    machinesSummary: machineResult.data,
+    operatorsSummary: operatorResult.data,
+  }, allDayMeta);
+
+  const contexts = await resolveShiftContextsForDay(db, config, dayStart);
+  const machineShifts = [];
+  const operatorShifts = [];
+
+  for (const context of contexts) {
+    try {
+      const [shiftMachineResult, shiftOperatorResult] = await Promise.all([
+        buildMachineSummaryFromShiftCache(db, logger, config, context),
+        buildOperatorSummaryFromShiftCache(db, logger, config, context),
+      ]);
+      const shiftMeta = {
+        key: `${context.dateStr}|${String(context.shiftOid)}`,
+        date: context.dateStr,
+        shiftId: String(context.shiftOid),
+        shift: serializableShift(context.shiftDoc),
+        mode: context.mode,
+        source: {
+          machines: shiftMachineResult.source,
+          operators: shiftOperatorResult.source,
+        },
+        found: {
+          machines: shiftMachineResult.found,
+          operators: shiftOperatorResult.found,
+        },
+        recordCount: {
+          machines: shiftMachineResult.recordCount,
+          operators: shiftOperatorResult.recordCount,
+        },
+        start: context.start,
+        end: context.end,
+      };
+
+      machineShifts.push(machineDashboardEnvelope(shiftMachineResult.data, shiftMeta));
+      operatorShifts.push(operatorDashboardEnvelope(shiftOperatorResult.data, shiftMeta));
+    } catch (error) {
+      if (logger) {
+        logger.error(`[mongoWatchers] Failed to build historical shift cache for ${dateStr} shift ${context.shiftOid}: ${error.message}`);
+      }
+    }
+  }
+
+  const meta = {
+    key: dateStr,
+    date: dateStr,
+    start,
+    end,
+    source: allDayMeta.source,
+    found: allDayMeta.found,
+    recordCount: allDayMeta.recordCount,
+    shiftCount: contexts.length,
+  };
+
+  return {
+    date: dateStr,
+    machines: historicalDayEnvelope(
+      dateStr,
+      machineDashboardEnvelope(machineResult.data, allDayMeta),
+      machineShifts,
+      meta
+    ),
+    operators: historicalDayEnvelope(
+      dateStr,
+      operatorDashboardEnvelope(operatorResult.data, allDayMeta),
+      operatorShifts,
+      meta
+    ),
+    combined: historicalDayEnvelope(dateStr, allDay, {
+      machines: machineShifts,
+      operators: operatorShifts,
+    }, meta),
+  };
+}
+
+function getCompletedHistoricalDays(nowInput = new Date()) {
+  const today = DateTime.fromJSDate(new Date(nowInput), { zone: SYSTEM_TIMEZONE }).startOf("day");
+  const days = [];
+  for (let offset = 1; offset <= HISTORICAL_DAY_COUNT; offset += 1) {
+    days.push(today.minus({ days: offset }));
+  }
+  return days;
+}
+
+async function refreshLastSevenDaysCache(server, options = {}) {
+  ensureCache(server);
+  const days = getCompletedHistoricalDays(options.now);
+  const dayCaches = [];
+
+  for (const day of days) {
+    try {
+      dayCaches.push(await buildHistoricalDayCache(server, day));
+    } catch (error) {
+      if (server.logger) {
+        server.logger.error(`[mongoWatchers] Failed to build historical cache for ${day.toISODate()}: ${error.message}`);
+      }
+    }
+  }
+
+  const combinedDays = dayCaches.map((dayCache) => dayCache.combined);
+  const machineDays = dayCaches.map((dayCache) => dayCache.machines);
+  const operatorDays = dayCaches.map((dayCache) => dayCache.operators);
+  const dateKeys = combinedDays.map((dayCache) => dayCache.date);
+
+  server.cache.lastSevenDays = {
+    days: combinedDays,
+    byDate: Object.fromEntries(combinedDays.map((dayCache) => [dayCache.date, dayCache])),
+    updatedAt: new Date(),
+    meta: {
+      key: "lastSevenDays",
+      days: dateKeys,
+      dayCount: combinedDays.length,
+      requestedDayCount: HISTORICAL_DAY_COUNT,
+      completedOnly: true,
+    },
+  };
+  server.cache.dashboard.machines.lastSevenDays = machineDays;
+  server.cache.dashboard.operators.lastSevenDays = operatorDays;
+
+  if (server.logger) {
+    server.logger.info(
+      `[mongoWatchers] Updated last 7 completed days cache with ${combinedDays.length} days: ${dateKeys.join(", ")}`
+    );
+  }
+
+  if (options.broadcast !== false && shouldBroadcastCacheUpdate(server, "lastSevenDays", server.cache.lastSevenDays)) {
+    broadcastDashboardCache(server, "lastSevenDays");
+  }
+
+  return server.cache.lastSevenDays;
+}
+
 async function refreshDashboardCache(server) {
   await refreshTodayCache(server);
   await refreshCurrentShiftCache(server);
   await refreshTodayShiftCaches(server);
+}
+
+function scheduleLastSevenDaysRefresh(server) {
+  ensureCache(server);
+  if (!server.scheduledJobs) server.scheduledJobs = {};
+
+  const existing = server.scheduledJobs[LAST_SEVEN_DAYS_CACHE_JOB_KEY];
+  if (existing && typeof existing.cancel === "function") {
+    existing.cancel();
+  }
+
+  const job = schedule.scheduleJob(
+    {
+      hour: 0,
+      minute: 0,
+      second: 0,
+      tz: SYSTEM_TIMEZONE,
+    },
+    async () => {
+      try {
+        await refreshLastSevenDaysCache(server);
+      } catch (error) {
+        if (server.logger) {
+          server.logger.error(`[mongoWatchers] Scheduled last 7 completed days cache refresh failed: ${error.message}`);
+        }
+      }
+    }
+  );
+
+  server.scheduledJobs[LAST_SEVEN_DAYS_CACHE_JOB_KEY] = job;
+
+  if (server.logger) {
+    server.logger.info("[mongoWatchers] Scheduled last 7 completed days cache refresh for midnight plant time");
+  }
+
+  return job;
 }
 
 function scheduleNextCachePoll(server) {
@@ -672,6 +908,8 @@ async function startMongoWatchers(server) {
   await refreshLastWeekDashboardCache(server);
   await refreshDashboardCache(server);
   startHistoryRefreshSchedule(server);
+  await refreshLastSevenDaysCache(server, { broadcast: false });
+  scheduleLastSevenDaysRefresh(server);
   startCachePolling(server);
 
   return server.cache;
@@ -681,6 +919,13 @@ async function stopMongoWatchers(server) {
   if (!server?.cache) return;
   stopCachePolling(server);
   stopHistoryRefreshSchedule(server);
+  const historyJob = server.scheduledJobs?.[LAST_SEVEN_DAYS_CACHE_JOB_KEY];
+  if (historyJob && typeof historyJob.cancel === "function") {
+    historyJob.cancel();
+  }
+  if (server.scheduledJobs) {
+    server.scheduledJobs[LAST_SEVEN_DAYS_CACHE_JOB_KEY] = null;
+  }
   server.cache.watchers = {};
 }
 
@@ -691,5 +936,6 @@ module.exports = {
   refreshCurrentShiftCache,
   refreshLastWeekDashboardCache,
   refreshDashboardCache,
+  refreshLastSevenDaysCache,
   buildDashboardCacheMessage,
 };

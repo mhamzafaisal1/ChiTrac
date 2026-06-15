@@ -241,3 +241,5 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 }
+
+
