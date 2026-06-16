@@ -270,9 +270,50 @@
 
 .picker-fields {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(180px, 240px) auto;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 1rem;
   align-items: start;
+}
+
+.picker-option-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+
+  h4 {
+    margin: 0;
+    color: var(--text-color, #f8fafc);
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+}
+
+.shift-hint {
+  margin: 0;
+  color: #fecaca;
+  font-size: 0.86rem;
+}
+
+.picker-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+
+  button {
+    min-height: 36px;
+    border-radius: 6px;
+
+    &.selected {
+      border-color: rgba(45, 214, 111, 0.55);
+      background: rgba(45, 214, 111, 0.08);
+      color: #86efac;
+    }
+  }
+}
+
+.picker-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .comparison-columns {
@@ -394,7 +435,8 @@
   .mat-mdc-select-arrow,
   .mat-mdc-floating-label,
   .mat-mdc-input-element,
-  .mat-datepicker-toggle {
+  .mat-datepicker-toggle,
+  .mat-timepicker-toggle {
     color: var(--text-color, #f3f4f6) !important;
   }
 
@@ -417,7 +459,8 @@
 
   .page-header p,
   .comparison-column p,
-  .comparison-column th {
+  .comparison-column th,
+  .picker-option-section h4 {
     color: var(--text-color-secondary, #64748b);
   }
 
@@ -510,7 +553,8 @@
   }
 
   .choice-panel,
-  .bottom-actions {
+  .bottom-actions,
+  .picker-actions {
     align-items: stretch;
     flex-direction: column;
   }

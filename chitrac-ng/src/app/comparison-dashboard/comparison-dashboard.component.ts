@@ -8,6 +8,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatTimepickerModule } from '@angular/material/timepicker';
 import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
@@ -18,6 +19,7 @@ import { OperatorConfig } from '../shared/models/operator.model';
 import { MachineService } from '../services/machine.service';
 import { OperatorService } from '../services/operator.service';
 import { PolarChartComponent, PolarChartData } from '../charts/polar-chart/polar-chart.component';
+import { ShiftListItem, ShiftService } from '../services/shift.service';
 
 type ComparisonEntityType = 'machines' | 'operators';
 type WizardStep = 'chooseType' | 'chooseEntities' | 'chooseTimeframes' | 'results';
@@ -32,6 +34,7 @@ interface ComparisonOption {
 interface ComparisonTimeframe {
   start: Date;
   end: Date;
+  shiftId: string | null;
 }
 
 interface MetricRow {
@@ -80,6 +83,7 @@ interface WizardSnapshot {
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatTimepickerModule,
     MatNativeDateModule,
     MatProgressSpinnerModule,
     MatSelectModule,
@@ -102,6 +106,9 @@ export class ComparisonDashboardComponent implements OnInit {
   activePicker: TimeframeKey | null = null;
   pickerStart: Date = this.startOfToday();
   pickerEnd: Date = new Date();
+  pickerShiftId: string | null = null;
+  shifts: ShiftListItem[] = [];
+  shiftsLoadError: string | null = null;
   resultColumns: ComparisonColumn[] = [];
   polarChartData: PolarChartData | null = null;
   historyStack: WizardSnapshot[] = [];
@@ -112,11 +119,13 @@ export class ComparisonDashboardComponent implements OnInit {
   constructor(
     private configurationService: ConfigurationService,
     private machineService: MachineService,
-    private operatorService: OperatorService
+    private operatorService: OperatorService,
+    private shiftService: ShiftService
   ) {}
 
   ngOnInit(): void {
     this.loadOptions();
+    this.loadShifts();
   }
 
   selectEntityType(type: ComparisonEntityType): void {
@@ -209,6 +218,7 @@ export class ComparisonDashboardComponent implements OnInit {
     const current = key === 'primary' ? this.primaryTimeframe : this.secondaryTimeframe;
     this.pickerStart = current?.start ? new Date(current.start) : this.startOfToday();
     this.pickerEnd = current?.end ? new Date(current.end) : new Date();
+    this.pickerShiftId = current?.shiftId || null;
   }
 
   confirmPicker(): void {
@@ -218,7 +228,8 @@ export class ComparisonDashboardComponent implements OnInit {
 
     const nextTimeframe = {
       start: new Date(this.pickerStart),
-      end: new Date(this.pickerEnd)
+      end: new Date(this.pickerEnd),
+      shiftId: this.pickerShiftId
     };
 
     if (this.activePicker === 'primary') {
@@ -227,6 +238,42 @@ export class ComparisonDashboardComponent implements OnInit {
       this.secondaryTimeframe = nextTimeframe;
     }
     this.activePicker = null;
+  }
+
+  clearPickerShift(): void {
+    this.pickerShiftId = null;
+  }
+
+  selectPickerShift(shiftId: string): void {
+    this.pickerShiftId = shiftId;
+  }
+
+  onPickerQuickSelect(timeframe: 'today' | 'thisWeek' | 'thisMonth' | 'thisYear'): void {
+    const now = new Date();
+    let start: Date;
+
+    switch (timeframe) {
+      case 'today':
+        start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'thisWeek':
+        start = new Date(now);
+        start.setDate(start.getDate() - start.getDay());
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'thisMonth':
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'thisYear':
+        start = new Date(now.getFullYear(), 0, 1);
+        start.setHours(0, 0, 0, 0);
+        break;
+    }
+
+    this.pickerStart = start;
+    this.pickerEnd = now;
   }
 
   getOptionLabel(id: number | null): string {
@@ -296,6 +343,19 @@ export class ComparisonDashboardComponent implements OnInit {
     });
   }
 
+  private loadShifts(): void {
+    this.shiftService.getActiveShifts().subscribe({
+      next: (res) => {
+        this.shifts = res.shifts || [];
+        this.shiftsLoadError = null;
+      },
+      error: () => {
+        this.shifts = [];
+        this.shiftsLoadError = 'Could not load shifts';
+      }
+    });
+  }
+
   private buildComparison(): void {
     if (!this.entityType || !this.primaryTimeframe || this.leftSelectionId === null || this.rightSelectionId === null) {
       return;
@@ -348,8 +408,8 @@ export class ComparisonDashboardComponent implements OnInit {
     const start = timeframe.start.toISOString();
     const end = timeframe.end.toISOString();
     return this.entityType === 'machines'
-      ? this.machineService.getMachinesSummary(start, end)
-      : this.operatorService.getOperatorSummary(start, end);
+      ? this.machineService.getMachinesSummary(start, end, timeframe.shiftId)
+      : this.operatorService.getOperatorSummary(start, end, timeframe.shiftId);
   }
 
   private findSummaryRow(rows: any[], id: number): any | null {
@@ -534,7 +594,14 @@ export class ComparisonDashboardComponent implements OnInit {
   }
 
   private formatTimeframe(timeframe: ComparisonTimeframe): string {
-    return `${this.formatDate(timeframe.start)} - ${this.formatDate(timeframe.end)}`;
+    const shiftLabel = this.getShiftLabel(timeframe.shiftId);
+    const suffix = shiftLabel ? ` (${shiftLabel})` : '';
+    return `${this.formatDate(timeframe.start)} - ${this.formatDate(timeframe.end)}${suffix}`;
+  }
+
+  private getShiftLabel(shiftId: string | null): string {
+    if (!shiftId) return '';
+    return this.shifts.find(shift => shift._id === shiftId)?.name || 'Shift';
   }
 
   private formatDate(date: Date): string {
