@@ -110,8 +110,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
   
-    // Add dummy loading row initially
-    this.addDummyLoadingRow();
+    if (!this.tryApplyWebsocketDashboardData(null)) {
+      this.addDummyLoadingRow();
+    }
     this.websocketService.ensureConnected();
     this.websocketService.status$
       .pipe(takeUntil(this.destroy$))
@@ -142,7 +143,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         this.endTime = this.dateTimeService.getEndTime();
         this.dateTimeService.setLiveMode(selection.mode === 'current');
         if (selection.mode === 'shift') {
-          this.addDummyLoadingRow();
           this.fetchAnalyticsData();
         }
       });
@@ -163,8 +163,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     ).subscribe(isLive => {
       this.liveMode = isLive;
       if (isLive) {
-        // Add dummy loading row when switching to live mode
-        this.addDummyLoadingRow();
         // Reset startTime to today at 00:00
         const start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -317,8 +315,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   async fetchAnalyticsData(): Promise<void> {
-    this.isLoading = true;
-
     if (this.shouldUseWebsocketDashboardData()) {
       this.websocketService.ensureConnected();
       if (this.tryApplyWebsocketDashboardData(null)) {
@@ -326,6 +322,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       }
     }
 
+    this.isLoading = true;
+    this.addDummyLoadingRow();
     this.fetchRestDashboardData();
   }
 

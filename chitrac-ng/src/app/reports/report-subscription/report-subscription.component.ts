@@ -39,6 +39,10 @@ export class ReportSubscriptionComponent implements OnInit {
     this.loadSubscriptions();
   }
 
+  get hasSubscriptions(): boolean {
+    return this.dataSource.data.length > 0;
+  }
+
   loadSubscriptions(): void {
     this.isLoading = true;
     this.reportsService.listReportSubscriptions().subscribe({
@@ -63,6 +67,9 @@ export class ReportSubscriptionComponent implements OnInit {
     const dialogRef = this.dialog.open(ReportSubscriptionCuComponent, {
       data: null,
       disableClose: true,
+      width: '860px',
+      maxWidth: '94vw',
+      maxHeight: '90vh',
     });
 
     dialogRef.afterClosed().subscribe((formValue: ReportSubscriptionFormValue | null) => {
@@ -89,6 +96,9 @@ export class ReportSubscriptionComponent implements OnInit {
     const dialogRef = this.dialog.open(ReportSubscriptionCuComponent, {
       data: target,
       disableClose: true,
+      width: '860px',
+      maxWidth: '94vw',
+      maxHeight: '90vh',
     });
 
     dialogRef.afterClosed().subscribe((formValue: ReportSubscriptionFormValue | null) => {
