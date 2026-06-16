@@ -211,8 +211,6 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
       height: this.chartHeight,
       orientation: 'horizontal',  // horizontal bars: machines on Y, OEE % on X
       xType: 'linear',  // OEE values are numeric (X-axis = bar length)
-      xLabel: 'OEE (%)',
-      yLabel: 'Machine',
       margin: {
         top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),

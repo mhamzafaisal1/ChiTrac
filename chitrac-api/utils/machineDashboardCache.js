@@ -116,7 +116,8 @@ async function resolveCurrentShiftContext(db, config, nowInput = new Date()) {
   };
 }
 
-async function buildMachineSummaryRows(db, logger, config, records, activeShifts, requestStart, requestEnd) {
+async function buildMachineSummaryRows(db, logger, config, records, activeShifts, requestStart, requestEnd, options = {}) {
+  const useShiftElapsed = options.useShiftElapsed !== false;
   const shiftElapsedCache = new Map();
   const machineSerials = records.map((r) => Number(r.machineSerial)).filter(Number.isFinite);
   const tickers = machineSerials.length
@@ -156,20 +157,26 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
     const timeRange = record.buildRange || record.timeRange;
     const rangeStart = timeRange?.start ? new Date(timeRange.start) : new Date(requestStart);
     const rangeEnd = timeRange?.end ? new Date(timeRange.end) : new Date(requestEnd);
-    const shiftKey = `${rangeStart.getTime()}|${rangeEnd.getTime()}`;
-    const shiftElapsedMs = shiftElapsedCache.has(shiftKey)
-      ? shiftElapsedCache.get(shiftKey)
-      : computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
-    shiftElapsedCache.set(shiftKey, shiftElapsedMs);
+    const wallClockElapsedMs = Math.max(0, rangeEnd - rangeStart);
+    let elapsedMs = wallClockElapsedMs;
+    if (useShiftElapsed) {
+      const shiftKey = `${rangeStart.getTime()}|${rangeEnd.getTime()}`;
+      elapsedMs = shiftElapsedCache.has(shiftKey)
+        ? shiftElapsedCache.get(shiftKey)
+        : computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
+      shiftElapsedCache.set(shiftKey, elapsedMs);
+    }
 
     const runtimeMs = record.runtimeMs || 0;
     const totalCounts = record.totalCounts || 0;
     const totalMisfeeds = record.totalMisfeeds || 0;
-    const downtimeMs = Math.max(shiftElapsedMs - runtimeMs, 0);
+    const downtimeMs = Math.max(elapsedMs - runtimeMs, 0);
     const availability =
-      shiftElapsedMs > 0 ? Math.min(Math.max(runtimeMs / shiftElapsedMs, 0), 1) : 0;
+      elapsedMs > 0 ? Math.min(Math.max(runtimeMs / elapsedMs, 0), 1) : 0;
     const totalOutput = totalCounts + totalMisfeeds;
     const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
+    const runtimeHours = runtimeMs / 3600000;
+    const piecesPerHour = runtimeHours > 0 ? totalCounts / runtimeHours : 0;
 
     let workTimeMs = record.workedTimeMs || 0;
     if (workTimeMs === 0 && record.totalTimeCreditMs > 0 && runtimeMs > 0) {
@@ -212,6 +219,11 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
             value: throughput,
             percentage: (throughput * 100).toFixed(2),
           },
+          piecesPerHour: {
+            value: piecesPerHour,
+            formatted: Math.round(piecesPerHour).toString(),
+          },
+          pph: piecesPerHour,
           efficiency: {
             value: efficiency,
             percentage: (efficiency * 100).toFixed(2),
@@ -288,7 +300,9 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
   }).catch(() => []);
 
   return {
-    data: await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end),
+    data: await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end, {
+      useShiftElapsed: false,
+    }),
     source: "totals-daily",
     found: true,
     dateStr,
