@@ -434,6 +434,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
         "Total Count": totalCount,
         "Misfeed Count": misfeedCount,
+        PPH: this.formatPph(response),
         Availability: `${performance?.availability?.percentage ?? "0"}%`,
         Throughput: `${performance?.throughput?.percentage ?? "0"}%`,
         Efficiency: `${performance?.efficiency?.percentage ?? "0"}%`,
