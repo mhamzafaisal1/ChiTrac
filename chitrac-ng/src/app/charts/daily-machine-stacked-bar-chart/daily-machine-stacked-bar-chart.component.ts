@@ -214,8 +214,9 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   // ---- mapping ----
   private formatMachineData(data: MachineStatus[]): CartesianChartConfig {
     const toHours = (ms: number) => ms / 3_600_000;
-    
-    
+    const maxMachineNameLength = data.reduce((max, machine) => Math.max(max, machine.name.length), 0);
+    const leftMargin = Math.min(150, Math.max(92, maxMachineNameLength * 7 + 16));
+
     // Convert machine data to cartesian chart format (Offline = remainder, grey)
     const series: XYSeries[] = [
       {
@@ -224,7 +225,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         type: 'bar',
         stack: 'status',
         data: data.map(d => ({ x: d.name, y: toHours(d.runningMs) })),
-        color: '#66bb6a'
+        color: '#66bb6a',
+        options: { barPadding: 0.2 }
       },
       {
         id: 'paused',
@@ -232,7 +234,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         type: 'bar',
         stack: 'status',
         data: data.map(d => ({ x: d.name, y: toHours(d.pausedMs) })),
-        color: '#ffca28'
+        color: '#ffca28',
+        options: { barPadding: 0.2 }
       },
       {
         id: 'faulted',
@@ -240,7 +243,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         type: 'bar',
         stack: 'status',
         data: data.map(d => ({ x: d.name, y: toHours(d.faultedMs) })),
-        color: '#ef5350'
+        color: '#ef5350',
+        options: { barPadding: 0.2 }
       },
       {
         id: 'offline',
@@ -248,7 +252,8 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         type: 'bar',
         stack: 'status',
         data: data.map(d => ({ x: d.name, y: toHours(d.offlineMs ?? 0) })),
-        color: 'var(--sg-color-blue-gray-medium-100)' // theme-aware grey
+        color: 'var(--sg-color-blue-gray-medium-100)', // theme-aware grey
+        options: { barPadding: 0.2 }
       }
     ];
 
@@ -256,13 +261,13 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
       title: 'Daily Machine Status',
       width: this.chartWidth,
       height: this.chartHeight,
-      orientation: 'vertical',
+      orientation: 'horizontal',
       xType: 'category',
       margin: {
         top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, 30),
-        bottom: Math.max(this.marginBottom || 50, 80),
-        left: Math.max(this.marginLeft || 50, 58)
+        bottom: Math.max(this.marginBottom || 50, 60),
+        left: Math.max(this.marginLeft || 50, leftMargin)
       },
       legend: {
         show: this.showLegend !== false,
