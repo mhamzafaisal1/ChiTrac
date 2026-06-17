@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { catchError, tap } from 'rxjs/operators';
+import { of } from 'rxjs';
 
 export interface AppSettings {
   enableApiTokenCheck: boolean;
@@ -15,11 +16,18 @@ export interface ThemeResponse {
   source: 'user' | 'default';
 }
 
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  enableApiTokenCheck: true,
+  showErrorModals: true,
+  defaultTheme: 'dark',
+  systemName: 'ChiTrac'
+};
+
 @Injectable({
   providedIn: 'root'
 })
 export class SettingsService {
-  private settingsSubject = new BehaviorSubject<AppSettings | null>(null);
+  private settingsSubject = new BehaviorSubject<AppSettings | null>(DEFAULT_APP_SETTINGS);
   public settings$ = this.settingsSubject.asObservable();
 
   private currentThemeSubject = new BehaviorSubject<'light' | 'dark'>('light');
@@ -31,10 +39,17 @@ export class SettingsService {
    * Load application settings from the server
    */
   loadSettings(): Observable<AppSettings> {
-    return this.http.get<AppSettings>('/api/utilities/settings').pipe(
+    return this.http.get<AppSettings>('/api/utilities/settings', {
+      headers: { 'X-Suppress-Error-Modal': 'true' }
+    }).pipe(
       tap(settings => {
         this.settingsSubject.next(settings);
         console.log('[SettingsService] Settings loaded:', settings);
+      }),
+      catchError(error => {
+        console.warn('[SettingsService] Failed to load settings, using defaults', error);
+        this.settingsSubject.next(DEFAULT_APP_SETTINGS);
+        return of(DEFAULT_APP_SETTINGS);
       })
     );
   }

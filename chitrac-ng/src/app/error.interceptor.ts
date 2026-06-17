@@ -10,8 +10,17 @@ export class ErrorInterceptor implements HttpInterceptor {
   constructor(private errorQueueService: ErrorQueueService) {}
   
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    return next.handle(req).pipe(
+    const suppressErrorModal = req.headers.get('X-Suppress-Error-Modal') === 'true';
+    const forwardedReq = suppressErrorModal
+      ? req.clone({ headers: req.headers.delete('X-Suppress-Error-Modal') })
+      : req;
+
+    return next.handle(forwardedReq).pipe(
       catchError((error: HttpErrorResponse) => {
+        if (suppressErrorModal) {
+          return throwError(() => error);
+        }
+
         // Only handle HTTP errors (not client-side errors like network issues)
         if (error.error instanceof ErrorEvent) {
           // Client-side error (network error, etc.)
