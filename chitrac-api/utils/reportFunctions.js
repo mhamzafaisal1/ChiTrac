@@ -454,33 +454,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
             timestamps: 1,
             machine: 1,
             operators: 1,
-            countsFiltered: {
-              $map: {
-                input: {
-                  $filter: {
-                    input: {
-                      $cond: [{ $isArray: "$counts" }, "$counts", []],
-                    },
-                    as: "c",
-                    cond: {
-                      $and: [
-                        { $gte: ["$$c.timestamp", partialDay.start] },
-                        { $lte: ["$$c.timestamp", partialDay.end] },
-                      ],
-                    },
-                  },
-                },
-                as: "c",
-                in: {
-                  timestamp: "$$c.timestamp",
-                  item: {
-                    id: "$$c.item.id",
-                    name: "$$c.item.name",
-                    standard: "$$c.item.standard",
-                  },
-                },
-              },
-            },
+            counts: 1,
             ovStart: 1,
             ovEnd: 1,
             sliceMs: 1,
@@ -492,7 +466,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
     // Process sessions to create machine totals (similar to original route logic)
     const grouped = new Map();
     for (const s of sessions) {
-      const key = s.machine?.serial;
+      const key = s.machine?.serial ?? s.machine?.id;
       if (!key) continue;
       if (!grouped.has(key)) {
         grouped.set(key, {
@@ -516,7 +490,30 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
 
       bucket.totalRuntimeMs += runtimeMs;
 
-      const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+      const rawCounts = Array.isArray(s.counts)
+        ? s.counts
+        : Array.isArray(s.counts?.valid)
+          ? s.counts.valid
+          : [];
+      const counts = rawCounts
+        .map((c) => ({
+          timestamp:
+            c.timestamp ||
+            c.timestamps?.create ||
+            c.timestamps?.active ||
+            c.timestamps?.update,
+          item: c.item,
+        }))
+        .filter((c) => {
+          const timestamp = c.timestamp ? new Date(c.timestamp) : null;
+          return (
+            c.item &&
+            timestamp instanceof Date &&
+            !Number.isNaN(timestamp.getTime()) &&
+            timestamp >= partialDay.start &&
+            timestamp <= partialDay.end
+          );
+        });
       if (!counts.length) continue;
 
       const byItem = new Map();
