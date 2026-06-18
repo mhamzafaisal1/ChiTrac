@@ -34,10 +34,10 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
   @Input() showLegend: boolean = false;          // left as prop
   @Input() legendPosition: 'top' | 'right' = 'right'; // left as prop
   @Input() legendWidthPx: number = 120;          // left as prop
-  @Input() marginTop!: number;
-  @Input() marginRight!: number;
-  @Input() marginBottom!: number;
-  @Input() marginLeft!: number;
+  @Input() marginTop: number = 40;
+  @Input() marginRight: number = 30;
+  @Input() marginBottom: number = 80;
+  @Input() marginLeft: number = 60;
   @ViewChild('chartContainer', { static: true }) chartContainer!: ElementRef;
 
   private observer!: MutationObserver;
@@ -113,9 +113,10 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
     const xLabels = this.mode === 'time'
       ? this.data.map(d => this.formatHour(d.hour))
       : this.data.map((d, i) => d.label || `#${i + 1}`);
+    const xKeys = this.data.map((_, i) => `${i}`);
 
     const x = d3.scaleBand()
-      .domain(xLabels)
+      .domain(xKeys)
       .range([0, width])
       .padding(0.2);
 
@@ -126,7 +127,7 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
 
     chartGroup.append('g')
       .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x))
+      .call(d3.axisBottom(x).tickFormat((key) => xLabels[Number(key)] ?? String(key)))
       .selectAll('text')
         .attr('transform', 'rotate(-45)')
         .style('text-anchor', 'end')
@@ -144,10 +145,7 @@ export class BarChartComponent implements OnChanges, OnDestroy, AfterViewInit {
       .enter()
       .append('rect')
         .attr('class', 'bar')
-        .attr('x', (d, i) => {
-          const label = this.mode === 'time' ? this.formatHour(d.hour) : (d.label || `#${i + 1}`);
-          return x(label)!;
-        })
+        .attr('x', (d, i) => x(`${i}`)!)
         .attr('y', d => y(d.counts))
         .attr('width', x.bandwidth())
         .attr('height', d => height - y(d.counts))
