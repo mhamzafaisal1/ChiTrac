@@ -1,0 +1,90 @@
+<div class="dashboard-container" [class.dark-mode]="isDarkTheme">
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Fetching data...</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <mat-form-field appearance="outline" class="date-field">
+      <mat-label>Date</mat-label>
+      <input matInput [matDatepicker]="datePicker" [(ngModel)]="selectedDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
+      <mat-datepicker #datePicker></mat-datepicker>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="shift-select">
+      <mat-label>First Shift</mat-label>
+      <mat-select [(ngModel)]="firstShiftId" (ngModelChange)="onFirstShiftChange()">
+        <mat-option *ngFor="let s of shifts" [value]="s._id">
+          {{ s.name || ('Shift ' + s._id) }}
+        </mat-option>
+      </mat-select>
+      <mat-hint *ngIf="shiftsLoadError">{{ shiftsLoadError }}</mat-hint>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="shift-select">
+      <mat-label>Second Shift</mat-label>
+      <mat-select [(ngModel)]="secondShiftId">
+        <mat-option *ngFor="let s of secondShiftOptions()" [value]="s._id">
+          {{ s.name || ('Shift ' + s._id) }}
+        </mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <div class="report-mode-toggle">
+      <span class="toggle-label">Detailed</span>
+      <mat-slide-toggle [(ngModel)]="showSummaryOnly" color="primary"></mat-slide-toggle>
+      <span class="toggle-label">Summary</span>
+    </div>
+
+    <div class="button-group">
+      <button
+        mat-flat-button
+        color="primary"
+        (click)="fetchAnalyticsData()"
+        [disabled]="!selectedDate || !firstShiftId || !secondShiftId || isLoading"
+      >
+        <mat-icon>refresh</mat-icon>
+        {{ isLoading ? "Loading..." : "Fetch Data" }}
+      </button>
+    </div>
+  </div>
+
+  <div class="comparison-content" *ngIf="hasResults">
+    <section class="report-section">
+      <h2>{{ firstReportHeading }}</h2>
+      <div class="table-container" [class.loading]="isLoading">
+        <base-table
+          *ngIf="firstRows.length"
+          [class.dark]="isDarkTheme"
+          [class.light]="!isDarkTheme"
+          [columns]="columns"
+          [rows]="firstDisplayedRows"
+          [getCellClass]="getEfficiencyClass.bind(this)"
+          style="height:93%; border-radius: 4px;"
+        >
+        </base-table>
+        <div class="empty-state" *ngIf="!firstRows.length">No data for this shift.</div>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h2>{{ secondReportHeading }}</h2>
+      <div class="table-container" [class.loading]="isLoading">
+        <base-table
+          *ngIf="secondRows.length"
+          [class.dark]="isDarkTheme"
+          [class.light]="!isDarkTheme"
+          [columns]="columns"
+          [rows]="secondDisplayedRows"
+          [getCellClass]="getEfficiencyClass.bind(this)"
+          style="height:93%; border-radius: 4px;"
+        >
+        </base-table>
+        <div class="empty-state" *ngIf="!secondRows.length">No data for this shift.</div>
+      </div>
+    </section>
+  </div>
+</div>

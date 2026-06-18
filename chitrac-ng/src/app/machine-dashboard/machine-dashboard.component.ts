@@ -132,8 +132,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.updateChartDimensions();
     window.addEventListener("resize", this.updateChartDimensions.bind(this));
 
-    // Add dummy loading row initially
-    this.addDummyLoadingRow();
+    // Prime from the websocket cache when it is already available, otherwise
+    // keep the existing placeholder while the REST fallback catches up.
+    if (!this.tryApplyWebsocketDashboardData(null)) {
+      this.addDummyLoadingRow();
+    }
     this.websocketService.ensureConnected();
     this.websocketService.status$
       .pipe(takeUntil(this.destroy$))
@@ -164,7 +167,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         this.endTime = this.dateTimeService.getEndTime();
         this.dateTimeService.setLiveMode(selection.mode === "current");
         if (selection.mode === "shift") {
-          this.addDummyLoadingRow();
           this.fetchAnalyticsData();
         }
       });
@@ -184,8 +186,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         this.liveMode = isLive;
 
         if (this.liveMode) {
-          // Add dummy loading row when switching to live mode
-          this.addDummyLoadingRow();
           const start = new Date();
           start.setHours(0, 0, 0, 0);
           this.startTime = this.formatDateForInput(start);
@@ -301,8 +301,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   fetchAnalyticsData(): void {
-    this.isLoading = true;
-
     if (this.shouldUseWebsocketDashboardData()) {
       this.websocketService.ensureConnected();
       if (this.tryApplyWebsocketDashboardData(null)) {
@@ -310,6 +308,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }
     }
 
+    this.isLoading = true;
+    this.addDummyLoadingRow();
     this.fetchRestDashboardData();
   }
 
@@ -434,6 +434,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
         "Total Count": totalCount,
         "Misfeed Count": misfeedCount,
+        PPH: this.formatPph(response),
         Availability: `${performance?.availability?.percentage ?? "0"}%`,
         Throughput: `${performance?.throughput?.percentage ?? "0"}%`,
         Efficiency: `${performance?.efficiency?.percentage ?? "0"}%`,
@@ -521,9 +522,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     // Get modal-aware dimensions
     const modalChartDimensions = this.getModalAwareChartDimensions();
+    const cachedMachineData = this.getCachedMachineDetails(machineSerial);
+
+    if (cachedMachineData) {
+      this.openMachineDetailsModal(row, machineSerial, cachedMachineData, modalChartDimensions);
+      return;
+    }
 
     this.isOpeningModal = true;
-
     if (timeframe) {
       // Use timeframe-based API call
       this.machineService
@@ -531,141 +537,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         .subscribe({
         next: (res: any[]) => {
           try {
-          const machineData = res[0]; // <-- FIX HERE
-
-          const itemSummaryData = Object.values(
-            machineData.itemSummary?.machineSummary?.itemSummaries || {}
-          );
-
-          const faultSummaryData = machineData.faultData?.faultSummaries || [];
-          const faultCycleData = machineData.faultData?.faultCycles || [];
-
-        
-          const carouselTabs = [
-            {
-              label: "Item Summary",
-              component: MachineItemSummaryTableComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                selectedMachineSerial: machineSerial,
-                itemSummaryData,
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Current Operators",
-              component: MachineCurrentOperatorsComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                selectedMachineSerial: machineSerial,
-                currentOperatorsData: machineData.currentOperators || [],
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Item Stacked Chart",
-              component: MachineItemStackedBarChartComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                // Reduce height slightly inside the modal so the
-                // chart area fits comfortably without vertical scroll.
-                chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                isModal: this.isModal,
-                mode: "dashboard",
-                preloadedData: machineData.itemHourlyStack,
-                marginTop: 30,
-                marginRight: 180,  // Increase right margin to accommodate legend
-                marginBottom: 60,
-                marginLeft: 100,  // Keep larger left margin for item labels
-                showLegend: true,
-                legendPosition: "right",
-                legendWidthPx: 120,
-              },
-            },
-            {
-              label: "Fault Summaries",
-              component: MachineFaultHistoryComponent,
-              componentInputs: {
-                viewType: "summary",
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Fault History",
-              component: MachineFaultHistoryComponent,
-              componentInputs: {
-                viewType: "cycles",
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Performance Chart",
-              component: OperatorPerformanceChartComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                // Reduce height slightly inside the modal so the
-                // chart area fits comfortably without vertical scroll.
-                chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                isModal: this.isModal,
-                mode: "dashboard",
-                preloadedData: {
-                  machine: {
-                    serial: machineSerial,
-                    name: machineData.machine?.name ?? "Unknown",
-                  },
-                  timeRange: {
-                    start: this.startTime,
-                    end: this.endTime,
-                  },
-                  hourlyData: machineData.operatorEfficiency ?? [],
-                },
-                marginTop: 30,
-                marginRight: 180, // Increase right margin to accommodate legend
-                // Give X and Y axis labels a bit more breathing room
-                // so they are not visually clipped inside the modal.
-                marginBottom: 80,
-                marginLeft: 40,
-                showLegend: true,
-                legendPosition: "right",
-                legendWidthPx: 120,
-              },
-            },
-          ];
-
-          const dialogRef = this.dialog.open(ModalWrapperComponent, {
-            width: "90vw",
-            height: "85vh",
-            maxWidth: "95vw",
-            maxHeight: "90vh",
-            panelClass: "performance-chart-dialog",
-            data: {
-              component: UseCarouselComponent,
-              componentInputs: {
-                tabData: carouselTabs,
-              },
-              machineSerial,
-              startTime: this.startTime,
-              endTime: this.endTime,
-            },
-          });
-
-          dialogRef.afterClosed().subscribe(() => {
-            if (this.selectedRow === row) this.selectedRow = null;
-          });
+            this.openMachineDetailsModal(row, machineSerial, res[0], modalChartDimensions);
           } finally {
             this.isOpeningModal = false;
           }
@@ -685,142 +557,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         .subscribe({
           next: (res: any[]) => {
             try {
-            const machineData = res[0]; // <-- FIX HERE
-
-            const itemSummaryData = Object.values(
-              machineData.itemSummary?.machineSummary?.itemSummaries || {}
-            );
-
-            const faultSummaryData = machineData.faultData?.faultSummaries || [];
-            const faultCycleData = machineData.faultData?.faultCycles || [];
-
-            // console.log("machineData.currentOperators", machineData.currentOperators)
-          
-            const carouselTabs = [
-              {
-                label: "Item Summary",
-                component: MachineItemSummaryTableComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  selectedMachineSerial: machineSerial,
-                  itemSummaryData,
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Current Operators",
-                component: MachineCurrentOperatorsComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  selectedMachineSerial: machineSerial,
-                  currentOperatorsData: machineData.currentOperators || [],
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Item Stacked Chart",
-                component: MachineItemStackedBarChartComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                  // Reduce height slightly inside the modal so the
-                  // chart area fits comfortably without vertical scroll.
-                  chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                  isModal: this.isModal,
-                  mode: "dashboard",
-                  preloadedData: machineData.itemHourlyStack,
-                  marginTop: 30,
-                  marginRight: 180,  // Increase right margin to accommodate legend
-                  marginBottom: 60,
-                  marginLeft: 100,  // Keep larger left margin for item labels
-                  showLegend: true,
-                  legendPosition: "right",
-                  legendWidthPx: 120,
-                },
-              },
-              {
-                label: "Fault Summaries",
-                component: MachineFaultHistoryComponent,
-                componentInputs: {
-                  viewType: "summary",
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Fault History",
-                component: MachineFaultHistoryComponent,
-                componentInputs: {
-                  viewType: "cycles",
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Performance Chart",
-                component: OperatorPerformanceChartComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                  // Reduce height slightly inside the modal so the
-                  // chart area fits comfortably without vertical scroll.
-                  chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                  isModal: this.isModal,
-                  mode: "dashboard",
-                  preloadedData: {
-                    machine: {
-                      serial: machineSerial,
-                      name: machineData.machine?.name ?? "Unknown",
-                    },
-                    timeRange: {
-                      start: this.startTime,
-                      end: this.endTime,
-                    },
-                    hourlyData: machineData.operatorEfficiency ?? [],
-                  },
-                  marginTop: 30,
-                  marginRight: 180, // Increase right margin to accommodate legend
-                  // Give X and Y axis labels a bit more breathing room
-                  // so they are not visually clipped inside the modal.
-                  marginBottom: 80,
-                  marginLeft: 40,
-                  showLegend: true,
-                  legendPosition: "right",
-                  legendWidthPx: 120,
-                },
-              },
-            ];
-
-            const dialogRef = this.dialog.open(ModalWrapperComponent, {
-              width: "90vw",
-              height: "85vh",
-              maxWidth: "95vw",
-              maxHeight: "90vh",
-              panelClass: "performance-chart-dialog",
-              data: {
-                component: UseCarouselComponent,
-                componentInputs: {
-                  tabData: carouselTabs,
-                },
-                machineSerial,
-                startTime: this.startTime,
-                endTime: this.endTime,
-              },
-            });
-
-            dialogRef.afterClosed().subscribe(() => {
-              if (this.selectedRow === row) this.selectedRow = null;
-            });
+              this.openMachineDetailsModal(row, machineSerial, res[0], modalChartDimensions);
             } finally {
               this.isOpeningModal = false;
             }
@@ -834,6 +571,154 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           },
         });
     }
+  }
+
+  private getCachedMachineDetails(machineSerial: number): any | null {
+    const machineData = this.machineData.find(
+      (machine) => Number(machine?.machine?.serial) === Number(machineSerial)
+    );
+
+    if (!machineData) return null;
+
+    const hasDetailData =
+      !!machineData.itemSummary ||
+      !!machineData.itemHourlyStack ||
+      !!machineData.operatorEfficiency ||
+      !!machineData.currentOperators ||
+      !!machineData.faultData;
+
+    return hasDetailData ? machineData : null;
+  }
+
+  private openMachineDetailsModal(
+    row: any,
+    machineSerial: number,
+    machineData: any,
+    modalChartDimensions: { width: number; height: number }
+  ): void {
+    const itemSummaryData = Object.values(
+      machineData?.itemSummary?.machineSummary?.itemSummaries || {}
+    );
+
+    const carouselTabs = [
+      {
+        label: "Item Summary",
+        component: MachineItemSummaryTableComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          selectedMachineSerial: machineSerial,
+          itemSummaryData,
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Current Operators",
+        component: MachineCurrentOperatorsComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          selectedMachineSerial: machineSerial,
+          currentOperatorsData: machineData?.currentOperators || [],
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Item Stacked Chart",
+        component: MachineItemStackedBarChartComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          chartWidth: modalChartDimensions.width + 200,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: machineData?.itemHourlyStack,
+          marginTop: 30,
+          marginRight: 180,
+          marginBottom: 60,
+          marginLeft: 100,
+          showLegend: true,
+          legendPosition: "right",
+          legendWidthPx: 120,
+        },
+      },
+      {
+        label: "Fault Summaries",
+        component: MachineFaultHistoryComponent,
+        componentInputs: {
+          viewType: "summary",
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Fault History",
+        component: MachineFaultHistoryComponent,
+        componentInputs: {
+          viewType: "cycles",
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Performance Chart",
+        component: OperatorPerformanceChartComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          chartWidth: modalChartDimensions.width + 200,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: {
+            machine: {
+              serial: machineSerial,
+              name: machineData?.machine?.name ?? "Unknown",
+            },
+            timeRange: {
+              start: this.startTime,
+              end: this.endTime,
+            },
+            hourlyData: machineData?.operatorEfficiency ?? [],
+          },
+          marginTop: 30,
+          marginRight: 180,
+          marginBottom: 80,
+          marginLeft: 40,
+          showLegend: true,
+          legendPosition: "right",
+          legendWidthPx: 120,
+        },
+      },
+    ];
+
+    const dialogRef = this.dialog.open(ModalWrapperComponent, {
+      width: "90vw",
+      height: "85vh",
+      maxWidth: "95vw",
+      maxHeight: "90vh",
+      panelClass: "performance-chart-dialog",
+      data: {
+        component: UseCarouselComponent,
+        componentInputs: {
+          tabData: carouselTabs,
+        },
+        machineSerial,
+        startTime: this.startTime,
+        endTime: this.endTime,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe(() => {
+      if (this.selectedRow === row) this.selectedRow = null;
+    });
   }
 
   getEfficiencyClass = (value: any, column?: string): string => {

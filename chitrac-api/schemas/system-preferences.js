@@ -84,6 +84,11 @@ const schema = {
     },
     percentBreakpoints: buildPercentBreakpointSchema('Percentage threshold for'),
     oePercentBreakpoints: buildPercentBreakpointSchema('OE percentage threshold for'),
+    userSessionExpirationHours: {
+      type: 'number',
+      exclusiveMinimum: 0,
+      description: 'User session expiration duration in hours, equivalent to USER_SESSION_EXPIRATION_HOURS from .env'
+    },
     userPermissionsLevels: {
       type: 'array',
       minItems: 8,
@@ -92,6 +97,27 @@ const schema = {
         type: 'string'
       },
       description: 'String labels for user permission levels 0 through 7'
+    },
+    operatorPaceHandicap: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['daysOfEmployment', 'handicapFactor'],
+        properties: {
+          daysOfEmployment: {
+            type: 'number',
+            minimum: 0,
+            description: 'Minimum days employed for this handicap rule to apply'
+          },
+          handicapFactor: {
+            type: 'number',
+            minimum: 0,
+            description: 'Multiplier applied to the full operator pace standard'
+          }
+        },
+        additionalProperties: false
+      },
+      description: 'Operator pace standard proration rules based on days of employment'
     },
     createdAt: {
       type: 'string'
@@ -115,6 +141,9 @@ function buildDefaultPreferences(config = {}) {
     dashboardTimeframe: 'current',
     percentBreakpoints: config.percentBreakpoints || { ...DEFAULT_PERCENT_BREAKPOINTS },
     oePercentBreakpoints: config.oePercentBreakpoints || { ...DEFAULT_OE_PERCENT_BREAKPOINTS },
+    userSessionExpirationHours: Number(config.userSessionExpirationHours) > 0
+      ? Number(config.userSessionExpirationHours)
+      : 48,
     userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
       ? [...config.userPermissionsLevels]
       : [...DEFAULT_USER_PERMISSION_LEVELS],
@@ -180,6 +209,16 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
   const oePercentBreakpoints = Object.prototype.hasOwnProperty.call(input, 'oePercentBreakpoints')
     ? normalizePercentBreakpoints(input.oePercentBreakpoints, 'oePercentBreakpoints')
     : existing.oePercentBreakpoints || defaults.oePercentBreakpoints;
+  const operatorPaceHandicap = Array.isArray(input.operatorPaceHandicap)
+    ? input.operatorPaceHandicap.map(rule => ({
+        daysOfEmployment: Number(rule.daysOfEmployment),
+        handicapFactor: Number(rule.handicapFactor)
+      }))
+    : existing.operatorPaceHandicap;
+  const userSessionExpirationHours =
+    input.userSessionExpirationHours !== undefined
+      ? Number(input.userSessionExpirationHours)
+      : existing.userSessionExpirationHours ?? defaults.userSessionExpirationHours;
 
   const preferences = {
     _id: 'system-preferences',
@@ -189,6 +228,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     dashboardTimeframe: input.dashboardTimeframe ?? existing.dashboardTimeframe ?? defaults.dashboardTimeframe,
     percentBreakpoints,
     oePercentBreakpoints,
+    userSessionExpirationHours,
     userPermissionsLevels,
     createdAt: existing.createdAt || defaults.createdAt,
     updatedAt: now
@@ -202,6 +242,10 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
 
   validatePercentBreakpointOrder(preferences, 'percentBreakpoints');
   validatePercentBreakpointOrder(preferences, 'oePercentBreakpoints');
+
+  if (Array.isArray(operatorPaceHandicap)) {
+    preferences.operatorPaceHandicap = operatorPaceHandicap;
+  }
 
   const valid = validate(preferences);
   if (!valid) {

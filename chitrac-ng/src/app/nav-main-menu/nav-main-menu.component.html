@@ -115,6 +115,9 @@
       <a mat-list-item routerLink="/ng/reports/shift-machine-report" (click)="closeMenu()">
         <mat-icon>schedule</mat-icon><span>Shift Machine Report</span>
       </a>
+      <a mat-list-item routerLink="/ng/reports/shift-comparison-report" (click)="closeMenu()">
+        <mat-icon>compare_arrows</mat-icon><span>Shift Comparison Report</span>
+      </a>
       <a mat-list-item routerLink="/ng/reports/operator-report" (click)="closeMenu()">
         <mat-icon>person</mat-icon><span>Operator Report</span>
       </a>
@@ -145,6 +148,9 @@
       </a>
       <a mat-list-item routerLink="/ng/settings/items" (click)="closeMenu()">
         <mat-icon>dry_cleaning</mat-icon><span>Items</span>
+      </a>
+      <a mat-list-item *ngIf="canAccess(permissionLevels.settings)" routerLink="/ng/settings/system" (click)="closeMenu()">
+        <mat-icon>tune</mat-icon><span>System Settings</span>
       </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.apiTokens)" routerLink="/ng/settings/tokens" (click)="closeMenu()">
         <mat-icon>vpn_key</mat-icon><span>API Tokens</span>

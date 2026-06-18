@@ -10,6 +10,7 @@ import { AuthGuard } from './guards/auth.guard';
 import { MachineDashboardComponent } from './machine-dashboard/machine-dashboard.component';
 import { MachineReportComponent } from './reports/machine-report/machine-report.component';
 import { ShiftMachineReportComponent } from './reports/shift-machine-report/shift-machine-report.component';
+import { ShiftComparisonReportComponent } from './reports/shift-comparison-report/shift-comparison-report.component';
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
 import { FaultReportComponent } from './reports/fault-report/fault-report.component';
@@ -34,6 +35,7 @@ import { UserProfileComponent } from './user-profile/user-profile.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
+import { SystemSettingsComponent } from './system-settings/system-settings.component';
 import { PermissionLevels } from './user.service';
 import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
 
@@ -42,6 +44,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.operators } },
 	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
+	{ path: 'ng/settings/system', component: SystemSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/profile', component: UserProfileComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.profile } },
 	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.apiTokens } },
@@ -65,6 +68,7 @@ export const routes: Routes = [
 	// Reports
 	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
 	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
+	{ path: 'ng/reports/shift-comparison-report', component: ShiftComparisonReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },
 	{ path: 'ng/reports/fault-report', component: FaultReportComponent },

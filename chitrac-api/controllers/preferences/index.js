@@ -140,6 +140,9 @@ function constructor(server) {
       httpsEnabled: config.httpsEnabled,
       percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined,
       oePercentBreakpoints: config.oePercentBreakpoints ? { ...config.oePercentBreakpoints } : undefined,
+      operatorPaceHandicap: Array.isArray(config.operatorPaceHandicap)
+        ? [...config.operatorPaceHandicap]
+        : [],
       userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
         ? [...config.userPermissionsLevels]
         : []

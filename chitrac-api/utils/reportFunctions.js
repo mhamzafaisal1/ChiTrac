@@ -415,13 +415,23 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
   for (const partialDay of partialDays) {
     // Query machine sessions for this partial day
     const match = {
-      ...(serial ? { "machine.serial": serial } : {}),
       "timestamps.start": { $lte: partialDay.end },
       $or: [
         { "timestamps.end": { $exists: false } },
         { "timestamps.end": { $gte: partialDay.start } },
       ],
     };
+
+    if (serial) {
+      match.$and = [
+        {
+          $or: [
+            { "machine.serial": serial },
+            { "machine.id": serial },
+          ],
+        },
+      ];
+    }
 
     if (shiftIdOpt) {
       if (ObjectId.isValid(shiftIdOpt)) {
@@ -459,20 +469,63 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
                 input: {
                   $filter: {
                     input: {
-                      $cond: [{ $isArray: "$counts" }, "$counts", []],
+                      $cond: [
+                        { $isArray: "$counts" },
+                        "$counts",
+                        {
+                          $cond: [
+                            { $isArray: "$counts.valid" },
+                            "$counts.valid",
+                            {
+                              $cond: [
+                                { $isArray: "$counts.all" },
+                                "$counts.all",
+                                [],
+                              ],
+                            },
+                          ],
+                        },
+                      ],
                     },
                     as: "c",
                     cond: {
-                      $and: [
-                        { $gte: ["$$c.timestamp", partialDay.start] },
-                        { $lte: ["$$c.timestamp", partialDay.end] },
-                      ],
+                      $let: {
+                        vars: {
+                          countTs: {
+                            $ifNull: [
+                              "$$c.timestamp",
+                              {
+                                $ifNull: [
+                                  "$$c.timestamps.create",
+                                  "$$c.timestamps.active",
+                                ],
+                              },
+                            ],
+                          },
+                        },
+                        in: {
+                          $and: [
+                            { $gte: ["$$countTs", partialDay.start] },
+                            { $lte: ["$$countTs", partialDay.end] },
+                          ],
+                        },
+                      },
                     },
                   },
                 },
                 as: "c",
                 in: {
-                  timestamp: "$$c.timestamp",
+                  timestamp: {
+                    $ifNull: [
+                      "$$c.timestamp",
+                      {
+                        $ifNull: [
+                          "$$c.timestamps.create",
+                          "$$c.timestamps.active",
+                        ],
+                      },
+                    ],
+                  },
                   item: {
                     id: "$$c.item.id",
                     name: "$$c.item.name",
@@ -492,7 +545,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
     // Process sessions to create machine totals (similar to original route logic)
     const grouped = new Map();
     for (const s of sessions) {
-      const key = s.machine?.serial;
+      const key = s.machine?.serial ?? s.machine?.id;
       if (!key) continue;
       if (!grouped.has(key)) {
         grouped.set(key, {
@@ -509,14 +562,39 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
 
       const activeStations = Array.isArray(s.operators)
         ? s.operators.filter((op) => op && op.id !== -1).length
-        : 0;
+        : s.operator && s.operator.id !== -1
+          ? 1
+          : 0;
 
       const workedTimeMs = Math.max(0, s.sliceMs * activeStations);
       const runtimeMs = Math.max(0, s.sliceMs);
 
       bucket.totalRuntimeMs += runtimeMs;
 
-      const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+      const rawCounts = Array.isArray(s.counts)
+        ? s.counts
+        : Array.isArray(s.counts?.valid)
+          ? s.counts.valid
+          : [];
+      const counts = rawCounts
+        .map((c) => ({
+          timestamp:
+            c.timestamp ||
+            c.timestamps?.create ||
+            c.timestamps?.active ||
+            c.timestamps?.update,
+          item: c.item,
+        }))
+        .filter((c) => {
+          const timestamp = c.timestamp ? new Date(c.timestamp) : null;
+          return (
+            c.item &&
+            timestamp instanceof Date &&
+            !Number.isNaN(timestamp.getTime()) &&
+            timestamp >= partialDay.start &&
+            timestamp <= partialDay.end
+          );
+        });
       if (!counts.length) continue;
 
       const byItem = new Map();

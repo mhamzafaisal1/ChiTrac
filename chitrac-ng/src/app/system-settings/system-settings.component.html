@@ -1,0 +1,64 @@
+<div class="system-settings-page">
+  <div class="page-header">
+    <h2>System Settings</h2>
+    <p class="subtitle">Manage system-wide settings that apply across ChiTrac.</p>
+  </div>
+
+  <mat-card class="settings-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>tune</mat-icon>
+      <mat-card-title>Session Settings</mat-card-title>
+      <mat-card-subtitle>Controls how long user sessions remain valid</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-divider></mat-divider>
+
+    <mat-card-content>
+      <div class="loading-state" *ngIf="isLoading">
+        <mat-spinner diameter="28"></mat-spinner>
+        <span>Loading settings...</span>
+      </div>
+
+      <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" *ngIf="!isLoading">
+        <div class="setting-row">
+          <div class="setting-copy">
+            <h3>User Session Expiration</h3>
+            <p>Number of hours before a user session expires.</p>
+          </div>
+
+          <mat-form-field appearance="outline" class="hours-field">
+            <mat-label>Hours</mat-label>
+            <input matInput type="number" min="1" step="1" formControlName="userSessionExpirationHours" required>
+            <mat-error *ngIf="expirationControl.hasError('required')">
+              Expiration is required
+            </mat-error>
+            <mat-error *ngIf="expirationControl.hasError('min')">
+              Expiration must be at least 1 hour
+            </mat-error>
+          </mat-form-field>
+        </div>
+
+        <div class="metadata" *ngIf="preferences">
+          <span>Last updated: {{ preferences.updatedAt ? (preferences.updatedAt | date:'medium') : 'Not available' }}</span>
+        </div>
+
+        <mat-card-actions align="end">
+          <button mat-stroked-button type="button" (click)="loadPreferences()" [disabled]="isSaving || isResetting">
+            <mat-icon>refresh</mat-icon>
+            Refresh
+          </button>
+          <button mat-stroked-button color="warn" type="button" (click)="resetSettings()" [disabled]="isSaving || isResetting">
+            <mat-spinner *ngIf="isResetting" diameter="18"></mat-spinner>
+            <mat-icon *ngIf="!isResetting">restart_alt</mat-icon>
+            {{ isResetting ? 'Resetting...' : 'Reset' }}
+          </button>
+          <button mat-raised-button color="primary" type="submit" [disabled]="settingsForm.invalid || isSaving || isResetting">
+            <mat-spinner *ngIf="isSaving" diameter="18"></mat-spinner>
+            <mat-icon *ngIf="!isSaving">save</mat-icon>
+            {{ isSaving ? 'Saving...' : 'Save' }}
+          </button>
+        </mat-card-actions>
+      </form>
+    </mat-card-content>
+  </mat-card>
+</div>
