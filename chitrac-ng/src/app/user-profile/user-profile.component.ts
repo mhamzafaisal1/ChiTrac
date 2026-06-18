@@ -10,6 +10,8 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { UserService } from '../user.service';
 
+const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+
 @Component({
   selector: 'app-user-profile',
   imports: [
@@ -30,7 +32,7 @@ export class UserProfileComponent implements OnInit {
 
   profileFormGroup = new FormGroup({
     username: new FormControl('', [Validators.required, Validators.minLength(4)]),
-    email: new FormControl(''),
+    email: new FormControl('', [Validators.pattern(EMAIL_PATTERN)]),
     currentPassword: new FormControl('', [Validators.maxLength(64)]),
     password: new FormControl('', [Validators.minLength(6), Validators.maxLength(64)]),
     confirmPassword: new FormControl('', [Validators.maxLength(64)])

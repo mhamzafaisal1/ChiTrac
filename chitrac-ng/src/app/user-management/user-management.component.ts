@@ -19,6 +19,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ManagedUser, UserManagementService, UserSaveRequest } from '../services/user-management.service';
 import { UserService } from '../user.service';
 
+const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+
 @Component({
   selector: 'app-user-management',
   imports: [
@@ -52,7 +54,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
   userFormGroup = new FormGroup({
     username: new FormControl('', [Validators.required, Validators.minLength(4)]),
-    email: new FormControl(''),
+    email: new FormControl('', [Validators.pattern(EMAIL_PATTERN)]),
     role: new FormControl('user', [Validators.required]),
     permissionLevel: new FormControl(3, [Validators.required, Validators.min(0)]),
     groups: new FormControl(''),

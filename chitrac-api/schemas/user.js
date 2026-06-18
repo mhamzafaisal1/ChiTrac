@@ -1,5 +1,7 @@
 const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const ajv = new Ajv();
+addFormats(ajv);
 const bcrypt = require('bcryptjs');
 const PASSWORD_MIN_LENGTH = 6;
 const PASSWORD_MAX_LENGTH = 64;
@@ -81,6 +83,24 @@ const schema = {
       },
       minItems: 0,
       description: 'Required array of group names. Empty array is valid.'
+    },
+    email: {
+      type: 'string',
+      maxLength: 254,
+      pattern: "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$",
+      description: 'Optional email address with a domain and top-level domain. Runtime validation also verifies the TLD is allowed.'
+    },
+    role: {
+      type: 'string',
+      description: 'Optional legacy role name.'
+    },
+    restrictions: {
+      type: 'array',
+      items: {
+        type: 'string'
+      },
+      minItems: 0,
+      description: 'Optional array of user restrictions.'
     }
   },
   additionalProperties: false

@@ -14,6 +14,8 @@ import { MatInputModule } from '@angular/material/input';
 /*** Service Imports */
 import { UserService } from '../user.service';
 
+const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+
 @Component({
     selector: 'app-user-register',
     imports: [CommonModule,
@@ -87,7 +89,7 @@ export class UserRegisterComponent {
     this.userRegistrationFormGroup = new FormGroup({
       username: new FormControl(this.user.username, [Validators.required, Validators.minLength(4)]),
       password: new FormControl(this.user.password, [Validators.required, Validators.minLength(6), Validators.maxLength(64)]),
-      email: new FormControl(this.user.email, [Validators.email]),
+      email: new FormControl(this.user.email, [Validators.pattern(EMAIL_PATTERN)]),
       permissionLevel: new FormControl(this.user.permissionLevel, [Validators.required, Validators.min(this.currentPermissionLevel)]),
     });
 
