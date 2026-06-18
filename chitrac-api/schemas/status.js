@@ -1,5 +1,7 @@
 const Ajv = require('ajv');
-const ajv = new Ajv();
+const addFormats = require('ajv-formats');
+const ajv = new Ajv({ strictSchema: false });
+addFormats(ajv);
 
 // Import related schemas
 const timestampsSchema = require('./timestampsSchema');

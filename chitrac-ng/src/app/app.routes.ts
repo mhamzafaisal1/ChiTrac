@@ -35,6 +35,7 @@ import { UserProfileComponent } from './user-profile/user-profile.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
+import { SystemSettingsComponent } from './system-settings/system-settings.component';
 import { PermissionLevels } from './user.service';
 import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
 
@@ -43,6 +44,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.operators } },
 	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
+	{ path: 'ng/settings/system', component: SystemSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/profile', component: UserProfileComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.profile } },
 	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.apiTokens } },

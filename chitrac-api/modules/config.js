@@ -10,6 +10,15 @@ const defaultTheme = ['light', 'dark'].includes(process.env.DEFAULT_THEME) ? pro
 const systemName = process.env.SYSTEM_NAME || 'ChiTrac';
 const logLevel = process.env.LOG_LEVEL || 'info';
 const httpsEnabled = process.env.HTTPS_ENABLED === 'true';
+const defaultUserSessionExpirationHours = 48;
+function parsePositiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+const userSessionExpirationHours = parsePositiveNumber(
+  process.env.USER_SESSION_EXPIRATION_HOURS,
+  defaultUserSessionExpirationHours
+);
 const userPermissionsLevels = [
   'Root',
   'SysAdmin',
@@ -66,6 +75,8 @@ module.exports = {
   inDev: process.env.NODE_ENV === 'development',
   httpsEnabled,
   httpsEnabledEnvConfigured: hasHttpsEnabledEnv,
+  userSessionExpirationHours,
+  userSessionExpirationMs: userSessionExpirationHours * 60 * 60 * 1000,
   httpsPort: parseInt(process.env.HTTPS_PORT, 10) || 50443,
   certificatesDir: path.join(__dirname, '..', 'certificates'),
   httpsKeyFile: 'chitrac.key',
@@ -102,10 +113,14 @@ module.exports = {
     defaultTheme,
     logLevel,
     httpsEnabled,
+    userSessionExpirationHours,
     userPermissionsLevels: [...userPermissionsLevels],
+    operatorPaceHandicap: [],
     percentBreakpoints: { ...percentBreakpoints },
     oePercentBreakpoints: { ...oePercentBreakpoints }
   },
+
+  operatorPaceHandicap: [],
 
   // Softrol API Settings
   // Enable/disable Softrol API routes and documentation (default: false)
