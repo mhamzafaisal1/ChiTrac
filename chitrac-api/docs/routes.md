@@ -284,4 +284,24 @@ These routes are conditionally loaded based on environment settings and are moun
 **Backend Files:**
 - `controllers/alpha/reportsSessionRoutes.js` (machine-item-sessions-summary, operator-item-sessions-summary)
 
+---
+
+## USB MongoDB Backup
+
+Root-only utility endpoint for backing up the configured ChiTrac MongoDB database to a USB drive mounted at `/media/usb`.
+
+**Routes:**
+- `POST /api/utilities/backup/mongodb-usb` - Create a timestamped `mongodump` backup folder on the mounted USB drive
+- `GET /api/utilities/backup/mongodb-usb` - Compatibility alias for the same backup action
+
+**Linux prerequisites:**
+- `mongodump` must be installed and available on the API service user's `PATH`.
+- The API service user must be allowed to run `sudo -n mount <device> /media/usb` and `sudo -n umount /media/usb` without an interactive password.
+- USB drives are detected from `lsblk -A -I 8 -J -o NAME,SIZE,TYPE,TRAN,RM,MOUNTPOINT`; only USB transport or removable disks are considered.
+- USB attach/detach listeners only run mount/unmount work for USB mass-storage devices.
+- `/media/usb` is created automatically if missing.
+
+**Backend Files:**
+- `controllers/utilities/index.js`
+
 

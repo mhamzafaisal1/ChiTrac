@@ -1888,36 +1888,20 @@ async function buildItemHourlyStackFromCacheForOperator(db, logger, operatorId, 
     const wStart = new Date(start);
     const wEnd = new Date(end);
 
-    // OPTIMIZATION: Use dateObj range query instead of $in with date strings
-    // This is much faster with proper indexes and avoids large $in arrays
     const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf('day');
     const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).endOf('day');
-
-    // Build aggregation pipeline for hourly-totals
-    // OPTIMIZATION: Use dateObj range query instead of $in with many date strings
-    // This is much faster, especially with proper indexes
-    const matchStage = {
-      entityType: 'operator-item',
-      operatorId: Number(operatorId)
-    };
-
-    // Use dateObj for range query if available (much faster than $in with many dates)
-    // Fallback to date string range for backward compatibility
-    if (startDt && endDt) {
-      const startDateObj = startDt.toJSDate();
-      const endDateObj = endDt.toJSDate();
-      // Try dateObj first (preferred), fallback to date string
-      matchStage.$or = [
-        { dateObj: { $gte: startDateObj, $lte: endDateObj } },
-        {
-          date: {
-            $gte: startDt.toFormat('yyyy-MM-dd'),
-            $lte: endDt.toFormat('yyyy-MM-dd')
-          },
-          dateObj: { $exists: false } // Only use date if dateObj doesn't exist
-        }
-      ];
+    const dateStrings = [];
+    let dayCursor = startDt;
+    while (dayCursor <= endDt) {
+      dateStrings.push(dayCursor.toFormat("yyyy-MM-dd"));
+      dayCursor = dayCursor.plus({ days: 1 });
     }
+
+    const matchStage = {
+      entityType: "operator-item",
+      operatorId: Number(operatorId),
+      date: { $in: dateStrings }
+    };
 
     if (serial) {
       matchStage.machineSerial = Number(serial);
@@ -2120,7 +2104,29 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
     cacheQuery.machineSerial = Number(serial);
   }
 
-  const cacheRecords = await cacheCollection.find(cacheQuery).toArray();
+  const machineCacheQuery = {
+    $or: cacheQuery.$or,
+    entityType: 'operator-machine',
+    operatorId: Number(operatorId)
+  };
+  if (serial) {
+    machineCacheQuery.machineSerial = Number(serial);
+  }
+
+  const [cacheRecords, machineCacheRecords] = await Promise.all([
+    cacheCollection.find(cacheQuery).toArray(),
+    cacheCollection.find(machineCacheQuery).toArray()
+  ]);
+
+  const machineWorkRatios = new Map();
+  for (const record of machineCacheRecords) {
+    const machineSerial = record.machineSerial ?? null;
+    const totals = machineWorkRatios.get(machineSerial) || { workedMs: 0, timeCreditMs: 0, totalCounts: 0 };
+    totals.workedMs += safe(record.workedTimeMs || record.runtimeMs || 0);
+    totals.timeCreditMs += safe(record.totalTimeCreditMs || 0);
+    totals.totalCounts += safe(record.totalCounts || 0);
+    machineWorkRatios.set(machineSerial, totals);
+  }
 
   // Aggregate cache records by machine-item combination
   for (const record of cacheRecords) {
@@ -2147,12 +2153,21 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
       sessionAgg.set(aggKey, aggRec);
     }
 
-    // Aggregate values from cache
-    // Note: operator-item cache doesn't have workedTimeMs, so we'll use totalTimeCreditMs as proxy
+    // Aggregate values from cache. Prefer actual worked time; using time
+    // credit here makes item PPH algebraically equal to the standard.
     const countInWin = record.totalCounts || 0;
-    const workedMs = record.totalTimeCreditMs || 0; // Using time credit as proxy
+    const timeCreditMs = record.totalTimeCreditMs || 0;
+    const directWorkedMs = record.workedTimeMs || record.runtimeMs || 0;
+    const machineRatio = machineWorkRatios.get(machineSerial);
+    const allocatedWorkedMs =
+      machineRatio && machineRatio.totalCounts > 0
+        ? machineRatio.workedMs * (countInWin / machineRatio.totalCounts)
+        : 0;
+    const workedMs = allocatedWorkedMs || directWorkedMs || timeCreditMs;
+    const misfeedInWin = record.totalMisfeeds || 0;
 
     aggRec.countTotal += countInWin;
+    aggRec.misfeedTotal = (aggRec.misfeedTotal || 0) + misfeedInWin;
     aggRec.workedTimeMs += workedMs;
 
     // Update date range
@@ -2166,9 +2181,11 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
       name: record.itemName || "Unknown",
       standard: Number(record.itemStandard) || 0,
       count: 0,
+      misfeed: 0,
       workedMs: 0
     };
     rec.count += countInWin;
+    rec.misfeed += misfeedInWin;
     rec.workedMs += workedMs;
     if (!rec.standard && Number(record.itemStandard)) rec.standard = Number(record.itemStandard);
     itemAgg.set(itemId, rec);
@@ -2195,6 +2212,7 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
         itemId: aggRec.itemId,
         name: aggRec.name,
         countTotal: aggRec.countTotal,
+        misfeedTotal: aggRec.misfeedTotal || 0,
         standard: aggRec.standard,
         pph: Math.round(pph * 100) / 100,
         efficiency: Math.round(eff * 10000) / 100
@@ -2238,6 +2256,163 @@ async function buildItemSummaryFromCache(db, operatorId, start, end, serial = nu
       efficiency: Math.round(operatorEff * 10000) / 100,
       itemSummaries
     }
+  };
+}
+
+// Build operator machine summary from the same daily cache used by the modal
+// item summary. This keeps the machine panel stable during polling and avoids
+// mixing live session state with cached detail panels.
+async function buildOperatorMachineSummaryFromCache(db, operatorId, start, end, serial = null) {
+  const wStart = new Date(start);
+  const wEnd = new Date(end);
+
+  const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE }).startOf("day");
+  const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE }).startOf("day");
+  const dateStrings = [];
+  let cursor = startDt;
+  while (cursor <= endDt) {
+    dateStrings.push(cursor.toFormat("yyyy-MM-dd"));
+    cursor = cursor.plus({ days: 1 });
+  }
+
+  const dateObjs = dateStrings.map(str =>
+    DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE }).startOf("day").toUTC().toJSDate()
+  );
+
+  const baseDateMatch = {
+    $or: [
+      { dateObj: { $in: dateObjs } },
+      { date: { $in: dateStrings } }
+    ],
+    operatorId: Number(operatorId)
+  };
+
+  if (serial) baseDateMatch.machineSerial = Number(serial);
+
+  const [machineRecords, itemRecords] = await Promise.all([
+    db.collection("totals-daily").find({
+      ...baseDateMatch,
+      entityType: "operator-machine"
+    }).toArray(),
+    db.collection("totals-daily").find({
+      ...baseDateMatch,
+      entityType: "operator-item"
+    }).toArray()
+  ]);
+
+  const machines = new Map();
+
+  for (const record of machineRecords) {
+    const machineSerial = record.machineSerial ?? null;
+    const key = machineSerial ?? `unknown-${record.machineName || "machine"}`;
+    if (!machines.has(key)) {
+      machines.set(key, {
+        machine: {
+          serial: machineSerial,
+          name: record.machineName || (machineSerial != null ? `Serial ${machineSerial}` : "Unknown")
+        },
+        sessions: 0,
+        faultsWhileRunning: 0,
+        totals: {
+          totalCount: 0,
+          totalMisfeed: 0,
+          totalTimeCredit: 0,
+          runtime: 0
+        },
+        items: []
+      });
+    }
+
+    const machine = machines.get(key);
+    machine.sessions += 1;
+    machine.faultsWhileRunning += safe(record.totalFaults || 0);
+    machine.totals.totalCount += safe(record.totalCounts || 0);
+    machine.totals.totalMisfeed += safe(record.totalMisfeeds || 0);
+    machine.totals.totalTimeCredit += safe(record.totalTimeCreditMs || 0) / 1000;
+    machine.totals.runtime += safe(record.workedTimeMs || record.runtimeMs || 0) / 1000;
+  }
+
+  const itemsByMachine = new Map();
+  for (const record of itemRecords) {
+    const machineSerial = record.machineSerial ?? null;
+    const machineKey = machineSerial ?? `unknown-${record.machineName || "machine"}`;
+    const itemKey = `${machineKey}:${record.itemId ?? "unknown"}`;
+
+    if (!itemsByMachine.has(itemKey)) {
+      itemsByMachine.set(itemKey, {
+        machineKey,
+        id: record.itemId,
+        name: record.itemName || "Unknown",
+        standard: Number(record.itemStandard) || 0,
+        totalCount: 0,
+        totalMisfeed: 0,
+        totalTimeCredit: 0
+      });
+    }
+
+    const item = itemsByMachine.get(itemKey);
+    item.totalCount += safe(record.totalCounts || 0);
+    item.totalMisfeed += safe(record.totalMisfeeds || 0);
+    item.totalTimeCredit += safe(record.totalTimeCreditMs || 0) / 1000;
+    if (!item.standard && Number(record.itemStandard)) item.standard = Number(record.itemStandard);
+
+    if (!machines.has(machineKey)) {
+      machines.set(machineKey, {
+        machine: {
+          serial: machineSerial,
+          name: record.machineName || (machineSerial != null ? `Serial ${machineSerial}` : "Unknown")
+        },
+        sessions: 0,
+        faultsWhileRunning: 0,
+        totals: {
+          totalCount: 0,
+          totalMisfeed: 0,
+          totalTimeCredit: 0,
+          runtime: 0
+        },
+        items: []
+      });
+    }
+  }
+
+  for (const item of itemsByMachine.values()) {
+    const machine = machines.get(item.machineKey);
+    if (!machine) continue;
+    machine.items.push({
+      id: item.id,
+      name: item.name,
+      standard: item.standard,
+      totalCount: Math.round(item.totalCount),
+      totalMisfeed: Math.round(item.totalMisfeed),
+      totalTimeCredit: Math.round(item.totalTimeCredit * 100) / 100
+    });
+  }
+
+  const results = Array.from(machines.values())
+    .map(machine => ({
+      ...machine,
+      sessions: machine.sessions || (machine.totals.totalCount > 0 ? 1 : 0),
+      totals: {
+        totalCount: Math.round(machine.totals.totalCount),
+        totalMisfeed: Math.round(machine.totals.totalMisfeed),
+        totalTimeCredit: Math.round(machine.totals.totalTimeCredit * 100) / 100,
+        runtime: Math.round(machine.totals.runtime)
+      },
+      items: machine.items.sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    }))
+    .filter(machine => machine.totals.totalCount > 0 || machine.items.length > 0)
+    .sort((a, b) => {
+      const aSerial = a.machine.serial;
+      const bSerial = b.machine.serial;
+      if (aSerial == null && bSerial == null) return String(a.machine.name).localeCompare(String(b.machine.name));
+      if (aSerial == null) return 1;
+      if (bSerial == null) return -1;
+      return aSerial - bSerial;
+    });
+
+  return {
+    context: { operatorId: Number(operatorId), start: wStart, end: wEnd },
+    machines: results
   };
 }
 
@@ -3499,6 +3674,7 @@ module.exports = {
     buildDailyEfficiencyFromCache,
     buildItemHourlyStackFromCacheForOperator,
     buildItemSummaryFromCache,
+    buildOperatorMachineSummaryFromCache,
     // --- Functions consolidated from operatorDashboardBuilder.js ---
     getAllOperatorIds,
     buildOperatorPerformance,

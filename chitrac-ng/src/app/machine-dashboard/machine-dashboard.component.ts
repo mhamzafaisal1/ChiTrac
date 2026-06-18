@@ -13,12 +13,15 @@ import { MatInputModule } from "@angular/material/input";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { MatDialog } from "@angular/material/dialog";
-import { Subject, tap, takeUntil } from "rxjs";
+import { Subject, takeUntil, tap } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
 import { MachineService } from "../services/machine.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
+import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
+import { PercentBreakpointService } from "../services/percent-breakpoint.service";
+import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
 import { UseCarouselComponent } from "../use-carousel/use-carousel.component";
@@ -49,6 +52,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   machineData: any[] = [];
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    Runtime: "Amount of time machine has been running",
+    Downtime: "Amount of time machine has been paused, faulted, or offline.",
+    "Total Count": "Amount of pieces fed into the machine/line.",
+    "Misfeed Count": "Amount of pieces misfed or rejected by the machine/line.",
+    PPH: "Pieces Per Hour",
+    Availability: "Percent of time machine was running.",
+    Throughput: "Percent of pieces fed which were good quality (not misfed or rejected).",
+    Efficiency: "Percent of goal pace being achieved.",
+    OEE: "Overall Equipment Efficiency, combination of Availability, Efficiency, and Throughput",
+  };
   selectedRow: any | null = null;
   isDarkTheme: boolean = false;
   liveMode: boolean = false;
@@ -78,6 +92,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private observer!: MutationObserver;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
+  private websocketStatus: WebsocketConnectionStatus = "disconnected";
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -104,7 +119,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private elRef: ElementRef,
     private dialog: MatDialog,
     private pollingService: PollingService,
-    private dateTimeService: DateTimeService
+    private dateTimeService: DateTimeService,
+    private dashboardTimeframeService: DashboardTimeframeService,
+    private percentBreakpointService: PercentBreakpointService,
+    private websocketService: WebsocketService
   ) {}
 
   ngOnInit(): void {
@@ -114,20 +132,45 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.updateChartDimensions();
     window.addEventListener("resize", this.updateChartDimensions.bind(this));
 
-    // Add dummy loading row initially
-    this.addDummyLoadingRow();
+    // Prime from the websocket cache when it is already available, otherwise
+    // keep the existing placeholder while the REST fallback catches up.
+    if (!this.tryApplyWebsocketDashboardData(null)) {
+      this.addDummyLoadingRow();
+    }
+    this.websocketService.ensureConnected();
+    this.websocketService.status$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((status) => {
+        this.websocketStatus = status;
+        if (status === "connected") {
+          this.stopPolling();
+        } else if ((status === "disconnected" || status === "error") && this.liveMode) {
+          this.setupPolling();
+        }
+      });
+
+    this.websocketService.dashboardCache$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((cache) => {
+        if (this.tryApplyWebsocketDashboardData(cache)) {
+          this.stopPolling();
+        }
+      });
 
     if (!isLive && wasConfirmed) {
       this.startTime = this.dateTimeService.getStartTime();
       this.endTime = this.dateTimeService.getEndTime();
       this.fetchAnalyticsData();
+    } else {
+      this.dashboardTimeframeService.applyDefault().subscribe((selection) => {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+        this.dateTimeService.setLiveMode(selection.mode === "current");
+        if (selection.mode === "shift") {
+          this.fetchAnalyticsData();
+        }
+      });
     }
-    const now = new Date();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
 
     this.detectTheme();
     this.observer = new MutationObserver(() => this.detectTheme());
@@ -143,8 +186,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         this.liveMode = isLive;
 
         if (this.liveMode) {
-          // Add dummy loading row when switching to live mode
-          this.addDummyLoadingRow();
           const start = new Date();
           start.setHours(0, 0, 0, 0);
           this.startTime = this.formatDateForInput(start);
@@ -194,14 +235,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private setupPolling(): void {
-    if (this.liveMode) {
+    if (this.liveMode && this.websocketStatus !== "connected" && !this.pollingSubscription) {
       this.pollingSubscription = this.pollingService
         .poll(
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
             return this.machineService
-              .getMachinesSummary(this.startTime, this.endTime)
+              .getMachinesSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
               .pipe(
                 tap((data: any) => {
                   const responses = Array.isArray(data) ? data : [data];
@@ -215,6 +256,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     Downtime: `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
                     "Total Count": response.metrics.output.totalCount,
                     "Misfeed Count": response.metrics.output.misfeedCount,
+                    PPH: this.formatPph(response),
                     Availability: `${response.metrics.performance.availability.percentage}%`,
                     Throughput: `${response.metrics.performance.throughput.percentage}%`,
                     Efficiency: `${response.metrics.performance.efficiency.percentage}%`,
@@ -259,180 +301,28 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   fetchAnalyticsData(): void {
-    this.isLoading = true;
-    
-    // Check if we have a timeframe selected
-    const timeframe = this.dateTimeService.getTimeframe();
-    
-    if (timeframe) {
-      // Use timeframe-based API call
-      this.machineService
-        .getMachineSummaryWithTimeframe(timeframe)
-        .subscribe({
-        next: (data: any) => {
-          const responses = Array.isArray(data) ? data : [data];
-
-          // Guard: if responses is not an array or is empty, set rows to [] and return
-          if (!Array.isArray(responses) || responses.length === 0) {
-            this.rows = [];
-            this.isLoading = false;
-            return;
-          }
-
-          // Filter out undefined/null/invalid responses
-          // Accept responses with either metrics OR itemSummary structure
-          const validResponses = responses.filter(
-            (response) =>
-              response &&
-              (response.metrics || response.itemSummary || response.performance) &&
-              response.machine &&
-              response.currentStatus
-          );
-          if (validResponses.length === 0) {
-            this.rows = [];
-            this.isLoading = false;
-            return;
-          }
-
-          const formattedData = validResponses.map((response) => {
-            // Support both response structures:
-            // 1. metrics.output.totalCount (from cached/real-time summary routes)
-            // 2. itemSummary.machineSummary.totalCount (from dashboard route)
-            const totalCount = response.metrics?.output?.totalCount ?? 
-                              response.itemSummary?.machineSummary?.totalCount ?? 0;
-            const misfeedCount = response.metrics?.output?.misfeedCount ?? 
-                                response.itemSummary?.machineSummary?.misfeedCount ?? 0;
-            
-            // Runtime and downtime can come from metrics or performance
-            const runtime = response.metrics?.runtime ?? response.performance?.runtime;
-            const downtime = response.metrics?.downtime ?? response.performance?.downtime;
-            
-            // Performance metrics can come from metrics.performance or performance directly
-            const performance = response.metrics?.performance ?? response.performance;
-            
-            return {
-              Status: getStatusDotByCode(response.currentStatus?.code),
-              "Machine Name": response.machine?.name ?? "Unknown",
-              "Serial Number": response.machine?.serial,
-              Runtime: `${runtime?.formatted?.hours ?? 0}h ${
-                runtime?.formatted?.minutes ?? 0
-              }m`,
-              Downtime: `${downtime?.formatted?.hours ?? 0}h ${
-                downtime?.formatted?.minutes ?? 0
-              }m`,
-              "Total Count": totalCount,
-              "Misfeed Count": misfeedCount,
-              Availability:
-                (performance?.availability?.percentage ?? "0") +
-                "%",
-              Throughput:
-                (performance?.throughput?.percentage ?? "0") +
-                "%",
-              Efficiency:
-                (performance?.efficiency?.percentage ?? "0") +
-                "%",
-              OEE: (performance?.oee?.percentage ?? "0") + "%",
-            };
-          });
-
-          const allColumns = Object.keys(formattedData[0]);
-          const columnsToHide: string[] = [""];
-          this.columns = allColumns.filter(
-            (col) => !columnsToHide.includes(col)
-          );
-
-          this.rows = formattedData;
-          this.isLoading = false;
-        },
-        error: (err: unknown) => {
-          console.error("Error fetching dashboard data:", err);
-          this.rows = [];
-          this.isLoading = false;
-        },
-      });
-    } else {
-      // Fallback to date-based API call
-      if (!this.startTime || !this.endTime) {
-        this.isLoading = false;
+    if (this.shouldUseWebsocketDashboardData()) {
+      this.websocketService.ensureConnected();
+      if (this.tryApplyWebsocketDashboardData(null)) {
         return;
       }
-      
+    }
+
+    this.isLoading = true;
+    this.addDummyLoadingRow();
+    this.fetchRestDashboardData();
+  }
+
+  private fetchRestDashboardData(): void {
+    const timeframe = this.dateTimeService.getTimeframe();
+    const shiftId = this.dateTimeService.getShiftId();
+
+    if (timeframe) {
       this.machineService
-        .getMachinesSummary(this.startTime, this.endTime)
+        .getMachineSummaryWithTimeframe(timeframe, shiftId)
         .subscribe({
           next: (data: any) => {
-            const responses = Array.isArray(data) ? data : [data];
-
-            // Guard: if responses is not an array or is empty, set rows to [] and return
-            if (!Array.isArray(responses) || responses.length === 0) {
-              this.rows = [];
-              this.isLoading = false;
-              return;
-            }
-
-            // Filter out undefined/null/invalid responses
-            // Accept responses with either metrics OR itemSummary structure
-            const validResponses = responses.filter(
-              (response) =>
-                response &&
-                (response.metrics || response.itemSummary || response.performance) &&
-                response.machine &&
-                response.currentStatus
-            );
-            if (validResponses.length === 0) {
-              this.rows = [];
-              this.isLoading = false;
-              return;
-            }
-
-            const formattedData = validResponses.map((response) => {
-              // Support both response structures:
-              // 1. metrics.output.totalCount (from cached/real-time summary routes)
-              // 2. itemSummary.machineSummary.totalCount (from dashboard route)
-              const totalCount = response.metrics?.output?.totalCount ?? 
-                                response.itemSummary?.machineSummary?.totalCount ?? 0;
-              const misfeedCount = response.metrics?.output?.misfeedCount ?? 
-                                  response.itemSummary?.machineSummary?.misfeedCount ?? 0;
-              
-              // Runtime and downtime can come from metrics or performance
-              const runtime = response.metrics?.runtime ?? response.performance?.runtime;
-              const downtime = response.metrics?.downtime ?? response.performance?.downtime;
-              
-              // Performance metrics can come from metrics.performance or performance directly
-              const performance = response.metrics?.performance ?? response.performance;
-              
-              return {
-                Status: getStatusDotByCode(response.currentStatus?.code),
-                "Machine Name": response.machine?.name ?? "Unknown",
-                "Serial Number": response.machine?.serial,
-                Runtime: `${runtime?.formatted?.hours ?? 0}h ${
-                  runtime?.formatted?.minutes ?? 0
-                }m`,
-                Downtime: `${downtime?.formatted?.hours ?? 0}h ${
-                  downtime?.formatted?.minutes ?? 0
-                }m`,
-                "Total Count": totalCount,
-                "Misfeed Count": misfeedCount,
-                Availability:
-                  (performance?.availability?.percentage ?? "0") +
-                  "%",
-                Throughput:
-                  (performance?.throughput?.percentage ?? "0") +
-                  "%",
-                Efficiency:
-                  (performance?.efficiency?.percentage ?? "0") +
-                  "%",
-                OEE: (performance?.oee?.percentage ?? "0") + "%",
-              };
-            });
-
-            const allColumns = Object.keys(formattedData[0]);
-            const columnsToHide: string[] = [""];
-            this.columns = allColumns.filter(
-              (col) => !columnsToHide.includes(col)
-            );
-
-            this.rows = formattedData;
+            this.updateDashboardData(data);
             this.isLoading = false;
           },
           error: (err: unknown) => {
@@ -441,7 +331,119 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             this.isLoading = false;
           },
         });
+      return;
     }
+
+    if (!this.startTime || !this.endTime) {
+      this.rows = [];
+      this.isLoading = false;
+      return;
+    }
+
+    this.machineService
+      .getMachinesSummary(this.startTime, this.endTime, shiftId)
+      .subscribe({
+        next: (data: any) => {
+          this.updateDashboardData(data);
+          this.isLoading = false;
+        },
+        error: (err: unknown) => {
+          console.error("Error fetching dashboard data:", err);
+          this.rows = [];
+          this.isLoading = false;
+        },
+      });
+  }
+
+  private subscribeToWebsocketDashboardData(): void {
+    this.websocketService.connect();
+    this.stopPolling();
+
+    const scope = this.getDashboardCacheScope();
+    const shiftId = this.dateTimeService.getShiftId();
+    this.pollingSubscription = this.websocketService
+      .machineDashboardData$(scope, shiftId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((data) => {
+        this.updateDashboardData(data);
+        this.isLoading = false;
+      });
+  }
+
+  private getDashboardCacheScope(): DashboardCacheScope {
+    return this.dateTimeService.getShiftId() ? "currentShift" : "today";
+  }
+
+  private shouldUseWebsocketDashboardData(): boolean {
+    if (this.dateTimeService.getLiveMode()) {
+      return true;
+    }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    if (shiftId) {
+      return this.isToday(this.startTime);
+    }
+
+    return this.isToday(this.startTime) && this.isToday(this.endTime);
+  }
+
+  private isToday(value: string): boolean {
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
+  }
+
+  private updateDashboardData(data: any): void {
+    const responses = Array.isArray(data) ? data : [data];
+    const validResponses = responses.filter(
+      (response) =>
+        response &&
+        (response.metrics || response.itemSummary || response.performance) &&
+        response.machine &&
+        response.currentStatus
+    );
+
+    this.machineData = validResponses;
+
+    if (validResponses.length === 0) {
+      this.rows = [];
+      return;
+    }
+
+    const formattedData = validResponses.map((response) => {
+      const totalCount = response.metrics?.output?.totalCount ??
+        response.itemSummary?.machineSummary?.totalCount ?? 0;
+      const misfeedCount = response.metrics?.output?.misfeedCount ??
+        response.itemSummary?.machineSummary?.misfeedCount ?? 0;
+      const runtime = response.metrics?.runtime ?? response.performance?.runtime;
+      const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+      const performance = response.metrics?.performance ?? response.performance;
+
+      return {
+        Status: getStatusDotByCode(response.currentStatus?.code),
+        "Machine Name": response.machine?.name ?? "Unknown",
+        "Serial Number": response.machine?.serial,
+        Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
+        Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        "Total Count": totalCount,
+        "Misfeed Count": misfeedCount,
+        PPH: this.formatPph(response),
+        Availability: `${performance?.availability?.percentage ?? "0"}%`,
+        Throughput: `${performance?.throughput?.percentage ?? "0"}%`,
+        Efficiency: `${performance?.efficiency?.percentage ?? "0"}%`,
+        OEE: `${performance?.oee?.percentage ?? "0"}%`,
+      };
+    });
+
+    this.columns = Object.keys(formattedData[0]).filter((col) => col !== "");
+    this.rows = formattedData;
   }
 
   /**
@@ -520,151 +522,22 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     // Get modal-aware dimensions
     const modalChartDimensions = this.getModalAwareChartDimensions();
+    const cachedMachineData = this.getCachedMachineDetails(machineSerial);
+
+    if (cachedMachineData) {
+      this.openMachineDetailsModal(row, machineSerial, cachedMachineData, modalChartDimensions);
+      return;
+    }
 
     this.isOpeningModal = true;
-
     if (timeframe) {
       // Use timeframe-based API call
       this.machineService
-        .getMachineDetailsWithTimeframe(timeframe, machineSerial)
+        .getMachineDetailsWithTimeframe(timeframe, machineSerial, this.dateTimeService.getShiftId())
         .subscribe({
         next: (res: any[]) => {
           try {
-          const machineData = res[0]; // <-- FIX HERE
-
-          const itemSummaryData = Object.values(
-            machineData.itemSummary?.machineSummary?.itemSummaries || {}
-          );
-
-          const faultSummaryData = machineData.faultData?.faultSummaries || [];
-          const faultCycleData = machineData.faultData?.faultCycles || [];
-
-        
-          const carouselTabs = [
-            {
-              label: "Item Summary",
-              component: MachineItemSummaryTableComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                selectedMachineSerial: machineSerial,
-                itemSummaryData,
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Current Operators",
-              component: MachineCurrentOperatorsComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                selectedMachineSerial: machineSerial,
-                currentOperatorsData: machineData.currentOperators || [],
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Item Stacked Chart",
-              component: MachineItemStackedBarChartComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                // Reduce height slightly inside the modal so the
-                // chart area fits comfortably without vertical scroll.
-                chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                isModal: this.isModal,
-                mode: "dashboard",
-                preloadedData: machineData.itemHourlyStack,
-                marginTop: 30,
-                marginRight: 180,  // Increase right margin to accommodate legend
-                marginBottom: 60,
-                marginLeft: 100,  // Keep larger left margin for item labels
-                showLegend: true,
-                legendPosition: "right",
-                legendWidthPx: 120,
-              },
-            },
-            {
-              label: "Fault Summaries",
-              component: MachineFaultHistoryComponent,
-              componentInputs: {
-                viewType: "summary",
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Fault History",
-              component: MachineFaultHistoryComponent,
-              componentInputs: {
-                viewType: "cycles",
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                isModal: this.isModal,
-              },
-            },
-            {
-              label: "Performance Chart",
-              component: OperatorPerformanceChartComponent,
-              componentInputs: {
-                startTime: this.startTime,
-                endTime: this.endTime,
-                machineSerial,
-                chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                // Reduce height slightly inside the modal so the
-                // chart area fits comfortably without vertical scroll.
-                chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                isModal: this.isModal,
-                mode: "dashboard",
-                preloadedData: {
-                  machine: {
-                    serial: machineSerial,
-                    name: machineData.machine?.name ?? "Unknown",
-                  },
-                  timeRange: {
-                    start: this.startTime,
-                    end: this.endTime,
-                  },
-                  hourlyData: machineData.operatorEfficiency ?? [],
-                },
-                marginTop: 30,
-                marginRight: 180, // Increase right margin to accommodate legend
-                // Give X and Y axis labels a bit more breathing room
-                // so they are not visually clipped inside the modal.
-                marginBottom: 80,
-                marginLeft: 40,
-                showLegend: true,
-                legendPosition: "right",
-                legendWidthPx: 120,
-              },
-            },
-          ];
-
-          const dialogRef = this.dialog.open(ModalWrapperComponent, {
-            width: "90vw",
-            height: "85vh",
-            maxWidth: "95vw",
-            maxHeight: "90vh",
-            panelClass: "performance-chart-dialog",
-            data: {
-              component: UseCarouselComponent,
-              componentInputs: {
-                tabData: carouselTabs,
-              },
-              machineSerial,
-              startTime: this.startTime,
-              endTime: this.endTime,
-            },
-          });
-
-          dialogRef.afterClosed().subscribe(() => {
-            if (this.selectedRow === row) this.selectedRow = null;
-          });
+            this.openMachineDetailsModal(row, machineSerial, res[0], modalChartDimensions);
           } finally {
             this.isOpeningModal = false;
           }
@@ -680,146 +553,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     } else {
       // Fallback to date-based API call
       this.machineService
-        .getMachineDetails(this.startTime, this.endTime, machineSerial)
+        .getMachineDetails(this.startTime, this.endTime, machineSerial, this.dateTimeService.getShiftId())
         .subscribe({
           next: (res: any[]) => {
             try {
-            const machineData = res[0]; // <-- FIX HERE
-
-            const itemSummaryData = Object.values(
-              machineData.itemSummary?.machineSummary?.itemSummaries || {}
-            );
-
-            const faultSummaryData = machineData.faultData?.faultSummaries || [];
-            const faultCycleData = machineData.faultData?.faultCycles || [];
-
-            // console.log("machineData.currentOperators", machineData.currentOperators)
-          
-            const carouselTabs = [
-              {
-                label: "Item Summary",
-                component: MachineItemSummaryTableComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  selectedMachineSerial: machineSerial,
-                  itemSummaryData,
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Current Operators",
-                component: MachineCurrentOperatorsComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  selectedMachineSerial: machineSerial,
-                  currentOperatorsData: machineData.currentOperators || [],
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Item Stacked Chart",
-                component: MachineItemStackedBarChartComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                  // Reduce height slightly inside the modal so the
-                  // chart area fits comfortably without vertical scroll.
-                  chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                  isModal: this.isModal,
-                  mode: "dashboard",
-                  preloadedData: machineData.itemHourlyStack,
-                  marginTop: 30,
-                  marginRight: 180,  // Increase right margin to accommodate legend
-                  marginBottom: 60,
-                  marginLeft: 100,  // Keep larger left margin for item labels
-                  showLegend: true,
-                  legendPosition: "right",
-                  legendWidthPx: 120,
-                },
-              },
-              {
-                label: "Fault Summaries",
-                component: MachineFaultHistoryComponent,
-                componentInputs: {
-                  viewType: "summary",
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Fault History",
-                component: MachineFaultHistoryComponent,
-                componentInputs: {
-                  viewType: "cycles",
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  isModal: this.isModal,
-                },
-              },
-              {
-                label: "Performance Chart",
-                component: OperatorPerformanceChartComponent,
-                componentInputs: {
-                  startTime: this.startTime,
-                  endTime: this.endTime,
-                  machineSerial,
-                  chartWidth: modalChartDimensions.width + 200, // Add extra width for right-side legend
-                  // Reduce height slightly inside the modal so the
-                  // chart area fits comfortably without vertical scroll.
-                  chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                  isModal: this.isModal,
-                  mode: "dashboard",
-                  preloadedData: {
-                    machine: {
-                      serial: machineSerial,
-                      name: machineData.machine?.name ?? "Unknown",
-                    },
-                    timeRange: {
-                      start: this.startTime,
-                      end: this.endTime,
-                    },
-                    hourlyData: machineData.operatorEfficiency ?? [],
-                  },
-                  marginTop: 30,
-                  marginRight: 180, // Increase right margin to accommodate legend
-                  // Give X and Y axis labels a bit more breathing room
-                  // so they are not visually clipped inside the modal.
-                  marginBottom: 80,
-                  marginLeft: 40,
-                  showLegend: true,
-                  legendPosition: "right",
-                  legendWidthPx: 120,
-                },
-              },
-            ];
-
-            const dialogRef = this.dialog.open(ModalWrapperComponent, {
-              width: "90vw",
-              height: "85vh",
-              maxWidth: "95vw",
-              maxHeight: "90vh",
-              panelClass: "performance-chart-dialog",
-              data: {
-                component: UseCarouselComponent,
-                componentInputs: {
-                  tabData: carouselTabs,
-                },
-                machineSerial,
-                startTime: this.startTime,
-                endTime: this.endTime,
-              },
-            });
-
-            dialogRef.afterClosed().subscribe(() => {
-              if (this.selectedRow === row) this.selectedRow = null;
-            });
+              this.openMachineDetailsModal(row, machineSerial, res[0], modalChartDimensions);
             } finally {
               this.isOpeningModal = false;
             }
@@ -835,13 +573,170 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  getEfficiencyClass(value: any): string {
+  private getCachedMachineDetails(machineSerial: number): any | null {
+    const machineData = this.machineData.find(
+      (machine) => Number(machine?.machine?.serial) === Number(machineSerial)
+    );
+
+    if (!machineData) return null;
+
+    const hasDetailData =
+      !!machineData.itemSummary ||
+      !!machineData.itemHourlyStack ||
+      !!machineData.operatorEfficiency ||
+      !!machineData.currentOperators ||
+      !!machineData.faultData;
+
+    return hasDetailData ? machineData : null;
+  }
+
+  private openMachineDetailsModal(
+    row: any,
+    machineSerial: number,
+    machineData: any,
+    modalChartDimensions: { width: number; height: number }
+  ): void {
+    const itemSummaryData = Object.values(
+      machineData?.itemSummary?.machineSummary?.itemSummaries || {}
+    );
+
+    const carouselTabs = [
+      {
+        label: "Item Summary",
+        component: MachineItemSummaryTableComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          selectedMachineSerial: machineSerial,
+          itemSummaryData,
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Current Operators",
+        component: MachineCurrentOperatorsComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          selectedMachineSerial: machineSerial,
+          currentOperatorsData: machineData?.currentOperators || [],
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Item Stacked Chart",
+        component: MachineItemStackedBarChartComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          chartWidth: modalChartDimensions.width + 200,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: machineData?.itemHourlyStack,
+          marginTop: 30,
+          marginRight: 180,
+          marginBottom: 60,
+          marginLeft: 100,
+          showLegend: true,
+          legendPosition: "right",
+          legendWidthPx: 120,
+        },
+      },
+      {
+        label: "Fault Summaries",
+        component: MachineFaultHistoryComponent,
+        componentInputs: {
+          viewType: "summary",
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Fault History",
+        component: MachineFaultHistoryComponent,
+        componentInputs: {
+          viewType: "cycles",
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          isModal: this.isModal,
+        },
+      },
+      {
+        label: "Performance Chart",
+        component: OperatorPerformanceChartComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          chartWidth: modalChartDimensions.width + 200,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: {
+            machine: {
+              serial: machineSerial,
+              name: machineData?.machine?.name ?? "Unknown",
+            },
+            timeRange: {
+              start: this.startTime,
+              end: this.endTime,
+            },
+            hourlyData: machineData?.operatorEfficiency ?? [],
+          },
+          marginTop: 30,
+          marginRight: 180,
+          marginBottom: 80,
+          marginLeft: 40,
+          showLegend: true,
+          legendPosition: "right",
+          legendWidthPx: 120,
+        },
+      },
+    ];
+
+    const dialogRef = this.dialog.open(ModalWrapperComponent, {
+      width: "90vw",
+      height: "85vh",
+      maxWidth: "95vw",
+      maxHeight: "90vh",
+      panelClass: "performance-chart-dialog",
+      data: {
+        component: UseCarouselComponent,
+        componentInputs: {
+          tabData: carouselTabs,
+        },
+        machineSerial,
+        startTime: this.startTime,
+        endTime: this.endTime,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe(() => {
+      if (this.selectedRow === row) this.selectedRow = null;
+    });
+  }
+
+  getEfficiencyClass = (value: any, column?: string): string => {
     if (typeof value !== "string" || !value.includes("%")) return "";
-    const num = parseInt(value.replace("%", ""));
-    if (isNaN(num)) return "";
-    if (num >= 90) return "green";
-    if (num >= 70) return "yellow";
-    return "red";
+    if (column === "OEE") return this.percentBreakpointService.getOeColorClass(value);
+    return this.percentBreakpointService.getColorClass(value);
+  };
+
+  private formatPph(response: any): number {
+    const pph =
+      response?.itemSummary?.machineSummary?.pph ??
+      response?.machineSummary?.pph ??
+      response?.metrics?.performance?.piecesPerHour?.value ??
+      response?.metrics?.performance?.pph ??
+      response?.performance?.pph;
+
+    const numericPph = Number(pph);
+    return Number.isFinite(numericPph) ? Math.round(numericPph) : 0;
   }
 
   private formatDateForInput(date: Date): string {
@@ -851,6 +746,65 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const h = String(date.getHours()).padStart(2, "0");
     const min = String(date.getMinutes()).padStart(2, "0");
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
+    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+      return false;
+    }
+
+    const dashboardCache = cache || this.websocketService.getDashboardCacheSnapshot();
+    const envelope = this.dateTimeService.getShiftId()
+      ? dashboardCache?.currentShift
+      : dashboardCache?.today;
+    const data = envelope?.machinesSummary;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return false;
+    }
+
+    const validResponses = data.filter(
+      (response) =>
+        response &&
+        (response.metrics || response.itemSummary || response.performance) &&
+        response.machine &&
+        response.currentStatus
+    );
+
+    if (validResponses.length === 0) {
+      return false;
+    }
+
+    this.machineData = validResponses;
+    const formattedData = validResponses.map((response) => {
+      const totalCount = response.metrics?.output?.totalCount ??
+        response.itemSummary?.machineSummary?.totalCount ?? 0;
+      const misfeedCount = response.metrics?.output?.misfeedCount ??
+        response.itemSummary?.machineSummary?.misfeedCount ?? 0;
+      const runtime = response.metrics?.runtime ?? response.performance?.runtime;
+      const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+      const performance = response.metrics?.performance ?? response.performance;
+
+      return {
+        Status: getStatusDotByCode(response.currentStatus?.code),
+        "Machine Name": response.machine?.name ?? "Unknown",
+        "Serial Number": response.machine?.serial,
+        Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
+        Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        "Total Count": totalCount,
+        "Misfeed Count": misfeedCount,
+        PPH: this.formatPph(response),
+        Availability: `${performance?.availability?.percentage ?? "0"}%`,
+        Throughput: `${performance?.throughput?.percentage ?? "0"}%`,
+        Efficiency: `${performance?.efficiency?.percentage ?? "0"}%`,
+        OEE: `${performance?.oee?.percentage ?? "0"}%`,
+      };
+    });
+
+    this.columns = Object.keys(formattedData[0]).filter((col) => col !== "");
+    this.rows = formattedData;
+    this.isLoading = false;
+    return true;
   }
 
   private addDummyLoadingRow(): void {
@@ -865,6 +819,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -881,6 +836,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -897,6 +853,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -913,6 +870,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -929,6 +887,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Downtime: "",
         "Total Count": "",
         "Misfeed Count": "",
+        PPH: "",
         Availability: "",
         Throughput: "",
         Efficiency: "",
@@ -948,6 +907,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Downtime",
         "Total Count",
         "Misfeed Count",
+        "PPH",
         "Availability",
         "Throughput",
         "Efficiency",

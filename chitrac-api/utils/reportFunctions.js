@@ -571,7 +571,30 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
 
       bucket.totalRuntimeMs += runtimeMs;
 
-      const counts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
+      const rawCounts = Array.isArray(s.counts)
+        ? s.counts
+        : Array.isArray(s.counts?.valid)
+          ? s.counts.valid
+          : [];
+      const counts = rawCounts
+        .map((c) => ({
+          timestamp:
+            c.timestamp ||
+            c.timestamps?.create ||
+            c.timestamps?.active ||
+            c.timestamps?.update,
+          item: c.item,
+        }))
+        .filter((c) => {
+          const timestamp = c.timestamp ? new Date(c.timestamp) : null;
+          return (
+            c.item &&
+            timestamp instanceof Date &&
+            !Number.isNaN(timestamp.getTime()) &&
+            timestamp >= partialDay.start &&
+            timestamp <= partialDay.end
+          );
+        });
       if (!counts.length) continue;
 
       const byItem = new Map();
@@ -887,7 +910,9 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
       })
       .toArray();
 
-    console.log(`[SESSION-AGG] Got ${sessions.length} sessions for ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
+    options.logger?.debug?.(
+      `[SESSION-AGG] Got ${sessions.length} sessions for ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`
+    );
 
     // Group by operator and sum up the totals
     const grouped = new Map();
@@ -989,7 +1014,7 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
     }
   }
 
-  console.log(`[SESSION-AGG] Returning ${operators.length} operators`);
+  options.logger?.debug?.(`[SESSION-AGG] Returning ${operators.length} operators`);
   return { operators };
 }
 

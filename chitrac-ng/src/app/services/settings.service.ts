@@ -9,6 +9,15 @@ export interface AppSettings {
   defaultTheme: 'light' | 'dark';
   systemName: string;
   httpsEnabled: boolean;
+  dashboardTimeframe?: 'current' | 'shift' | null;
+  percentBreakpoints?: PercentBreakpoints;
+  oePercentBreakpoints?: PercentBreakpoints;
+}
+
+export interface PercentBreakpoints {
+  poor: number;
+  okay: number;
+  good: number;
 }
 
 export interface ThemeResponse {
@@ -36,6 +45,43 @@ export class SettingsService {
       tap(settings => {
         this.settingsSubject.next(settings);
         console.log('[SettingsService] Settings loaded:', settings);
+      })
+    );
+  }
+
+  getSystemPreferences(): Observable<AppSettings> {
+    return this.http.get<AppSettings>('/api/preferences/system');
+  }
+
+  saveDashboardTimeframe(dashboardTimeframe: 'current' | 'shift'): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { dashboardTimeframe }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, dashboardTimeframe });
+        }
+      })
+    );
+  }
+
+  savePercentBreakpoints(percentBreakpoints: PercentBreakpoints): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { percentBreakpoints }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, percentBreakpoints });
+        }
+      })
+    );
+  }
+
+  saveOePercentBreakpoints(oePercentBreakpoints: PercentBreakpoints): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { oePercentBreakpoints }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, oePercentBreakpoints });
+        }
       })
     );
   }

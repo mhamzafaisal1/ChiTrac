@@ -121,6 +121,12 @@ function constructor(server) {
     if (config.envPreferences) {
       return {
         ...config.envPreferences,
+        percentBreakpoints: config.envPreferences.percentBreakpoints
+          ? { ...config.envPreferences.percentBreakpoints }
+          : undefined,
+        oePercentBreakpoints: config.envPreferences.oePercentBreakpoints
+          ? { ...config.envPreferences.oePercentBreakpoints }
+          : undefined,
         userPermissionsLevels: Array.isArray(config.envPreferences.userPermissionsLevels)
           ? [...config.envPreferences.userPermissionsLevels]
           : []
@@ -132,6 +138,8 @@ function constructor(server) {
       defaultTheme: config.defaultTheme,
       logLevel: config.logLevel,
       httpsEnabled: config.httpsEnabled,
+      percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined,
+      oePercentBreakpoints: config.oePercentBreakpoints ? { ...config.oePercentBreakpoints } : undefined,
       userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
         ? [...config.userPermissionsLevels]
         : []
@@ -194,7 +202,10 @@ function constructor(server) {
         { $set: updates, $setOnInsert: { _id } },
         { upsert: true }
       );
-      res.json(await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID }));
+      const saved = await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID });
+      systemPreferences.applySystemPreferences(config, saved);
+      server.systemPreferences = saved;
+      res.json(saved);
     } catch (error) {
       next(error);
     }
@@ -214,7 +225,10 @@ function constructor(server) {
         { $set: updates, $setOnInsert: { _id } },
         { upsert: true }
       );
-      res.json(await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID }));
+      const saved = await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID });
+      systemPreferences.applySystemPreferences(config, saved);
+      server.systemPreferences = saved;
+      res.json(saved);
     } catch (error) {
       next(error);
     }
@@ -236,10 +250,11 @@ function constructor(server) {
       }
 
       const preferences = sanitizeUserPreferences(req.body, req.authUserId);
+      const { userId, ...updates } = preferences;
       await userPreferencesCollection.updateOne(
         { userId: req.authUserId },
         {
-          $set: preferences,
+          $set: updates,
           $setOnInsert: {
             userId: req.authUserId,
             createdAt: new Date()
@@ -309,10 +324,11 @@ function constructor(server) {
 
       const { theme } = req.body;
       const preferences = sanitizeUserPreferences({ theme }, req.authUserId);
+      const { userId, ...updates } = preferences;
       await userPreferencesCollection.updateOne(
         { userId: req.authUserId },
         {
-          $set: preferences,
+          $set: updates,
           $setOnInsert: {
             userId: req.authUserId,
             createdAt: new Date()

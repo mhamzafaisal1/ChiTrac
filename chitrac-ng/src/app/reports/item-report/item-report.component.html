@@ -61,6 +61,8 @@
       [class.light]="!isDarkTheme"
       [columns]="columns"
       [rows]="rows"
+      [columnTooltips]="columnTooltips"
+      [getCellTooltip]="getCellTooltip.bind(this)"
       style="height:93%; border-radius: 4px;"
     >
     </base-table>

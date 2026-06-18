@@ -36,6 +36,7 @@ import { ServerLogsInterfaceComponent } from './server-logs-interface/server-log
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
 import { PermissionLevels } from './user.service';
+import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
 
 export const routes: Routes = [
 	// Settings pages
@@ -54,21 +55,22 @@ export const routes: Routes = [
 	{ path: 'ng/login', component: UserLoginComponent },
 	
 	// Main Dashboards
-	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
-	{ path: 'ng/operatorAnalytics', component: OperatorAnalyticsDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
-	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
-	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
-	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
-	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.dashboards } },
+	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent },
+	{ path: 'ng/operatorAnalytics', component: OperatorAnalyticsDashboardComponent },
+	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent },
+	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent },
+	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent },
+	{ path: 'ng/comparison-dashboard', component: ComparisonDashboardComponent },
+	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
 	
 	// Reports
-	{ path: 'ng/reports/machine-report', component: MachineReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
-	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
+	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
 	{ path: 'ng/reports/shift-comparison-report', component: ShiftComparisonReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
-	{ path: 'ng/reports/operator-report', component: OperatorReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
-	{ path: 'ng/reports/item-report', component: ItemReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
-	{ path: 'ng/reports/fault-report', component: FaultReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
-	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
+	{ path: 'ng/reports/item-report', component: ItemReportComponent },
+	{ path: 'ng/reports/fault-report', component: FaultReportComponent },
+	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent },
 	
 	// Production/Efficiency Screens
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },

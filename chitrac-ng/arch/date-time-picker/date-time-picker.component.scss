@@ -22,7 +22,21 @@
   color: inherit;
 }
 
-input[type='datetime-local'] {
+.date-time-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.time-inputs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+input[type='date'],
+select {
   height: 36px;
   padding: 0 10px;
   font-size: 0.85rem;
@@ -32,7 +46,6 @@ input[type='datetime-local'] {
   color: inherit;
   transition: border-color 0.2s ease;
   box-sizing: border-box;
-  margin-bottom: 10px;
 
   // Always show custom icon
   background-repeat: no-repeat;
@@ -44,6 +57,10 @@ input[type='datetime-local'] {
     border-color: #3f51b5;
     box-shadow: 0 0 0 1px #3f51b5;
   }
+}
+
+input[type='date'] {
+  width: 100%;
 
   &::-webkit-calendar-picker-indicator {
     background: transparent;
@@ -51,6 +68,20 @@ input[type='datetime-local'] {
     opacity: 1;
     cursor: pointer;
   }
+}
+
+select {
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.time-inputs select {
+  flex: 1;
+}
+
+.time-separator {
+  font-weight: 600;
+  line-height: 36px;
 }
 
 .timeframe-section {
@@ -91,19 +122,25 @@ input[type='datetime-local'] {
 }
 
 /* Dark Mode */
-:host-context(.dark-theme) input[type='datetime-local'] {
+:host-context(.dark-theme) input[type='date'],
+:host-context(.dark-theme) select {
   background-color: #1e1e1e;
   color: #e0e0e0;
   border-color: #666;
+}
 
+:host-context(.dark-theme) input[type='date'] {
   background-image: url("data:image/svg+xml;utf8,<svg fill='white' xmlns='http://www.w3.org/2000/svg' height='20' viewBox='0 0 24 24' width='20'><path d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z'/></svg>");
 }
 
 /* Light Mode */
-:host-context(.light-theme) input[type='datetime-local'] {
+:host-context(.light-theme) input[type='date'],
+:host-context(.light-theme) select {
   background-color: #fff;
   color: #000;
   border-color: #ccc;
+}
 
+:host-context(.light-theme) input[type='date'] {
   background-image: url("data:image/svg+xml;utf8,<svg fill='black' xmlns='http://www.w3.org/2000/svg' height='20' viewBox='0 0 24 24' width='20'><path d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z'/></svg>");
 }

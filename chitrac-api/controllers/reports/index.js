@@ -800,6 +800,7 @@ module.exports = function (server) {
           const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
 
           return {
+            itemId: entry.itemId,
             itemName: entry.name,
             workedTimeFormatted: formatDuration(workedMs),
             count: entry.count,
@@ -922,6 +923,7 @@ module.exports = function (server) {
         const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
 
         return {
+          itemId: entry.itemId,
           itemName: entry.name,
           workedTimeFormatted: formatDuration(workedMs),
           count: entry.count,

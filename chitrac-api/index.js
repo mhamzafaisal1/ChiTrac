@@ -1,5 +1,6 @@
 /** Declare server-level variables */
-var state, server = {};
+const { createObservableServer } = require('./modules/observableServer');
+var state, server = createObservableServer({});
 
 /** Declare reqlib */
 server.appRoot = require('app-root-path');
@@ -34,6 +35,15 @@ server.logDb = logDb;
 server.logger = logger;
 /** Holds scheduled job handles (e.g. alpha testing job scheduler). */
 server.scheduledJobs = {};
+/** Holds active websocket connection sessions. */
+server.clientSessions = [];
+/** Holds in-memory cache payloads maintained by MongoDB watchers. */
+server.cache = {
+    today: {},
+    currentShift: {},
+    lastSevenDays: {},
+    watchers: {}
+};
 
 server.defaults = {
     machine: require('./defaults/machine').machine,
@@ -117,7 +127,7 @@ app.use(morganMiddleware);
 /**** Initial Collection Setup */
 async function initializeCollections() {
     logger.debug('Initializing machine collection...');
-    await cm.createCollection('machine').then(() => {
+    await cm.createCollection('config-machine').then(() => {
         const collection = db.collection('machine');
         collection.insertMany(server.defaults.machine);
         logger.debug('Machine collection initialized!');
@@ -130,7 +140,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing item collection...');
-    await cm.createCollection('item').then(() => {
+    await cm.createCollection('config-item').then(() => {
         const collection = db.collection('item');
         collection.insertMany(server.defaults.item);
         logger.debug('Item collection initialized!');
@@ -143,7 +153,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing fault collection...');
-    await cm.createCollection('fault').then(() => {
+    await cm.createCollection('config-fault').then(() => {
         const collection = db.collection('fault');
         collection.insertMany(server.defaults.fault);
         logger.debug('Fault collection initialized!');
@@ -156,7 +166,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing status collection...');
-    await cm.createCollection('status').then(() => {
+    await cm.createCollection('config-status').then(() => {
         const collection = db.collection('status');
         collection.insertMany(server.defaults.status);
         logger.debug('Status collection initialized!');
@@ -169,7 +179,7 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing operator collection...');
-    await cm.createCollection('operator').then(() => {
+    await cm.createCollection('config-operator').then(() => {
         const collection = db.collection('operator');
         collection.insertMany(server.defaults.operator);
         logger.debug('Operators collection initialized!');
@@ -221,6 +231,10 @@ async function startServer() {
         routes.init(app, server);
 
         await initializeCollections();
+        const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
+        await ensureAnalyticsIndexes(db, config, logger);
+        const { startWebsocketServer } = require('./modules/websocketServer');
+        server.websocketServer = startWebsocketServer(server);
 
         app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
@@ -237,6 +251,15 @@ async function startServer() {
                 });
             }
         }
+
+        const { startMongoWatchers } = require('./modules/mongoWatchers');
+        startMongoWatchers(server)
+            .then(() => {
+                logger.info('Dashboard cache warmup completed');
+            })
+            .catch((error) => {
+                logger.error(`Dashboard cache warmup failed: ${error.message}`);
+            });
     } catch (e) {
         logger.error(`Server startup failed: ${e.message}`);
         throw e;

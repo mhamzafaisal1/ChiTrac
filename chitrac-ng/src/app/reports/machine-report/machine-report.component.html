@@ -92,6 +92,8 @@
       [class.light]="!isDarkTheme"
       [columns]="columns"
       [rows]="displayedRows"
+      [columnTooltips]="columnTooltips"
+      [getCellTooltip]="getCellTooltip.bind(this)"
       [getCellClass]="getEfficiencyClass.bind(this)"
       style="height:93%; border-radius: 4px;"
     >
