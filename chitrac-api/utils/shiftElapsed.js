@@ -2,8 +2,9 @@ const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
 
 // In-memory cache for active shifts to reduce MongoDB load per request.
-let cachedActiveShifts = null; // Array | null
-let cachedActiveShiftsLoadedAt = 0;
+// Keyed by collection name because legacy/default callers and config-shift
+// callers can otherwise poison each other's cached result.
+const cachedActiveShiftsByCollection = new Map();
 const DEFAULT_CACHE_TTL_MS = 30_000;
 
 function toDateTime(input, zone = SYSTEM_TIMEZONE) {
@@ -296,19 +297,23 @@ function resolveShiftHourEnvelopeForDisplay(
 
 async function loadActiveShifts(
   db,
-  { collectionName = "shift", ttlMs = DEFAULT_CACHE_TTL_MS } = {}
+  { collectionName = "config-shift", ttlMs = DEFAULT_CACHE_TTL_MS } = {}
 ) {
   if (!db) throw new Error("loadActiveShifts: db is required");
 
   const nowMs = Date.now();
-  if (cachedActiveShifts && nowMs - cachedActiveShiftsLoadedAt < ttlMs) {
-    return cachedActiveShifts;
+  const cached = cachedActiveShiftsByCollection.get(collectionName);
+  if (cached && nowMs - cached.loadedAt < ttlMs) {
+    return cached.shifts;
   }
 
   const docs = await db.collection(collectionName).find({ active: true }).toArray();
-  cachedActiveShifts = docs || [];
-  cachedActiveShiftsLoadedAt = nowMs;
-  return cachedActiveShifts;
+  const shifts = docs || [];
+  cachedActiveShiftsByCollection.set(collectionName, {
+    shifts,
+    loadedAt: nowMs,
+  });
+  return shifts;
 }
 
 module.exports = {

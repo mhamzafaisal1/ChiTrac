@@ -1498,6 +1498,7 @@ async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd, logger) {
       collectionName: config.shiftCollectionName,
     });
     const shiftWindowMs = computeShiftElapsedMs(activeShifts, dayStart, dayEnd, SYSTEM_TIMEZONE);
+    const windowMs = shiftWindowMs > 0 ? shiftWindowMs : (new Date(dayEnd) - new Date(dayStart));
 
     const cacheRecords = await db
       .collection("totals-daily")
@@ -1515,17 +1516,6 @@ async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd, logger) {
     }
 
     const rows = cacheRecords.map((record) => {
-      let windowMs = 0;
-      if (shiftWindowMs > 0) windowMs = shiftWindowMs;
-      else {
-        const timeRange = record.buildRange || record.timeRange;
-        if (timeRange && timeRange.start && timeRange.end) {
-          windowMs = new Date(timeRange.end) - new Date(timeRange.start);
-        } else {
-          windowMs = dayEnd - dayStart;
-        }
-      }
-
       const availability =
         windowMs > 0
           ? Math.min(Math.max(record.runtimeMs / windowMs, 0), 1)
