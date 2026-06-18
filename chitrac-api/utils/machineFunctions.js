@@ -1013,6 +1013,9 @@ async function getActiveMachineSerials(db, start, end) {
 
       const workedMs = safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
       const timeCreditMs = safeNumber(record.totalTimeCreditMs);
+      if (workedMs <= 0 && timeCreditMs <= 0) {
+        continue;
+      }
       const ratio = workedMs > 0 ? Math.min(Math.max(timeCreditMs / workedMs, 0), 2) : 0;
       const efficiency = Math.round(ratio * 10000) / 100;
 
@@ -1036,13 +1039,20 @@ async function getActiveMachineSerials(db, start, end) {
         hourData.operators.set(operatorKey, {
           id: operatorId,
           name: operatorName,
-          efficiency: efficiency
+          workedMs,
+          timeCreditMs,
+          efficiency
         });
       } else {
-        // If operator already exists in this hour, average the efficiencies
-        // This handles cases where an operator might have multiple records for the same hour
+        // If operator already exists in this hour, aggregate time first, then
+        // recalculate efficiency. A simple average can over/under-weight tiny rows.
         const existing = hourData.operators.get(operatorKey);
-        existing.efficiency = Math.round(((existing.efficiency + efficiency) / 2) * 100) / 100;
+        existing.workedMs += workedMs;
+        existing.timeCreditMs += timeCreditMs;
+        const existingRatio = existing.workedMs > 0
+          ? Math.min(Math.max(existing.timeCreditMs / existing.workedMs, 0), 2)
+          : 0;
+        existing.efficiency = Math.round(existingRatio * 10000) / 100;
       }
     }
 
@@ -1078,7 +1088,9 @@ async function getActiveMachineSerials(db, start, end) {
 
     for (const hour of hoursToEmit) {
       const hourData = hourMap.get(hour);
-      const operators = hourData ? Array.from(hourData.operators.values()) : [];
+      const operators = hourData
+        ? Array.from(hourData.operators.values()).map(({ workedMs, timeCreditMs, ...operator }) => operator)
+        : [];
 
       // Calculate average efficiency for this hour from all operators
       const avgEfficiency =
