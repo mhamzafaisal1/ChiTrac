@@ -8,13 +8,16 @@ import { MatTableModule } from '@angular/material/table';
 import { MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { Subject, takeUntil, tap, delay, Observable } from 'rxjs';
+import { delay, Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -49,6 +52,17 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   operatorId?: number;
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    Runtime: 'Amount of time operator has been running across all machines',
+    Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
+    'Total Count': 'Amount of pieces fed by operator',
+    'Misfeed Count': 'Amount of pieces misfed or rejected by the operator.',
+    PPH: 'Pieces Per Hour',
+    Availability: 'Percent of time operator was active on a running machine.',
+    Throughput: 'Percent of pieces fed which were good quality (not misfed or rejected).',
+    Efficiency: 'Percent of goal pace being achieved.',
+    OEE: 'Overall Equipment Efficiency, combination of Availability, Efficiency, and Throughput',
+  };
   selectedRow: any = null;
   operatorData: any[] = []; // Store the raw dashboard data
   liveMode: boolean = false;
@@ -57,6 +71,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   isOpeningModal: boolean = false;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
+  private websocketStatus: WebsocketConnectionStatus = 'disconnected';
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
 
   // Chart dimensions
@@ -82,7 +97,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private elRef: ElementRef,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
-    private cdr: ChangeDetectorRef
+    private dashboardTimeframeService: DashboardTimeframeService,
+    private cdr: ChangeDetectorRef,
+    private percentBreakpointService: PercentBreakpointService,
+    private websocketService: WebsocketService
   ) {}
 
   ngOnInit(): void {
@@ -92,20 +110,43 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
   
-    // Add dummy loading row initially
-    this.addDummyLoadingRow();
+    if (!this.tryApplyWebsocketDashboardData(null)) {
+      this.addDummyLoadingRow();
+    }
+    this.websocketService.ensureConnected();
+    this.websocketService.status$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((status) => {
+        this.websocketStatus = status;
+        if (status === 'connected') {
+          this.stopPolling();
+        } else if ((status === 'disconnected' || status === 'error') && this.liveMode) {
+          this.setupPolling();
+        }
+      });
+
+    this.websocketService.dashboardCache$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((cache) => {
+        if (this.tryApplyWebsocketDashboardData(cache)) {
+          this.stopPolling();
+        }
+      });
 
     if (!isLive && wasConfirmed) {
       this.startTime = this.dateTimeService.getStartTime();
       this.endTime = this.dateTimeService.getEndTime();
       this.fetchAnalyticsData();
+    } else {
+      this.dashboardTimeframeService.applyDefault().subscribe((selection) => {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+        this.dateTimeService.setLiveMode(selection.mode === 'current');
+        if (selection.mode === 'shift') {
+          this.fetchAnalyticsData();
+        }
+      });
     }
-
-    const now = new Date();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
 
     this.detectTheme();
     this.observer = new MutationObserver(() => {
@@ -122,8 +163,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     ).subscribe(isLive => {
       this.liveMode = isLive;
       if (isLive) {
-        // Add dummy loading row when switching to live mode
-        this.addDummyLoadingRow();
         // Reset startTime to today at 00:00
         const start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -196,7 +235,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private setupPolling(): void {
-    if (this.liveMode) {
+    if (this.liveMode && this.websocketStatus !== 'connected' && !this.pollingSubscription) {
       // Setup polling for subsequent updates
       this.pollingSubscription = this.pollingService.poll(
         () => {
@@ -208,7 +247,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           
           if (timeframe) {
             // Use timeframe-based API call
-            return this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
+            return this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
@@ -217,7 +256,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
               );
           } else {
             // Use regular API call with start/end times
-            return this.operatorService.getOperatorSummary(this.startTime, this.endTime)
+            return this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
@@ -231,7 +270,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         false,  // isModal
         false   // 👈 prevents immediate call
       ).subscribe();
-      
     }
   }
 
@@ -243,41 +281,58 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateDashboardData(data: any): void {
-    this.operatorData = Array.isArray(data) ? data : [data];
-    
+    const responses = Array.isArray(data) ? data : [data];
+    this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
+
+    if (this.operatorData.length === 0) {
+      this.rows = [];
+      this.cdr.markForCheck();
+      return;
+    }
+
     this.rows = this.operatorData.map(response => ({
       'Status': getStatusDotByCode(response.currentStatus?.code),
-      'Operator Name': response.operator.name,
-      'Operator ID': response.operator.id,
+      'Operator Name': this.formatOperatorName(response.operator?.name),
+      'Operator ID': response.operator?.id,
       'Current Machine': response.currentMachine?.name || '',
       'Current Machine Serial': response.currentMachine?.serial || '',
-      'Runtime': `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
-      'Downtime': `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
-      'Total Count': response.metrics.output.totalCount,
-      'Misfeed Count': response.metrics.output.misfeedCount,
-      'Availability': `${response.metrics.performance.availability.percentage}%`,
-      'Throughput': `${response.metrics.performance.throughput.percentage}%`,
-      'Efficiency': `${`${response.metrics.performance.efficiency.percentage}%`}%`,
-      'OEE': `${response.metrics.performance.oee.percentage}%`,
+      'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
+      'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Total Count': response.metrics.output?.totalCount ?? 0,
+      'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
+      'PPH': this.formatPph(response),
+      'Availability': `${response.metrics.performance?.availability?.percentage ?? 0}%`,
+      'Throughput': `${response.metrics.performance?.throughput?.percentage ?? 0}%`,
+      'Efficiency': `${response.metrics.performance?.efficiency?.percentage ?? 0}%`,
+      'OEE': `${response.metrics.performance?.oee?.percentage ?? 0}%`,
       'Time Range': `${this.startTime} to ${this.endTime}`
     }));
 
     const allColumns = Object.keys(this.rows[0]);
     const columnsToHide = ['Operator ID', 'Time Range'];
     this.columns = allColumns.filter(col => !columnsToHide.includes(col));
+    this.cdr.markForCheck();
   }
 
   async fetchAnalyticsData(): Promise<void> {
-    if (!this.startTime || !this.endTime) return;
+    if (this.shouldUseWebsocketDashboardData()) {
+      this.websocketService.ensureConnected();
+      if (this.tryApplyWebsocketDashboardData(null)) {
+        return;
+      }
+    }
 
     this.isLoading = true;
-    
-    // Check if we have a timeframe selected
+    this.addDummyLoadingRow();
+    this.fetchRestDashboardData();
+  }
+
+  private fetchRestDashboardData(): void {
     const timeframe = this.dateTimeService.getTimeframe();
-    
+    const shiftId = this.dateTimeService.getShiftId();
+
     if (timeframe) {
-      // Use timeframe-based API call
-      this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
+      this.operatorService.getOperatorSummaryWithTimeframe(timeframe, shiftId)
         .subscribe({
           next: (data: any) => {
             this.updateDashboardData(data);
@@ -289,21 +344,80 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
             this.isLoading = false;
           }
         });
-    } else {
-      // Use operator-summary route for initial table data (all operators)
-      this.operatorService.getOperatorSummary(this.startTime, this.endTime)
-        .subscribe({
-          next: (data: any) => {
-            this.updateDashboardData(data);
-            this.isLoading = false;
-          },
-          error: (error) => {
-            console.error('Error fetching analytics data:', error);
-            this.rows = [];
-            this.isLoading = false;
-          }
-        });
+      return;
     }
+
+    if (!this.startTime || !this.endTime) {
+      this.rows = [];
+      this.isLoading = false;
+      return;
+    }
+
+    this.operatorService.getOperatorSummary(this.startTime, this.endTime, shiftId)
+      .subscribe({
+        next: (data: any) => {
+          this.updateDashboardData(data);
+          this.isLoading = false;
+        },
+        error: (error) => {
+          console.error('Error fetching analytics data:', error);
+          this.rows = [];
+          this.isLoading = false;
+        }
+      });
+  }
+
+  private shouldUseWebsocketDashboardData(): boolean {
+    if (this.dateTimeService.getLiveMode()) {
+      return true;
+    }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    if (shiftId) {
+      return this.isToday(this.startTime);
+    }
+
+    return this.isToday(this.startTime) && this.isToday(this.endTime);
+  }
+
+  private isToday(value: string): boolean {
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
+  }
+
+  private subscribeToWebsocketDashboardData(): void {
+    this.websocketService.connect();
+    this.stopPolling();
+
+    const scope = this.getDashboardCacheScope();
+    const shiftId = this.dateTimeService.getShiftId();
+    this.pollingSubscription = this.websocketService
+      .operatorDashboardData$(scope, shiftId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((data) => {
+        this.updateDashboardData(data);
+        this.isLoading = false;
+      });
+  }
+
+  private getDashboardCacheScope(): DashboardCacheScope {
+    return this.dateTimeService.getShiftId() ? 'currentShift' : 'today';
+  }
+
+  private formatOperatorName(name: any): string {
+    if (!name) return 'Unknown';
+    if (typeof name === 'string') return name;
+    if (name.first && name.surname) return `${name.first} ${name.surname}`;
+    if (name.first) return name.first;
+    return 'Unknown';
   }
 
   onDateChange(): void {
@@ -400,8 +514,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
     // Fetch detailed operator data for the modal
     const summaryObservable = timeframe
-      ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe)
-      : this.operatorService.getOperatorSummary(this.startTime, this.endTime);
+      ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
+      : this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId());
 
     summaryObservable.subscribe({
       next: (summaryData) => {
@@ -542,15 +656,23 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   
   }
 
-  getEfficiencyClass(value: any, column: string): string {
+  getEfficiencyClass = (value: any, column: string): string => {
     if ((column === 'Efficiency' || column === 'OEE' || column === 'Availability' || column === 'Throughput') && typeof value === 'string' && value.includes('%')) {
-      const num = parseInt(value.replace('%', ''));
-      if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      if (column === 'OEE') return this.percentBreakpointService.getOeColorClass(value);
+      return this.percentBreakpointService.getColorClass(value);
     }
     return '';
+  };
+
+  private formatPph(response: any): number {
+    const pph =
+      response?.operatorSummary?.pph ??
+      response?.metrics?.performance?.piecesPerHour?.value ??
+      response?.metrics?.performance?.pph ??
+      response?.performance?.pph;
+
+    const numericPph = Number(pph);
+    return Number.isFinite(numericPph) ? Math.round(numericPph) : 0;
   }
 
   private formatDateForInput(date: Date): string {
@@ -560,6 +682,26 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
+    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+      return false;
+    }
+
+    const dashboardCache = cache || this.websocketService.getDashboardCacheSnapshot();
+    const envelope = this.dateTimeService.getShiftId()
+      ? dashboardCache?.currentShift
+      : dashboardCache?.today;
+    const data = envelope?.operatorsSummary;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return false;
+    }
+
+    this.updateDashboardData(data);
+    this.isLoading = false;
+    return true;
   }
 
   private addDummyLoadingRow(): void {
@@ -575,6 +717,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -592,6 +735,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -609,6 +753,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -626,6 +771,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -643,6 +789,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime': '',
         'Total Count': '',
         'Misfeed Count': '',
+        'PPH': '',
         'Availability': '',
         'Throughput': '',
         'Efficiency': '',
@@ -664,6 +811,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Downtime',
         'Total Count',
         'Misfeed Count',
+        'PPH',
         'Availability',
         'Throughput',
         'Efficiency',

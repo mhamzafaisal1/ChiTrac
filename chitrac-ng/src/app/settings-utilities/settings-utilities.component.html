@@ -6,28 +6,237 @@
 
   <mat-card class="utility-card">
     <mat-card-header>
+      <mat-icon mat-card-avatar>dashboard_customize</mat-icon>
+      <mat-card-title>Dashboard Defaults</mat-card-title>
+      <mat-card-subtitle>Choose the timeframe dashboards use when opened</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <mat-form-field class="dashboard-timeframe-field">
+        <mat-label>Default timeframe</mat-label>
+        <mat-select [(ngModel)]="dashboardTimeframe">
+          <mat-option value="current">Current</mat-option>
+          <mat-option value="shift">Current shift</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <div class="percent-breakpoints">
+        <h3>Percent breakpoints</h3>
+        <div class="percent-breakpoint-fields">
+          <mat-form-field>
+            <mat-label>Poor</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="percentBreakpoints.poor">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Okay</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="percentBreakpoints.okay">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Good</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="percentBreakpoints.good">
+            <span matSuffix>%</span>
+          </mat-form-field>
+        </div>
+      </div>
+
+      <div class="percent-breakpoints">
+        <h3>OE percent breakpoints</h3>
+        <div class="percent-breakpoint-fields">
+          <mat-form-field>
+            <mat-label>Poor</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="oePercentBreakpoints.poor">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Okay</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="oePercentBreakpoints.okay">
+            <span matSuffix>%</span>
+          </mat-form-field>
+
+          <mat-form-field>
+            <mat-label>Good</mat-label>
+            <input matInput type="number" min="0" max="100" step="1" [(ngModel)]="oePercentBreakpoints.good">
+            <span matSuffix>%</span>
+          </mat-form-field>
+        </div>
+      </div>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <button mat-raised-button color="primary" (click)="saveDashboardTimeframe()" [disabled]="isSavingDashboardTimeframe">
+        <mat-spinner *ngIf="isSavingDashboardTimeframe" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isSavingDashboardTimeframe">save</mat-icon>
+        {{ isSavingDashboardTimeframe ? 'Saving...' : 'Save Default' }}
+      </button>
+
+      <button mat-raised-button color="primary" (click)="savePercentBreakpoints()" [disabled]="isSavingPercentBreakpoints">
+        <mat-spinner *ngIf="isSavingPercentBreakpoints" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isSavingPercentBreakpoints">tune</mat-icon>
+        {{ isSavingPercentBreakpoints ? 'Saving...' : 'Save Breakpoints' }}
+      </button>
+
+      <button mat-raised-button color="primary" (click)="saveOePercentBreakpoints()" [disabled]="isSavingOePercentBreakpoints">
+        <mat-spinner *ngIf="isSavingOePercentBreakpoints" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isSavingOePercentBreakpoints">speed</mat-icon>
+        {{ isSavingOePercentBreakpoints ? 'Saving...' : 'Save OE Breakpoints' }}
+      </button>
+    </mat-card-actions>
+  </mat-card>
+
+  <mat-card class="utility-card websocket-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>settings_input_antenna</mat-icon>
+      <mat-card-title>Websocket Testing</mat-card-title>
+      <mat-card-subtitle>Connect to the ChiTrac websocket server on port 50001</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <div class="websocket-status" [class.connected]="websocketStatus === 'connected'" [class.error]="websocketStatus === 'error'">
+        <mat-icon>{{ websocketStatus === 'connected' ? 'check_circle' : websocketStatus === 'error' ? 'error' : 'radio_button_unchecked' }}</mat-icon>
+        <span>{{ websocketStatus | titlecase }}</span>
+      </div>
+
+      <div class="result-message unavailable" *ngIf="websocketError">
+        <mat-icon>info</mat-icon>
+        <span>{{ websocketError }}</span>
+      </div>
+
+      <pre class="websocket-code-box">{{ websocketMessage }}</pre>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <button
+        mat-raised-button
+        [color]="websocketStatus === 'connected' ? 'warn' : 'primary'"
+        (click)="toggleWebsocketConnection()"
+        [disabled]="websocketStatus === 'connecting'">
+        <mat-spinner *ngIf="websocketStatus === 'connecting'" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="websocketStatus !== 'connecting'">{{ websocketStatus === 'connected' ? 'link_off' : 'link' }}</mat-icon>
+        {{ websocketStatus === 'connecting' ? 'Connecting...' : websocketStatus === 'connected' ? 'Disconnect' : 'Connect' }}
+      </button>
+    </mat-card-actions>
+  </mat-card>
+
+  <mat-card class="utility-card">
+    <mat-card-header>
       <mat-icon mat-card-avatar>restart_alt</mat-icon>
       <mat-card-title>Server Reboot</mat-card-title>
       <mat-card-subtitle>Schedule a reboot from the web interface</mat-card-subtitle>
     </mat-card-header>
 
-    <mat-card-content>
-      <p>
-        This action checks the host operating system and only schedules a reboot when the server is running on Linux.
-      </p>
+      <mat-card-content>
+        <p>
+          This action checks the host operating system and only schedules a reboot when the server is running on Linux.
+        </p>
 
-      <div class="result-message" *ngIf="lastResponse" [class.success]="lastResponse.success" [class.unavailable]="!lastResponse.success">
-        <mat-icon>{{ lastResponse.success ? 'check_circle' : 'info' }}</mat-icon>
-        <span>{{ lastResponse.message || lastResponse.error }}</span>
-      </div>
-    </mat-card-content>
+        <div class="result-message" *ngIf="lastRebootResponse" [class.success]="lastRebootResponse.success" [class.unavailable]="!lastRebootResponse.success">
+          <mat-icon>{{ lastRebootResponse.success ? 'check_circle' : 'info' }}</mat-icon>
+          <span>{{ lastRebootResponse.message || lastRebootResponse.error }}</span>
+        </div>
+      </mat-card-content>
 
-    <mat-card-actions>
-      <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isLoading">
-        <mat-spinner *ngIf="isLoading" diameter="20"></mat-spinner>
-        <mat-icon *ngIf="!isLoading">power_settings_new</mat-icon>
-        {{ isLoading ? 'Scheduling...' : 'Reboot Server' }}
-      </button>
-    </mat-card-actions>
-  </mat-card>
+      <mat-card-actions>
+        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading">
+          <mat-spinner *ngIf="isRebootLoading" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isRebootLoading">power_settings_new</mat-icon>
+          {{ isRebootLoading ? 'Scheduling...' : 'Reboot Server' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <mat-card class="utility-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar>usb</mat-icon>
+        <mat-card-title>MongoDB USB Backup</mat-card-title>
+        <mat-card-subtitle>Back up ChiTrac to the inserted USB drive</mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <p>
+          Creates a timestamped MongoDB backup folder on the USB drive mounted at /media/usb.
+        </p>
+
+        <div class="result-message" *ngIf="lastBackupResponse" [class.success]="lastBackupResponse.success" [class.unavailable]="!lastBackupResponse.success">
+          <mat-icon>{{ lastBackupResponse.success ? 'check_circle' : 'info' }}</mat-icon>
+          <span>
+            {{ lastBackupResponse.success ? 'Backup completed' : (lastBackupResponse.message || lastBackupResponse.error) }}
+          </span>
+        </div>
+
+        <div class="backup-details" *ngIf="lastBackupResponse?.success">
+          <div *ngIf="lastBackupResponse?.database">
+            <strong>Database</strong>
+            <span>{{ lastBackupResponse?.database }}</span>
+          </div>
+          <div *ngIf="lastBackupResponse?.backupPath">
+            <strong>Backup Path</strong>
+            <span>{{ lastBackupResponse?.backupPath }}</span>
+          </div>
+        </div>
+      </mat-card-content>
+
+      <mat-card-actions>
+        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+          <mat-spinner *ngIf="isBackupLoading" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isBackupLoading">backup</mat-icon>
+          {{ isBackupLoading ? 'Backing Up...' : 'Back Up to USB' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <mat-card class="utility-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar>delete_sweep</mat-icon>
+        <mat-card-title>Node.js Log Cleanup</mat-card-title>
+        <mat-card-subtitle>Delete server log files by filename date</mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <p>
+          Deletes log files in /srv/chitrac-server/chitrac-api/logs whose filenames are dated on or before the selected day.
+        </p>
+
+        <mat-form-field class="log-cleanup-date-field">
+          <mat-label>Delete logs dated on or before</mat-label>
+          <input matInput [matDatepicker]="nodeLogsPicker" [(ngModel)]="nodeLogsCutoffDate">
+          <mat-datepicker-toggle matIconSuffix [for]="nodeLogsPicker"></mat-datepicker-toggle>
+          <mat-datepicker #nodeLogsPicker></mat-datepicker>
+        </mat-form-field>
+
+        <div class="result-message" *ngIf="lastDeleteNodeLogsResponse" [class.success]="lastDeleteNodeLogsResponse.success" [class.unavailable]="!lastDeleteNodeLogsResponse.success">
+          <mat-icon>{{ lastDeleteNodeLogsResponse.success ? 'check_circle' : 'info' }}</mat-icon>
+          <span>
+            {{ lastDeleteNodeLogsResponse.success ? (lastDeleteNodeLogsResponse.message || 'Log cleanup completed') : (lastDeleteNodeLogsResponse.message || lastDeleteNodeLogsResponse.error) }}
+          </span>
+        </div>
+
+        <div class="cleanup-details" *ngIf="lastDeleteNodeLogsResponse?.success">
+          <div *ngIf="lastDeleteNodeLogsResponse?.cutoffDate">
+            <strong>Cutoff Date</strong>
+            <span>{{ lastDeleteNodeLogsResponse?.cutoffDate }}</span>
+          </div>
+          <div>
+            <strong>Deleted Files</strong>
+            <span>{{ lastDeleteNodeLogsResponse?.deletedCount || 0 }}</span>
+          </div>
+          <div *ngIf="lastDeleteNodeLogsResponse?.oldestLogDate">
+            <strong>Oldest Filename Date</strong>
+            <span>{{ lastDeleteNodeLogsResponse?.oldestLogDate }}</span>
+          </div>
+        </div>
+      </mat-card-content>
+
+      <mat-card-actions>
+        <button mat-raised-button color="warn" (click)="deleteOldNodeLogs()" [disabled]="isDeleteNodeLogsLoading || isRebootLoading || isBackupLoading || !nodeLogsCutoffDate">
+          <mat-spinner *ngIf="isDeleteNodeLogsLoading" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isDeleteNodeLogsLoading">delete</mat-icon>
+          {{ isDeleteNodeLogsLoading ? 'Deleting...' : 'Delete Old Logs' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
 </div>

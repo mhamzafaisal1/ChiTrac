@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 
 interface ItemSummaryRow {
   machineName?: string;
@@ -48,7 +49,7 @@ export class OperatorItemSummaryTableComponent implements OnInit, OnChanges {
   loading: boolean = false;
   isDarkTheme: boolean = false;
 
-  constructor() {}
+  constructor(private percentBreakpointService: PercentBreakpointService) {}
 
   ngOnInit(): void {
     // Standalone API-driven mode removed; component now relies on dashboardData when used
@@ -83,14 +84,10 @@ export class OperatorItemSummaryTableComponent implements OnInit, OnChanges {
     }
   }
 
-  getEfficiencyClass(value: any, column: string): string {
+  getEfficiencyClass = (value: any, column: string): string => {
     if ((column === 'Efficiency') && typeof value === 'string' && value.includes('%')) {
-      const num = parseInt(value.replace('%', ''));
-      if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      return this.percentBreakpointService.getColorClass(value);
     }
     return '';
-  }
+  };
 }

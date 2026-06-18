@@ -55,6 +55,10 @@ const {
   liveAvailabilityRatioFromRuntimeSec,
   liveAvailabilityRatioFromMs,
 } = require("../../utils/availabilityLive");
+const {
+  getPercentBreakpointColor,
+  getOePercentBreakpointColor
+} = require("../../utils/percentBreakpoints");
 
 async function resolveShiftIdString(req, db) {
   const raw = req.query.shiftId;
@@ -966,7 +970,7 @@ module.exports = function (server) {
             efficiencyObj[key] = {
               value: Math.round(eff * 100),
               label,
-              color: eff >= 0.9 ? "green" : eff >= 0.7 ? "orange" : "yellow",
+              color: getPercentBreakpointColor(eff, config),
             };
 
             const { validCount, misfeedCount } = getValidAndMisfeedCountsInWindow(
@@ -985,7 +989,7 @@ module.exports = function (server) {
             oeeObj[key] = {
               value: Math.round(oeeVal * 100),
               label,
-              color: oeeVal >= 0.9 ? "green" : oeeVal >= 0.7 ? "orange" : "yellow",
+              color: getOePercentBreakpointColor(oeeVal, config),
             };
           }
 
@@ -1008,12 +1012,12 @@ module.exports = function (server) {
           efficiencyObj.today = {
             value: Math.round(todayEfficiency * 100),
             label: "All Day",
-            color: todayEfficiency >= 0.9 ? "green" : todayEfficiency >= 0.7 ? "orange" : "yellow",
+            color: getPercentBreakpointColor(todayEfficiency, config),
           };
           oeeObj.today = {
             value: Math.round(todayOee * 100),
             label: "All Day",
-            color: todayOee >= 0.9 ? "green" : todayOee >= 0.7 ? "orange" : "yellow",
+            color: getOePercentBreakpointColor(todayOee, config),
           };
 
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -1202,7 +1206,7 @@ module.exports = function (server) {
             efficiencyObj[key] = {
               value: Math.round(eff * 100),
               label,
-              color: eff >= 0.9 ? "green" : eff >= 0.7 ? "orange" : "yellow",
+              color: getPercentBreakpointColor(eff, config),
             };
 
             const { validCount, misfeedCount } = getValidAndMisfeedCountsInWindow(
@@ -1221,7 +1225,7 @@ module.exports = function (server) {
             oeeObj[key] = {
               value: Math.round(oeeVal * 100),
               label,
-              color: oeeVal >= 0.9 ? "green" : oeeVal >= 0.7 ? "orange" : "yellow",
+              color: getOePercentBreakpointColor(oeeVal, config),
             };
           }
 
@@ -1244,12 +1248,12 @@ module.exports = function (server) {
           efficiencyObj.today = {
             value: Math.round(todayEfficiency * 100),
             label: "All Day",
-            color: todayEfficiency >= 0.9 ? "green" : todayEfficiency >= 0.7 ? "orange" : "yellow",
+            color: getPercentBreakpointColor(todayEfficiency, config),
           };
           oeeObj.today = {
             value: Math.round(todayOee * 100),
             label: "All Day",
-            color: todayOee >= 0.9 ? "green" : todayOee >= 0.7 ? "orange" : "yellow",
+            color: getOePercentBreakpointColor(todayOee, config),
           };
 
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -1375,7 +1379,7 @@ module.exports = function (server) {
           effObj[key] = {
             value: eff,
             label,
-            color: eff >= 90 ? "green" : eff >= 70 ? "orange" : "yellow",
+            color: getPercentBreakpointColor(eff, config),
           };
         }
 
@@ -1476,7 +1480,7 @@ module.exports = function (server) {
         efficiencyObj[key] = {
           value: Math.round(eff * 100),
           label,
-          color: eff >= 0.9 ? "green" : eff >= 0.7 ? "orange" : "yellow",
+          color: getPercentBreakpointColor(eff, config),
         };
 
         const { validCount, misfeedCount } = getValidAndMisfeedCountsInWindow(
@@ -1495,7 +1499,7 @@ module.exports = function (server) {
         oeeObj[key] = {
           value: Math.round(oeeVal * 100),
           label,
-          color: oeeVal >= 0.9 ? "green" : oeeVal >= 0.7 ? "orange" : "yellow",
+          color: getOePercentBreakpointColor(oeeVal, config),
         };
       }
 
@@ -1523,12 +1527,12 @@ module.exports = function (server) {
       efficiencyObj.today = {
         value: Math.round(todayEfficiency * 100),
         label: "All Day",
-        color: todayEfficiency >= 0.9 ? "green" : todayEfficiency >= 0.7 ? "orange" : "yellow",
+        color: getPercentBreakpointColor(todayEfficiency, config),
       };
       oeeObj.today = {
         value: Math.round(todayOee * 100),
         label: "All Day",
-        color: todayOee >= 0.9 ? "green" : todayOee >= 0.7 ? "orange" : "yellow",
+        color: getOePercentBreakpointColor(todayOee, config),
       };
 
       const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);

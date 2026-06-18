@@ -28,7 +28,9 @@ import { getStatusDot } from '../../utils/status-utils';
 import { DashboardService } from '../services/dashboard.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { OperatorService } from '../services/operator.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 
 @Component({
     selector: "app-daily-summary-dashboard",
@@ -84,9 +86,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     private dialog: MatDialog,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
+    private dashboardTimeframeService: DashboardTimeframeService,
     private cdr: ChangeDetectorRef,
     private machineService: MachineService,
-    private operatorService: OperatorService
+    private operatorService: OperatorService,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -101,14 +105,17 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       this.startTime = this.dateTimeService.getStartTime();
       this.endTime = this.dateTimeService.getEndTime();
       this.fetchData().subscribe();
+    } else {
+      this.dashboardTimeframeService.applyDefault().subscribe((selection) => {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+        this.dateTimeService.setLiveMode(selection.mode === "current");
+        if (selection.mode === "shift") {
+          this.addDummyLoadingRows();
+          this.fetchData().subscribe();
+        }
+      });
     }
-
-    const end = new Date();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-
-    this.endTime = this.formatDateForInput(end);
-    this.startTime = this.formatDateForInput(start);
 
     this.detectTheme();
 
@@ -191,7 +198,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.machinePollSub = this.pollingService.poll(
       () => { tick(); return this.dashboardService
-        .getMachinesSummary(this.startTime, this.endTime)
+        .getMachinesSummary(this.startTime, this.endTime, undefined, this.dateTimeService.getShiftId())
         .pipe(
           tap((r:any)=> this.updateMachines(r)),
           catchError(err => { console.error('machines poll', err); return of(null); }),
@@ -201,7 +208,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.operatorPollSub = this.pollingService.poll(
       () => { tick(); return this.dashboardService
-        .getOperatorsSummary(this.startTime, this.endTime)
+        .getOperatorsSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
         .pipe(
           tap((r:any)=> this.updateOperators(r)),
           catchError(err => { console.error('operators poll', err); return of(null); }),
@@ -211,7 +218,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.itemPollSub = this.pollingService.poll(
       () => { tick(); return this.dashboardService
-        .getItemsSummary(this.startTime, this.endTime)
+        .getItemsSummary(this.startTime, this.endTime, undefined, this.dateTimeService.getShiftId())
         .pipe(
           tap((r:any)=> this.updateItems(r)),
           catchError(err => { console.error('items poll', err); return of(null); }),
@@ -275,9 +282,9 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedEnd = new Date(this.endTime).toISOString();
   
     return forkJoin({
-      machines: this.dashboardService.getMachinesSummary(formattedStart, formattedEnd),
-      operators: this.dashboardService.getOperatorsSummary(formattedStart, formattedEnd),
-      items: this.dashboardService.getItemsSummary(formattedStart, formattedEnd),
+      machines: this.dashboardService.getMachinesSummary(formattedStart, formattedEnd, undefined, this.dateTimeService.getShiftId()),
+      operators: this.dashboardService.getOperatorsSummary(formattedStart, formattedEnd, this.dateTimeService.getShiftId()),
+      items: this.dashboardService.getItemsSummary(formattedStart, formattedEnd, undefined, this.dateTimeService.getShiftId()),
     }).pipe(
       takeUntil(this.destroy$),
       tap({
@@ -356,7 +363,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
     
-    this.machineService.getMachineDetails(formattedStart, formattedEnd, serial)
+    this.machineService.getMachineDetails(formattedStart, formattedEnd, serial, this.dateTimeService.getShiftId())
       .subscribe({
         next: (machineDetails: any) => {
           // machineDetails is an array, get the first item
@@ -648,17 +655,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   // Add this helper for dynamic color coding
-  getPerformanceClass(value: any, column?: string): string {
+  getPerformanceClass = (value: any, column?: string): string => {
     if (column !== 'OEE' && column !== 'Efficiency') return '';
-    let num = value;
-    if (typeof value === 'string') {
-      num = parseFloat(value.replace('%', ''));
-    }
-    if (isNaN(num)) return '';
-    if (num >= 85) return 'green';
-    if (num >= 60) return 'yellow';
-    return 'red';
-  }
+    if (column === 'OEE') return this.percentBreakpointService.getOeColorClass(value);
+    return this.percentBreakpointService.getColorClass(value);
+  };
 
   private addDummyLoadingRows(): void {
     // Add dummy loading rows for machines

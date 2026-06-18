@@ -181,7 +181,7 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
       }
 
       const dataPoints = hours.map((hour: number, hourIndex: number) => ({
-        x: hour,
+        x: String(hour),
         y: itemData[hourIndex] || 0
       }));
 
@@ -225,7 +225,7 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
       width: this.chartWidth || 800,  // Fallback to 800 if undefined
       height: this.chartHeight || 400, // Fallback to 400 if undefined
       orientation: 'vertical',
-      xType: 'linear',
+      xType: 'category',
       xLabel: 'Hour',
       yLabel: 'Count',
       margin: {

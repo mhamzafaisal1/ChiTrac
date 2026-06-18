@@ -13,6 +13,7 @@
         *ngIf="rows.length"
         [columns]="columns"
         [rows]="rows"
+        [columnTooltips]="columnTooltips"
         [selectedRow]="selectedRow"
         (rowClicked)="onRowClick($event)"
         [getCellClass]="getEfficiencyClass"

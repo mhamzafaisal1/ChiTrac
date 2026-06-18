@@ -6,11 +6,27 @@ const config = require("../../modules/config");
 const router = express.Router();
 const os = require("os");
 const jwt = require("jsonwebtoken");
-const { spawn } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const { spawn, execFile } = require("child_process");
 const { DateTime, Duration, Interval } = require("luxon"); //For handling dates and times
 const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
+
+let usbPackage = null;
+
+try {
+  usbPackage = require("usb");
+} catch (error) {
+  usbPackage = null;
+}
+
+const USB_MOUNT_PATH = "/media/usb";
+const CHITRAC_LOGS_PATH = "/srv/chitrac-server/chitrac-api/logs";
+const DEFAULT_CHITRAC_DATABASE_NAME = "chitrac";
+const USB_MOUNT_RETRY_COUNT = 5;
+const USB_MOUNT_RETRY_DELAY_MS = 1500;
 
 
 module.exports = function (server) {
@@ -21,6 +37,8 @@ function constructor(server) {
   const db = server.db;
   const logger = server.logger;
   const passport = server.passport;
+  let mountInProgress = null;
+  let backupInProgress = null;
 
   function getBearerToken(req) {
     const authHeader = req.headers["authorization"] || req.headers["Authorization"];
@@ -71,6 +89,455 @@ function constructor(server) {
 
     child.unref();
   }
+
+  function normalizeLogCutoffDate(dateInput) {
+    const cutoff = DateTime.fromISO(String(dateInput || ""), { zone: "local" }).startOf("day");
+
+    if (!cutoff.isValid) {
+      throw new Error("A valid cleanup date is required.");
+    }
+
+    return cutoff.toFormat("yyyy-MM-dd");
+  }
+
+  function getLogFilenameDate(filename) {
+    const match = filename.match(/^(\d{4}-\d{2}-\d{2})_.+\.log(?:\.gz)?$/);
+
+    if (!match) {
+      return null;
+    }
+
+    const filenameDate = DateTime.fromFormat(match[1], "yyyy-MM-dd");
+    return filenameDate.isValid ? match[1] : null;
+  }
+
+  async function deleteNodeLogsOnOrBefore(dateInput) {
+    const cutoffDate = normalizeLogCutoffDate(dateInput);
+    const directoryEntries = await fs.promises.readdir(CHITRAC_LOGS_PATH, { withFileTypes: true });
+    const logFiles = directoryEntries
+      .filter((entry) => entry.isFile())
+      .map((entry) => ({
+        filename: entry.name,
+        date: getLogFilenameDate(entry.name)
+      }))
+      .filter((entry) => entry.date);
+
+    const oldestLogDate = logFiles.reduce((oldest, entry) => (
+      !oldest || entry.date < oldest ? entry.date : oldest
+    ), null);
+
+    const filesToDelete = logFiles.filter((entry) => entry.date <= cutoffDate);
+    const deletedFiles = [];
+    const failedFiles = [];
+
+    for (const file of filesToDelete) {
+      try {
+        await fs.promises.unlink(path.join(CHITRAC_LOGS_PATH, file.filename));
+        deletedFiles.push(file.filename);
+      } catch (error) {
+        failedFiles.push({
+          filename: file.filename,
+          error: error.message
+        });
+      }
+    }
+
+    return {
+      success: failedFiles.length === 0,
+      logPath: CHITRAC_LOGS_PATH,
+      cutoffDate,
+      oldestLogDate,
+      matchedLogCount: logFiles.length,
+      deletedCount: deletedFiles.length,
+      deletedFiles,
+      failedFiles
+    };
+  }
+
+  function runCommand(command, args, options = {}) {
+    return new Promise((resolve, reject) => {
+      execFile(command, args, { timeout: 120000, ...options }, (error, stdout, stderr) => {
+        if (error) {
+          error.stdout = stdout;
+          error.stderr = stderr;
+          return reject(error);
+        }
+
+        resolve({ stdout, stderr });
+      });
+    });
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function sizeToKilobytes(size) {
+    if (typeof size !== "string") {
+      return 0;
+    }
+
+    const match = size.trim().match(/^([\d.]+)\s*([KMGTPE]?)(?:i?B?)?$/i);
+    if (!match) {
+      return 0;
+    }
+
+    const value = Number(match[1]);
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+
+    const unit = match[2].toUpperCase();
+    const multipliers = {
+      "": 1 / 1024,
+      K: 1,
+      M: 1024,
+      G: 1024 * 1024,
+      T: 1024 * 1024 * 1024,
+      P: 1024 * 1024 * 1024 * 1024,
+      E: 1024 * 1024 * 1024 * 1024 * 1024
+    };
+
+    return value * (multipliers[unit] || 0);
+  }
+
+  function isUsbOrRemovableDisk(device) {
+    const transport = typeof device?.tran === "string" ? device.tran.toLowerCase() : "";
+    const removable = device?.rm === true || device?.rm === 1 || device?.rm === "1";
+    return transport === "usb" || removable;
+  }
+
+  function isUsbMassStorageDevice(device) {
+    if (device?.deviceDescriptor?.bDeviceClass === 8) {
+      return true;
+    }
+
+    const interfaces = device?.configDescriptor?.interfaces;
+    if (!Array.isArray(interfaces)) {
+      return false;
+    }
+
+    return interfaces.some((alternateSettings) => (
+      Array.isArray(alternateSettings) &&
+      alternateSettings.some((descriptor) => descriptor?.bInterfaceClass === 8)
+    ));
+  }
+
+  function getLargestUsbStorageCandidate(lsblkOutput) {
+    const parsed = JSON.parse(lsblkOutput);
+    const candidates = [];
+
+    for (const device of parsed.blockdevices || []) {
+      if (!device?.name || !isUsbOrRemovableDisk(device)) {
+        continue;
+      }
+
+      const children = Array.isArray(device.children) ? device.children : [];
+      const childCandidates = children
+        .filter((child) => child?.name && (!child.type || child.type === "part"))
+        .map((child) => ({
+          ...child,
+          parentName: device.name,
+          parentTransport: device.tran,
+          parentRemovable: device.rm
+        }));
+
+      if (childCandidates.length) {
+        candidates.push(...childCandidates);
+      } else {
+        candidates.push({
+          ...device,
+          parentName: device.name,
+          parentTransport: device.tran,
+          parentRemovable: device.rm
+        });
+      }
+    }
+
+    if (!candidates.length) {
+      throw new Error("No USB or removable SCSI storage device was found by lsblk.");
+    }
+
+    candidates.sort((a, b) => sizeToKilobytes(b.size) - sizeToKilobytes(a.size));
+    return candidates[0];
+  }
+
+  function getDevicePath(deviceName) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(deviceName)) {
+      throw new Error(`Unsafe block device name returned by lsblk: ${deviceName}`);
+    }
+
+    return `/dev/${deviceName}`;
+  }
+
+  function getConfiguredMongoDatabaseName() {
+    if (db?.databaseName) {
+      return db.databaseName;
+    }
+
+    try {
+      const mongoUrl = new URL(config.mongo.connectionString);
+      const databaseName = mongoUrl.pathname.replace(/^\//, "");
+      return databaseName || DEFAULT_CHITRAC_DATABASE_NAME;
+    } catch (error) {
+      return DEFAULT_CHITRAC_DATABASE_NAME;
+    }
+  }
+
+  function getConfiguredMongoUri() {
+    const uri = config.mongo?.connectionString;
+
+    if (!uri || typeof uri !== "string" || !uri.trim()) {
+      throw new Error("MONGO_CONN_STRING is required to run mongodump.");
+    }
+
+    return uri.trim();
+  }
+
+  async function ensureUsbMountDirectory() {
+    await fs.promises.mkdir(USB_MOUNT_PATH, { recursive: true });
+  }
+
+  async function isUsbDriveMounted() {
+    if (os.platform() !== "linux") {
+      return false;
+    }
+
+    try {
+      await runCommand("mountpoint", ["-q", USB_MOUNT_PATH], { timeout: 10000 });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async function mountDriveLinux() {
+    if (mountInProgress) {
+      return mountInProgress;
+    }
+
+    mountInProgress = mountDriveLinuxInternal().finally(() => {
+      mountInProgress = null;
+    });
+
+    return mountInProgress;
+  }
+
+  async function mountDriveLinuxInternal() {
+    const platform = os.platform();
+
+    if (platform !== "linux") {
+      return {
+        success: false,
+        mounted: false,
+        platform,
+        message: `USB drive mounting is unavailable on ${platform}.`
+      };
+    }
+
+    await ensureUsbMountDirectory();
+
+    if (await isUsbDriveMounted()) {
+      return {
+        success: true,
+        mounted: true,
+        mountPath: USB_MOUNT_PATH,
+        message: `A drive is already mounted at ${USB_MOUNT_PATH}.`
+      };
+    }
+
+    const { stdout } = await runCommand("lsblk", [
+      "-A",
+      "-I",
+      "8",
+      "-J",
+      "-o",
+      "NAME,SIZE,TYPE,TRAN,RM,MOUNTPOINT"
+    ]);
+    const selectedDevice = getLargestUsbStorageCandidate(stdout);
+    const devicePath = getDevicePath(selectedDevice.name);
+
+    await runCommand("sudo", ["-n", "mount", devicePath, USB_MOUNT_PATH]);
+
+    return {
+      success: true,
+      mounted: true,
+      mountPath: USB_MOUNT_PATH,
+      devicePath,
+      selectedDevice: {
+        name: selectedDevice.name,
+        size: selectedDevice.size,
+        type: selectedDevice.type,
+        parentName: selectedDevice.parentName,
+        parentTransport: selectedDevice.parentTransport,
+        parentRemovable: selectedDevice.parentRemovable
+      }
+    };
+  }
+
+  async function runMongoBackupToUsb() {
+    if (backupInProgress) {
+      throw new Error("A MongoDB USB backup is already in progress.");
+    }
+
+    backupInProgress = runMongoBackupToUsbInternal().finally(() => {
+      backupInProgress = null;
+    });
+
+    return backupInProgress;
+  }
+
+  async function runMongoBackupToUsbInternal() {
+    const platform = os.platform();
+
+    if (platform !== "linux") {
+      return {
+        success: false,
+        available: false,
+        platform,
+        message: `MongoDB USB backup is unavailable on ${platform}.`
+      };
+    }
+
+    await ensureUsbMountDirectory();
+
+    if (!(await isUsbDriveMounted())) {
+      throw new Error(`No disk is mounted at ${USB_MOUNT_PATH}. Insert a USB drive and try again.`);
+    }
+
+    const backupName = `chitrac-backup-${DateTime.now().toFormat("yyyyMMdd-HHmmss")}`;
+    const backupPath = path.join(USB_MOUNT_PATH, backupName);
+    const databaseName = getConfiguredMongoDatabaseName();
+    const mongoUri = getConfiguredMongoUri();
+
+    await fs.promises.mkdir(backupPath, { recursive: true });
+    await runCommand("mongodump", ["--uri", mongoUri, "--db", databaseName, "--out", backupPath], {
+      timeout: 1000 * 60 * 30
+    });
+
+    return {
+      success: true,
+      available: true,
+      platform,
+      database: databaseName,
+      mountPath: USB_MOUNT_PATH,
+      backupPath
+    };
+  }
+
+  async function mountDriveLinuxWithRetry() {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= USB_MOUNT_RETRY_COUNT; attempt++) {
+      try {
+        if (attempt > 1) {
+          await sleep(USB_MOUNT_RETRY_DELAY_MS);
+        }
+
+        return await mountDriveLinux();
+      } catch (error) {
+        lastError = error;
+        logger.warn(`USB mount attempt ${attempt} failed: ${error.message}`);
+      }
+    }
+
+    throw lastError;
+  }
+
+  async function unmountDriveLinux() {
+    const platform = os.platform();
+
+    if (platform !== "linux") {
+      return {
+        success: false,
+        unmounted: false,
+        platform,
+        message: `USB drive unmounting is unavailable on ${platform}.`
+      };
+    }
+
+    if (!(await isUsbDriveMounted())) {
+      return {
+        success: true,
+        unmounted: false,
+        platform,
+        mountPath: USB_MOUNT_PATH,
+        message: `No drive is mounted at ${USB_MOUNT_PATH}.`
+      };
+    }
+
+    await runCommand("sudo", ["-n", "umount", USB_MOUNT_PATH]);
+
+    return {
+      success: true,
+      unmounted: true,
+      platform,
+      mountPath: USB_MOUNT_PATH
+    };
+  }
+
+  async function handleMongoUsbBackupRequest(req, res) {
+    try {
+      const result = await runMongoBackupToUsb();
+
+      if (result.success === false) {
+        return res.json(result);
+      }
+
+      logger.warn("Root user created MongoDB backup to USB drive.", result);
+      return res.json(result);
+    } catch (error) {
+      logger.error("Failed to create MongoDB backup to USB drive:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to create MongoDB backup to USB drive",
+        details: error.message
+      });
+    }
+  }
+
+  function registerUsbDriveListeners() {
+    if (!usbPackage?.usb?.on) {
+      logger.warn("USB package is unavailable; USB attach/detach backup listeners were not registered.");
+      return;
+    }
+
+    usbPackage.usb.on("attach", async (device) => {
+      if (!isUsbMassStorageDevice(device)) {
+        logger.info("Non-storage USB device attached; skipping drive mount.");
+        return;
+      }
+
+      try {
+        const result = await mountDriveLinuxWithRetry();
+        logger.info("USB device attached.", result);
+      } catch (error) {
+        logger.error("Failed to mount USB drive after attach event:", error);
+      }
+    });
+
+    usbPackage.usb.on("detach", async (device) => {
+      if (!isUsbMassStorageDevice(device)) {
+        logger.info("Non-storage USB device detached; skipping drive unmount.");
+        return;
+      }
+
+      try {
+        const result = await unmountDriveLinux();
+        logger.info("USB device detached.", result);
+      } catch (error) {
+        logger.error("Failed to unmount USB drive after detach event:", error);
+      }
+    });
+
+    if (typeof usbPackage.usb.unrefHotplugEvents === "function") {
+      usbPackage.usb.unrefHotplugEvents();
+    }
+
+    logger.info("USB attach/detach listeners registered.");
+  }
+
+  registerUsbDriveListeners();
 
 
 
@@ -2049,6 +2516,42 @@ function constructor(server) {
     }
   });
 
+  router.post("/logs/delete-old-nodejs", requireRoot, async (req, res) => {
+    try {
+      const result = await deleteNodeLogsOnOrBefore(req.body?.date);
+
+      if (result.failedFiles.length) {
+        logger.error("Failed to delete one or more Node.js log files.", result);
+        return res.status(500).json({
+          ...result,
+          error: "Failed to delete one or more Node.js log files"
+        });
+      }
+
+      logger.warn("Root user deleted old Node.js logs from web utilities route.", {
+        cutoffDate: result.cutoffDate,
+        oldestLogDate: result.oldestLogDate,
+        deletedCount: result.deletedCount,
+        logPath: result.logPath
+      });
+
+      return res.json({
+        ...result,
+        message: `Deleted ${result.deletedCount} Node.js log file${result.deletedCount === 1 ? "" : "s"}.`
+      });
+    } catch (error) {
+      logger.error("Failed to delete old Node.js logs:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to delete old Node.js logs",
+        details: error.message
+      });
+    }
+  });
+
+  router.get("/backup/mongodb-usb", requireRoot, handleMongoUsbBackupRequest);
+  router.post("/backup/mongodb-usb", requireRoot, handleMongoUsbBackupRequest);
+
   // UI settings route (no auth required - public configuration)
   router.get("/settings", (req, res) => {
     try {
@@ -2057,7 +2560,10 @@ function constructor(server) {
         showErrorModals: config.showErrorModals,
         defaultTheme: config.defaultTheme,
         systemName: config.systemName,
-        httpsEnabled: config.httpsEnabled
+        httpsEnabled: config.httpsEnabled,
+        dashboardTimeframe: config.dashboardTimeframe || 'current',
+        percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined,
+        oePercentBreakpoints: config.oePercentBreakpoints ? { ...config.oePercentBreakpoints } : undefined
       });
     } catch (error) {
       logger.error(`Error retrieving settings:`, error);

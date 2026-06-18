@@ -13,6 +13,7 @@ import autoTable from 'jspdf-autotable';
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 interface OperatorSummaryRow {
   operatorName: string;
@@ -48,6 +49,13 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   endTime: string = '';
   columns: string[] = [];
   rows: any[] = [];
+  columnTooltips: { [column: string]: string } = {
+    'Total Time (Runtime)': 'Amount of time operator has been running across all machines',
+    'Total Count': 'Amount of pieces fed by operator',
+    'PPH': 'Pieces Per Hour',
+    'Standard': 'Pieces Per Hour Goal',
+    'Efficiency': 'Percent of goal pace being achieved.',
+  };
   isDarkTheme: boolean = false;
   isLoading: boolean = false;
   isDownloading: boolean = false;
@@ -65,7 +73,8 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   constructor(
     private reportsService: ReportsService,
     private renderer: Renderer2,
-    private elRef: ElementRef
+    private elRef: ElementRef,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -149,11 +158,12 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
         'Total Count': summary.totalCount,
         'PPH': summary.pph,
         'Standard': summary.proratedStandard ? Number(summary.proratedStandard).toFixed(2) : 'N/A',
-        'Efficiency': summary.efficiency !== null ? `${summary.efficiency}%` : 'N/A'
+        'Efficiency': summary.efficiency !== null ? `${summary.efficiency}%` : 'N/A',
+        '_tooltipItemId': ''
       });
 
       // Add item summaries under this operator
-      Object.values(summary.itemSummaries).forEach((item: any) => {
+      Object.entries(summary.itemSummaries).forEach(([itemId, item]: [string, any]) => {
         formattedData.push({
           'Operator': operatorName,
           'Item': item.name,
@@ -161,22 +171,28 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
           'Total Count': item.countTotal,
           'PPH': item.pph,
           'Standard': item.standard ? Number(item.standard).toFixed(2) : 'N/A',
-          'Efficiency': item.efficiency !== null ? `${item.efficiency}%` : 'N/A'
+          'Efficiency': item.efficiency !== null ? `${item.efficiency}%` : 'N/A',
+          '_tooltipItemId': itemId
         });
       });
     });
 
-    this.columns = Object.keys(formattedData[0]);
+    this.columns = ['Operator', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
+  }
+
+  getCellTooltip(row: any, column: string): string {
+    if (column === 'Item' && row?._tooltipItemId != null && row._tooltipItemId !== '') {
+      return `Item ID: ${row._tooltipItemId}`;
+    }
+    return '';
   }
 
   getEfficiencyClass(value: any, column: string): string {
     if (column === 'Efficiency' && typeof value === 'string' && value.includes('%')) {
       const num = parseInt(value.replace('%', ''));
       if (isNaN(num)) return '';
-      if (num >= 90) return 'green';
-      if (num >= 70) return 'yellow';
-      return 'red';
+      return this.percentBreakpointService.getColorClass(num);
     }
     return '';
   }

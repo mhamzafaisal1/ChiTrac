@@ -5,6 +5,7 @@ import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cart
 import { DashboardService } from '../../services/dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
@@ -47,7 +48,8 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   constructor(
     private dashboardService: DashboardService,
     private pollingService: PollingService,
-    private dateTimeService: DateTimeService
+    private dateTimeService: DateTimeService,
+    private percentBreakpointService: PercentBreakpointService
   ) {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
     new MutationObserver(() => {
@@ -245,10 +247,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   }
 
   private getEfficiencyColor(efficiency: number): string {
-    // Same color logic as machine OEE chart for consistency
-    if (efficiency >= 85) return '#66bb6a';  // Green: Excellent (85%+)
-    if (efficiency >= 60) return '#ffca28';  // Yellow: Good (60-84%)
-    return '#ef5350';                        // Red: Poor (<60%)
+    return this.percentBreakpointService.getColorHex(efficiency);
   }
 
   private enterDummy(): void {

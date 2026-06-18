@@ -4,6 +4,7 @@ import { RouterOutlet } from '@angular/router';
 import { SettingsService } from './services/settings.service';
 import { ErrorQueueService } from './services/error-queue.service';
 import { UserService } from './user.service';
+import { WebsocketService } from './services/websocket.service';
 
 @Component({
     selector: 'ct-root',
@@ -22,7 +23,8 @@ export class AppComponent implements OnInit {
     private renderer: Renderer2,
     private settingsService: SettingsService,
     private errorQueueService: ErrorQueueService,
-    private userService: UserService
+    private userService: UserService,
+    private websocketService: WebsocketService
   ) {
     // Initial theme application (will be updated by loadTheme)
     this.renderer.addClass(document.body, this.currentTheme);
@@ -37,6 +39,7 @@ export class AppComponent implements OnInit {
       if (user && user.username) {
         // User is logged in, load their theme preference
         this.loadTheme();
+        this.websocketService.ensureConnected();
       } else {
         // User is not logged in, use default theme from settings
         this.loadDefaultTheme();

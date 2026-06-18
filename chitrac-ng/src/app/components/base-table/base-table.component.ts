@@ -13,11 +13,13 @@ import { CommonModule } from '@angular/common';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 @Component({
   selector: 'base-table',
   standalone: true,
-  imports: [CommonModule, MatTableModule, MatSortModule, MatIconModule],
+  imports: [CommonModule, MatTableModule, MatSortModule, MatIconModule, MatTooltipModule],
   templateUrl: './base-table.component.html',
   styleUrls: ['./base-table.component.scss'],
 })
@@ -28,6 +30,8 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   @Input() disableSorting: boolean = false;
   @Input() getCellClass: ((value: any, column: string) => string) | null = null;
   @Input() responsiveHiddenColumns: { [breakpoint: number]: string[] } = {};
+  @Input() columnTooltips: { [column: string]: string } = {};
+  @Input() getCellTooltip: ((row: any, column: string) => string) | null = null;
 
   @Output() rowClicked = new EventEmitter<any>();
 
@@ -36,6 +40,8 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   visibleColumns: string[] = [];
 
   private readonly handleResize = this.updateVisibleColumns.bind(this);
+
+  constructor(private percentBreakpointService: PercentBreakpointService) {}
 
   ngOnInit() {
     this.updateData();
@@ -114,15 +120,28 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
 
   getEfficiencyClass(value: any): string {
     if (typeof value !== 'string' || !value.includes('%')) return '';
-    const num = parseInt(value.replace('%', ''));
-    if (isNaN(num)) return '';
-    if (num >= 90) return 'green';
-    if (num >= 70) return 'yellow';
-    return 'red';
+    return this.percentBreakpointService.getColorClass(value);
   }
 
   getCellClassForColumn(value: any, column: string): string {
     return this.getCellClass ? this.getCellClass(value, column) : '';
+  }
+
+  getTooltipForColumn(column: string): string {
+    return this.columnTooltips?.[column] || '';
+  }
+
+  hasTooltipForColumn(column: string): boolean {
+    return !!this.getTooltipForColumn(column);
+  }
+
+  getTooltipForCell(row: any, column: string): string {
+    const cellTooltip = this.getCellTooltip ? this.getCellTooltip(row, column) : '';
+    return cellTooltip || this.getTooltipForColumn(column);
+  }
+
+  hasTooltipForCell(row: any, column: string): boolean {
+    return !!this.getTooltipForCell(row, column);
   }
 
   trackByIndex(index: number): number {

@@ -1,13 +1,4 @@
 <div class="dashboard-container" [class.dark-mode]="isDarkTheme">
-  <div class="loading-overlay" *ngIf="isLoading">
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">
-        {{ isDownloading ? "Downloading PDF..." : isDownloadingCsv ? "Downloading CSV..." : "Fetching data..." }}
-      </div>
-    </div>
-  </div>
-
   <div class="controls">
     <mat-form-field appearance="outline" class="date-field">
       <mat-label>Start date</mat-label>
@@ -75,7 +66,16 @@
     </div>
   </div>
 
-  <div class="table-container" [class.loading]="isLoading">
+  <div class="table-container" *ngIf="isLoading || rows.length" [class.loading]="isLoading">
+    <div class="loading-overlay" *ngIf="isLoading">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">
+          {{ isDownloading ? "Downloading PDF..." : isDownloadingCsv ? "Downloading CSV..." : "Fetching data..." }}
+        </div>
+      </div>
+    </div>
+
     <base-table
       *ngIf="rows.length"
       [class.dark]="isDarkTheme"

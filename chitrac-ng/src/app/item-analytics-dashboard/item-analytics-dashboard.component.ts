@@ -9,6 +9,7 @@ import { BaseTableComponent } from '../components/base-table/base-table.componen
 import { ItemService } from '../services/item.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 
 @Component({
     selector: 'app-item-analytics-dashboard',
@@ -28,6 +29,13 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
   endTime = '';
   rows: any[] = [];
   columns: string[] = [];
+  columnTooltips: { [column: string]: string } = {
+    'Worked Time': 'Amount of time item has been run across all machines.',
+    Count: 'Amount of pieces fed for this item.',
+    PPH: 'Pieces per hour for this item.',
+    Standard: 'Goal pace for this item.',
+    'Efficiency (%)': 'Percent of goal pace being achieved.',
+  };
   isDarkTheme: boolean = false;
   isLoading: boolean = false;
   liveMode: boolean = false;
@@ -47,6 +55,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private elRef: ElementRef,
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
+    private dashboardTimeframeService: DashboardTimeframeService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -63,13 +72,18 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
       this.startTime = this.dateTimeService.getStartTime();
       this.endTime = this.dateTimeService.getEndTime();
       this.fetchItemAnalytics().subscribe();
+    } else {
+      this.dashboardTimeframeService.applyDefault().subscribe((selection) => {
+        this.startTime = this.dateTimeService.getStartTime();
+        this.endTime = this.dateTimeService.getEndTime();
+        this.dateTimeService.setLiveMode(selection.mode === 'current');
+        if (selection.mode === 'shift') {
+          this.isLoading = true;
+          this.rows = [];
+          this.fetchItemAnalytics().subscribe();
+        }
+      });
     }
-
-    const now = new Date();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
 
     this.detectTheme();
     this.observer = new MutationObserver(() => this.detectTheme());

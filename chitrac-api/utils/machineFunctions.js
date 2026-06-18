@@ -1013,6 +1013,9 @@ async function getActiveMachineSerials(db, start, end) {
 
       const workedMs = safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
       const timeCreditMs = safeNumber(record.totalTimeCreditMs);
+      if (workedMs <= 0 && timeCreditMs <= 0) {
+        continue;
+      }
       const ratio = workedMs > 0 ? Math.min(Math.max(timeCreditMs / workedMs, 0), 2) : 0;
       const efficiency = Math.round(ratio * 10000) / 100;
 
@@ -1036,13 +1039,20 @@ async function getActiveMachineSerials(db, start, end) {
         hourData.operators.set(operatorKey, {
           id: operatorId,
           name: operatorName,
-          efficiency: efficiency
+          workedMs,
+          timeCreditMs,
+          efficiency
         });
       } else {
-        // If operator already exists in this hour, average the efficiencies
-        // This handles cases where an operator might have multiple records for the same hour
+        // If operator already exists in this hour, aggregate time first, then
+        // recalculate efficiency. A simple average can over/under-weight tiny rows.
         const existing = hourData.operators.get(operatorKey);
-        existing.efficiency = Math.round(((existing.efficiency + efficiency) / 2) * 100) / 100;
+        existing.workedMs += workedMs;
+        existing.timeCreditMs += timeCreditMs;
+        const existingRatio = existing.workedMs > 0
+          ? Math.min(Math.max(existing.timeCreditMs / existing.workedMs, 0), 2)
+          : 0;
+        existing.efficiency = Math.round(existingRatio * 10000) / 100;
       }
     }
 
@@ -1078,7 +1088,9 @@ async function getActiveMachineSerials(db, start, end) {
 
     for (const hour of hoursToEmit) {
       const hourData = hourMap.get(hour);
-      const operators = hourData ? Array.from(hourData.operators.values()) : [];
+      const operators = hourData
+        ? Array.from(hourData.operators.values()).map(({ workedMs, timeCreditMs, ...operator }) => operator)
+        : [];
 
       // Calculate average efficiency for this hour from all operators
       const avgEfficiency =
@@ -2013,31 +2025,37 @@ async function getActiveMachineSerials(db, start, end) {
     const machineSerial = ticker.machine?.serial ?? ticker.machine?.id ?? serialNum;
     const machineName = ticker.machine?.name || "Unknown";
 
-    const rows = await Promise.all(opIds.map(async (opId) => {
-      let s = await osColl.find({
-        "operator.id": opId,
-        $and: [
-          { $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }] },
-          { $or: [{ "timestamps.end": { $exists: false } }, { "timestamps.end": null }] }
-        ]
-      })
-        .project({ _id: 0, operator: 1, machine: 1, timestamps: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1 })
-        .sort({ "timestamps.create": -1 })
-        .limit(1)
-        .toArray();
+    const projection = {
+      _id: 0,
+      operator: 1,
+      machine: 1,
+      timestamps: 1,
+      workTime: 1,
+      totalTimeCredit: 1,
+      totalCount: 1,
+      misfeedCount: 1,
+    };
 
-      if (!s.length) {
-        s = await osColl.find({
+    const rows = await Promise.all(opIds.map(async (opId) => {
+      let doc = await osColl.findOne({
+        "operator.id": opId,
+        $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }],
+        "timestamps.end": null,
+      }, {
+        projection,
+        sort: { "timestamps.create": -1 },
+      });
+
+      if (!doc) {
+        doc = await osColl.findOne({
           "operator.id": opId,
           $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }]
-        })
-          .project({ _id: 0, operator: 1, machine: 1, timestamps: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1 })
-          .sort({ "timestamps.create": -1 })
-          .limit(1)
-          .toArray();
+        }, {
+          projection,
+          sort: { "timestamps.create": -1 },
+        });
       }
 
-      const doc = s[0];
       if (!doc) return null;
 
       const workSec   = safe(doc.workTime);

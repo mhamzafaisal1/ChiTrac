@@ -29,6 +29,16 @@ const userPermissionsLevels = [
   'Operator',
   'Guest'
 ];
+const percentBreakpoints = {
+  poor: 0,
+  okay: 70,
+  good: 90
+};
+const oePercentBreakpoints = {
+  poor: 0,
+  okay: 60,
+  good: 80
+};
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV,
@@ -95,6 +105,8 @@ module.exports = {
   systemName,
 
   userPermissionsLevels,
+  percentBreakpoints,
+  oePercentBreakpoints,
 
   envPreferences: {
     systemName,
@@ -103,7 +115,9 @@ module.exports = {
     httpsEnabled,
     userSessionExpirationHours,
     userPermissionsLevels: [...userPermissionsLevels],
-    operatorPaceHandicap: []
+    operatorPaceHandicap: [],
+    percentBreakpoints: { ...percentBreakpoints },
+    oePercentBreakpoints: { ...oePercentBreakpoints }
   },
 
   operatorPaceHandicap: [],

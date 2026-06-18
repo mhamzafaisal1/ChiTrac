@@ -730,11 +730,12 @@ async function getCachedOperatorResults(db, completeDays) {
         const existing = operatorTickerMap.get(operatorKey);
         if (!existing || existing.timestamp < timestamp) {
           const serial = machine.serial ?? machine.id ?? machine.serialNumber ?? null;
+          const statusCode = status.id ?? status.code ?? null;
           operatorTickerMap.set(operatorKey, {
             machine: serial != null ? { serial, name: machine.name || null } : null,
             status:
-              status.code !== undefined || status.name !== undefined
-                ? { code: status.code ?? null, name: status.name ?? null }
+              statusCode !== null || status.name !== undefined
+                ? { code: statusCode, name: status.name ?? null }
                 : null,
             timestamp
           });
@@ -1493,7 +1494,9 @@ async function buildDailyCountTotals(db, _start, end) {
 async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd, logger) {
   try {
     const dateStr = dayStart.toISOString().split('T')[0];
-    const activeShifts = await loadActiveShifts(db);
+    const activeShifts = await loadActiveShifts(db, {
+      collectionName: config.shiftCollectionName,
+    });
     const shiftWindowMs = computeShiftElapsedMs(activeShifts, dayStart, dayEnd, SYSTEM_TIMEZONE);
 
     const cacheRecords = await db
@@ -1565,7 +1568,9 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
     const dateStr = dayStart.toISOString().split('T')[0];
     const dayStartDate = new Date(dayStart);
     const dayEndDate = new Date(dayEnd);
-    const activeShifts = await loadActiveShifts(db);
+    const activeShifts = await loadActiveShifts(db, {
+      collectionName: config.shiftCollectionName,
+    });
     const shiftWindowMs = computeShiftElapsedMs(activeShifts, dayStartDate, dayEndDate, SYSTEM_TIMEZONE);
     const windowMs = shiftWindowMs > 0 ? shiftWindowMs : (dayEndDate - dayStartDate);
 

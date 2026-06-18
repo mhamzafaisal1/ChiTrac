@@ -2,13 +2,14 @@ import { Component, Input, OnDestroy, OnInit, OnChanges, SimpleChanges, ChangeDe
 import { CommonModule } from '@angular/common';
 import { Subject, timer, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 export type EfficiencyScreenLaneMode = 'operator' | 'oee' | 'fault' | 'offline';
 
 export interface EfficiencySlot {
   value: number;
   label: string;
-  color: 'green' | 'orange' | 'yellow';
+  color: 'green' | 'orange' | 'red';
 }
 
 @Component({
@@ -27,7 +28,10 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   private destroy$ = new Subject<void>();
   private timerSub: Subscription | null = null;
 
-  constructor(private cdr: ChangeDetectorRef) {}
+  constructor(
+    private cdr: ChangeDetectorRef,
+    private percentBreakpointService: PercentBreakpointService
+  ) {}
 
   ngOnInit() {
     this.syncElapsedTimer();
@@ -109,11 +113,10 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   }
 
   /** Derive color from efficiency value (frontend-controlled: ≥90 green, 70-89 yellow, <70 red). */
-  getColor(value: number | undefined | null): 'green' | 'orange' | 'yellow' {
+  getColor(value: number | undefined | null): 'green' | 'orange' | 'red' {
     const v = value ?? 0;
-    if (v >= 90) return 'green';
-    if (v >= 70) return 'yellow';
-    return 'orange';
+    if (this.mode === 'oee') return this.percentBreakpointService.getOeDashboardColor(v);
+    return this.percentBreakpointService.getDashboardColor(v);
   }
 
   /** Get efficiency or OEE data with frontend-derived colors for operator/oee modes. */

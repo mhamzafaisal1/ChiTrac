@@ -16,13 +16,13 @@
       <a mat-list-item routerLink="/ng/home">
         <mat-icon>home</mat-icon><span class="menu-item">Home</span>
       </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.dashboards)" (click)="openMenu('dashboards')">
+      <a mat-list-item (click)="openMenu('dashboards')">
         <mat-icon>dashboard</mat-icon><span class="menu-item">Dashboards</span>
       </a>
       <a mat-list-item (click)="openMenu('productionScreens')">
         <mat-icon>live_tv</mat-icon><span>Production Screens</span>
       </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.reports)" (click)="openMenu('reports')">
+      <a mat-list-item (click)="openMenu('reports')">
         <mat-icon>bar_chart</mat-icon><span class="menu-item">Reports</span>
       </a>
       <a mat-list-item *ngIf="user.username && canAccess(permissionLevels.settings)" (click)="openMenu('settings')">
@@ -53,6 +53,9 @@
       </a>
       <a mat-list-item routerLink="/ng/daily-summary" (click)="closeMenu()">
         <mat-icon style="margin-right: 0.5em;">view_column</mat-icon><span>Summary</span>
+      </a>
+      <a mat-list-item routerLink="/ng/comparison-dashboard" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">compare</mat-icon><span>Comparison</span>
       </a>
 
       <!-- ➕ Efficiency Screens top link -->
@@ -111,6 +114,9 @@
       </a>
       <a mat-list-item routerLink="/ng/reports/shift-machine-report" (click)="closeMenu()">
         <mat-icon>schedule</mat-icon><span>Shift Machine Report</span>
+      </a>
+      <a mat-list-item routerLink="/ng/reports/shift-comparison-report" (click)="closeMenu()">
+        <mat-icon>compare_arrows</mat-icon><span>Shift Comparison Report</span>
       </a>
       <a mat-list-item routerLink="/ng/reports/operator-report" (click)="closeMenu()">
         <mat-icon>person</mat-icon><span>Operator Report</span>

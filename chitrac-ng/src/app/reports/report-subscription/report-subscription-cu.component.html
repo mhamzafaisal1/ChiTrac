@@ -1,81 +1,204 @@
 <h2 mat-dialog-title>{{ title }}</h2>
 
-<mat-dialog-content [formGroup]="form" class="form-grid">
-  <section class="form-section">
-    <mat-form-field>
-      <mat-label>Name</mat-label>
-      <input matInput formControlName="name" />
-      <mat-error *ngIf="form.get('name')?.hasError('required')">Name is required.</mat-error>
-    </mat-form-field>
+<mat-dialog-content [formGroup]="form" class="subscription-wizard">
+  <nav class="wizard-progress" aria-label="Report subscription setup progress">
+    <span class="progress-step" [class.active]="step === 'report'" [class.complete]="isStepComplete('report') && step !== 'report'">
+      <span class="step-number">1</span>
+      Report
+    </span>
+    <span class="progress-step" [class.active]="step === 'schedule'" [class.complete]="isStepComplete('schedule') && stepIndex > 1">
+      <span class="step-number">2</span>
+      Schedule
+    </span>
+    <span class="progress-step" [class.active]="step === 'delivery'" [class.complete]="isStepComplete('delivery') && stepIndex > 2">
+      <span class="step-number">3</span>
+      Delivery
+    </span>
+    <span class="progress-step" [class.active]="step === 'review'">
+      <span class="step-number">4</span>
+      Review
+    </span>
+  </nav>
 
-    <mat-slide-toggle formControlName="enabled" labelPosition="before">Enabled</mat-slide-toggle>
-  </section>
+  <section *ngIf="step === 'report'" class="wizard-panel">
+    <div class="panel-intro">
+      <span class="eyebrow">Subscription</span>
+      <h3>Choose the report</h3>
+      <p>Name the subscription, choose the report, and decide whether it should run right away.</p>
+    </div>
 
-  <section class="form-section">
-    <h3>Report</h3>
-    <mat-form-field>
-      <mat-label>Name</mat-label>
-      <mat-select formControlName="reportName">
-        <mat-option *ngFor="let option of reportNameOptions" [value]="option.value">{{ option.label }}</mat-option>
-      </mat-select>
-      <mat-error *ngIf="form.get('reportName')?.hasError('required')">Report name is required.</mat-error>
-    </mat-form-field>
+    <div class="form-grid two-column">
+      <mat-form-field appearance="outline">
+        <mat-label>Name</mat-label>
+        <input matInput formControlName="name" />
+        <mat-error *ngIf="form.get('name')?.hasError('required')">Name is required.</mat-error>
+        <mat-error *ngIf="form.get('name')?.hasError('maxlength')">Use 120 characters or fewer.</mat-error>
+      </mat-form-field>
 
-    <div class="report-mode-toggle">
-      <span class="toggle-label">Detailed</span>
+      <div class="enabled-toggle">
+        <span>Status</span>
+        <mat-slide-toggle formControlName="enabled" color="primary">
+          {{ form.value.enabled ? 'Enabled' : 'Disabled' }}
+        </mat-slide-toggle>
+      </div>
+    </div>
+
+    <div class="choice-grid report-choice-grid">
+      <button
+        *ngFor="let option of reportNameOptions"
+        mat-stroked-button
+        type="button"
+        class="choice-button"
+        [class.selected]="form.value.reportName === option.value"
+        (click)="form.get('reportName')?.setValue(option.value)">
+        <mat-icon>{{ option.value === 'machine' ? 'precision_manufacturing' : option.value === 'operator' ? 'person' : option.value === 'item' ? 'inventory_2' : 'warning' }}</mat-icon>
+        <span>{{ option.label }}</span>
+      </button>
+    </div>
+
+    <div class="mode-row">
+      <span>Detailed</span>
       <mat-slide-toggle formControlName="reportTypeSummary" color="primary"></mat-slide-toggle>
-      <span class="toggle-label">Summary</span>
+      <span>Summary</span>
     </div>
   </section>
 
-  <section class="form-section">
-    <h3>Schedule</h3>
-    <mat-form-field>
-      <mat-label>Cron Schedule String</mat-label>
-      <input matInput formControlName="cron" placeholder="* * * * * *" />
+  <section *ngIf="step === 'schedule'" class="wizard-panel">
+    <div class="panel-intro">
+      <span class="eyebrow">Timing</span>
+      <h3>Set the schedule</h3>
+      <p>Use a common schedule or enter an existing cron expression directly.</p>
+    </div>
+
+    <div class="form-grid two-column">
+      <mat-form-field appearance="outline">
+        <mat-label>Schedule</mat-label>
+        <mat-select formControlName="schedulePreset">
+          <mat-option *ngFor="let option of schedulePresetOptions" [value]="option.value">{{ option.label }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" *ngIf="form.value.schedulePreset !== 'custom'">
+        <mat-label>Time</mat-label>
+        <mat-select formControlName="scheduleTime">
+          <mat-option *ngFor="let option of timeOptions" [value]="option.value">{{ option.label }}</mat-option>
+        </mat-select>
+        <mat-error *ngIf="form.get('scheduleTime')?.hasError('required')">Time is required.</mat-error>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" *ngIf="form.value.schedulePreset === 'weekly'">
+        <mat-label>Day of week</mat-label>
+        <mat-select formControlName="scheduleWeekday">
+          <mat-option *ngFor="let option of weekdayOptions" [value]="option.value">{{ option.label }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" *ngIf="form.value.schedulePreset === 'monthly'">
+        <mat-label>Day of month</mat-label>
+        <mat-select formControlName="scheduleMonthDay">
+          <mat-option *ngFor="let day of monthDayOptions" [value]="day">{{ day }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    <mat-form-field appearance="outline" class="cron-field">
+      <mat-label>Cron schedule</mat-label>
+      <input matInput formControlName="cron" [readonly]="form.value.schedulePreset !== 'custom'" />
       <mat-error *ngIf="form.get('cron')?.hasError('required')">Cron is required.</mat-error>
+      <mat-error *ngIf="form.get('cron')?.hasError('cron')">Use a 5 or 6 part cron expression.</mat-error>
     </mat-form-field>
+
+    <div class="schedule-summary">
+      <mat-icon>event</mat-icon>
+      <span>{{ scheduleSummary }}</span>
+    </div>
   </section>
 
-  <section class="form-section">
-    <h3>Destination</h3>
-    <p class="section-note">Deliver the report via email.</p>
+  <section *ngIf="step === 'delivery'" class="wizard-panel">
+    <div class="panel-intro">
+      <span class="eyebrow">Email</span>
+      <h3>Set delivery details</h3>
+      <p>Use semicolons to send to multiple recipients.</p>
+    </div>
+
+    <div class="form-grid">
+      <mat-form-field appearance="outline">
+        <mat-label>To</mat-label>
+        <input matInput formControlName="emailTo" />
+        <mat-error *ngIf="form.get('emailTo')?.hasError('required')">To is required.</mat-error>
+        <mat-error *ngIf="form.get('emailTo')?.hasError('emailList')">Enter valid email addresses separated by semicolons.</mat-error>
+      </mat-form-field>
+
+      <div class="form-grid two-column">
+        <mat-form-field appearance="outline">
+          <mat-label>Cc</mat-label>
+          <input matInput formControlName="emailCc" />
+          <mat-error *ngIf="form.get('emailCc')?.hasError('emailList')">Enter valid email addresses separated by semicolons.</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Bcc</mat-label>
+          <input matInput formControlName="emailBcc" />
+          <mat-error *ngIf="form.get('emailBcc')?.hasError('emailList')">Enter valid email addresses separated by semicolons.</mat-error>
+        </mat-form-field>
+      </div>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Subject</mat-label>
+        <input matInput formControlName="emailSubject" />
+        <mat-error *ngIf="form.get('emailSubject')?.hasError('required')">Subject is required.</mat-error>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Body Text</mat-label>
+        <textarea matInput rows="5" formControlName="emailBodyText"></textarea>
+        <mat-error *ngIf="form.get('emailBodyText')?.hasError('required')">Body text is required.</mat-error>
+      </mat-form-field>
+    </div>
   </section>
 
-  <section class="form-section">
-    <h3>Delivery Options (E-Mail)</h3>
-    <mat-form-field>
-      <mat-label>To</mat-label>
-      <input matInput formControlName="emailTo" />
-      <mat-error *ngIf="form.get('emailTo')?.hasError('required')">To is required.</mat-error>
-    </mat-form-field>
+  <section *ngIf="step === 'review'" class="wizard-panel">
+    <div class="panel-intro">
+      <span class="eyebrow">Review</span>
+      <h3>Confirm subscription</h3>
+      <p>Check the setup before saving.</p>
+    </div>
 
-    <mat-form-field>
-      <mat-label>Cc</mat-label>
-      <input matInput formControlName="emailCc" />
-    </mat-form-field>
-
-    <mat-form-field>
-      <mat-label>Bcc</mat-label>
-      <input matInput formControlName="emailBcc" />
-    </mat-form-field>
-
-    <mat-form-field>
-      <mat-label>Subject</mat-label>
-      <input matInput formControlName="emailSubject" />
-      <mat-error *ngIf="form.get('emailSubject')?.hasError('required')">Subject is required.</mat-error>
-    </mat-form-field>
-
-    <mat-form-field>
-      <mat-label>Body Text</mat-label>
-      <textarea matInput rows="4" formControlName="emailBodyText"></textarea>
-      <mat-error *ngIf="form.get('emailBodyText')?.hasError('required')">Body text is required.</mat-error>
-    </mat-form-field>
+    <div class="review-grid">
+      <article class="review-item">
+        <span>Report</span>
+        <strong>{{ selectedReportLabel }} - {{ selectedReportTypeLabel }}</strong>
+      </article>
+      <article class="review-item">
+        <span>Status</span>
+        <strong>{{ form.value.enabled ? 'Enabled' : 'Disabled' }}</strong>
+      </article>
+      <article class="review-item">
+        <span>Schedule</span>
+        <strong>{{ scheduleSummary }}</strong>
+        <small>{{ form.value.cron }}</small>
+      </article>
+      <article class="review-item">
+        <span>Delivery</span>
+        <strong>{{ form.value.emailTo }}</strong>
+        <small *ngIf="form.value.emailCc">Cc: {{ form.value.emailCc }}</small>
+        <small *ngIf="form.value.emailBcc">Bcc: {{ form.value.emailBcc }}</small>
+      </article>
+      <article class="review-item wide">
+        <span>Message</span>
+        <strong>{{ form.value.emailSubject }}</strong>
+        <small>{{ form.value.emailBodyText }}</small>
+      </article>
+    </div>
   </section>
-
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
   <button mat-button [mat-dialog-close]="null">Cancel</button>
-  <button mat-flat-button color="primary" (click)="save()">Save</button>
+  <button mat-stroked-button type="button" (click)="back()" [disabled]="isFirstStep">Back</button>
+  <button mat-flat-button color="primary" type="button" *ngIf="!isLastStep" (click)="next()" [disabled]="!canContinue">
+    Next
+    <mat-icon>arrow_forward</mat-icon>
+  </button>
+  <button mat-flat-button color="primary" type="button" *ngIf="isLastStep" (click)="save()" [disabled]="form.invalid">Save</button>
 </mat-dialog-actions>

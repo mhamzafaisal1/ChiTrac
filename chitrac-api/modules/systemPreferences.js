@@ -58,6 +58,20 @@ function applySystemPreferences(config, preferences = {}) {
     config.httpsEnabledSource = config.httpsEnabledEnvConfigured ? 'env' : 'default';
   }
 
+  if (preferences.dashboardTimeframe === 'current' || preferences.dashboardTimeframe === 'shift') {
+    config.dashboardTimeframe = preferences.dashboardTimeframe;
+  } else {
+    config.dashboardTimeframe = 'current';
+  }
+
+  if (preferences.percentBreakpoints) {
+    config.percentBreakpoints = { ...preferences.percentBreakpoints };
+  }
+
+  if (preferences.oePercentBreakpoints) {
+    config.oePercentBreakpoints = { ...preferences.oePercentBreakpoints };
+  }
+
   if (Number.isFinite(Number(preferences.userSessionExpirationHours)) && Number(preferences.userSessionExpirationHours) > 0) {
     config.userSessionExpirationHours = Number(preferences.userSessionExpirationHours);
     config.userSessionExpirationMs = config.userSessionExpirationHours * 60 * 60 * 1000;

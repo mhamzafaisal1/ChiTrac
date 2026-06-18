@@ -10,10 +10,11 @@ export class OperatorService {
     private alphaUrl = '/api/alpha';
   constructor(private http: HttpClient) { }
 
-  getOperatorSummary(startTime: string, endTime: string): Observable<any> {
-    const params = new HttpParams()
+  getOperatorSummary(startTime: string, endTime: string, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams()
       .set('start', startTime)
       .set('end', endTime);
+    if (shiftId) params = params.set('shiftId', shiftId);
 
     return this.http.get(`${this.apiUrl}/analytics/operators-summary-daily-cached`, { params });
   }
@@ -38,9 +39,10 @@ export class OperatorService {
   }
   
 
-  getOperatorSummaryWithTimeframe(timeframe: string): Observable<any> {
-    const params = new HttpParams()
+  getOperatorSummaryWithTimeframe(timeframe: string, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams()
       .set('timeframe', timeframe);
+    if (shiftId) params = params.set('shiftId', shiftId);
 
     return this.http.get(`${this.alphaUrl}/analytics/operator-summary-timeframe`, { params });
   }
