@@ -71,10 +71,13 @@
       <mat-paginator [pageSizeOptions]="[10, 25, 50]" showFirstLastButtons></mat-paginator>
     </section>
 
-    <section class="editor-panel">
-      <h3>{{ selectedUser ? 'Edit User' : 'Create User' }}</h3>
+  </div>
 
-      <form [formGroup]="userFormGroup" (ngSubmit)="saveUser()">
+  <ng-template #userDialog>
+    <h2 mat-dialog-title>{{ selectedUser ? 'Edit User' : 'Create User' }}</h2>
+
+    <form [formGroup]="userFormGroup" (ngSubmit)="saveUser()" class="editor-form">
+      <mat-dialog-content>
         <mat-form-field appearance="outline">
           <mat-label>Username</mat-label>
           <input matInput formControlName="username" autocomplete="username">
@@ -122,15 +125,16 @@
         </mat-form-field>
 
         <mat-slide-toggle formControlName="active">Active</mat-slide-toggle>
+      </mat-dialog-content>
 
-        <div class="form-actions">
-          <button mat-flat-button color="primary" type="submit" [disabled]="isSaving">
-            <mat-icon>save</mat-icon>
-            {{ isSaving ? 'Saving...' : 'Save User' }}
-          </button>
-          <button mat-button type="button" (click)="newUser()">Clear</button>
-        </div>
-      </form>
-    </section>
-  </div>
+      <mat-dialog-actions align="end">
+        <button mat-button type="button" (click)="closeUserDialog()" [disabled]="isSaving">Cancel</button>
+        <button mat-button type="button" (click)="clearUserForm()" [disabled]="isSaving" *ngIf="!selectedUser">Clear</button>
+        <button mat-flat-button color="primary" type="submit" [disabled]="isSaving">
+          <mat-icon>save</mat-icon>
+          {{ isSaving ? 'Saving...' : 'Save User' }}
+        </button>
+      </mat-dialog-actions>
+    </form>
+  </ng-template>
 </div>
