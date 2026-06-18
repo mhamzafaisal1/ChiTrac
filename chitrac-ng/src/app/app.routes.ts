@@ -10,6 +10,7 @@ import { AuthGuard } from './guards/auth.guard';
 import { MachineDashboardComponent } from './machine-dashboard/machine-dashboard.component';
 import { MachineReportComponent } from './reports/machine-report/machine-report.component';
 import { ShiftMachineReportComponent } from './reports/shift-machine-report/shift-machine-report.component';
+import { ShiftComparisonReportComponent } from './reports/shift-comparison-report/shift-comparison-report.component';
 import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
 import { ItemReportComponent } from './reports/item-report/item-report.component';
 import { FaultReportComponent } from './reports/fault-report/fault-report.component';
@@ -65,6 +66,7 @@ export const routes: Routes = [
 	// Reports
 	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
 	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
+	{ path: 'ng/reports/shift-comparison-report', component: ShiftComparisonReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },
 	{ path: 'ng/reports/fault-report', component: FaultReportComponent },
