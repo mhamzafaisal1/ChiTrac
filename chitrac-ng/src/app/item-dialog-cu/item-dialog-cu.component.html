@@ -26,9 +26,38 @@
     </mat-form-field>
 
     <mat-form-field>
+      <mat-label>Pace Standard</mat-label>
+      <input matInput type="number" formControlName="standard" />
+      <mat-hint>Pieces per hour</mat-hint>
+      <mat-error *ngIf="itemFormGroup.get('standard')?.hasError('required')">
+        Pace standard is required
+      </mat-error>
+      <mat-error *ngIf="itemFormGroup.get('standard')?.hasError('min')">
+        Pace standard cannot be negative
+      </mat-error>
+    </mat-form-field>
+
+    <mat-form-field>
       <mat-label>Weight (optional)</mat-label>
       <input matInput type="number" formControlName="weight" />
     </mat-form-field>
+
+    <div class="photo-field">
+      <div class="photo-preview" *ngIf="selectedPhotoPreview || getPhotoUrl(item.photo)">
+        <img [src]="selectedPhotoPreview || getPhotoUrl(item.photo)" alt="Item image preview" />
+      </div>
+      <input
+        #photoInput
+        type="file"
+        accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+        hidden
+        (change)="onPhotoSelected($event)"
+      />
+      <button type="button" mat-stroked-button (click)="photoInput.click()">
+        {{ selectedPhotoName || item.photo ? 'Change Image' : 'Add Image' }}
+      </button>
+      <span class="photo-name" *ngIf="selectedPhotoName">{{ selectedPhotoName }}</span>
+    </div>
     
     <br />
     <mat-slide-toggle labelPosition="before" formControlName="active">Active</mat-slide-toggle>

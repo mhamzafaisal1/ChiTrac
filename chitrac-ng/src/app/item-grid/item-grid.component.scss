@@ -17,6 +17,15 @@
   color: var(--theme-color-on-secondary);
 }
 
+.item-photo {
+	width: 48px;
+	height: 48px;
+	object-fit: cover;
+	border-radius: 4px;
+	display: block;
+	margin: 4px 0;
+}
+
 .cud-buttons {
 	margin-left:auto;
 	margin-right: auto;

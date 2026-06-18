@@ -46,7 +46,7 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   selectionModel = new SelectionModel<ItemConfig>(false, []);
   page: number = 1;
   paginationSize: number = 10;
-  displayedColumns: string[] = ['number', 'name', 'active'];
+  displayedColumns: string[] = ['photo', 'number', 'name', 'standard', 'active'];
   dataSource: MatTableDataSource<ItemConfig>;
 
   sub: Subscription;
@@ -74,7 +74,7 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   }
 
   private sanitize(item: any): ItemConfig {
-    const { _id, number, name, active, weight, standard, area, department } = item ?? {};
+    const { _id, number, name, active, weight, standard, area, department, photo, photoFile } = item ?? {};
     return new ItemConfig().deserialize({
       _id,
       number: typeof number === 'string' ? Number(number) : number,
@@ -83,8 +83,16 @@ export class ItemGridComponent implements OnInit, OnDestroy {
       weight: weight === '' || weight === undefined ? null : Number(weight),
       standard: standard === undefined || standard === null ? 0 : Number(standard),
       area: area === undefined || area === null ? 0 : Number(area),
-      department: department ?? ''
+      department: department ?? '',
+      photo,
+      photoFile
     });
+  }
+
+  getPhotoUrl(photo?: string): string | null {
+    if (!photo) return null;
+    const fileName = photo.split(/[\\/]/).pop();
+    return fileName ? `/uploads/images/${encodeURIComponent(fileName)}` : null;
   }
 
   private getItemsSubFunction = (res: ItemConfig[]) => {
