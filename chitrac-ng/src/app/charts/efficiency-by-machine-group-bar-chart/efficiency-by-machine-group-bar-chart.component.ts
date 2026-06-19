@@ -222,8 +222,6 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'linear',
-      xLabel: 'Efficiency (%)',
-      yLabel: 'Machine Group',
       yTickFormat: (v: any) => {
         const key = String(v);
         return data.find(d => d.id === key)?.name ?? key;

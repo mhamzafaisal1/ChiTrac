@@ -167,7 +167,7 @@ import {
         const titleY = (cfg.legend?.show && cfg.legend?.position === 'top') ? -40 : -10;
         g.append('text')
           .attr('class', 'cc-title')
-          .attr('x', innerW / 2)
+          .attr('x', (width / 2) - margin.left)
           .attr('y', titleY)
           .attr('text-anchor', 'middle')
           .style('fill', textColor)

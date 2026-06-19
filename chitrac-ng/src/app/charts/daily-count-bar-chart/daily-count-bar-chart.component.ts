@@ -217,7 +217,6 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       height: this.chartHeight,
       orientation: 'vertical',
       xType: 'category',
-      xLabel: 'Time',
       xTickFormat: (v: any) => this.formatXAxisDate(v),
       margin: {
         top: Math.max(this.marginTop || 50, 60),

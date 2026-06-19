@@ -196,11 +196,9 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'linear',
-      xLabel: 'Count',
       xTickFormat: shouldAbbreviateXAxis
         ? (v: any) => this.formatCountTickAsThousands(v)
         : (v: any) => this.formatCountTick(v),
-      yLabel: 'Item',
       margin: {
         top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
