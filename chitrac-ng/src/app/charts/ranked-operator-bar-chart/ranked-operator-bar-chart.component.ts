@@ -29,6 +29,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   @Input() marginRight!: number;
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
+  @Input() preloadedData?: any[] | null;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -61,6 +62,12 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     // optional logs
     // console.log('RankedOperatorBarChart: Input changes:', changes);
     // console.log('RankedOperatorBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+    if (changes['preloadedData'] && this.preloadedData) {
+      this.stopPolling();
+      this.consumeResponse('once')({ topOperators: this.preloadedData });
+    } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
+      this.setupPolling();
+    }
   }
 
   ngOnInit(): void {

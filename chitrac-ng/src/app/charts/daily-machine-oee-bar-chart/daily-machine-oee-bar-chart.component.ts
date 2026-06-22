@@ -27,6 +27,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   @Input() marginRight!: number;
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
+  @Input() preloadedData?: any[] | null;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -58,6 +59,12 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   ngOnChanges(changes: SimpleChanges): void {
     // console.log('DailyMachineOeeBarChart: Input changes:', changes);
     // console.log('DailyMachineOeeBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+    if (changes['preloadedData'] && this.preloadedData) {
+      this.stopPolling();
+      this.consumeResponse('once')({ machineOee: this.preloadedData });
+    } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
+      this.setupPolling();
+    }
   }
 
   ngOnInit(): void {
