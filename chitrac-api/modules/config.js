@@ -104,6 +104,20 @@ module.exports = {
   // System name displayed in the navbar (fallback for when DB is unavailable)
   systemName,
 
+  // Jira bug reporting
+  jira: {
+    baseUrl: process.env.JIRA_BASE_URL,
+    email: process.env.JIRA_EMAIL,
+    apiToken: process.env.JIRA_API_TOKEN,
+    projectKey: process.env.JIRA_PROJECT_KEY || 'CHITRAC',
+    issueTypeId: process.env.JIRA_ISSUE_TYPE_ID || '10020',
+    defaultPriority: process.env.JIRA_DEFAULT_PRIORITY || 'Medium',
+    labels: (process.env.JIRA_LABELS || 'auto-reported,chitrac-error-modal')
+      .split(',')
+      .map((label) => label.trim())
+      .filter(Boolean)
+  },
+
   userPermissionsLevels,
   percentBreakpoints,
   oePercentBreakpoints,

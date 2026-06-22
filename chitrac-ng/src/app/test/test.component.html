@@ -1,10 +1,8 @@
-<!-- Column Layout Test -->
-<!-- <div style="margin-bottom: 2rem;">
-  <h2>Column Layout Test</h2>
-  <ct-column-layout></ct-column-layout>
-</div> -->
-
-<!-- 3x3 Grid Layout -->
-<layout-grid-threebythree
-  [components]="threeByThreeComponents">
-</layout-grid-threebythree>
+<div class="test-page">
+  <section class="test-toolbar" aria-label="Test actions">
+    <button mat-raised-button color="warn" (click)="openJiraReportTestError()">
+      <mat-icon>bug_report</mat-icon>
+      Error Modal + Jira
+    </button>
+  </section>
+</div>

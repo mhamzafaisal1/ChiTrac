@@ -38,6 +38,7 @@ import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilit
 import { SystemSettingsComponent } from './system-settings/system-settings.component';
 import { PermissionLevels } from './user.service';
 import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
+import { TestComponent } from './test/test.component';
 
 export const routes: Routes = [
 	// Settings pages
@@ -52,6 +53,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
 	{ path: 'ng/settings/root/utilities', component: SettingsUtilitiesComponent, canActivate: [AuthGuard] },
 	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.serverLogs } },
+	{ path: 'ng/test', component: TestComponent, canActivate: [AuthGuard] },
 	
 	// Login/Auth
 	{ path: 'ng/login', component: UserLoginComponent },
