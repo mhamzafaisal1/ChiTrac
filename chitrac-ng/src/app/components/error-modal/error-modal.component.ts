@@ -23,7 +23,7 @@ export class ErrorModalComponent {
   copySuccess = false;
   isReportingBug = false;
   reportErrorMessage = '';
-  createdIssue: { key: string; url: string } | null = null;
+  createdIssue: { key: string; url: string; action?: 'created' | 'commented' } | null = null;
 
   /**
    * Format the error data for clipboard
@@ -95,7 +95,8 @@ export class ErrorModalComponent {
       next: (response) => {
         this.createdIssue = {
           key: response.key,
-          url: response.url
+          url: response.url,
+          action: response.action
         };
       },
       error: (error) => {
@@ -133,6 +134,12 @@ export class ErrorModalComponent {
     } else {
       return 'error-unknown';
     }
+  }
+
+  getJiraReportStatusText(): string {
+    return this.createdIssue?.action === 'commented'
+      ? 'Added report to existing Jira bug'
+      : 'Created Jira bug';
   }
 }
 

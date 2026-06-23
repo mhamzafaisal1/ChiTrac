@@ -41,7 +41,7 @@
 
     <div class="jira-report-status success" *ngIf="createdIssue">
       <mat-icon>check_circle</mat-icon>
-      <span>Created Jira bug</span>
+      <span>{{ getJiraReportStatusText() }}</span>
       <a [href]="createdIssue.url" target="_blank" rel="noopener noreferrer">{{ createdIssue.key }}</a>
     </div>
 

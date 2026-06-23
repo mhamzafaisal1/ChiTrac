@@ -44,6 +44,7 @@ module.exports = function (server) {
     if (!config.jira?.apiToken) missing.push("JIRA_API_TOKEN");
     if (!config.jira?.projectKey) missing.push("JIRA_PROJECT_KEY");
     if (!config.jira?.issueTypeId) missing.push("JIRA_ISSUE_TYPE_ID");
+    if (!config.jira?.issueTypeName) missing.push("JIRA_ISSUE_TYPE_NAME");
 
     if (missing.length) {
       const error = new Error(`Jira is not configured: ${missing.join(", ")}`);
@@ -61,6 +62,21 @@ module.exports = function (server) {
     const text = sanitizeText(value);
     if (text.length <= maxLength) return text;
     return `${text.slice(0, maxLength - 3)}...`;
+  }
+
+  function stripHtml(value) {
+    return sanitizeText(value)
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/g, "'");
+  }
+
+  function normalizeSingleLine(value) {
+    return stripHtml(value).replace(/\s+/g, " ").trim();
   }
 
   function stringifyDetails(value) {
@@ -97,16 +113,19 @@ module.exports = function (server) {
     };
   }
 
-  function buildDescription({ body, reporter }) {
+  function buildDescription({ body, reporter, existingIssue }) {
     const timestamp = sanitizeText(body.timestamp, new Date().toISOString());
     const serverName = config.systemName || "ChiTrac";
     const details = stringifyDetails(body.fullError);
+    const intro = existingIssue
+      ? "Another matching ChiTrac error report was submitted."
+      : "This bug was automatically reported from the ChiTrac error modal.";
 
     return {
       type: "doc",
       version: 1,
       content: [
-        adfParagraph("This bug was automatically reported from the ChiTrac error modal."),
+        adfParagraph(intro),
         adfHeading("Context"),
         adfParagraph(`Server: ${serverName}`),
         adfParagraph(`Reported by: ${reporter.username || body.user?.username || "Unknown user"}`),
@@ -126,25 +145,36 @@ module.exports = function (server) {
 
   function buildSummary(body) {
     const serverName = config.systemName || "ChiTrac";
-    const message = sanitizeText(body.message || body.errorMessage, "Error reported from ChiTrac");
-    const status = body.statusCode ? `${body.statusCode} ` : "";
-    return truncate(`[Auto] ${serverName}: ${status}${message}`, 255).replace(/\s+/g, " ");
+    let statusLabel = "Unknown Error";
+
+    if (body.statusCode === 0 || body.statusCode === "0") {
+      statusLabel = "Network Error";
+    } else if (body.statusCode) {
+      statusLabel = `HTTP ${body.statusCode}`;
+    }
+
+    return truncate(normalizeSingleLine(`ChiTrac Error - ${serverName} - ${statusLabel}`), 255);
   }
 
-  async function createJiraIssue(issuePayload) {
+  function escapeJqlString(value) {
+    return sanitizeText(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  async function jiraRequest(path, options = {}) {
     const baseUrl = config.jira.baseUrl.replace(/\/+$/, "");
     const authValue = Buffer
       .from(`${config.jira.email}:${config.jira.apiToken}`)
       .toString("base64");
 
-    const response = await fetch(`${baseUrl}/rest/api/3/issue`, {
-      method: "POST",
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: options.method || "GET",
       headers: {
         "Authorization": `Basic ${authValue}`,
         "Accept": "application/json",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(options.headers || {})
       },
-      body: JSON.stringify(issuePayload)
+      body: options.body ? JSON.stringify(options.body) : undefined
     });
 
     const responseText = await response.text();
@@ -171,6 +201,41 @@ module.exports = function (server) {
     return responseBody;
   }
 
+  async function searchExistingIssue(summary) {
+    const projectKey = escapeJqlString(config.jira.projectKey);
+    const issueTypeName = escapeJqlString(config.jira.issueTypeName);
+    const summaryPhrase = escapeJqlString(summary);
+    const autoReportedLabel = (config.jira.labels || []).includes("auto-reported")
+      ? ' AND labels = "auto-reported"'
+      : "";
+    const jql = `project = "${projectKey}" AND issuetype = "${issueTypeName}"${autoReportedLabel} AND summary ~ "\\"${summaryPhrase}\\"" ORDER BY created DESC`;
+
+    const searchResult = await jiraRequest("/rest/api/3/search/jql", {
+      method: "POST",
+      body: {
+        jql,
+        maxResults: 10,
+        fields: ["summary", "status"]
+      }
+    });
+
+    return (searchResult?.issues || []).find((issue) => issue?.fields?.summary === summary) || null;
+  }
+
+  async function createJiraIssue(issuePayload) {
+    return jiraRequest("/rest/api/3/issue", {
+      method: "POST",
+      body: issuePayload
+    });
+  }
+
+  async function addJiraComment(issueKey, commentBody) {
+    return jiraRequest(`/rest/api/3/issue/${encodeURIComponent(issueKey)}/comment`, {
+      method: "POST",
+      body: { body: commentBody }
+    });
+  }
+
   router.post("/report-bug", requireLoggedIn, async (req, res) => {
     try {
       assertJiraConfig();
@@ -180,12 +245,31 @@ module.exports = function (server) {
         return res.status(400).json({ error: "Error message is required" });
       }
 
+      const summary = buildSummary(req.body);
+      const existingIssue = await searchExistingIssue(summary);
+      const baseUrl = config.jira.baseUrl.replace(/\/+$/, "");
+
+      if (existingIssue?.key) {
+        await addJiraComment(
+          existingIssue.key,
+          buildDescription({ body: req.body, reporter: req.authUser || {}, existingIssue: true })
+        );
+
+        return res.status(200).json({
+          success: true,
+          action: "commented",
+          key: existingIssue.key,
+          id: existingIssue.id,
+          url: `${baseUrl}/browse/${existingIssue.key}`
+        });
+      }
+
       const issuePayload = {
         fields: {
           project: { key: config.jira.projectKey },
           issuetype: { id: config.jira.issueTypeId },
-          summary: buildSummary(req.body),
-          description: buildDescription({ body: req.body, reporter: req.authUser || {} }),
+          summary,
+          description: buildDescription({ body: req.body, reporter: req.authUser || {}, existingIssue: false }),
           labels: config.jira.labels || []
         }
       };
@@ -195,10 +279,10 @@ module.exports = function (server) {
       }
 
       const jiraIssue = await createJiraIssue(issuePayload);
-      const baseUrl = config.jira.baseUrl.replace(/\/+$/, "");
 
       return res.status(201).json({
         success: true,
+        action: "created",
         key: jiraIssue.key,
         id: jiraIssue.id,
         url: `${baseUrl}/browse/${jiraIssue.key}`

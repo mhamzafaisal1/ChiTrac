@@ -111,7 +111,8 @@ module.exports = {
     apiToken: process.env.JIRA_API_TOKEN,
     projectKey: process.env.JIRA_PROJECT_KEY || 'CHITRAC',
     issueTypeId: process.env.JIRA_ISSUE_TYPE_ID || '10020',
-    defaultPriority: process.env.JIRA_DEFAULT_PRIORITY || 'Medium',
+    issueTypeName: process.env.JIRA_ISSUE_TYPE_NAME || 'Bug',
+    defaultPriority: process.env.JIRA_DEFAULT_PRIORITY || 'Lowest',
     labels: (process.env.JIRA_LABELS || 'auto-reported,chitrac-error-modal')
       .split(',')
       .map((label) => label.trim())

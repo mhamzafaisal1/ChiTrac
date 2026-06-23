@@ -5,6 +5,7 @@ import { ErrorInfo } from './error-queue.service';
 
 export interface JiraBugReportResponse {
   success: boolean;
+  action?: 'created' | 'commented';
   key: string;
   id: string;
   url: string;
