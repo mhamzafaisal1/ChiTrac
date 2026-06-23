@@ -11,9 +11,14 @@
 
   <section class="section">
     <h3>Days of Week</h3>
-    <mat-button-toggle-group multiple [(ngModel)]="selectedDays">
-      <mat-button-toggle *ngFor="let day of dayOptions" [value]="day.value">{{ day.label }}</mat-button-toggle>
-    </mat-button-toggle-group>
+    <div class="day-picker-row">
+      <mat-button-toggle-group multiple [(ngModel)]="selectedDays">
+        <mat-button-toggle *ngFor="let day of dayOptions" [value]="day.value">{{ day.label }}</mat-button-toggle>
+      </mat-button-toggle-group>
+      <button mat-stroked-button type="button" class="all-days-button" (click)="toggleAllDays()">
+        {{ areAllDaysSelected ? 'Deselect All' : 'Select All' }}
+      </button>
+    </div>
   </section>
 
   <section class="section shift-time-row">

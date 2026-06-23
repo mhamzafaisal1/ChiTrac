@@ -18,6 +18,17 @@
   display: inline-flex;
 }
 
+.day-picker-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.all-days-button {
+  min-width: 120px;
+}
+
 .top-form-row {
   display: flex;
   align-items: center;

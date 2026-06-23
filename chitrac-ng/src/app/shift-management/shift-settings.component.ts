@@ -82,6 +82,7 @@ export class ShiftSettingsComponent implements OnInit {
     6: 'Sat',
     7: 'Sun',
   };
+  private readonly allDayValues = Object.keys(this.dayLabels).map(Number);
 
   ngOnInit(): void {
     this.loadShifts();
@@ -96,11 +97,14 @@ export class ShiftSettingsComponent implements OnInit {
     const st = shift.startTime;
     const en = shift.endTime;
     const timePart = `${formatTimeSafe(st)} – ${formatTimeSafe(en)}`;
-    const days = (shift.activeDays ?? [])
-      .slice()
-      .sort((a, b) => a - b)
-      .map((d) => this.dayLabels[d] ?? String(d))
-      .join(', ');
+    const activeDays = shift.activeDays ?? [];
+    const days = this.allDayValues.every((day) => activeDays.includes(day))
+      ? 'All'
+      : activeDays
+          .slice()
+          .sort((a, b) => a - b)
+          .map((d) => this.dayLabels[d] ?? String(d))
+          .join(', ');
     const daysPart = days || '—';
     const status = shift.active !== false ? 'Active' : 'Inactive';
     return `${name} · ${timePart} · ${daysPart} · ${status}`;
