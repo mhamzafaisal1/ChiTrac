@@ -129,7 +129,22 @@ import {
       this.rootG = this.svg.append('g').attr('class', 'cc-root');
       this.tooltipEl = d3.select(el)
         .append('div')
-        .attr('class', 'cc-tooltip');
+        .attr('class', 'cc-tooltip')
+        .style('position', 'absolute')
+        .style('z-index', '5')
+        .style('max-width', '220px')
+        .style('padding', '7px 9px')
+        .style('border-radius', '4px')
+        .style('background', 'rgba(28, 32, 36, 0.94)')
+        .style('color', '#fff')
+        .style('font-size', '12px')
+        .style('line-height', '1.35')
+        .style('pointer-events', 'none')
+        .style('opacity', '0')
+        .style('transform', 'translateY(-100%)')
+        .style('transition', 'opacity 120ms ease')
+        .style('white-space', 'nowrap')
+        .style('box-shadow', '0 4px 14px rgba(0, 0, 0, 0.22)');
     }
   
     private render() {
@@ -516,19 +531,20 @@ import {
       rect
         .attr('class', 'cc-bar cc-bar-tooltip-target')
         .style('cursor', 'default')
-        .on('mouseenter', (event: MouseEvent) => {
+        .style('pointer-events', 'all')
+        .on('pointerenter', (event: PointerEvent) => {
           this.scheduleTooltip(event, cfg, context);
         })
-        .on('mousemove', (event: MouseEvent) => {
+        .on('pointermove', (event: PointerEvent) => {
           this.positionTooltip(event);
         })
-        .on('mouseleave', () => {
+        .on('pointerleave', () => {
           this.hideTooltip();
         });
     }
 
     private scheduleTooltip(
-      event: MouseEvent,
+      event: MouseEvent | PointerEvent,
       cfg: CartesianChartConfig,
       context: CartesianTooltipContext
     ): void {
@@ -539,6 +555,7 @@ import {
         const lines = this.getTooltipLines(cfg, context);
         this.tooltipEl
           ?.html(lines.map(line => this.escapeHtml(line)).join('<br>'))
+          .style('opacity', '1')
           .classed('is-visible', true);
       }, cfg.tooltip?.delayMs ?? 750);
     }
@@ -553,7 +570,7 @@ import {
       return [`${context.series.title}: ${this.formatNumber(context.value)}`];
     }
 
-    private positionTooltip(event: MouseEvent): void {
+    private positionTooltip(event: MouseEvent | PointerEvent): void {
       if (!this.tooltipEl || !this.host) return;
       const [x, y] = d3.pointer(event, this.host.nativeElement);
       this.tooltipEl
@@ -563,7 +580,9 @@ import {
 
     private hideTooltip(): void {
       this.clearTooltipTimer();
-      this.tooltipEl?.classed('is-visible', false);
+      this.tooltipEl
+        ?.style('opacity', '0')
+        .classed('is-visible', false);
     }
 
     private clearTooltipTimer(): void {
