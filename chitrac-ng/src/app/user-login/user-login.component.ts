@@ -74,11 +74,27 @@ export class UserLoginComponent implements OnInit {
     });
   }
 
-  onSubmit(user: any): void {
-    this.userService.postUserLogin(user).pipe(first())
+  private clearLoginForm(): void {
+    this.user = {
+      username: null,
+      password: null
+    };
+    this.userLoginFormGroup.reset(this.user);
+  }
+
+  private clearPassword(): void {
+    this.user.password = null;
+    this.userLoginFormGroup.patchValue({ password: null });
+    this.userLoginFormGroup.get('password')?.markAsPristine();
+    this.userLoginFormGroup.get('password')?.markAsUntouched();
+  }
+
+  onSubmit(): void {
+    this.userService.postUserLogin(this.userLoginFormGroup.value).pipe(first())
       .subscribe({
         next: (user) => {
           console.log(user);
+          this.clearLoginForm();
           // get return url from query parameters or default to home page
           const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
           this.router.navigateByUrl(returnUrl);
@@ -87,6 +103,7 @@ export class UserLoginComponent implements OnInit {
         },
         error: error => {
           console.log(error);
+          this.clearPassword();
         }
       });
   }
