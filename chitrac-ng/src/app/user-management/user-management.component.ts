@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -8,6 +8,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
@@ -30,6 +31,7 @@ import { UserService } from '../user.service';
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatDialogModule,
     MatPaginatorModule,
     MatSelectModule,
     MatSlideToggleModule,
@@ -49,6 +51,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
   isSaving = false;
   isLoading = false;
   currentPermissionLevel = 3;
+  private userDialogRef: MatDialogRef<unknown> | null = null;
 
   userFormGroup = new FormGroup({
     username: new FormControl('', [Validators.required, Validators.minLength(4)]),
@@ -63,11 +66,13 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
+  @ViewChild('userDialog') userDialog!: TemplateRef<unknown>;
 
   constructor(
     private userManagementService: UserManagementService,
     private userService: UserService,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private dialog: MatDialog
   ) {}
 
   ngOnInit(): void {
@@ -100,6 +105,19 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
   newUser(): void {
     this.selectedUser = null;
+    this.resetUserForm();
+    this.openUserDialog();
+  }
+
+  clearUserForm(): void {
+    this.resetUserForm();
+  }
+
+  closeUserDialog(): void {
+    this.userDialogRef?.close();
+  }
+
+  private resetUserForm(): void {
     this.userFormGroup.reset({
       username: '',
       email: '',
@@ -124,6 +142,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       active: user.active !== false,
       password: ''
     });
+    this.openUserDialog();
   }
 
   saveUser(): void {
@@ -174,6 +193,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
         this.isSaving = false;
         this.applySavedUser(res.user);
         this.editUser(res.user);
+        this.closeUserDialog();
         this.snackBar.open('User saved', 'Close', { duration: 3000 });
       },
       error: (err) => {
@@ -191,7 +211,8 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
         this.snackBar.open('User deleted', 'Close', { duration: 3000 });
         this.loadUsers();
         if (this.selectedUser?._id === user._id) {
-          this.newUser();
+          this.selectedUser = null;
+          this.closeUserDialog();
         }
       },
       error: (err) => this.showError(err, 'Failed to delete user')
@@ -230,6 +251,23 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       ? [...this.users.slice(0, index), user, ...this.users.slice(index + 1)]
       : [...this.users, user];
     this.dataSource.data = this.users;
+  }
+
+  private openUserDialog(): void {
+    if (this.userDialogRef) {
+      return;
+    }
+
+    this.userDialogRef = this.dialog.open(this.userDialog, {
+      width: '460px',
+      maxWidth: 'calc(100vw - 32px)',
+      disableClose: this.isSaving,
+      autoFocus: 'first-tabbable'
+    });
+
+    this.userDialogRef.afterClosed().subscribe(() => {
+      this.userDialogRef = null;
+    });
   }
 
   private showError(err: any, fallback: string): void {

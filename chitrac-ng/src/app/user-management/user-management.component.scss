@@ -18,14 +18,10 @@
 }
 
 .layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 390px);
-  gap: 24px;
-  align-items: start;
+  display: block;
 }
 
-.table-panel,
-.editor-panel {
+.table-panel {
   background: var(--theme-color-surface, #fff);
   border: 1px solid var(--theme-color-outline-variant, rgba(125, 133, 144, 0.28));
   border-radius: 8px;
@@ -136,18 +132,11 @@ mat-paginator {
   background: var(--theme-color-surface, #fff);
 }
 
-.editor-panel {
-  padding: 22px;
-
-  h3 {
-    margin: 0 0 20px 0;
-    font-size: 18px;
-    font-weight: 600;
-  }
-
-  form {
+.editor-form {
+  mat-dialog-content {
     display: grid;
     gap: 14px;
+    padding-top: 4px;
   }
 
   mat-form-field {
@@ -157,33 +146,22 @@ mat-paginator {
   mat-slide-toggle {
     margin: 2px 0 6px;
   }
-}
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
+  mat-dialog-actions {
+    gap: 8px;
+    padding-top: 8px;
 
-  button {
-    border-radius: 6px;
-    min-height: 40px;
-    padding: 0 18px;
+    button {
+      border-radius: 6px;
+      min-height: 40px;
+      padding: 0 18px;
+    }
   }
 }
 
 @media (max-width: 960px) {
   .user-management-container {
     padding: 18px;
-  }
-
-  .layout {
-    grid-template-columns: 1fr;
-  }
-
-  .editor-panel {
-    order: -1;
   }
 
   .table-header {
