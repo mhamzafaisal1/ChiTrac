@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
 const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
+const { getEmailValidationError } = require('../../utils/emailValidation');
 
 module.exports = function(server) {
   const router = express.Router();
@@ -123,8 +124,45 @@ module.exports = function(server) {
     return `Password must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters`;
   }
 
+  function normalizeUserTimestamps(user) {
+    const now = new Date();
+    const created = toDateValue(user?.timestamps?.create) || toDateValue(user?.createdAt) || now;
+    const active = user?.timestamps?.active || created;
+    const updated = toDateValue(user?.timestamps?.update) || toDateValue(user?.updatedAt) || created;
+
+    return {
+      create: created,
+      active: toDateValue(active) || created,
+      update: updated
+    };
+  }
+
+  function stampUserUpdate(existingUser) {
+    return {
+      ...normalizeUserTimestamps(existingUser),
+      update: new Date()
+    };
+  }
+
+  function initUserTimestamps() {
+    const now = new Date();
+    return {
+      create: now,
+      active: now,
+      update: now
+    };
+  }
+
+  function toDateValue(value) {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
   function sanitizeUser(user) {
     if (!user) return null;
+    const timestamps = normalizeUserTimestamps(user);
     return {
       _id: user._id,
       username: user.local?.username || '',
@@ -136,12 +174,13 @@ module.exports = function(server) {
       groups: Array.isArray(user.groups) ? user.groups : [],
       restrictions: Array.isArray(user.restrictions) ? user.restrictions : [],
       active: user.active !== false,
-      createdAt: user.createdAt || null,
-      updatedAt: user.updatedAt || null
+      timestamps,
+      createdAt: timestamps.create || null,
+      updatedAt: timestamps.update || null
     };
   }
 
-  function buildUserUpdate(body, includePassword) {
+  function buildUserUpdate(body, includePassword, existingUser) {
     const update = {
       'local.username': `${body.username || ''}`.trim(),
       email: `${body.email || ''}`.trim(),
@@ -152,7 +191,7 @@ module.exports = function(server) {
       groups: normalizeStringArray(body.groups),
       restrictions: normalizeStringArray(body.restrictions),
       active: body.active !== false,
-      updatedAt: new Date()
+      timestamps: stampUserUpdate(existingUser)
     };
 
     if (includePassword && body.password) {
@@ -211,6 +250,10 @@ module.exports = function(server) {
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
       }
+      const emailError = getEmailValidationError(email);
+      if (emailError) {
+        return res.status(400).json({ error: emailError });
+      }
 
       const duplicate = await userCollection.findOne({
         'local.username': username,
@@ -223,7 +266,7 @@ module.exports = function(server) {
       const update = {
         'local.username': username,
         email,
-        updatedAt: new Date()
+        timestamps: stampUserUpdate(existingUser)
       };
 
       if (password) {
@@ -266,9 +309,14 @@ module.exports = function(server) {
       const username = `${req.body.username || ''}`.trim();
       const password = `${req.body.password || ''}`;
       const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
+      const email = `${req.body.email || ''}`.trim();
 
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
+      }
+      const emailError = getEmailValidationError(email);
+      if (emailError) {
+        return res.status(400).json({ error: emailError });
       }
       if (!isValidPasswordLength(password)) {
         return res.status(400).json({ error: passwordLengthError() });
@@ -282,13 +330,13 @@ module.exports = function(server) {
         return res.status(409).json({ error: 'That username is already taken' });
       }
 
-      const now = new Date();
+      const timestamps = initUserTimestamps();
       const newUser = {
         local: {
           username,
           password: bcrypt.hashSync(password, bcrypt.genSaltSync(10))
         },
-        email: `${req.body.email || ''}`.trim(),
+        email,
         role: `${req.body.role || 'user'}`.trim() || 'user',
         permissions: {
           level: permissionLevel
@@ -296,8 +344,7 @@ module.exports = function(server) {
         groups: normalizeStringArray(req.body.groups),
         restrictions: normalizeStringArray(req.body.restrictions),
         active: req.body.active !== false,
-        createdAt: now,
-        updatedAt: now
+        timestamps
       };
 
       const result = await userCollection.insertOne(newUser);
@@ -314,9 +361,14 @@ module.exports = function(server) {
       const userId = new ObjectId(req.params.id);
       const username = `${req.body.username || ''}`.trim();
       const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
+      const email = `${req.body.email || ''}`.trim();
 
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
+      }
+      const emailError = getEmailValidationError(email);
+      if (emailError) {
+        return res.status(400).json({ error: emailError });
       }
       if (req.body.password && !isValidPasswordLength(`${req.body.password}`)) {
         return res.status(400).json({ error: passwordLengthError() });
@@ -338,7 +390,7 @@ module.exports = function(server) {
         return res.status(409).json({ error: 'That username is already taken' });
       }
 
-      const update = buildUserUpdate(req.body, !!req.body.password);
+      const update = buildUserUpdate(req.body, !!req.body.password, existingUser);
       const result = await userCollection.updateOne(getVisibleUserFilter(req.authUser, { _id: userId }), { $set: update });
       if (result.matchedCount === 0) {
         return res.status(404).json({ error: 'User not found' });

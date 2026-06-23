@@ -9,6 +9,7 @@ var LocalStrategy = require('passport-local').Strategy;
 
 const bcrypt = require('bcryptjs');
 const ObjectId = require('mongodb').ObjectId;
+const { getEmailValidationError } = require('../utils/emailValidation');
 
 // expose this function to our app using module.exports
 module.exports = function(passport, server) {
@@ -73,6 +74,11 @@ module.exports = function(passport, server) {
                 } else if (!isValidPasswordLength(password)) {
                     return callback(null, false, req.flash('messages', 'Password must be between 6 and 64 characters.'));
                 } else {
+                    const email = `${req.body.email || ''}`.trim();
+                    const emailError = getEmailValidationError(email);
+                    if (emailError) {
+                        return callback(null, false, req.flash('messages', emailError));
+                    }
 
                     // if there is no user with that email
                     // create the user
@@ -89,8 +95,8 @@ module.exports = function(passport, server) {
 					const salt = bcrypt.genSaltSync(10);
 					const hash = bcrypt.hashSync(password, salt);
 					newUser.local.password = hash;
-                    if (req.body.email) {
-                        newUser.email = req.body.email
+                    if (email) {
+                        newUser.email = email
                     }
                     if (req.body.role) {
                         newUser.role = req.body.role
@@ -105,6 +111,13 @@ module.exports = function(passport, server) {
                     }
                     if (req.body.restrictions) {
                         newUser.restrictions = req.body.restrictions
+                    }
+                    const now = new Date()
+                    newUser.active = true
+                    newUser.timestamps = {
+                        create: now,
+                        active: now,
+                        update: now
                     }
 
                     // save the user

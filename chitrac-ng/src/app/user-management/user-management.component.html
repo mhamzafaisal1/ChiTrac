@@ -87,7 +87,8 @@
 
         <mat-form-field appearance="outline">
           <mat-label>Email</mat-label>
-          <input matInput formControlName="email" autocomplete="email">
+          <input matInput type="email" formControlName="email" autocomplete="email">
+          <mat-error *ngIf="userFormGroup.get('email')?.hasError('pattern')">Enter a valid email address</mat-error>
         </mat-form-field>
 
         <mat-form-field appearance="outline">
