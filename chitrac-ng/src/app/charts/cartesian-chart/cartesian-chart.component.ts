@@ -12,6 +12,15 @@ import {
   
   export interface XYPoint { x: string | number | Date; y: number; color?: string; endMarkerValue?: number; }
   
+  export interface CartesianTooltipContext {
+    series: XYSeries;
+    point: XYPoint;
+    xLabel: string;
+    value: number;
+    stackStart?: number;
+    stackEnd?: number;
+  }
+
   export interface XYSeries {
     id: string;
     title: string;
@@ -50,6 +59,11 @@ import {
     /** Offset in px from the x-axis line to the x-axis label (default derived from margin). Use a smaller value to bring the label closer to the axis. */
     xLabelOffsetFromAxis?: number;
     legend?: { show: boolean; position: 'top'|'right' };
+    tooltip?: {
+      show?: boolean;
+      delayMs?: number;
+      formatter?: (ctx: CartesianTooltipContext) => string | string[];
+    };
     pie?: { padAngle?: number; cornerRadius?: number; innerRatio?: number }; // innerRatio for donut, e.g. 0.6
     series: XYSeries[];
   }
@@ -68,6 +82,8 @@ import {
   
     private svg!: d3.Selection<SVGSVGElement, unknown, null, undefined>;
     private rootG!: d3.Selection<SVGGElement, unknown, null, undefined>;
+    private tooltipEl?: d3.Selection<HTMLDivElement, unknown, null, undefined>;
+    private tooltipTimer: ReturnType<typeof setTimeout> | null = null;
     private resizeObserver?: ResizeObserver;
   
     /** external API */
@@ -97,6 +113,7 @@ import {
     }
   
     ngOnDestroy(): void {
+      this.clearTooltipTimer();
       this.resizeObserver?.disconnect();
     }
   
@@ -110,6 +127,24 @@ import {
         .attr('class', 'cc-svg');
   
       this.rootG = this.svg.append('g').attr('class', 'cc-root');
+      this.tooltipEl = d3.select(el)
+        .append('div')
+        .attr('class', 'cc-tooltip')
+        .style('position', 'absolute')
+        .style('z-index', '5')
+        .style('max-width', '220px')
+        .style('padding', '7px 9px')
+        .style('border-radius', '4px')
+        .style('background', 'rgba(28, 32, 36, 0.94)')
+        .style('color', '#fff')
+        .style('font-size', '12px')
+        .style('line-height', '1.35')
+        .style('pointer-events', 'none')
+        .style('opacity', '0')
+        .style('transform', 'translateY(-100%)')
+        .style('transition', 'opacity 120ms ease')
+        .style('white-space', 'nowrap')
+        .style('box-shadow', '0 4px 14px rgba(0, 0, 0, 0.22)');
     }
   
     private render() {
@@ -385,6 +420,7 @@ import {
         margin,
         xLabelOffsetFromAxis: cfg.xLabelOffsetFromAxis,
         legend,
+        tooltip: cfg.tooltip,
         pie: cfg.pie,
         series: cfg.series || []
       };
@@ -484,6 +520,90 @@ import {
     }
   
     private hash(s: string) { let h=0; for (let i=0;i<s.length;i++) h=((h<<5)-h)+s.charCodeAt(i)|0; return h; }
+
+    private attachBarTooltip(
+      rect: d3.Selection<SVGRectElement, unknown, null, undefined>,
+      cfg: CartesianChartConfig,
+      context: CartesianTooltipContext
+    ): void {
+      if (cfg.tooltip?.show !== true) return;
+
+      rect
+        .attr('class', 'cc-bar cc-bar-tooltip-target')
+        .style('cursor', 'default')
+        .style('pointer-events', 'all')
+        .on('pointerenter', (event: PointerEvent) => {
+          this.scheduleTooltip(event, cfg, context);
+        })
+        .on('pointermove', (event: PointerEvent) => {
+          this.positionTooltip(event);
+        })
+        .on('pointerleave', () => {
+          this.hideTooltip();
+        });
+    }
+
+    private scheduleTooltip(
+      event: MouseEvent | PointerEvent,
+      cfg: CartesianChartConfig,
+      context: CartesianTooltipContext
+    ): void {
+      this.clearTooltipTimer();
+      this.positionTooltip(event);
+
+      this.tooltipTimer = setTimeout(() => {
+        const lines = this.getTooltipLines(cfg, context);
+        this.tooltipEl
+          ?.html(lines.map(line => this.escapeHtml(line)).join('<br>'))
+          .style('opacity', '1')
+          .classed('is-visible', true);
+      }, cfg.tooltip?.delayMs ?? 750);
+    }
+
+    private getTooltipLines(
+      cfg: CartesianChartConfig,
+      context: CartesianTooltipContext
+    ): string[] {
+      const formatted = cfg.tooltip?.formatter?.(context);
+      if (Array.isArray(formatted)) return formatted;
+      if (typeof formatted === 'string') return formatted.split('\n');
+      return [`${context.series.title}: ${this.formatNumber(context.value)}`];
+    }
+
+    private positionTooltip(event: MouseEvent | PointerEvent): void {
+      if (!this.tooltipEl || !this.host) return;
+      const [x, y] = d3.pointer(event, this.host.nativeElement);
+      this.tooltipEl
+        .style('left', `${x + 12}px`)
+        .style('top', `${y - 12}px`);
+    }
+
+    private hideTooltip(): void {
+      this.clearTooltipTimer();
+      this.tooltipEl
+        ?.style('opacity', '0')
+        .classed('is-visible', false);
+    }
+
+    private clearTooltipTimer(): void {
+      if (this.tooltipTimer) {
+        clearTimeout(this.tooltipTimer);
+        this.tooltipTimer = null;
+      }
+    }
+
+    private escapeHtml(value: string): string {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    private formatNumber(value: number): string {
+      return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
+    }
 
     /** Append a vertical dashed line (end marker) for horizontal bar charts. Only call when orientation is horizontal and endMarker.show. */
     private appendEndMarkerLine(
@@ -663,12 +783,18 @@ import {
           if (isHorizontal) {
             const y = band(xKey)! + sub(s.id)!;
             const w = (yScaleH as d3.ScaleLinear<number, number>)(p.y || 0);
-            sel.append('rect')
+            const rect = sel.append('rect')
               .attr('x', 0)
               .attr('y', y)
               .attr('width', w)
               .attr('height', sub.bandwidth())
               .attr('fill', fillColor);
+            this.attachBarTooltip(rect, cfg, {
+              series: s,
+              point: p,
+              xLabel: xKey,
+              value: p.y || 0
+            });
             if (endMarkerOpts?.show && s.type === 'bar') {
               const val = (p as XYPoint).endMarkerValue;
               if (val != null && val > 0) {
@@ -679,12 +805,18 @@ import {
           } else {
             const x = band(xKey)! + sub(s.id)!;
             const y = (yScale as d3.ScaleLinear<number, number>)(p.y || 0);
-            sel.append('rect')
+            const rect = sel.append('rect')
               .attr('x', x)
               .attr('y', y)
               .attr('width', sub.bandwidth())
               .attr('height', innerH - y)
               .attr('fill', fillColor);
+            this.attachBarTooltip(rect, cfg, {
+              series: s,
+              point: p,
+              xLabel: xKey,
+              value: p.y || 0
+            });
           }
         });
       });
@@ -721,8 +853,15 @@ import {
         const y = band(it.key)!;
         const w = (yScaleH as d3.ScaleLinear<number, number>)(it.y);
         const barGrp = grp.append('g');
-        barGrp.append('rect').attr('x', 0).attr('y', y)
+        const point: XYPoint = { x: it.key, y: it.y, color: it.color, endMarkerValue: it.endMarkerValue };
+        const rect = barGrp.append('rect').attr('x', 0).attr('y', y)
           .attr('width', w).attr('height', band.bandwidth()).attr('fill', it.color);
+        this.attachBarTooltip(rect, cfg, {
+          series: series.find(s => String(s.data[0]?.x) === it.key) || series[0],
+          point,
+          xLabel: it.key,
+          value: it.y
+        });
         if (endMarkerOpts?.show && it.endMarkerValue != null && it.endMarkerValue > 0) {
           const lineX = (yScaleH as d3.ScaleLinear<number, number>)(it.endMarkerValue);
           this.appendEndMarkerLine(barGrp, lineX, y, band.bandwidth(), { ...endMarkerOpts });
@@ -730,8 +869,15 @@ import {
       } else {
         const x = band(it.key)!;
         const y = (yScale as d3.ScaleLinear<number, number>)(it.y);
-        grp.append('rect').attr('x', x).attr('y', y)
+        const point: XYPoint = { x: it.key, y: it.y, color: it.color, endMarkerValue: it.endMarkerValue };
+        const rect = grp.append('rect').attr('x', x).attr('y', y)
           .attr('width', band.bandwidth()).attr('height', innerH - y).attr('fill', it.color);
+        this.attachBarTooltip(rect, cfg, {
+          series: series.find(s => String(s.data[0]?.x) === it.key) || series[0],
+          point,
+          xLabel: it.key,
+          value: it.y
+        });
       }
     });
   }
@@ -768,8 +914,14 @@ import {
         if (isHorizontal) {
           const y = band(key)! + sub(s.id)!;
           const w = (yScaleH as d3.ScaleLinear<number, number>)(+p.y || 0);
-          grp.append('rect').attr('x', 0).attr('y', y)
+          const rect = grp.append('rect').attr('x', 0).attr('y', y)
             .attr('width', w).attr('height', sub.bandwidth()).attr('fill', fillColor);
+          this.attachBarTooltip(rect, cfg, {
+            series: s,
+            point: p,
+            xLabel: key,
+            value: +p.y || 0
+          });
           if (endMarkerOpts?.show && s.type === 'bar') {
             const val = (p as XYPoint).endMarkerValue;
             if (val != null && val > 0) {
@@ -780,8 +932,14 @@ import {
         } else {
           const x = band(key)! + sub(s.id)!;
           const y = (yScale as d3.ScaleLinear<number, number>)(+p.y || 0);
-          grp.append('rect').attr('x', x).attr('y', y)
+          const rect = grp.append('rect').attr('x', x).attr('y', y)
             .attr('width', sub.bandwidth()).attr('height', innerH - y).attr('fill', fillColor);
+          this.attachBarTooltip(rect, cfg, {
+            series: s,
+            point: p,
+            xLabel: key,
+            value: +p.y || 0
+          });
         }
       });
     });
@@ -831,12 +989,20 @@ import {
             const y = band(xKey)!;
             const x0 = (yScaleH as d3.ScaleLinear<number, number>)(d[0]);
             const x1 = (yScaleH as d3.ScaleLinear<number, number>)(d[1]);
-            grp.append('rect')
+            const rect = grp.append('rect')
               .attr('x', x0)
               .attr('y', y)
               .attr('width', Math.max(0, x1 - x0))
               .attr('height', band.bandwidth())
               .attr('fill', fillColor);
+            this.attachBarTooltip(rect, cfg, {
+              series: s || series[0],
+              point: point || { x: xKey, y: d[1] - d[0] },
+              xLabel: xKey,
+              value: d[1] - d[0],
+              stackStart: d[0],
+              stackEnd: d[1]
+            });
             if (isLastLayer && endMarkerOpts?.show) {
               const rowPoint = series[0]?.data.find(p => String(p.x) === xKey);
               const val = (rowPoint as XYPoint)?.endMarkerValue;
@@ -849,12 +1015,20 @@ import {
             const x = band(xKey)!;
             const y0 = (yScale as d3.ScaleLinear<number, number>)(d[1]);
             const y1 = (yScale as d3.ScaleLinear<number, number>)(d[0]);
-            grp.append('rect')
+            const rect = grp.append('rect')
               .attr('x', x)
               .attr('y', y0)
               .attr('width', band.bandwidth())
               .attr('height', Math.max(0, y1 - y0))
               .attr('fill', fillColor);
+            this.attachBarTooltip(rect, cfg, {
+              series: s || series[0],
+              point: point || { x: xKey, y: d[1] - d[0] },
+              xLabel: xKey,
+              value: d[1] - d[0],
+              stackStart: d[0],
+              stackEnd: d[1]
+            });
           }
         });
       });

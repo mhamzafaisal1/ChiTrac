@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, HostBinding, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 
@@ -9,6 +9,8 @@ import { MatIconModule } from '@angular/material/icon';
     styleUrls: ['./chart-tile.component.scss']
 })
 export class ChartTileComponent {
+  @HostBinding('attr.title') nativeTitle: null = null;
+
   @Input() title: string = '';
   @Input() icon?: string; // optional Material icon name
   @Input() chartWidth: number = 600;
