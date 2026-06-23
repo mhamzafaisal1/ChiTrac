@@ -226,6 +226,14 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         left: Math.max(this.marginLeft ?? 0, 60) 
       },
       legend: { show: false, position: 'top' },
+      tooltip: {
+        show: true,
+        delayMs: 750,
+        formatter: ({ xLabel, value }) => [
+          this.formatXAxisDate(xLabel),
+          `Total Count: ${this.formatCount(value)}`
+        ]
+      },
       series: series
     };
   }
@@ -259,5 +267,9 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private formatCount(value: number): string {
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
   }
 }
