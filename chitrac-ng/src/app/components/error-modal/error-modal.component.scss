@@ -149,6 +149,39 @@
   }
 }
 
+.jira-report-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+
+  a {
+    font-weight: 700;
+  }
+
+  &.success {
+    color: #1b5e20;
+    background-color: #e8f5e9;
+    border: 1px solid #a5d6a7;
+  }
+
+  &.error {
+    color: #b71c1c;
+    background-color: #ffebee;
+    border: 1px solid #ef9a9a;
+  }
+}
+
 // Actions Section
 .error-modal-actions {
   display: flex;
@@ -181,6 +214,11 @@
   .copy-button {
     flex: 1;
     max-width: 250px;
+  }
+
+  .jira-button {
+    flex: 1;
+    max-width: 190px;
   }
 }
 
@@ -268,6 +306,20 @@
     }
   }
 
+  .jira-report-status {
+    &.success {
+      color: #c8e6c9;
+      background-color: #1b3a1d;
+      border-color: #2e7d32;
+    }
+
+    &.error {
+      color: #ffcdd2;
+      background-color: #3d2525;
+      border-color: #5c3737;
+    }
+  }
+
   .error-modal-actions {
     background-color: #2d2d2d;
     border-top-color: #3d3d3d;
@@ -284,6 +336,10 @@
     flex-direction: column;
 
     .copy-button {
+      max-width: 100%;
+    }
+
+    .jira-button {
       max-width: 100%;
     }
   }

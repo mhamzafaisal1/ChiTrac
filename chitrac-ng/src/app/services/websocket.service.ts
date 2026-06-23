@@ -8,6 +8,7 @@ export type DashboardCacheScope = 'today' | 'currentShift';
 export interface DashboardCacheEnvelope {
   machinesSummary?: any[];
   operatorsSummary?: any[];
+  data?: any;
   updatedAt?: string | Date;
   meta?: any;
 }
@@ -35,6 +36,10 @@ export interface DashboardCacheState {
         updatedAt?: string | Date;
         meta?: any;
       };
+    };
+    dailyAnalytics?: {
+      today?: DashboardCacheEnvelope;
+      shifts?: DashboardCacheEnvelope[];
     };
   };
 }
@@ -168,6 +173,14 @@ export class WebsocketService {
     );
   }
 
+  dailyAnalyticsDashboardData$(scope: DashboardCacheScope, shiftId?: string | null): Observable<any | null> {
+    return this.dashboardCache$.pipe(
+      map((cache) => this.resolveDailyAnalyticsEnvelope(cache, scope, shiftId)),
+      map((envelope) => envelope?.data || null),
+      distinctUntilChanged()
+    );
+  }
+
   private getWebsocketUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const hostname = window.location.hostname || 'localhost';
@@ -230,6 +243,20 @@ export class WebsocketService {
     }
 
     return dashboardCache?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) || cache.currentShift;
+  }
+
+  private resolveDailyAnalyticsEnvelope(
+    cache: DashboardCacheState,
+    scope: DashboardCacheScope,
+    shiftId?: string | null
+  ): DashboardCacheEnvelope | undefined {
+    const dailyAnalytics = cache.dashboard?.dailyAnalytics;
+
+    if (scope === 'today' || !shiftId) {
+      return dailyAnalytics?.today;
+    }
+
+    return dailyAnalytics?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId);
   }
 
   private parseMessage(data: unknown): any | null {

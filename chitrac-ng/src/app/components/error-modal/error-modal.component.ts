@@ -5,6 +5,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { ErrorInfo } from '../../services/error-queue.service';
 import { Clipboard } from '@angular/cdk/clipboard';
+import { JiraService } from '../../services/jira.service';
+import { finalize } from 'rxjs/operators';
 
 @Component({
   selector: 'app-error-modal',
@@ -16,8 +18,12 @@ export class ErrorModalComponent {
   dialogRef = inject(MatDialogRef<ErrorModalComponent>);
   errorData: ErrorInfo = inject(MAT_DIALOG_DATA);
   private clipboard = inject(Clipboard);
+  private jiraService = inject(JiraService);
 
   copySuccess = false;
+  isReportingBug = false;
+  reportErrorMessage = '';
+  createdIssue: { key: string; url: string } | null = null;
 
   /**
    * Format the error data for clipboard
@@ -68,6 +74,34 @@ export class ErrorModalComponent {
         this.copySuccess = false;
       }, 2000);
     }
+  }
+
+  /**
+   * Create a Jira bug from the current error details
+   */
+  reportToJira(): void {
+    if (this.isReportingBug || this.createdIssue) {
+      return;
+    }
+
+    this.reportErrorMessage = '';
+    this.isReportingBug = true;
+
+    this.jiraService.reportBug(this.errorData).pipe(
+      finalize(() => {
+        this.isReportingBug = false;
+      })
+    ).subscribe({
+      next: (response) => {
+        this.createdIssue = {
+          key: response.key,
+          url: response.url
+        };
+      },
+      error: (error) => {
+        this.reportErrorMessage = error?.error?.error || error?.message || 'Failed to create Jira bug report.';
+      }
+    });
   }
 
   /**

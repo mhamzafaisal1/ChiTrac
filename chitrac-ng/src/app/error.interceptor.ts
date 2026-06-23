@@ -12,6 +12,10 @@ export class ErrorInterceptor implements HttpInterceptor {
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     return next.handle(req).pipe(
       catchError((error: HttpErrorResponse) => {
+        if (req.headers.has('X-Skip-Error-Modal')) {
+          return throwError(() => error);
+        }
+
         // Only handle HTTP errors (not client-side errors like network issues)
         if (error.error instanceof ErrorEvent) {
           // Client-side error (network error, etc.)

@@ -36,10 +36,17 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   @Input() legendPosition!: "top" | "right";
   @Input() legendWidthPx!: number;
   @Input() serial?: number; // optional filter
+  @Input() preloadedData?: MachineStatus[] | null;
 
   ngOnChanges(changes: SimpleChanges): void {
     // console.log('DailyMachineStackedBarChart: Input changes:', changes);
     // console.log('DailyMachineStackedBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
+    if (changes['preloadedData'] && this.preloadedData) {
+      this.stopPollingInternal();
+      this.consumeResponse('once')({ machineStatus: this.preloadedData });
+    } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
+      this.setupPolling();
+    }
   }
 
   chartConfig: CartesianChartConfig | null = null;

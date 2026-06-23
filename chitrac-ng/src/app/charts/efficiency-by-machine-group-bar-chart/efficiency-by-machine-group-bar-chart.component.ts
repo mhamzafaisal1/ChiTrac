@@ -29,6 +29,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   @Input() marginRight!: number;
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
+  @Input() preloadedData?: any[] | null;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -59,7 +60,14 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     }).observe(document.body, { attributes: true });
   }
 
-  ngOnChanges(changes: SimpleChanges): void {}
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['preloadedData'] && this.preloadedData) {
+      this.stopPolling();
+      this.consumeResponse('once')(this.preloadedData);
+    } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
+      this.setupPolling();
+    }
+  }
 
   ngOnInit(): void {
     const isLive = this.dateTimeService.getLiveMode();

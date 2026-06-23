@@ -10,6 +10,10 @@ const {
   buildOperatorSummaryFromDailyCache,
   buildOperatorSummaryFromShiftCache,
 } = require("../utils/operatorDashboardCache");
+const {
+  buildTodayDailyAnalyticsCache,
+  buildShiftDailyAnalyticsCache,
+} = require("../utils/dailyAnalyticsDashboardCache");
 const { SYSTEM_TIMEZONE } = require("../utils/time");
 
 const CACHE_POLL_INTERVAL_MS = 6_000;
@@ -27,8 +31,10 @@ function ensureCache(server) {
   if (!server.cache.dashboard) server.cache.dashboard = {};
   if (!server.cache.dashboard.machines) server.cache.dashboard.machines = {};
   if (!server.cache.dashboard.operators) server.cache.dashboard.operators = {};
+  if (!server.cache.dashboard.dailyAnalytics) server.cache.dashboard.dailyAnalytics = {};
   if (!Array.isArray(server.cache.dashboard.machines.shifts)) server.cache.dashboard.machines.shifts = [];
   if (!Array.isArray(server.cache.dashboard.operators.shifts)) server.cache.dashboard.operators.shifts = [];
+  if (!Array.isArray(server.cache.dashboard.dailyAnalytics.shifts)) server.cache.dashboard.dailyAnalytics.shifts = [];
   if (!server.cache.dashboard.machines.history) server.cache.dashboard.machines.history = {};
   if (!server.cache.dashboard.operators.history) server.cache.dashboard.operators.history = {};
   if (!Array.isArray(server.cache.dashboard.machines.history.days)) server.cache.dashboard.machines.history.days = [];
@@ -172,6 +178,25 @@ async function refreshTodayCache(server) {
   }
 
   return { machines: machineResult, operators: operatorResult };
+}
+
+async function refreshTodayDailyAnalyticsCache(server) {
+  const { db, logger, config } = server;
+  const nextCache = await buildTodayDailyAnalyticsCache(db, logger, config);
+  server.cache.dashboard.dailyAnalytics.today = nextCache;
+
+  if (logger) {
+    const chartKeys = Object.keys(nextCache.data || {});
+    logger.info(
+      `[mongoWatchers] Updated daily analytics today cache with ${chartKeys.length} chart payloads for ${nextCache.meta?.date}`
+    );
+  }
+
+  if (shouldBroadcastCacheUpdate(server, "dailyAnalyticsToday", { dailyAnalytics: server.cache.dashboard.dailyAnalytics })) {
+    broadcastDashboardCache(server, "dailyAnalytics");
+  }
+
+  return nextCache;
 }
 
 function emptyShiftCache() {
@@ -346,12 +371,14 @@ async function refreshTodayShiftCaches(server) {
   const contexts = await resolveTodayShiftContexts(db, config);
   const machineShifts = [];
   const operatorShifts = [];
+  const dailyAnalyticsShifts = [];
 
   for (const context of contexts) {
     try {
-      const [machineResult, operatorResult] = await Promise.all([
+      const [machineResult, operatorResult, dailyAnalyticsResult] = await Promise.all([
         buildMachineSummaryFromShiftCache(db, logger, config, context),
         buildOperatorSummaryFromShiftCache(db, logger, config, context),
+        buildShiftDailyAnalyticsCache(db, logger, config, context),
       ]);
       const meta = {
         key: `${context.dateStr}|${String(context.shiftOid)}`,
@@ -377,6 +404,7 @@ async function refreshTodayShiftCaches(server) {
 
       machineShifts.push(machineDashboardEnvelope(machineResult.data, meta));
       operatorShifts.push(operatorDashboardEnvelope(operatorResult.data, meta));
+      dailyAnalyticsShifts.push(dailyAnalyticsResult);
     } catch (error) {
       if (logger) {
         logger.error(`[mongoWatchers] Failed to update dashboard shift cache for ${context.shiftOid}: ${error.message}`);
@@ -386,10 +414,11 @@ async function refreshTodayShiftCaches(server) {
 
   server.cache.dashboard.machines.shifts = machineShifts;
   server.cache.dashboard.operators.shifts = operatorShifts;
+  server.cache.dashboard.dailyAnalytics.shifts = dailyAnalyticsShifts;
 
   if (logger) {
     logger.info(
-      `[mongoWatchers] Updated dashboard shift caches with ${machineShifts.length} machine shift entries and ${operatorShifts.length} operator shift entries`
+      `[mongoWatchers] Updated dashboard shift caches with ${machineShifts.length} machine shift entries, ${operatorShifts.length} operator shift entries, and ${dailyAnalyticsShifts.length} daily analytics shift entries`
     );
   }
 
@@ -756,6 +785,7 @@ async function refreshLastSevenDaysCache(server, options = {}) {
 
 async function refreshDashboardCache(server) {
   await refreshTodayCache(server);
+  await refreshTodayDailyAnalyticsCache(server);
   await refreshCurrentShiftCache(server);
   await refreshTodayShiftCaches(server);
 }
@@ -934,6 +964,7 @@ module.exports = {
   stopMongoWatchers,
   refreshTodayCache,
   refreshCurrentShiftCache,
+  refreshTodayDailyAnalyticsCache,
   refreshLastWeekDashboardCache,
   refreshDashboardCache,
   refreshLastSevenDaysCache,

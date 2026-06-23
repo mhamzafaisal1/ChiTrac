@@ -1,6 +1,11 @@
 import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit } from "@angular/core";
 import { CommonModule } from "@angular/common";
+import { Subject } from "rxjs";
+import { takeUntil } from "rxjs/operators";
 import { ChartTileComponent } from "../components/chart-tile/chart-tile.component";
+import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
+import { DateTimeService } from "../services/date-time.service";
+import { DashboardCacheScope, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
 
 import { DailyMachineStackedBarChartComponent } from "../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component";
 import { DailyMachineOeeBarChartComponent } from "../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component";
@@ -30,13 +35,41 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   isDarkTheme: boolean = false;
   chartWidth: number = 600;
   chartHeight: number = 450;
+  preloadedData: any = null;
+  private websocketStatus: WebsocketConnectionStatus = 'disconnected';
   private readonly handleResize = () => this.calculateChartDimensions();
+  private destroy$ = new Subject<void>();
 
-  constructor() {}
+  constructor(
+    private websocketService: WebsocketService,
+    private dateTimeService: DateTimeService,
+    private dashboardTimeframeService: DashboardTimeframeService
+  ) {}
 
   ngOnInit(): void {
     this.detectTheme();
     this.calculateChartDimensions();
+    this.websocketService.ensureConnected();
+    if (!this.dateTimeService.getConfirmed()) {
+      this.dashboardTimeframeService.applyDefault()
+        .pipe(takeUntil(this.destroy$))
+        .subscribe(() => this.applyWebsocketCache());
+    }
+
+    this.websocketService.status$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((status) => {
+        this.websocketStatus = status;
+        if (status === 'connected') {
+          this.applyWebsocketCache();
+        } else if (status === 'disconnected' || status === 'error') {
+          this.preloadedData = null;
+        }
+      });
+
+    this.websocketService.dashboardCache$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.applyWebsocketCache());
     
     // Listen for window resize to recalculate chart dimensions
     window.addEventListener('resize', this.handleResize);
@@ -54,6 +87,8 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   ngOnDestroy(): void {
     // Clean up event listener
     window.removeEventListener('resize', this.handleResize);
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   detectTheme() {
@@ -97,5 +132,23 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     if (this.itemChart) {
       this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
     }
+  }
+
+  private applyWebsocketCache(): void {
+    if (this.websocketStatus !== 'connected') return;
+
+    const scope = this.getDashboardCacheScope();
+    const shiftId = this.dateTimeService.getShiftId();
+    const cache = this.websocketService.getDashboardCacheSnapshot();
+    const dailyAnalytics = cache.dashboard?.dailyAnalytics;
+    const envelope = scope === 'currentShift' && shiftId
+      ? dailyAnalytics?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId)
+      : dailyAnalytics?.today;
+
+    this.preloadedData = envelope?.data || null;
+  }
+
+  private getDashboardCacheScope(): DashboardCacheScope {
+    return this.dateTimeService.getShiftId() ? 'currentShift' : 'today';
   }
 }

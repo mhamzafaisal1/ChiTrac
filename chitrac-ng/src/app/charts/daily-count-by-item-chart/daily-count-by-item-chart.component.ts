@@ -27,6 +27,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   @Input() marginRight!: number;
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
+  @Input() preloadedData?: any | null;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -60,7 +61,14 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     }).observe(document.body, { attributes: true });
   }
 
-  ngOnChanges(changes: SimpleChanges): void {}
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['preloadedData'] && this.preloadedData) {
+      this.stopPolling();
+      this.consumeResponse('once')({ itemTotals: this.preloadedData });
+    } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
+      this.setupPolling();
+    }
+  }
 
   ngOnInit(): void {
     const isLive = this.dateTimeService.getLiveMode();

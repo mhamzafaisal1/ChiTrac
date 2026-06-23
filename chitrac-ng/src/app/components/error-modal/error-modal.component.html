@@ -38,10 +38,31 @@
         <pre>{{ errorData.fullError | json }}</pre>
       </details>
     </div>
+
+    <div class="jira-report-status success" *ngIf="createdIssue">
+      <mat-icon>check_circle</mat-icon>
+      <span>Created Jira bug</span>
+      <a [href]="createdIssue.url" target="_blank" rel="noopener noreferrer">{{ createdIssue.key }}</a>
+    </div>
+
+    <div class="jira-report-status error" *ngIf="reportErrorMessage">
+      <mat-icon>error</mat-icon>
+      <span>{{ reportErrorMessage }}</span>
+    </div>
   </div>
 
   <!-- Actions -->
   <div class="error-modal-actions">
+    <button
+      mat-raised-button
+      color="accent"
+      (click)="reportToJira()"
+      [disabled]="isReportingBug || !!createdIssue"
+      class="jira-button">
+      <mat-icon>{{ createdIssue ? 'check' : 'bug_report' }}</mat-icon>
+      {{ createdIssue ? 'Reported' : (isReportingBug ? 'Reporting...' : 'Report Bug') }}
+    </button>
+
     <button 
       mat-raised-button 
       [color]="copySuccess ? 'accent' : 'primary'"

@@ -11,6 +11,7 @@
         <app-daily-machine-stacked-bar-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
+          [preloadedData]="preloadedData?.machineStatus"
         ></app-daily-machine-stacked-bar-chart>
       </app-chart-tile>
 
@@ -24,6 +25,7 @@
         <app-daily-machine-oee-bar-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
+          [preloadedData]="preloadedData?.machineOee"
         ></app-daily-machine-oee-bar-chart>
       </app-chart-tile>
 
@@ -37,6 +39,7 @@
         <app-daily-count-by-item-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
+          [preloadedData]="preloadedData?.itemTotals"
           [marginTop]="50"
           [marginRight]="30"
           [marginBottom]="50"
@@ -54,6 +57,7 @@
         <app-efficiency-by-machine-group-bar-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
+          [preloadedData]="preloadedData?.machineGroupEfficiency"
         ></app-efficiency-by-machine-group-bar-chart>
       </app-chart-tile>
 
@@ -67,6 +71,7 @@
         <app-ranked-operator-bar-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
+          [preloadedData]="preloadedData?.topOperators"
         ></app-ranked-operator-bar-chart>
       </app-chart-tile>
 
@@ -80,6 +85,7 @@
         <app-daily-count-bar-chart
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
+          [preloadedData]="preloadedData?.dailyCounts"
         ></app-daily-count-bar-chart>
       </app-chart-tile>
     </div>
