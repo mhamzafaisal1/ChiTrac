@@ -229,8 +229,6 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'linear',
-      xLabel: 'Efficiency (%)',
-      yLabel: 'Operator',
       yTickFormat: (v: any) => {
         const key = String(v);
         return data.find(d => String(d.id) === key)?.label ?? key;

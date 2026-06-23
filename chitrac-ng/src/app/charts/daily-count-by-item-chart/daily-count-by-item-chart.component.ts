@@ -7,6 +7,7 @@ import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
+import * as d3 from 'd3';
 
 @Component({
   selector: 'app-daily-count-by-item-chart',
@@ -177,6 +178,9 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     };
 
   private formatChartData(data: Array<{ itemName: string; totalCount: number }>): CartesianChartConfig {
+    const maxTotal = Math.max(0, ...data.map(item => Number(item.totalCount) || 0));
+    const scaleMax = d3.scaleLinear().domain([0, maxTotal]).nice().domain()[1] ?? 0;
+    const shouldAbbreviateXAxis = scaleMax > 10000;
     const series: XYSeries[] = data.map((item, index) => ({
       id: `item-${index}`,
       title: item.itemName,
@@ -192,8 +196,9 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'linear',
-      xLabel: 'Count',
-      yLabel: 'Item',
+      xTickFormat: shouldAbbreviateXAxis
+        ? (v: any) => this.formatCountTickAsThousands(v)
+        : (v: any) => this.formatCountTick(v),
       margin: {
         top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
@@ -203,6 +208,20 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       legend: { show: false, position: 'top' },
       series: series
     };
+  }
+
+  private formatCountTick(v: any): string {
+    const value = Number(v);
+    return Number.isFinite(value) ? value.toLocaleString('en-US') : String(v);
+  }
+
+  private formatCountTickAsThousands(v: any): string {
+    const value = Number(v);
+    if (!Number.isFinite(value)) return String(v);
+    if (Math.abs(value) < 1000) return this.formatCountTick(value);
+
+    const thousands = value / 1000;
+    return `${Number.isInteger(thousands) ? thousands.toFixed(0) : thousands.toFixed(1)}k`;
   }
 
   private enterDummy(): void {

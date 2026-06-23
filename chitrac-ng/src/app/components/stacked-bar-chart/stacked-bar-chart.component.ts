@@ -39,10 +39,10 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
   @Input() showLegend: boolean = true;
   @Input() legendPosition: "top" | "right" = "right";
   @Input() legendWidthPx: number = 120;
-  @Input() marginTop!: number;
-  @Input() marginRight!: number;
-  @Input() marginBottom!: number;
-  @Input() marginLeft!: number;
+  @Input() marginTop: number = 40;
+  @Input() marginRight: number = 30;
+  @Input() marginBottom: number = 80;
+  @Input() marginLeft: number = 60;
   // @Input() isDarkTheme: boolean = true;
 
   // Method to set chart dimensions from parent
@@ -272,10 +272,11 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
     const xLabels = this.mode === "machine"
       ? (this.data.data.machineNames ?? Array.from({ length: keys.length }, (_, i) => `Machine ${i + 1}`))
       : this.data.data.hours.map(String);
+    const xKeys = xLabels.map((_, i) => `${i}`);
 
-    const x = d3.scaleBand().domain(xLabels).range([0, width]).padding(0.2); // same padding as before
+    const x = d3.scaleBand().domain(xKeys).range([0, width]).padding(0.2); // same padding as before
 
-    const baseData = xLabels.map((_, i) => {
+    const baseData = xKeys.map((_, i) => {
       const entry: any = {};
       keys.forEach(k => entry[k] = this.data!.data.operators[k][i] || 0);
       return entry;
@@ -291,7 +292,7 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
     const topSegments = new Set<string>(); const seen: Record<string, boolean> = {};
     [...stackedData].reverse().forEach(layer => {
       layer.forEach((d, i) => {
-        const lbl = xLabels[i], h = y(d[0]) - y(d[1]);
+        const lbl = xKeys[i], h = y(d[0]) - y(d[1]);
         if (!seen[lbl] && h > 0) { seen[lbl] = true; topSegments.add(`${(layer as any).key}-${lbl}`); }
       });
     });
@@ -301,12 +302,12 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
       .attr("fill", d => color((d as any).key))
       .selectAll("path")
       .data(layer => (layer as any).map((d: any, i: number) => ({
-        ...d, xLabel: xLabels[i], key: (layer as any).key,
-        isTop: topSegments.has(`${(layer as any).key}-${xLabels[i]}`)
+        ...d, xKey: xKeys[i], key: (layer as any).key,
+        isTop: topSegments.has(`${(layer as any).key}-${xKeys[i]}`)
       })))
       .join("path")
       .attr("d", (d: any) => {
-        const x0 = x(d.xLabel)!;
+        const x0 = x(d.xKey)!;
         const yB = Math.floor(y(d[1]));
         const yT = Math.floor(y(d[0]));
         const h  = yB - yT;
@@ -322,7 +323,7 @@ export class StackedBarChartComponent implements AfterViewInit, OnDestroy, OnCha
     chart.append("g")
       .attr("transform", `translate(0,${height})`)
       .attr("class", "x-axis")
-      .call(d3.axisBottom(x) as any)
+      .call(d3.axisBottom(x).tickFormat((key) => xLabels[Number(key)] ?? String(key)) as any)
       .selectAll("text")
       .attr("transform", "rotate(-45)")
       .style("text-anchor", "end")

@@ -264,9 +264,9 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
       orientation: 'horizontal',
       xType: 'category',
       margin: {
-        top: Math.max(this.marginTop || 50, 60),
+        top: Math.max(this.marginTop || 50, 90),
         right: Math.max(this.marginRight || 30, 30),
-        bottom: Math.max(this.marginBottom || 50, 60),
+        bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, leftMargin)
       },
       legend: {
