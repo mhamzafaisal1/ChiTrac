@@ -177,12 +177,12 @@ import {
       // ===== Scales =====
       const xScale = this.buildXScale(cfg, allX, innerW, innerH, isHorizontal);
       const yScale = isHorizontal
-        ? d3.scaleBand().domain(allX.map(String)).range([0, innerH]).padding(0.1) // horizontal: category on Y for bars/lollipops
+        ? this.buildBandScale(allX.map(String), [0, innerH], this.getBarPadding(cfg))
         : d3.scaleLinear().domain([0, yMax]).nice().range([innerH, 0]);
   
       const yScaleH = isHorizontal
         ? d3.scaleLinear().domain([0, yMax]).nice().range([0, innerW])
-        : d3.scaleBand().domain(allX.map(String)).range([0, innerH]).padding(0.1);
+        : this.buildBandScale(allX.map(String), [0, innerH], this.getBarPadding(cfg));
   
       // ===== Axes =====
       const xAxisG = g.append('g').attr('class', 'cc-x-axis');
@@ -435,10 +435,11 @@ import {
       if (cfg.xType === 'category') {
         // Get barPadding from series options (use first series as reference, or default to 0.2)
         const barPadding = cfg.series[0]?.options?.barPadding ?? 0.2;
-        return d3.scaleBand<string>()
-          .domain(xDomain.map(String))
-          .range(isHorizontal ? [0, innerH] : [0, innerW])
-          .padding(barPadding);
+        return this.buildBandScale(
+          xDomain.map(String),
+          isHorizontal ? [0, innerH] : [0, innerW],
+          barPadding
+        );
       }
       if (cfg.xType === 'time') {
         return d3.scaleTime()
@@ -476,6 +477,24 @@ import {
     const xs = series.map(s => s.data?.[0]?.x).filter(v => v !== undefined).map(String);
     return series.every(s => s.type === 'bar' && s.data.length === 1) && new Set(xs).size === xs.length;
   }
+
+    private getBarPadding(cfg: CartesianChartConfig): number {
+      const firstBarSeries = cfg.series.find(s => s.type === 'bar');
+      return firstBarSeries?.options?.barPadding ?? 0.2;
+    }
+
+    private buildBandScale(
+      domain: string[],
+      range: [number, number],
+      padding: number
+    ): d3.ScaleBand<string> {
+      return d3.scaleBand<string>()
+        .domain(domain)
+        .rangeRound(range)
+        .paddingInner(padding)
+        .paddingOuter(padding / 2)
+        .align(0.5);
+    }
   
     private colorForSeries(id: string): string {
       const palette = d3.schemeTableau10;
@@ -644,7 +663,7 @@ import {
       const barPadding = series[0]?.options?.barPadding ?? 0.2;
       const band = (cfg.xType === 'category'
         ? (isHorizontal ? yScale : xScale)
-        : d3.scaleBand<string>().domain(keys).range(isHorizontal ? [0, innerH] : [0, innerW]).padding(barPadding)
+        : this.buildBandScale(keys, isHorizontal ? [0, innerH] : [0, innerW], barPadding)
       ) as d3.ScaleBand<string>;
   
       const sub = d3.scaleBand<string>()
@@ -712,7 +731,10 @@ import {
     const band = (cfg.xType === 'category'
         ? (isHorizontal ? yScale : xScale)
         : d3.scaleBand<string>().domain(items.map(i => i.key))
-            .range(isHorizontal ? [0, innerH] : [0, innerW]).padding(barPadding)
+            .rangeRound(isHorizontal ? [0, innerH] : [0, innerW])
+            .paddingInner(barPadding)
+            .paddingOuter(barPadding / 2)
+            .align(0.5)
       ) as d3.ScaleBand<string>;
 
     const grp = g.append('g').attr('class', 'cc-bars-single');
@@ -750,7 +772,10 @@ import {
     const band = (cfg.xType === 'category'
         ? (isHorizontal ? yScale : xScale)
         : d3.scaleBand<string>().domain(xKeys)
-            .range(isHorizontal ? [0, innerH] : [0, innerW]).padding(barPadding)
+            .rangeRound(isHorizontal ? [0, innerH] : [0, innerW])
+            .paddingInner(barPadding)
+            .paddingOuter(barPadding / 2)
+            .align(0.5)
       ) as d3.ScaleBand<string>;
 
     const sub = d3.scaleBand<string>()
@@ -813,7 +838,7 @@ import {
       const endMarkerOpts = series[0]?.options?.endMarker;
       const band = (cfg.xType === 'category'
         ? (isHorizontal ? yScale : xScale)
-        : d3.scaleBand<string>().domain((xDomain as any[]).map(String)).range(isHorizontal ? [0, innerH] : [0, innerW]).padding(barPadding)
+        : this.buildBandScale((xDomain as any[]).map(String), isHorizontal ? [0, innerH] : [0, innerW], barPadding)
       ) as d3.ScaleBand<string>;
   
       stacked.forEach((layer, layerIdx) => {
