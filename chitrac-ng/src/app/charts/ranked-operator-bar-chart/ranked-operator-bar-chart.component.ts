@@ -247,6 +247,14 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         left: Math.max(this.marginLeft || 50, 120)
       },
       legend: { show: false, position: 'top' },
+      tooltip: {
+        show: true,
+        delayMs: 750,
+        formatter: ({ xLabel, value }) => [
+          `Operator: ${this.getOperatorLabel(data, xLabel)}`,
+          `Efficiency%: ${this.formatPercent(value)}`
+        ]
+      },
       series,
     };
   }
@@ -270,5 +278,16 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private getOperatorLabel(data: OperatorRow[], id: string): string {
+    return data.find(op => String(op.id) === String(id))?.label ?? id;
+  }
+
+  private formatPercent(value: number): string {
+    return `${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    }).format(value)}%`;
   }
 }

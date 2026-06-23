@@ -241,6 +241,14 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
         left: Math.max(this.marginLeft || 50, 120)
       },
       legend: { show: false, position: 'top' },
+      tooltip: {
+        show: true,
+        delayMs: 750,
+        formatter: ({ xLabel, value }) => [
+          `Machine Group: ${this.getMachineGroupName(data, xLabel)}`,
+          `Efficiency%: ${this.formatPercent(value)}`
+        ]
+      },
       series,
     };
   }
@@ -265,5 +273,16 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private getMachineGroupName(data: GroupRow[], id: string): string {
+    return data.find(group => group.id === String(id))?.name ?? id;
+  }
+
+  private formatPercent(value: number): string {
+    return `${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    }).format(value)}%`;
   }
 }

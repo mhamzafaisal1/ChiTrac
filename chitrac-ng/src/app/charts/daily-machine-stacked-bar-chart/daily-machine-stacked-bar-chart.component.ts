@@ -280,6 +280,14 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         show: this.showLegend !== false,
         position: 'top'  // horizontal under the title
       },
+      tooltip: {
+        show: true,
+        delayMs: 750,
+        formatter: ({ series, xLabel, value }) => [
+          `Machine: ${xLabel}`,
+          `${this.getStatusTimeLabel(series.id)}: ${this.formatDuration(value * 3_600_000)}`
+        ]
+      },
       series: series
     };
   }
@@ -323,5 +331,25 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private getStatusTimeLabel(statusId: string): string {
+    switch (statusId) {
+      case 'running': return 'Run Time';
+      case 'paused': return 'Paused Time';
+      case 'faulted': return 'Fault Time';
+      case 'offline': return 'Offline Time';
+      default: return 'Time';
+    }
+  }
+
+  private formatDuration(ms: number): string {
+    const totalSeconds = Math.max(0, Math.round(ms / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return [hours, minutes, seconds]
+      .map(value => String(value).padStart(2, '0'))
+      .join(':');
   }
 }

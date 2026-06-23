@@ -228,6 +228,14 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
         show: false,  // No legend needed for individual machine bars
         position: 'top'  // Required property, but not used since show is false
       },
+      tooltip: {
+        show: true,
+        delayMs: 750,
+        formatter: ({ xLabel, value }) => [
+          `Machine: ${xLabel}`,
+          `OEE%: ${this.formatPercent(value)}`
+        ]
+      },
       series: series
     };
   }
@@ -252,5 +260,12 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     const h = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  private formatPercent(value: number): string {
+    return `${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    }).format(value)}%`;
   }
 }
