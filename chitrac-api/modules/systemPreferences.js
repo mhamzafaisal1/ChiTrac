@@ -10,16 +10,21 @@ async function ensureSystemPreferences(db, config = {}) {
   const collection = getCollection(db, config);
   const existing = await collection.findOne({ _id: SINGLETON_ID });
   if (existing) {
-    if (existing.userSessionExpirationHours === undefined) {
+    const needsMigration =
+      existing.userSessionExpirationHours === undefined ||
+      !existing.timestamps?.create ||
+      !existing.timestamps?.update ||
+      Object.prototype.hasOwnProperty.call(existing, 'createdAt') ||
+      Object.prototype.hasOwnProperty.call(existing, 'updatedAt');
+
+    if (needsMigration) {
+      const preferences = systemPreferencesSchema.utils.normalizePreferences({}, existing, config);
+      const { _id, ...updates } = preferences;
       await collection.updateOne(
         { _id: SINGLETON_ID },
         {
-          $set: {
-            userSessionExpirationHours: Number(config.userSessionExpirationHours) > 0
-              ? Number(config.userSessionExpirationHours)
-              : 48,
-            updatedAt: new Date().toISOString()
-          }
+          $set: updates,
+          $unset: { createdAt: '', updatedAt: '' }
         }
       );
       return collection.findOne({ _id: SINGLETON_ID });
@@ -31,7 +36,11 @@ async function ensureSystemPreferences(db, config = {}) {
   const { _id, ...updates } = preferences;
   await collection.updateOne(
     { _id },
-    { $set: updates, $setOnInsert: { _id } },
+    {
+      $set: updates,
+      $setOnInsert: { _id },
+      $unset: { createdAt: '', updatedAt: '' }
+    },
     { upsert: true }
   );
 

@@ -11,6 +11,7 @@ const breakSchema = require('./break');
 const schema = {
   type: 'object',
   required: [
+    'id',
     'active',
     'timestamps',
     'shiftTime',
@@ -23,6 +24,11 @@ const schema = {
       type: 'string',
       pattern: '^[a-fA-F0-9]{24}$',
       description: 'Optional MongoDB ObjectId for this shift record'
+    },
+    id: {
+      type: 'integer',
+      minimum: 1,
+      description: 'Required public integer id for this shift record.'
     },
     active: {
       type: 'boolean',
@@ -115,7 +121,11 @@ const utils = {
    * @param {string} [name] - Optional string value of a label to use for this shift
    * @returns {object} Validated shift object
    */
-  initShift: (timestamps, breaks = null, name = null) => {
+  initShift: (timestamps, breaks = null, name = null, id = null) => {
+    if (!Number.isInteger(id) || id < 1) {
+      throw new Error('Shift id must be an integer greater than or equal to 1.');
+    }
+
     // Validate that timestamps has both start and end
     if (!timestamps.start || !timestamps.end) {
       throw new Error('Timestamps object must contain both start and end properties to define shift time.');
@@ -133,6 +143,7 @@ const utils = {
 
     // Build the shift object with required properties
     const shiftObject = {
+      id,
       active: true,
       timestamps,
       shiftTime,

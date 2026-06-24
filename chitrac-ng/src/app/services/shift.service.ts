@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 export interface ShiftListItem {
   _id: string;
+  id: number;
   name?: string;
   active?: boolean;
   startTime?: { hour: number; minute: number };
@@ -41,6 +42,7 @@ export interface ShiftBreakPayload {
 
 export interface ShiftDefinitionPayload {
   _id?: string;
+  id?: number;
   active: boolean;
   timestamps: {
     create: string;
