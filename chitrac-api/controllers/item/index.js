@@ -4,6 +4,9 @@
 /** MODULE REQUIRES */
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const schedule = require('node-schedule');
 const config = require('../../modules/config');
 const { parseAndValidateQueryParams, formatDuration } = require("../../utils/time");
@@ -27,6 +30,24 @@ function constructor(server) {
 	const xmlParser = server.xmlParser;
 	const configService = require('../../services/mongo/');
 	const itemValidator = require('../../middleware/itemValidator')(server);
+	const imageUploadDir = path.join(server.appRoot.path, 'uploads', 'images');
+	const upload = multer({
+		storage: multer.memoryStorage(),
+		limits: { fileSize: 10 * 1024 * 1024 },
+		fileFilter: (req, file, callback) => {
+			const allowedMimeTypes = ['image/jpeg', 'image/png'];
+			const allowedExtensions = ['.jpg', '.jpeg', '.png'];
+			const ext = path.extname(file.originalname || '').toLowerCase();
+
+			if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
+				return callback(null, true);
+			}
+
+			const error = new Error('Only JPG and PNG item images are allowed.');
+			error.status = 400;
+			return callback(error);
+		}
+	});
 
 	function getApplyChangeWaitTimeMs() {
 		const minutes = Number(config.applyChangeWaitTime) || 10;
@@ -82,6 +103,58 @@ function constructor(server) {
 			true,
 			'number'
 		);
+	}
+
+	function sanitizeUploadedImageFields(req, res, next) {
+		const normalized = { ...req.body };
+
+		if (normalized.number !== undefined) normalized.number = Number(normalized.number);
+		if (normalized.active !== undefined) normalized.active = normalized.active === true || normalized.active === 'true';
+		if (normalized.weight === '' || normalized.weight === undefined) {
+			normalized.weight = null;
+		} else {
+			normalized.weight = Number(normalized.weight);
+		}
+		if (normalized.standard !== undefined) normalized.standard = Number(normalized.standard);
+		if (normalized.area !== undefined) normalized.area = Number(normalized.area);
+
+		req.body = normalized;
+		next();
+	}
+
+	function safeFileNamePart(value) {
+		return String(value ?? '')
+			.trim()
+			.replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
+			.replace(/\s+/g, ' ')
+			.slice(0, 120);
+	}
+
+	async function prepareItemImage(req, res, next) {
+		if (!req.file) return next();
+
+		try {
+			const itemNumber = safeFileNamePart(req.body.number);
+			const itemName = safeFileNamePart(req.body.name);
+			const ext = path.extname(req.file.originalname).toLowerCase() === '.png' ? '.png' : '.jpg';
+			const fileName = `${itemNumber}-${itemName}${ext}`;
+			const filePath = path.join(imageUploadDir, fileName);
+
+			req.body.photo = filePath;
+			req.pendingItemImage = {
+				filePath,
+				buffer: req.file.buffer
+			};
+			next();
+		} catch (error) {
+			next(error);
+		}
+	}
+
+	async function persistPreparedItemImage(req) {
+		if (!req.pendingItemImage) return;
+		await fs.promises.mkdir(imageUploadDir, { recursive: true });
+		await fs.promises.writeFile(req.pendingItemImage.filePath, req.pendingItemImage.buffer);
 	}
 
 	function scheduleDelayedItemApply({ id, itemPayload, originalRequestTimestamp, attempt = 1 }) {
@@ -146,8 +219,9 @@ function constructor(server) {
 		return { jobKey, runAt };
 	}
 
-	function scheduleDelayedItemApplyHandler(req, res, next) {
+	async function scheduleDelayedItemApplyHandler(req, res, next) {
 		try {
+			await persistPreparedItemImage(req);
 			const originalRequestTimestamp = new Date().toISOString();
 			const scheduled = scheduleDelayedItemApply({
 				id: req.params.id,
@@ -212,6 +286,7 @@ function constructor(server) {
 				timestamp: new Date().toISOString()
 			});
 	
+			await persistPreparedItemImage(req);
 			const result = await applyItemConfigChange(id, updates);
 
 			logger.info('[upsertItem] Item updated successfully:', {
@@ -291,11 +366,11 @@ function constructor(server) {
 	router.get('/item/new-id', getNewItemId);
 
 	/** POST / PUT routes */
-	router.post('/item/config', itemValidator, (req, res, next) => {
+	router.post('/item/config', upload.single('photoFile'), sanitizeUploadedImageFields, prepareItemImage, itemValidator, (req, res, next) => {
 		if (wantsDelayedApply(req)) return scheduleDelayedItemApplyHandler(req, res, next);
 		return ensureAllMachinesOffline(req, res, next);
 	}, upsertItem);
-	router.put('/item/config/:id', itemValidator, (req, res, next) => {
+	router.put('/item/config/:id', upload.single('photoFile'), sanitizeUploadedImageFields, prepareItemImage, itemValidator, (req, res, next) => {
 		if (wantsDelayedApply(req)) return scheduleDelayedItemApplyHandler(req, res, next);
 		return ensureAllMachinesOffline(req, res, next);
 	}, upsertItem);

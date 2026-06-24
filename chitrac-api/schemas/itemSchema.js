@@ -32,6 +32,9 @@ module.exports = {
       },
       department: {
         type: 'string'
+      },
+      photo: {
+        type: 'string'
       }
     },
     additionalProperties: false

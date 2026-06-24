@@ -285,6 +285,7 @@ function init(app, server) {
     app.use('/fonts/normal', express.static(path.join(server.appRoot.path, 'fonts/Montserrat-VariableFont_wght.ttf')));
     app.use('/fonts/bold', express.static(path.join(server.appRoot.path, 'fonts/Montserrat-VariableFont_wght.ttf')));
     app.use('/icons', express.static(path.join(server.appRoot.path, 'icons/MaterialSymbolsOutlined_Filled-Regular.ttf')));
+    app.use('/uploads/images', express.static(path.join(server.appRoot.path, 'uploads/images')));
     app.use(['/ng/*', '/'], express.static(path.join(server.appRoot.path, 'ng/browser/')));
     
 
