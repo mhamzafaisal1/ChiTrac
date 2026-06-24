@@ -141,7 +141,7 @@ import {
         .style('line-height', '1.35')
         .style('pointer-events', 'none')
         .style('opacity', '0')
-        .style('transform', 'translateY(-100%)')
+        .style('transform', 'none')
         .style('transition', 'opacity 120ms ease')
         .style('white-space', 'nowrap')
         .style('box-shadow', '0 4px 14px rgba(0, 0, 0, 0.22)');
@@ -430,6 +430,7 @@ import {
       const all = new Set<string | number | Date>();
       cfg.series.forEach(s => s.data.forEach(p => all.add(p.x)));
       const arr = Array.from(all);
+      if (cfg.orientation === 'horizontal') return arr.map(String);
       // keep numeric/time sorted
       if (cfg.xType === 'linear') return (arr as number[]).sort((a,b)=>Number(a)-Number(b));
       if (cfg.xType === 'time')   return (arr as Date[]).sort((a,b)=>+new Date(a)-+new Date(b));
@@ -594,7 +595,7 @@ import {
       const [x, y] = d3.pointer(event, this.host.nativeElement);
       this.tooltipEl
         .style('left', `${x + 12}px`)
-        .style('top', `${y - 12}px`);
+        .style('top', `${y}px`);
     }
 
     private hideTooltip(): void {
