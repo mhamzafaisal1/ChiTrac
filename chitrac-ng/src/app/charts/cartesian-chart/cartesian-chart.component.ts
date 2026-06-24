@@ -53,12 +53,13 @@ import {
     xType?: XType;                  // default 'category'
     xLabel?: string;
     yLabel?: string;
+    showAxisLabels?: boolean;
     xTickFormat?: (v:any)=>string;
     yTickFormat?: (v:number)=>string;
     margin?: { top:number; right:number; bottom:number; left:number };
     /** Offset in px from the x-axis line to the x-axis label (default derived from margin). Use a smaller value to bring the label closer to the axis. */
     xLabelOffsetFromAxis?: number;
-    legend?: { show: boolean; position: 'top'|'right' };
+    legend?: { show: boolean; position: 'top'|'right'; yOffset?: number; titleYOffset?: number };
     tooltip?: {
       show?: boolean;
       delayMs?: number;
@@ -199,7 +200,9 @@ import {
       // ===== Title =====
       if (cfg.title) {
         // Position title above legend when legend is on top, otherwise use default position
-        const titleY = (cfg.legend?.show && cfg.legend?.position === 'top') ? -40 : -10;
+        const titleY = (cfg.legend?.show && cfg.legend?.position === 'top')
+          ? (cfg.legend.titleYOffset ?? -40)
+          : -10;
         g.append('text')
           .attr('class', 'cc-title')
           .attr('x', (width / 2) - margin.left)
@@ -276,7 +279,7 @@ import {
       }
 
       // ===== Axis Labels =====
-      if (cfg.xLabel) {
+      if (cfg.showAxisLabels !== false && cfg.xLabel) {
         const xLabelOffset = cfg.xLabelOffsetFromAxis !== undefined
           ? cfg.xLabelOffsetFromAxis
           : Math.max(28, (cfg.margin?.bottom ?? 50) - 8);
@@ -290,7 +293,7 @@ import {
           .text(cfg.xLabel);
       }
 
-      if (cfg.yLabel) {
+      if (cfg.showAxisLabels !== false && cfg.yLabel) {
         g.append('text')
           .attr('class', 'cc-y-label')
           .attr('transform', 'rotate(-90)')
@@ -306,7 +309,9 @@ import {
         const items = cfg.series.map(s => ({ id: s.id, title: s.title, color: s.color || this.colorForSeries(s.id) }));
         
         if (cfg.legend.position === 'top') {
-          const lg = g.append('g').attr('class', 'cc-legend').attr('transform', `translate(0, -20)`);
+          const lg = g.append('g')
+            .attr('class', 'cc-legend')
+            .attr('transform', `translate(0, ${cfg.legend.yOffset ?? -20})`);
           let xOff = 0;
           items.forEach(it => {
             const row = lg.append('g').attr('transform', `translate(${xOff},0)`);
@@ -398,8 +403,8 @@ import {
         ? { ...baseMargin, right: Math.max(baseMargin.right, 120) }
         : baseMargin;
 
-      // heuristic: increase bottom margin if many/long category labels
-      if ((cfg.xType ?? 'category') === 'category') {
+      // Heuristic: increase bottom margin only when category labels are on the x-axis.
+      if ((cfg.orientation ?? 'vertical') !== 'horizontal' && (cfg.xType ?? 'category') === 'category') {
         const labels = Array.from(new Set(cfg.series.flatMap(s => s.data.map(p => String(p.x)))));
         const maxLen = labels.reduce((m, s) => Math.max(m, s.length), 0);
         const needsRotate = labels.length * (maxLen * 7) > ((cfg.width ?? 900) - (margin.left + margin.right));
@@ -415,6 +420,7 @@ import {
         xType: cfg.xType || 'category',
         xLabel: cfg.xLabel,
         yLabel: cfg.yLabel,
+        showAxisLabels: cfg.showAxisLabels,
         xTickFormat: cfg.xTickFormat,
         yTickFormat: cfg.yTickFormat,
         margin,

@@ -266,19 +266,22 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
 
     return {
       title: 'Daily Machine Status',
+      showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'category',
       margin: {
-        top: Math.max(this.marginTop || 50, 90),
+        top: Math.max(this.marginTop || 50, 60),
         right: Math.max(this.marginRight || 30, 30),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, leftMargin)
       },
       legend: {
         show: this.showLegend !== false,
-        position: 'top'  // horizontal under the title
+        position: 'top',
+        titleYOffset: -10,
+        yOffset: 10
       },
       tooltip: {
         show: true,
