@@ -1,6 +1,6 @@
 import { Component, inject, model, OnInit, EventEmitter, Output, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormsModule, FormControl, FormGroup, FormGroupDirective, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 
 /*** rxjs Imports */
@@ -34,6 +34,7 @@ export class UserLoginComponent implements OnInit {
 
   sub: Subscription;
   @Output() closeModal = new EventEmitter<void>();
+  @ViewChild(FormGroupDirective) loginFormDirective?: FormGroupDirective;
   @ViewChild('usernameInput') usernameInput: ElementRef;
   @ViewChild('passwordInput') passwordInput: ElementRef;
 
@@ -75,11 +76,15 @@ export class UserLoginComponent implements OnInit {
   }
 
   private clearLoginForm(): void {
-    this.user = {
+    const emptyUser: { username: string | null; password: string | null } = {
       username: null,
       password: null
     };
-    this.userLoginFormGroup.reset(this.user);
+    this.user = emptyUser;
+    this.loginFormDirective?.resetForm(emptyUser);
+    this.userLoginFormGroup.reset(emptyUser);
+    this.userLoginFormGroup.markAsPristine();
+    this.userLoginFormGroup.markAsUntouched();
   }
 
   private clearPassword(): void {
