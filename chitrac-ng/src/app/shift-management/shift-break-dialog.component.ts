@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -15,6 +15,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatTimepickerModule } from '@angular/material/timepicker';
 import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
 import { MatError } from '@angular/material/form-field';
+import { Subject, Subscription } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 import { ShiftTimeValue } from '../services/shift.service';
 import { EditableBreak, toDateFromTimeValue, toTimeValue } from './shift-time.utils';
 
@@ -49,9 +51,11 @@ export interface ShiftBreakDialogResult {
   templateUrl: './shift-break-dialog.component.html',
   styleUrls: ['./shift-break-dialog.component.scss'],
 })
-export class ShiftBreakDialogComponent {
+export class ShiftBreakDialogComponent implements OnDestroy {
   readonly dialogRef = inject(MatDialogRef<ShiftBreakDialogComponent>);
   readonly dialogData = inject<ShiftBreakDialogData>(MAT_DIALOG_DATA);
+  private readonly validationChanges = new Subject<void>();
+  private readonly validationSub: Subscription;
 
   breakStart: Date = this.dialogData.breakValue
     ? toDateFromTimeValue(this.dialogData.breakValue.startTime)
@@ -62,19 +66,55 @@ export class ShiftBreakDialogComponent {
 
   validationError = '';
 
+  constructor() {
+    this.validationSub = this.validationChanges
+      .pipe(debounceTime(750))
+      .subscribe(() => this.updateValidationError());
+  }
+
   get actionLabel(): 'Add' | 'Edit' {
     return this.dialogData.mode === 'edit' ? 'Edit' : 'Add';
+  }
+
+  ngOnDestroy(): void {
+    this.validationSub.unsubscribe();
+    this.validationChanges.complete();
+  }
+
+  onBreakStartChange(nextStart: Date): void {
+    const currentDurationMs = this.breakEnd.getTime() - this.breakStart.getTime();
+    this.breakStart = nextStart;
+    this.breakEnd = new Date(nextStart.getTime() + currentDurationMs);
+    this.queueValidation();
+  }
+
+  onBreakEndChange(nextEnd: Date): void {
+    this.breakEnd = nextEnd;
+    this.queueValidation();
   }
 
   submit(): void {
     const startTime = toTimeValue(this.breakStart);
     const endTime = toTimeValue(this.breakEnd);
-    if ((startTime.hour * 60 + startTime.minute) >= (endTime.hour * 60 + endTime.minute)) {
-      this.validationError = 'Break start time must be before break end time.';
+    this.updateValidationError();
+    if (this.validationError) {
       return;
     }
 
     this.dialogRef.close({ startTime, endTime } as ShiftBreakDialogResult);
+  }
+
+  private queueValidation(): void {
+    this.validationError = '';
+    this.validationChanges.next();
+  }
+
+  private updateValidationError(): void {
+    const startTime = toTimeValue(this.breakStart);
+    const endTime = toTimeValue(this.breakEnd);
+    this.validationError = (startTime.hour * 60 + startTime.minute) >= (endTime.hour * 60 + endTime.minute)
+      ? 'Break start time must be before break end time.'
+      : '';
   }
 
   private getDefaultStart(): Date {
