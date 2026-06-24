@@ -78,7 +78,9 @@ table {
   background-color: var(--theme-color-secondary-middle) !important;
 }
 
-.save-row {
+.form-actions-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }

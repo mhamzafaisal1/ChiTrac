@@ -21,7 +21,6 @@
         <button mat-flat-button (click)="openAdd()"><mat-icon>add</mat-icon>Add</button>
         <button mat-flat-button [disabled]="!canEditOrDelete" (click)="openEdit()"><mat-icon>edit</mat-icon>Edit</button>
         <button mat-flat-button [disabled]="!canEditOrDelete" (click)="deleteShift()"><mat-icon>delete</mat-icon>Delete</button>
-        <button mat-stroked-button *ngIf="showEditor" (click)="closeEditor()">Close form</button>
       </div>
 
       <div class="shift-table-region">
@@ -61,7 +60,8 @@
       class="shift-crud-host"
       [editorMode]="editorMode"
       [initialShift]="editorShift"
-      (saved)="onShiftSaved()">
+      (saved)="onShiftSaved()"
+      (canceled)="closeEditor()">
     </app-shift-crud>
   </section>
 </div>

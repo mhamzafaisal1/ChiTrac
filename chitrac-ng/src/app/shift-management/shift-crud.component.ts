@@ -64,8 +64,10 @@ export class ShiftCrudComponent {
   editorMode = input<'add' | 'edit'>('add');
   initialShift = input<ShiftDocument | null>(null);
   saved = output<void>();
+  canceled = output<void>();
 
   private editingId: string | undefined;
+  private pristineState = '';
 
   readonly dayOptions = [
     { label: 'Mon', value: 1 },
@@ -178,6 +180,22 @@ export class ShiftCrudComponent {
     this.selection.clear();
   }
 
+  cancel(): void {
+    if (!this.isPristine() && !confirm('Discard unsaved shift changes?')) {
+      return;
+    }
+
+    if (this.editorMode() === 'add') {
+      this.resetForm();
+    } else {
+      const doc = this.initialShift();
+      if (doc) {
+        this.applyShiftDocument(doc);
+      }
+    }
+    this.canceled.emit();
+  }
+
   saveShift(): void {
     const shiftValidation = this.validateShiftTimes();
     if (shiftValidation) {
@@ -216,6 +234,29 @@ export class ShiftCrudComponent {
 
   selectBreakRow(row: EditableBreak): void {
     this.selection.toggle(row);
+  }
+
+  private isPristine(): boolean {
+    return this.getFormState() === this.pristineState;
+  }
+
+  private capturePristineState(): void {
+    this.pristineState = this.getFormState();
+  }
+
+  private getFormState(): string {
+    return JSON.stringify({
+      editingId: this.editingId ?? null,
+      shiftName: this.shiftName,
+      shiftActive: this.shiftActive,
+      selectedDays: [...this.selectedDays].sort((a, b) => a - b),
+      shiftStart: toTimeValue(this.shiftStartDate),
+      shiftEnd: toTimeValue(this.shiftEndDate),
+      breaks: this.breaks.map((breakValue) => ({
+        startTime: breakValue.startTime,
+        endTime: breakValue.endTime,
+      })),
+    });
   }
 
   private validateShiftTimes(): string | null {
@@ -330,6 +371,7 @@ export class ShiftCrudComponent {
     this.shiftEndDate = this.createDate(16, 0);
     this.breaks = [];
     this.selection.clear();
+    this.capturePristineState();
   }
 
   private applyShiftDocument(doc: ShiftDocument): void {
@@ -350,5 +392,6 @@ export class ShiftCrudComponent {
       }))
     );
     this.selection.clear();
+    this.capturePristineState();
   }
 }
