@@ -200,6 +200,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
 
     return {
       title: 'Item Totals by Type',
+      showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',

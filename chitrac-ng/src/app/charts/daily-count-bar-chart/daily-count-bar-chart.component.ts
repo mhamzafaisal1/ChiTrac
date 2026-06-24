@@ -221,6 +221,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
 
     return {
       title: 'Daily Count Totals',
+      showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'vertical',

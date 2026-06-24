@@ -226,6 +226,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
 
     return {
       title: 'Efficiency % by Machine Group',
+      showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',

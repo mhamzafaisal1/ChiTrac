@@ -232,6 +232,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
 
     return {
       title: 'Top Operators by Efficiency',
+      showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',

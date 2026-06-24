@@ -214,6 +214,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
 
     return {
       title: 'Ranked OEE% by Machine',
+      showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',  // horizontal bars: machines on Y, OEE % on X
