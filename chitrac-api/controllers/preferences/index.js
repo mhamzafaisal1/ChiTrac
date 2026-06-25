@@ -220,12 +220,13 @@ function constructor(server) {
       const preferences = systemPreferencesSchema.utils.normalizePreferences(
         systemPreferencesSchema.utils.buildDefaultPreferences(config),
         existing,
-        config
+        config,
+        { preserveExistingSystemName: false }
       );
       const { _id, ...updates } = preferences;
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
-        { $set: updates, $setOnInsert: { _id } },
+        { $set: updates, $setOnInsert: { _id }, $unset: { systemName: '' } },
         { upsert: true }
       );
       const saved = await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID });
