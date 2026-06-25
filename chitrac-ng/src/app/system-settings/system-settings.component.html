@@ -39,7 +39,7 @@
         </div>
 
         <div class="metadata" *ngIf="preferences">
-          <span>Last updated: {{ preferences.updatedAt ? (preferences.updatedAt | date:'medium') : 'Not available' }}</span>
+          <span>Last updated: {{ preferences.timestamps?.update ? (preferences.timestamps?.update | date:'medium') : 'Not available' }}</span>
         </div>
 
         <mat-card-actions align="end">

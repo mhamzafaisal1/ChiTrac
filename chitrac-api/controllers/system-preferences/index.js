@@ -82,7 +82,11 @@ function constructor(server) {
       const { _id, ...updates } = preferences;
       await collection.updateOne(
         { _id: SINGLETON_ID },
-        { $set: updates, $setOnInsert: { _id } },
+        {
+          $set: updates,
+          $setOnInsert: { _id },
+          $unset: { createdAt: '', updatedAt: '' }
+        },
         { upsert: true }
       );
       const savedPreferences = await collection.findOne({ _id: SINGLETON_ID });
@@ -105,7 +109,11 @@ function constructor(server) {
       const { _id, ...updates } = preferences;
       await collection.updateOne(
         { _id: SINGLETON_ID },
-        { $set: updates, $setOnInsert: { _id } },
+        {
+          $set: updates,
+          $setOnInsert: { _id },
+          $unset: { createdAt: '', updatedAt: '' }
+        },
         { upsert: true }
       );
       const savedPreferences = await collection.findOne({ _id: SINGLETON_ID });

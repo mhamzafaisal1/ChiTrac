@@ -3917,6 +3917,16 @@ function constructor(server) {
     }
   }
 
+  async function getNextShiftIntegerId(db) {
+    const latest = await db
+      .collection(config.shiftCollectionName)
+      .find({ id: { $type: "number" } })
+      .sort({ id: -1 })
+      .limit(1)
+      .next();
+    return Number.isInteger(latest?.id) && latest.id >= 1 ? latest.id + 1 : 1;
+  }
+
   function normalizeShiftIdForApi(raw) {
     if (raw == null) {
       return "";
@@ -4025,6 +4035,7 @@ function constructor(server) {
       const shiftTimeMs = (em - sm) * 60 * 1000;
 
       const doc = {
+        id: await getNextShiftIntegerId(db),
         active: body.active !== false,
         ...(body.name != null && String(body.name).trim() !== ""
           ? { name: String(body.name).trim() }
@@ -4107,6 +4118,9 @@ function constructor(server) {
 
       const doc = {
         ...existing,
+        id: Number.isInteger(existing.id)
+          ? existing.id
+          : await getNextShiftIntegerId(db),
         active: body.active !== false,
         name: body.name !== undefined ? body.name : existing.name,
         timestamps: mergedTimestamps,

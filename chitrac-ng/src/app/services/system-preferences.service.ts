@@ -14,8 +14,11 @@ export interface SystemPreferences {
     daysOfEmployment: number;
     handicapFactor: number;
   }>;
-  createdAt?: string;
-  updatedAt?: string;
+  timestamps?: {
+    create?: string | Date;
+    active?: string | Date;
+    update?: string | Date;
+  };
 }
 
 export interface SystemPreferencesUpdate {

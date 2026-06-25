@@ -1,5 +1,8 @@
 const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const ajv = new Ajv();
+addFormats(ajv);
+const timestampsSchema = require('./timestampsSchema');
 
 const DEFAULT_USER_PERMISSION_LEVELS = [
   'Root',
@@ -55,7 +58,7 @@ function buildPercentBreakpointSchema(descriptionPrefix) {
 
 const schema = {
   type: 'object',
-  required: ['userPermissionsLevels'],
+  required: ['userPermissionsLevels', 'timestamps'],
   properties: {
     _id: {
       type: 'string',
@@ -119,11 +122,9 @@ const schema = {
       },
       description: 'Operator pace standard proration rules based on days of employment'
     },
-    createdAt: {
-      type: 'string'
-    },
-    updatedAt: {
-      type: 'string'
+    timestamps: {
+      ...timestampsSchema.schema,
+      description: 'Timestamps schema validated timestamps object for this system preferences document.'
     }
   },
   additionalProperties: false
@@ -131,8 +132,36 @@ const schema = {
 
 const validate = ajv.compile(schema);
 
+function toDate(value, fallback = new Date()) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
+function serializeDatesForValidation(value) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    return value.map(serializeDatesForValidation);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, serializeDatesForValidation(entry)])
+    );
+  }
+  return value;
+}
+
 function buildDefaultPreferences(config = {}) {
-  const now = new Date().toISOString();
+  const now = new Date();
   return {
     _id: 'system-preferences',
     systemName: config.systemName || 'ChiTrac',
@@ -147,8 +176,11 @@ function buildDefaultPreferences(config = {}) {
     userPermissionsLevels: Array.isArray(config.userPermissionsLevels)
       ? [...config.userPermissionsLevels]
       : [...DEFAULT_USER_PERMISSION_LEVELS],
-    createdAt: now,
-    updatedAt: now
+    timestamps: {
+      create: now,
+      active: now,
+      update: now
+    }
   };
 }
 
@@ -198,7 +230,7 @@ function validatePercentBreakpointOrder(preferences, fieldName = 'percentBreakpo
 }
 
 function normalizePreferences(input = {}, existing = {}, config = {}) {
-  const now = new Date().toISOString();
+  const now = new Date();
   const defaults = buildDefaultPreferences(config);
   const userPermissionsLevels = Array.isArray(input.userPermissionsLevels)
     ? input.userPermissionsLevels.map(label => `${label}`.trim())
@@ -219,6 +251,16 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     input.userSessionExpirationHours !== undefined
       ? Number(input.userSessionExpirationHours)
       : existing.userSessionExpirationHours ?? defaults.userSessionExpirationHours;
+  const existingTimestamps = existing.timestamps || {};
+  const defaultTimestamps = defaults.timestamps;
+  const createdTimestamp = toDate(
+    existingTimestamps.create || existing.createdAt || input.timestamps?.create,
+    defaultTimestamps.create
+  );
+  const activeTimestamp = toDate(
+    existingTimestamps.active || input.timestamps?.active,
+    createdTimestamp
+  );
 
   const preferences = {
     _id: 'system-preferences',
@@ -230,8 +272,11 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     oePercentBreakpoints,
     userSessionExpirationHours,
     userPermissionsLevels,
-    createdAt: existing.createdAt || defaults.createdAt,
-    updatedAt: now
+    timestamps: {
+      create: createdTimestamp,
+      active: activeTimestamp,
+      update: now
+    }
   };
 
   if (typeof input.httpsEnabled === 'boolean') {
@@ -247,7 +292,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
     preferences.operatorPaceHandicap = operatorPaceHandicap;
   }
 
-  const valid = validate(preferences);
+  const valid = validate(serializeDatesForValidation(preferences));
   if (!valid) {
     const error = new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
     error.status = 400;
