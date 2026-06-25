@@ -140,11 +140,15 @@
   text-align: left;
 
   mat-icon {
-    width: 42px;
-    height: 42px;
-    margin-right: 0.8rem;
+    flex: 0 0 52px;
+    width: 52px;
+    height: 52px;
+    margin-right: 1rem;
     font-size: 42px;
+    line-height: 52px;
     color: #7dd3fc;
+    overflow: visible;
+    text-align: center;
   }
 
   span {

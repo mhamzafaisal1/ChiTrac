@@ -445,7 +445,7 @@ export class ComparisonDashboardComponent implements OnInit {
         format: 'percent'
       },
       {
-        label: 'OEE%',
+        label: this.overallEfficiencyLabel(),
         value: this.percentValue(performance.oee),
         rawValue: this.percentNumber(performance.oee),
         format: 'percent'
@@ -521,7 +521,7 @@ export class ComparisonDashboardComponent implements OnInit {
         { key: 'availability', label: 'Availability%', max: 100 },
         { key: 'efficiency', label: 'Efficiency%', max: 100 },
         { key: 'throughput', label: 'Throughput%', max: 100 },
-        { key: 'oee', label: 'OEE%/OOE%', max: 100 }
+        { key: 'oee', label: this.overallEfficiencyLabel(), max: 100 }
       ],
       series: columns.map((column, index) => {
         const performance = column.rawData?.metrics?.performance || {};
@@ -542,6 +542,10 @@ export class ComparisonDashboardComponent implements OnInit {
 
   private totalCountValue(row: any | null): number {
     return Number(row?.metrics?.output?.totalCount || 0);
+  }
+
+  private overallEfficiencyLabel(): 'OEE%' | 'OOE%' {
+    return this.entityType === 'operators' ? 'OOE%' : 'OEE%';
   }
 
   private percentNumber(metric: any): number {
