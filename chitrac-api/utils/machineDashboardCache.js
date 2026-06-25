@@ -300,9 +300,7 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
   }).catch(() => []);
 
   return {
-    data: await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end, {
-      useShiftElapsed: false,
-    }),
+    data: await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end),
     source: "totals-daily",
     found: true,
     dateStr,
