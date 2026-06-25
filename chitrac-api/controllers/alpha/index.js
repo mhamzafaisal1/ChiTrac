@@ -3883,6 +3883,28 @@ function constructor(server) {
     return errs;
   }
 
+  function validateMaintenanceShiftBody(body) {
+    const errs = [];
+    const sm = shiftTimeToMinutes(body.startTime);
+    const em = shiftTimeToMinutes(body.endTime);
+    if (sm == null || em == null) {
+      errs.push("Invalid maintenance shift startTime or endTime");
+    } else if (sm >= em) {
+      errs.push("Maintenance shift start must be before maintenance shift end");
+    }
+    if (!Array.isArray(body.activeDays) || body.activeDays.length === 0) {
+      errs.push("activeDays is required and must include at least one day");
+    } else {
+      const bad = body.activeDays.some(
+        (d) => typeof d !== "number" || d < 1 || d > 7
+      );
+      if (bad) {
+        errs.push("activeDays must be integers 1 (Mon) through 7 (Sun)");
+      }
+    }
+    return errs;
+  }
+
   function shiftsConflictOnSharedDay(a, b) {
     const daysA = Array.isArray(a.activeDays) ? a.activeDays : [];
     const daysB = Array.isArray(b.activeDays) ? b.activeDays : [];
@@ -3900,12 +3922,17 @@ function constructor(server) {
     return halfOpenIntervalsOverlap(sa, ea, sb, eb);
   }
 
-  async function assertNoActiveShiftOverlap(db, candidate, excludeObjectId) {
+  async function assertNoActiveShiftOverlap(
+    db,
+    candidate,
+    excludeObjectId,
+    collectionName = config.shiftCollectionName
+  ) {
     const query = { active: true };
     if (excludeObjectId) {
       query._id = { $ne: excludeObjectId };
     }
-    const others = await db.collection(config.shiftCollectionName).find(query).toArray();
+    const others = await db.collection(collectionName).find(query).toArray();
     for (const o of others) {
       if (shiftsConflictOnSharedDay(candidate, o)) {
         const err = new Error(
@@ -3917,9 +3944,28 @@ function constructor(server) {
     }
   }
 
-  async function getNextShiftIntegerId(db) {
+  async function assertNoActiveShiftOverlapAcrossCollections(
+    db,
+    candidate,
+    exclusions = {}
+  ) {
+    await assertNoActiveShiftOverlap(
+      db,
+      candidate,
+      exclusions.workShiftId,
+      config.shiftCollectionName
+    );
+    await assertNoActiveShiftOverlap(
+      db,
+      candidate,
+      exclusions.maintenanceShiftId,
+      config.maintenanceShiftCollectionName
+    );
+  }
+
+  async function getNextShiftIntegerId(db, collectionName = config.shiftCollectionName) {
     const latest = await db
-      .collection(config.shiftCollectionName)
+      .collection(collectionName)
       .find({ id: { $type: "number" } })
       .sort({ id: -1 })
       .limit(1)
@@ -3995,18 +4041,87 @@ function constructor(server) {
     return out;
   }
 
+  function buildShiftLikeDocument(body, id, now, includeBreaks = true) {
+    const sm = shiftTimeToMinutes(body.startTime);
+    const em = shiftTimeToMinutes(body.endTime);
+    const shiftTimeMs = (em - sm) * 60 * 1000;
+    return {
+      id,
+      active: body.active !== false,
+      ...(body.name != null && String(body.name).trim() !== ""
+        ? { name: String(body.name).trim() }
+        : {}),
+      timestamps: body.timestamps && body.timestamps.create
+        ? { ...body.timestamps, update: now }
+        : {
+            create: now,
+            active: now,
+            update: now,
+            ...(body.timestamps && body.timestamps.start
+              ? { start: body.timestamps.start }
+              : {}),
+            ...(body.timestamps && body.timestamps.end
+              ? { end: body.timestamps.end }
+              : {}),
+          },
+      shiftTime: shiftTimeMs,
+      ...(includeBreaks ? { breaks: Array.isArray(body.breaks) ? body.breaks : [] } : {}),
+      startTime: body.startTime,
+      endTime: body.endTime,
+      activeDays: [...body.activeDays].sort((a, b) => a - b),
+    };
+  }
+
+  function mergeShiftLikeUpdate(existing, body, now, includeBreaks = true) {
+    const sm = shiftTimeToMinutes(body.startTime);
+    const em = shiftTimeToMinutes(body.endTime);
+    const shiftTimeMs = (em - sm) * 60 * 1000;
+    const timestampsIn = body.timestamps || {};
+    const mergedTimestamps = {
+      create: existing.timestamps?.create || now,
+      active: existing.timestamps?.active || now,
+      update: now,
+      ...(timestampsIn.start != null ? { start: timestampsIn.start } : {}),
+      ...(timestampsIn.end != null ? { end: timestampsIn.end } : {}),
+      ...(existing.timestamps?.inactive
+        ? { inactive: existing.timestamps.inactive }
+        : {}),
+    };
+
+    const doc = {
+      ...existing,
+      active: body.active !== false,
+      name: body.name !== undefined ? body.name : existing.name,
+      timestamps: mergedTimestamps,
+      shiftTime: shiftTimeMs,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      activeDays: [...body.activeDays].sort((a, b) => a - b),
+    };
+    if (includeBreaks) {
+      doc.breaks = Array.isArray(body.breaks) ? body.breaks : [];
+    } else {
+      delete doc.breaks;
+    }
+    return doc;
+  }
+
+  async function listShiftLikeDocs(db, collectionName) {
+    const shifts = await db.collection(collectionName).find({}).toArray();
+    shifts.sort((a, b) => {
+      const am =
+        (a.startTime?.hour ?? 0) * 60 + (a.startTime?.minute ?? 0);
+      const bm =
+        (b.startTime?.hour ?? 0) * 60 + (b.startTime?.minute ?? 0);
+      return am - bm;
+    });
+    return shifts.map((s) => normalizeShiftForClient(s));
+  }
+
   router.get("/shifts", async (req, res) => {
     try {
-      const shifts = await db.collection(config.shiftCollectionName).find({}).toArray();
-      shifts.sort((a, b) => {
-        const am =
-          (a.startTime?.hour ?? 0) * 60 + (a.startTime?.minute ?? 0);
-        const bm =
-          (b.startTime?.hour ?? 0) * 60 + (b.startTime?.minute ?? 0);
-        return am - bm;
-      });
       res.json({
-        shifts: shifts.map((s) => normalizeShiftForClient(s)),
+        shifts: await listShiftLikeDocs(db, config.shiftCollectionName),
       });
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
@@ -4026,39 +4141,16 @@ function constructor(server) {
       }
 
       if (body.active !== false) {
-        await assertNoActiveShiftOverlap(db, body, null);
+        await assertNoActiveShiftOverlapAcrossCollections(db, body, {});
       }
 
       const now = new Date().toISOString();
-      const sm = shiftTimeToMinutes(body.startTime);
-      const em = shiftTimeToMinutes(body.endTime);
-      const shiftTimeMs = (em - sm) * 60 * 1000;
-
-      const doc = {
-        id: await getNextShiftIntegerId(db),
-        active: body.active !== false,
-        ...(body.name != null && String(body.name).trim() !== ""
-          ? { name: String(body.name).trim() }
-          : {}),
-        timestamps: body.timestamps && body.timestamps.create
-          ? { ...body.timestamps, update: now }
-          : {
-              create: now,
-              active: now,
-              update: now,
-              ...(body.timestamps && body.timestamps.start
-                ? { start: body.timestamps.start }
-                : {}),
-              ...(body.timestamps && body.timestamps.end
-                ? { end: body.timestamps.end }
-                : {}),
-            },
-        shiftTime: shiftTimeMs,
-        breaks: Array.isArray(body.breaks) ? body.breaks : [],
-        startTime: body.startTime,
-        endTime: body.endTime,
-        activeDays: [...body.activeDays].sort((a, b) => a - b),
-      };
+      const doc = buildShiftLikeDocument(
+        body,
+        await getNextShiftIntegerId(db),
+        now,
+        true
+      );
 
       const result = await db.collection(config.shiftCollectionName).insertOne(doc);
       const saved = await db.collection(config.shiftCollectionName).findOne({ _id: result.insertedId });
@@ -4096,40 +4188,16 @@ function constructor(server) {
       }
 
       if (body.active !== false) {
-        await assertNoActiveShiftOverlap(db, body, oid);
+        await assertNoActiveShiftOverlapAcrossCollections(db, body, {
+          workShiftId: oid,
+        });
       }
 
       const now = new Date().toISOString();
-      const sm = shiftTimeToMinutes(body.startTime);
-      const em = shiftTimeToMinutes(body.endTime);
-      const shiftTimeMs = (em - sm) * 60 * 1000;
-
-      const timestampsIn = body.timestamps || {};
-      const mergedTimestamps = {
-        create: existing.timestamps?.create || now,
-        active: existing.timestamps?.active || now,
-        update: now,
-        ...(timestampsIn.start != null ? { start: timestampsIn.start } : {}),
-        ...(timestampsIn.end != null ? { end: timestampsIn.end } : {}),
-        ...(existing.timestamps?.inactive
-          ? { inactive: existing.timestamps.inactive }
-          : {}),
-      };
-
-      const doc = {
-        ...existing,
-        id: Number.isInteger(existing.id)
-          ? existing.id
-          : await getNextShiftIntegerId(db),
-        active: body.active !== false,
-        name: body.name !== undefined ? body.name : existing.name,
-        timestamps: mergedTimestamps,
-        shiftTime: shiftTimeMs,
-        breaks: Array.isArray(body.breaks) ? body.breaks : [],
-        startTime: body.startTime,
-        endTime: body.endTime,
-        activeDays: [...body.activeDays].sort((a, b) => a - b),
-      };
+      const doc = mergeShiftLikeUpdate(existing, body, now, true);
+      doc.id = Number.isInteger(existing.id)
+        ? existing.id
+        : await getNextShiftIntegerId(db);
 
       await db.collection(config.shiftCollectionName).replaceOne({ _id: oid }, doc);
       const saved = await db.collection(config.shiftCollectionName).findOne({ _id: oid });
@@ -4159,6 +4227,118 @@ function constructor(server) {
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
       res.status(500).json({ error: "Failed to delete shift" });
+    }
+  });
+
+  router.get("/maintenance-shifts", async (req, res) => {
+    try {
+      res.json({
+        shifts: await listShiftLikeDocs(db, config.maintenanceShiftCollectionName),
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to list maintenance shifts" });
+    }
+  });
+
+  router.post("/maintenance-shifts", async (req, res) => {
+    try {
+      const body = req.body || {};
+      const validationErrs = validateMaintenanceShiftBody(body);
+      if (validationErrs.length) {
+        return res.status(400).json({
+          error: validationErrs[0],
+          errors: validationErrs,
+        });
+      }
+
+      if (body.active !== false) {
+        await assertNoActiveShiftOverlapAcrossCollections(db, body, {});
+      }
+
+      const now = new Date().toISOString();
+      const doc = buildShiftLikeDocument(
+        body,
+        await getNextShiftIntegerId(db, config.maintenanceShiftCollectionName),
+        now,
+        false
+      );
+
+      const result = await db.collection(config.maintenanceShiftCollectionName).insertOne(doc);
+      const saved = await db.collection(config.maintenanceShiftCollectionName).findOne({ _id: result.insertedId });
+      res.status(201).json(normalizeShiftForClient(saved));
+    } catch (err) {
+      if (err.status === 409) {
+        return res.status(409).json({ error: err.message });
+      }
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to create maintenance shift" });
+    }
+  });
+
+  router.put("/maintenance-shifts/:id", async (req, res) => {
+    try {
+      let oid;
+      try {
+        oid = new ObjectId(String(req.params.id));
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid maintenance shift id" });
+      }
+
+      const existing = await db.collection(config.maintenanceShiftCollectionName).findOne({ _id: oid });
+      if (!existing) {
+        return res.status(404).json({ error: "Maintenance shift not found" });
+      }
+
+      const body = req.body || {};
+      const validationErrs = validateMaintenanceShiftBody(body);
+      if (validationErrs.length) {
+        return res.status(400).json({
+          error: validationErrs[0],
+          errors: validationErrs,
+        });
+      }
+
+      if (body.active !== false) {
+        await assertNoActiveShiftOverlapAcrossCollections(db, body, {
+          maintenanceShiftId: oid,
+        });
+      }
+
+      const now = new Date().toISOString();
+      const doc = mergeShiftLikeUpdate(existing, body, now, false);
+      doc.id = Number.isInteger(existing.id)
+        ? existing.id
+        : await getNextShiftIntegerId(db, config.maintenanceShiftCollectionName);
+
+      await db.collection(config.maintenanceShiftCollectionName).replaceOne({ _id: oid }, doc);
+      const saved = await db.collection(config.maintenanceShiftCollectionName).findOne({ _id: oid });
+      res.json(normalizeShiftForClient(saved));
+    } catch (err) {
+      if (err.status === 409) {
+        return res.status(409).json({ error: err.message });
+      }
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to update maintenance shift" });
+    }
+  });
+
+  router.delete("/maintenance-shifts/:id", async (req, res) => {
+    try {
+      let oid;
+      try {
+        oid = new ObjectId(String(req.params.id));
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid maintenance shift id" });
+      }
+      const result = await db.collection(config.maintenanceShiftCollectionName).deleteOne({ _id: oid });
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ error: "Maintenance shift not found" });
+      }
+      res.status(204).send();
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to delete maintenance shift" });
     }
   });
 

@@ -25,12 +25,12 @@
       <a mat-list-item (click)="openMenu('reports')">
         <mat-icon>bar_chart</mat-icon><span class="menu-item">Reports</span>
       </a>
-      <a mat-list-item *ngIf="user.username && canAccess(permissionLevels.settings)" (click)="openMenu('settings')">
+      <a mat-list-item *ngIf="user?.username && canAccess(permissionLevels.settings)" (click)="openMenu('settings')">
         <mat-icon>settings</mat-icon><span class="menu-item">Settings</span>
       </a>
       <!-- Login now handled by popup in toolbar -->
-      <a mat-list-item *ngIf="user.username" (click)="logout()">
-        <mat-icon>logout</mat-icon><span class="menu-item">Log Out as {{ user.username }}</span>
+      <a mat-list-item *ngIf="user?.username" (click)="logout()">
+        <mat-icon>logout</mat-icon><span class="menu-item">Log Out as {{ user?.username }}</span>
       </a>
     </mat-nav-list>
 
@@ -161,7 +161,7 @@
       <a mat-list-item *ngIf="canAccess(permissionLevels.serverLogs)" routerLink="/ng/settings/server-logs" (click)="closeMenu()">
         <mat-icon>description</mat-icon><span>Server Logs</span>
       </a>
-      <a mat-list-item *ngIf="user.username === 'root'" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
+      <a mat-list-item *ngIf="user?.username === 'root'" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
         <mat-icon>build_circle</mat-icon><span>Utilities</span>
       </a>
       <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
@@ -169,6 +169,9 @@
       </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/shifts" (click)="closeMenu()">
         <mat-icon>punch_clock</mat-icon><span>Shifts</span>
+      </a>
+      <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/maintenance-shifts" (click)="closeMenu()">
+        <mat-icon>engineering</mat-icon><span>Maintenance Shifts</span>
       </a>
       <a mat-list-item *ngIf="false" href="#">
         <mat-icon>storefront</mat-icon><span>Accounts</span>
@@ -217,11 +220,11 @@
 
 
         <!-- Login Icon and Popup -->
-        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn" [matMenuTriggerFor]="loginMenu" *ngIf="!user.username">
+        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn" [matMenuTriggerFor]="loginMenu" *ngIf="!user?.username">
           <mat-icon>login</mat-icon>
         </button>
 
-        <button mat-icon-button class="logout-btn" *ngIf="user.username" (click)="logout()">
+        <button mat-icon-button class="logout-btn" *ngIf="user?.username" (click)="logout()">
           <mat-icon>logout</mat-icon>
         </button>
 

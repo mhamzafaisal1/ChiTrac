@@ -1,0 +1,40 @@
+<div class="shift-crud-page">
+  <div class="top-form-row">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Maintenance Shift Name</mat-label>
+      <input matInput [(ngModel)]="shiftName" placeholder="Weekly Maintenance" />
+    </mat-form-field>
+    <button mat-stroked-button [class.active-flag]="shiftActive" (click)="shiftActive = !shiftActive">
+      {{ shiftActive ? 'Active' : 'Inactive' }}
+    </button>
+  </div>
+
+  <section class="section">
+    <h3>Days of Week</h3>
+    <mat-button-toggle-group multiple [(ngModel)]="selectedDays">
+      <mat-button-toggle *ngFor="let day of dayOptions" [value]="day.value">{{ day.label }}</mat-button-toggle>
+    </mat-button-toggle-group>
+  </section>
+
+  <section class="section shift-time-row">
+    <mat-form-field>
+      <mat-label>Maintenance Start</mat-label>
+      <input matInput [matTimepicker]="shiftStartPicker" [(ngModel)]="shiftStartDate" />
+      <mat-timepicker-toggle matSuffix [for]="shiftStartPicker"></mat-timepicker-toggle>
+      <mat-timepicker #shiftStartPicker></mat-timepicker>
+    </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Maintenance End</mat-label>
+      <input matInput [matTimepicker]="shiftEndPicker" [(ngModel)]="shiftEndDate" />
+      <mat-timepicker-toggle matSuffix [for]="shiftEndPicker"></mat-timepicker-toggle>
+      <mat-timepicker #shiftEndPicker></mat-timepicker>
+    </mat-form-field>
+  </section>
+
+  <div class="save-row">
+    <button mat-flat-button color="primary" [disabled]="isSaving" (click)="saveShift()">
+      {{ isSaving ? 'Saving...' : 'Save Maintenance Shift' }}
+    </button>
+  </div>
+</div>
