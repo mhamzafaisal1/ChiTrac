@@ -1,16 +1,24 @@
 <h2 mat-dialog-title>{{ actionLabel }} Break</h2>
 
 <mat-dialog-content class="dialog-content">
-  <mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
     <mat-label>Break Start</mat-label>
-    <input matInput [matTimepicker]="breakStartPicker" [(ngModel)]="breakStart" />
+    <input
+      matInput
+      [matTimepicker]="breakStartPicker"
+      [ngModel]="breakStart"
+      (ngModelChange)="onBreakStartChange($event)" />
     <mat-timepicker-toggle matSuffix [for]="breakStartPicker"></mat-timepicker-toggle>
     <mat-timepicker #breakStartPicker></mat-timepicker>
   </mat-form-field>
 
-  <mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
     <mat-label>Break End</mat-label>
-    <input matInput [matTimepicker]="breakEndPicker" [(ngModel)]="breakEnd" />
+    <input
+      matInput
+      [matTimepicker]="breakEndPicker"
+      [ngModel]="breakEnd"
+      (ngModelChange)="onBreakEndChange($event)" />
     <mat-timepicker-toggle matSuffix [for]="breakEndPicker"></mat-timepicker-toggle>
     <mat-timepicker #breakEndPicker></mat-timepicker>
   </mat-form-field>
