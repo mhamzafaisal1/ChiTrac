@@ -6,11 +6,13 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require("mongodb");
 const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
+const { DateTime } = require("luxon");
 const config = require("../../modules/config");
 const { loadActiveShifts, computeShiftElapsedMs, getShiftDayHourEnvelope } = require("../../utils/shiftElapsed");
 const {
   buildMachineSummaryFromDailyCache,
   buildMachineSummaryFromShiftCache,
+  getPlantDateStr,
 } = require("../../utils/machineDashboardCache");
 const {
   getMachinesSummaryRealTime,
@@ -36,6 +38,56 @@ function constructor(server) {
 	const machineValidator = require('../../middleware/machineValidator')(server);
 
 	/*** Service consumption functions */
+  function resolveDashboardDetailRange(req) {
+    const hasStart = typeof req.query.start !== "undefined" || typeof req.query.startTime !== "undefined";
+    const hasEnd = typeof req.query.end !== "undefined" || typeof req.query.endTime !== "undefined";
+
+    if (hasStart || hasEnd || req.query.timeframe) {
+      const parsed = parseAndValidateQueryParams(req);
+      return {
+        start: parsed.start,
+        end: parsed.end,
+        serial: parsed.serial,
+        dateStr: getPlantDateStr(parsed.start),
+        hasExplicitRange: true,
+      };
+    }
+
+    const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+    return {
+      start: now.startOf("day").toJSDate(),
+      end: now.toJSDate(),
+      serial:
+        typeof req.query.serial !== "undefined" || typeof req.query.machineSerial !== "undefined"
+          ? Number.parseInt(req.query.serial || req.query.machineSerial, 10)
+          : null,
+      dateStr: now.toISODate(),
+      hasExplicitRange: false,
+    };
+  }
+
+  function hourEnvelopeForRange(start, end) {
+    const startDt = DateTime.fromJSDate(new Date(start), { zone: SYSTEM_TIMEZONE });
+    const endDt = DateTime.fromJSDate(new Date(end), { zone: SYSTEM_TIMEZONE });
+    if (!startDt.isValid || !endDt.isValid || endDt <= startDt) return null;
+
+    const effectiveEnd = endDt.minus({ milliseconds: 1 });
+    if (startDt.toISODate() !== effectiveEnd.toISODate()) return null;
+
+    return {
+      minHour: startDt.hour,
+      maxHour: Math.max(startDt.hour, effectiveEnd.hour),
+    };
+  }
+
+  function intersectHourEnvelopes(a, b) {
+    if (!a) return b || null;
+    if (!b) return a || null;
+    const minHour = Math.max(a.minHour, b.minHour);
+    const maxHour = Math.min(a.maxHour, b.maxHour);
+    return maxHour >= minHour ? { minHour, maxHour } : null;
+  }
+
 	async function getMachineXML(req, res, next) {
 		try {
 			res.set('Content-Type', 'text/xml');
@@ -332,31 +384,63 @@ function constructor(server) {
     "/machine/analytics/machine-dashboard-daily-cached",
     async (req, res) => {
     try {
-      const serialParam =
-        typeof req.query.serial !== "undefined"
-          ? Number.parseInt(req.query.serial, 10)
-          : null;
-      const machineSerialFilter = Number.isFinite(serialParam)
-        ? serialParam
-        : null;
+      const {
+        start: requestStart,
+        end: requestEnd,
+        serial,
+        dateStr,
+        hasExplicitRange,
+      } = resolveDashboardDetailRange(req);
+      const machineSerialFilter = Number.isFinite(serial) ? serial : null;
 
-      const today = new Date();
-      const wallClockNow = new Date(
-        today.toLocaleString("en-US", { timeZone: SYSTEM_TIMEZONE })
-      );
-      const dateStr = wallClockNow.toISOString().split("T")[0];
+      let shiftDoc = null;
+      let shiftOid = null;
+      if (req.query.shiftId) {
+        try {
+          shiftOid = new ObjectId(String(req.query.shiftId));
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid shiftId" });
+        }
+        shiftDoc = await db.collection(config.shiftCollectionName).findOne({ _id: shiftOid });
+        if (!shiftDoc) {
+          return res.status(404).json({ error: "Shift not found" });
+        }
+      }
+
+      const wallClockNow = DateTime.now().setZone(SYSTEM_TIMEZONE).toJSDate();
 
       const cacheCollection = db.collection(config.totalsDailyCollectionName);
+      const machineCollection = shiftOid
+        ? db.collection("totals-shift")
+        : cacheCollection;
       const machineFilter = {
         entityType: "machine",
         date: dateStr,
       };
+      if (shiftOid) {
+        machineFilter.shiftId = String(shiftOid);
+      }
 
       if (machineSerialFilter !== null) {
         machineFilter.machineSerial = machineSerialFilter;
       }
 
-      const machineTotals = await cacheCollection.find(machineFilter).toArray();
+      let machineTotalsSource = shiftOid ? "totals-shift" : "totals-daily";
+      let machineTotals = await machineCollection.find(machineFilter).toArray();
+      if (machineTotals.length === 0 && shiftOid) {
+        logger.warn(
+          `[machineSessions] No shift machine totals found in totals-shift for ${dateStr} shift ${shiftOid}; falling back to daily machine totals`
+        );
+        const dailyMachineFilter = {
+          entityType: "machine",
+          date: dateStr,
+        };
+        if (machineSerialFilter !== null) {
+          dailyMachineFilter.machineSerial = machineSerialFilter;
+        }
+        machineTotalsSource = "totals-daily";
+        machineTotals = await cacheCollection.find(dailyMachineFilter).toArray();
+      }
 
       if (machineTotals.length === 0) {
         logger.warn(
@@ -386,18 +470,39 @@ function constructor(server) {
 
       const activeShiftsDashboard = await loadActiveShifts(db).catch(() => []);
       const shiftHourEnvelope = getShiftDayHourEnvelope(
-        activeShiftsDashboard,
-        wallClockNow
+        shiftDoc ? [shiftDoc] : activeShiftsDashboard,
+        requestStart
       );
+      const requestHourEnvelope = hasExplicitRange
+        ? hourEnvelopeForRange(requestStart, requestEnd)
+        : null;
+      const chartHourEnvelope = intersectHourEnvelopes(
+        shiftHourEnvelope,
+        requestHourEnvelope
+      );
+      const chartHoursAreEmpty =
+        Boolean(requestHourEnvelope && shiftHourEnvelope && !chartHourEnvelope);
+      const chartHourFilter = chartHoursAreEmpty
+        ? { hour: { $gte: 1, $lte: 0 } }
+        : chartHourEnvelope
+          ? { hour: { $gte: chartHourEnvelope.minHour, $lte: chartHourEnvelope.maxHour } }
+          : {};
       const shiftElapsedCacheDashboard = new Map();
+      const detailTotalsCollection = machineTotalsSource === "totals-shift"
+        ? db.collection("totals-shift")
+        : cacheCollection;
+      const detailTotalsBaseFilter = machineTotalsSource === "totals-shift"
+        ? { shiftId: String(shiftOid) }
+        : {};
 
       const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
         await Promise.all([
-          cacheCollection
+          detailTotalsCollection
             .find({
               entityType: "machine-item",
               date: dateStr,
               machineSerial: { $in: machineSerials },
+              ...detailTotalsBaseFilter,
             })
             .toArray(),
           db
@@ -406,13 +511,15 @@ function constructor(server) {
               entityType: "machine-item",
               date: dateStr,
               machineSerial: { $in: machineSerials },
+              ...chartHourFilter,
             })
             .toArray(),
-          cacheCollection
+          detailTotalsCollection
             .find({
               entityType: "operator-machine",
               date: dateStr,
               machineSerial: { $in: machineSerials },
+              ...detailTotalsBaseFilter,
             })
             .toArray(),
           db
@@ -421,6 +528,7 @@ function constructor(server) {
               entityType: "operator-machine",
               date: dateStr,
               machineSerial: { $in: machineSerials },
+              ...chartHourFilter,
             })
             .toArray(),
           tickerSerialFilter.length
@@ -448,12 +556,16 @@ function constructor(server) {
             return null;
           }
 
-          const sessionStart = record.timeRange?.start
-            ? new Date(record.timeRange.start)
-            : new Date(`${dateStr}T00:00:00.000Z`);
-          const sessionEnd = record.timeRange?.end
-            ? new Date(record.timeRange.end)
-            : wallClockNow;
+          const sessionStart = hasExplicitRange
+            ? new Date(requestStart)
+            : record.timeRange?.start
+              ? new Date(record.timeRange.start)
+              : new Date(`${dateStr}T00:00:00.000Z`);
+          const sessionEnd = hasExplicitRange
+            ? new Date(requestEnd)
+            : record.timeRange?.end
+              ? new Date(record.timeRange.end)
+              : wallClockNow;
 
           const cacheDateForCharts =
             typeof record.date === "string" && record.date.trim()
@@ -480,14 +592,14 @@ function constructor(server) {
           const itemHourlyStack = buildItemHourlyStackFromRecords(
             machineItemHourly,
             sessionStart,
-            shiftHourEnvelope,
+            chartHourEnvelope,
             cacheDateForCharts
           );
           const operatorMachineHourly = operatorMachineHourlyBySerial.get(serial) || [];
           const operatorEfficiency = buildOperatorEfficiencyFromRecords(
             operatorMachineHourly,
             sessionStart,
-            shiftHourEnvelope,
+            chartHourEnvelope,
             cacheDateForCharts
           );
           const currentOperators = await buildCurrentOperators(db, serial);
@@ -525,6 +637,14 @@ function constructor(server) {
         `[machineSessions] Error in machine-dashboard-daily-cached route:`,
         err
       );
+      if (
+        err.message.includes("start/startTime and end/endTime are required") ||
+        err.message.includes("Invalid date string format") ||
+        err.message.includes("Start time must be before end time") ||
+        err.message.includes("Unsupported timeframe")
+      ) {
+        return res.status(400).json({ error: err.message });
+      }
       res
         .status(500)
         .json({ error: "Failed to fetch machine dashboard daily cache" });
