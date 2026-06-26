@@ -27,6 +27,8 @@ const DEFAULT_OE_PERCENT_BREAKPOINTS = {
   good: 80
 };
 
+const CURRENT_SCHEMA_VERSION = 2;
+
 function buildPercentBreakpointSchema(descriptionPrefix) {
   return {
     type: 'object',
@@ -63,6 +65,10 @@ const schema = {
     _id: {
       type: 'string',
       description: 'Stable singleton id for the system preferences document'
+    },
+    schemaVersion: {
+      type: 'number',
+      description: 'Internal schema version for system preferences migrations'
     },
     systemName: {
       type: 'string',
@@ -164,7 +170,7 @@ function buildDefaultPreferences(config = {}) {
   const now = new Date();
   return {
     _id: 'system-preferences',
-    systemName: config.systemName || 'ChiTrac',
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     defaultTheme: config.defaultTheme || 'dark',
     logLevel: config.logLevel || 'info',
     dashboardTimeframe: 'current',
@@ -229,9 +235,12 @@ function validatePercentBreakpointOrder(preferences, fieldName = 'percentBreakpo
   }
 }
 
-function normalizePreferences(input = {}, existing = {}, config = {}) {
+function normalizePreferences(input = {}, existing = {}, config = {}, options = {}) {
   const now = new Date();
   const defaults = buildDefaultPreferences(config);
+  const preserveExistingSystemName = options.preserveExistingSystemName !== false;
+  const hasInputSystemName = Object.prototype.hasOwnProperty.call(input, 'systemName');
+  const hasExistingSystemName = Object.prototype.hasOwnProperty.call(existing, 'systemName');
   const userPermissionsLevels = Array.isArray(input.userPermissionsLevels)
     ? input.userPermissionsLevels.map(label => `${label}`.trim())
     : existing.userPermissionsLevels || defaults.userPermissionsLevels;
@@ -264,7 +273,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
 
   const preferences = {
     _id: 'system-preferences',
-    systemName: input.systemName ?? existing.systemName ?? defaults.systemName,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     defaultTheme: input.defaultTheme ?? existing.defaultTheme ?? defaults.defaultTheme,
     logLevel: input.logLevel ?? existing.logLevel ?? defaults.logLevel,
     dashboardTimeframe: input.dashboardTimeframe ?? existing.dashboardTimeframe ?? defaults.dashboardTimeframe,
@@ -278,6 +287,15 @@ function normalizePreferences(input = {}, existing = {}, config = {}) {
       update: now
     }
   };
+
+  if (hasInputSystemName) {
+    const systemName = typeof input.systemName === 'string' ? input.systemName.trim() : input.systemName;
+    if (systemName) {
+      preferences.systemName = systemName;
+    }
+  } else if (preserveExistingSystemName && hasExistingSystemName) {
+    preferences.systemName = existing.systemName;
+  }
 
   if (typeof input.httpsEnabled === 'boolean') {
     preferences.httpsEnabled = input.httpsEnabled;
@@ -309,6 +327,7 @@ module.exports = {
     DEFAULT_USER_PERMISSION_LEVELS,
     DEFAULT_PERCENT_BREAKPOINTS,
     DEFAULT_OE_PERCENT_BREAKPOINTS,
+    CURRENT_SCHEMA_VERSION,
     buildDefaultPreferences,
     normalizePreferences
   }

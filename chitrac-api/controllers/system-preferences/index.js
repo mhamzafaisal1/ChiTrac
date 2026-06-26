@@ -104,7 +104,8 @@ function constructor(server) {
       const preferences = systemPreferencesSchema.utils.normalizePreferences(
         systemPreferencesSchema.utils.buildDefaultPreferences(config),
         existing,
-        config
+        config,
+        { preserveExistingSystemName: false }
       );
       const { _id, ...updates } = preferences;
       await collection.updateOne(
@@ -112,7 +113,7 @@ function constructor(server) {
         {
           $set: updates,
           $setOnInsert: { _id },
-          $unset: { createdAt: '', updatedAt: '' }
+          $unset: { createdAt: '', updatedAt: '', systemName: '' }
         },
         { upsert: true }
       );

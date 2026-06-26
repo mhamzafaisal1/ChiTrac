@@ -11,6 +11,7 @@ async function ensureSystemPreferences(db, config = {}) {
   const existing = await collection.findOne({ _id: SINGLETON_ID });
   if (existing) {
     const needsMigration =
+      existing.schemaVersion !== systemPreferencesSchema.utils.CURRENT_SCHEMA_VERSION ||
       existing.userSessionExpirationHours === undefined ||
       !existing.timestamps?.create ||
       !existing.timestamps?.update ||
@@ -18,13 +19,20 @@ async function ensureSystemPreferences(db, config = {}) {
       Object.prototype.hasOwnProperty.call(existing, 'updatedAt');
 
     if (needsMigration) {
-      const preferences = systemPreferencesSchema.utils.normalizePreferences({}, existing, config);
+      const preserveExistingSystemName = existing.schemaVersion === systemPreferencesSchema.utils.CURRENT_SCHEMA_VERSION;
+      const preferences = systemPreferencesSchema.utils.normalizePreferences({}, existing, config, {
+        preserveExistingSystemName
+      });
       const { _id, ...updates } = preferences;
+      const unsetFields = { createdAt: '', updatedAt: '' };
+      if (!preserveExistingSystemName) {
+        unsetFields.systemName = '';
+      }
       await collection.updateOne(
         { _id: SINGLETON_ID },
         {
           $set: updates,
-          $unset: { createdAt: '', updatedAt: '' }
+          $unset: unsetFields
         }
       );
       return collection.findOne({ _id: SINGLETON_ID });
@@ -50,6 +58,8 @@ async function ensureSystemPreferences(db, config = {}) {
 function applySystemPreferences(config, preferences = {}) {
   if (typeof preferences.systemName === 'string' && preferences.systemName.trim()) {
     config.systemName = preferences.systemName.trim();
+  } else {
+    config.systemName = config.envPreferences?.systemName || config.systemName || 'ChiTrac';
   }
 
   if (typeof preferences.defaultTheme === 'string' && preferences.defaultTheme.trim()) {
