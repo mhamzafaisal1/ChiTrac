@@ -26,15 +26,6 @@
       [(value)]="endTime"
     ></app-date-time-picker>
 
-    <div class="report-mode-toggle">
-      <span class="toggle-label" style="margin-right: 12px;">Detailed</span>
-      <mat-slide-toggle 
-        [(ngModel)]="showSummaryOnly"
-        color="primary">
-      </mat-slide-toggle>
-      <span class="toggle-label" style="margin-left: 12px;">Summary</span>
-    </div>
-
     <div class="button-group">
       <button
         mat-flat-button
@@ -86,17 +77,84 @@
   </div>
 
   <div class="table-container" [class.loading]="isLoading">
-    <base-table
-      *ngIf="rows.length"
-      [class.dark]="isDarkTheme"
-      [class.light]="!isDarkTheme"
-      [columns]="columns"
-      [rows]="displayedRows"
-      [columnTooltips]="columnTooltips"
-      [getCellTooltip]="getCellTooltip.bind(this)"
-      [getCellClass]="getEfficiencyClass.bind(this)"
-      style="height:93%; border-radius: 4px;"
-    >
-    </base-table>
+    <div class="report-table" *ngIf="reportGroups.length">
+      <div class="report-header report-grid">
+        <div
+          *ngFor="let column of summaryColumns"
+          [matTooltip]="columnTooltips[column] || ''"
+          [matTooltipDisabled]="!columnTooltips[column]"
+          [matTooltipShowDelay]="700"
+        >
+          {{ column }}
+        </div>
+      </div>
+
+      <div class="report-group" *ngFor="let group of reportGroups; trackBy: trackGroupByKey">
+        <button
+          type="button"
+          class="summary-row report-grid"
+          [class.expanded]="isGroupExpanded(group)"
+          [attr.aria-expanded]="isGroupExpanded(group)"
+          (click)="toggleGroup(group)"
+        >
+          <span
+            class="entity-cell"
+            [matTooltip]="getCellTooltip(group.summary, 'Machine')"
+            [matTooltipDisabled]="!getCellTooltip(group.summary, 'Machine')"
+            [matTooltipShowDelay]="700"
+          >
+            <mat-icon>{{ isGroupExpanded(group) ? "expand_more" : "chevron_right" }}</mat-icon>
+            <span class="entity-name">{{ group.summary["Machine"] }}</span>
+            <span class="detail-count" *ngIf="group.details.length">{{ group.details.length }}</span>
+          </span>
+          <span>{{ group.summary["Total Time (Runtime)"] }}</span>
+          <span>{{ group.summary["Total Count"] }}</span>
+          <span>{{ group.summary["PPH"] }}</span>
+          <span>{{ group.summary["Standard"] }}</span>
+          <span [ngClass]="getEfficiencyClass(group.summary['Efficiency'], 'Efficiency')">
+            {{ group.summary["Efficiency"] }}
+          </span>
+        </button>
+
+        <div class="detail-panel" *ngIf="isGroupExpanded(group)">
+          <table class="detail-table" *ngIf="group.details.length; else noMachineDetails">
+            <thead>
+              <tr>
+                <th
+                  *ngFor="let column of detailColumns"
+                  [matTooltip]="columnTooltips[column] || ''"
+                  [matTooltipDisabled]="!columnTooltips[column]"
+                  [matTooltipShowDelay]="700"
+                >
+                  {{ column }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let detail of group.details">
+                <td
+                  [matTooltip]="getCellTooltip(detail, 'Item')"
+                  [matTooltipDisabled]="!getCellTooltip(detail, 'Item')"
+                  [matTooltipShowDelay]="700"
+                >
+                  {{ detail["Item"] }}
+                </td>
+                <td>{{ detail["Total Time (Runtime)"] }}</td>
+                <td>{{ detail["Total Count"] }}</td>
+                <td>{{ detail["PPH"] }}</td>
+                <td>{{ detail["Standard"] }}</td>
+                <td [ngClass]="getEfficiencyClass(detail['Efficiency'], 'Efficiency')">
+                  {{ detail["Efficiency"] }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <ng-template #noMachineDetails>
+      <div class="empty-details">No item details</div>
+    </ng-template>
   </div>
 </div>

@@ -1,33 +1,34 @@
 import { Component, OnInit, OnDestroy, ElementRef, Renderer2 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
-import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
-import { getStatusDotByCode } from '../../../utils/status-utils';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
+
+interface MachineReportGroup {
+  key: string;
+  summary: any;
+  details: any[];
+}
 
 @Component({
     selector: 'app-machine-report',
     imports: [
         CommonModule,
         HttpClientModule,
-        FormsModule,
         MatFormFieldModule,
         MatInputModule,
         MatButtonModule,
         MatIconModule,
-        MatSlideToggleModule,
-        BaseTableComponent,
+        MatTooltipModule,
         DateTimePickerComponent
     ],
     templateUrl: './machine-report.component.html',
@@ -38,7 +39,10 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
   columns: string[] = [];
+  summaryColumns: string[] = ['Machine', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+  detailColumns: string[] = ['Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
   rows: any[] = [];
+  reportGroups: MachineReportGroup[] = [];
   columnTooltips: { [column: string]: string } = {
     'Total Time (Runtime)': 'Amount of time machine has been running',
     'Total Count': 'Amount of pieces fed into the machine/line.',
@@ -52,6 +56,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isDownloadingCsv: boolean = false;
   isEmailing: boolean = false;
   showSummaryOnly: boolean = false;
+  expandedGroupKeys = new Set<string>();
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
@@ -119,6 +124,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
 
   private processTableData(results: any[]): void {
     const formattedData: any[] = [];
+    this.reportGroups = [];
+    this.expandedGroupKeys.clear();
 
     if (!results || !Array.isArray(results)) {
       this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
@@ -138,28 +145,90 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       const totalItem = items.find((item: any) => item.name === 'Total');
       const otherItems = items.filter((item: any) => item.name !== 'Total');
       const sortedItems = totalItem ? [totalItem, ...otherItems] : items;
+      const machineName = machine.machine?.name ?? '';
+      const machineSerial = machine.machine?.serial ?? '';
+      const groupRows: any[] = [];
+      const detailRows: any[] = [];
+      let summaryRow: any | null = null;
 
       sortedItems.forEach((item: any) => {
-        const wt = item.workedTimeFormatted;
-        const hours = wt != null && typeof wt.hours === 'number' ? wt.hours : 0;
-        const minutes = wt != null && typeof wt.minutes === 'number' ? wt.minutes : 0;
+        const row = this.formatMachineReportRow(machineName, machineSerial, item, item.name !== 'Total');
+        groupRows.push(row);
 
-        formattedData.push({
-          'Machine': machine.machine?.name ?? '',
-          'Item': item.name ?? '',
-          'Total Time (Runtime)': `${hours}h ${minutes}m`,
-          'Total Count': item.countTotal ?? 0,
-          'PPH': item.pph ?? 0,
-          'Standard': item.standard != null ? Number(item.standard).toFixed(2) : '',
-          'Efficiency': item.efficiency != null ? `${item.efficiency}%` : '',
-          '_tooltipMachineSerial': machine.machine?.serial ?? '',
-          '_tooltipItemId': item.name === 'Total' ? '' : item.itemId
-        });
+        if (item.name === 'Total') {
+          summaryRow = row;
+        } else {
+          detailRows.push(row);
+        }
+      });
+
+      if (!summaryRow) {
+        summaryRow = this.formatMachineSummaryRow(machineName, machineSerial, summary);
+        formattedData.push(summaryRow);
+      }
+      formattedData.push(...groupRows);
+
+      this.reportGroups.push({
+        key: `${machineSerial || machineName || this.reportGroups.length}`,
+        summary: summaryRow,
+        details: detailRows
       });
     });
 
     this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
+  }
+
+  private formatMachineReportRow(machineName: string, machineSerial: any, item: any, isDetail: boolean): any {
+    const wt = item.workedTimeFormatted;
+    const hours = wt != null && typeof wt.hours === 'number' ? wt.hours : 0;
+    const minutes = wt != null && typeof wt.minutes === 'number' ? wt.minutes : 0;
+
+    return {
+      'Machine': machineName,
+      'Item': item.name ?? '',
+      'Total Time (Runtime)': `${hours}h ${minutes}m`,
+      'Total Count': item.countTotal ?? 0,
+      'PPH': item.pph ?? 0,
+      'Standard': item.standard != null ? Number(item.standard).toFixed(2) : '',
+      'Efficiency': item.efficiency != null ? `${item.efficiency}%` : '',
+      '_tooltipMachineSerial': machineSerial ?? '',
+      '_tooltipItemId': isDetail ? item.itemId : ''
+    };
+  }
+
+  private formatMachineSummaryRow(machineName: string, machineSerial: any, summary: any): any {
+    const rt = summary.runtimeFormatted ?? summary.workedTimeFormatted;
+    const hours = rt != null && typeof rt.hours === 'number' ? rt.hours : 0;
+    const minutes = rt != null && typeof rt.minutes === 'number' ? rt.minutes : 0;
+
+    return {
+      'Machine': machineName,
+      'Item': 'Total',
+      'Total Time (Runtime)': `${hours}h ${minutes}m`,
+      'Total Count': summary.totalCount ?? 0,
+      'PPH': summary.pph ?? 0,
+      'Standard': summary.proratedStandard != null ? Number(summary.proratedStandard).toFixed(2) : '',
+      'Efficiency': summary.efficiency != null ? `${summary.efficiency}%` : '',
+      '_tooltipMachineSerial': machineSerial ?? '',
+      '_tooltipItemId': ''
+    };
+  }
+
+  toggleGroup(group: MachineReportGroup): void {
+    if (this.expandedGroupKeys.has(group.key)) {
+      this.expandedGroupKeys.delete(group.key);
+    } else {
+      this.expandedGroupKeys.add(group.key);
+    }
+  }
+
+  isGroupExpanded(group: MachineReportGroup): boolean {
+    return this.expandedGroupKeys.has(group.key);
+  }
+
+  trackGroupByKey(_: number, group: MachineReportGroup): string {
+    return group.key;
   }
 
   getCellTooltip(row: any, column: string): string {
