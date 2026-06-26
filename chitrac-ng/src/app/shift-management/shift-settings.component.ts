@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { ShiftCrudComponent } from './shift-crud.component';
-import { ShiftDocument, ShiftService } from '../services/shift.service';
+import { ShiftDocument, ShiftService, ShiftTimeValue } from '../services/shift.service';
 import { formatTimeSafe } from './shift-time.utils';
 
 @Component({
@@ -114,7 +114,7 @@ export class ShiftSettingsComponent implements OnInit {
     this.isLoading = true;
     this.shiftService.getAllShifts().subscribe({
       next: (res) => {
-        const list = [...(res.shifts ?? [])];
+        const list = this.sortShiftsByEndTime(res.shifts ?? []);
         this.dataSource.data = list;
         this.isLoading = false;
         this.syncSelectionAfterReload();
@@ -149,6 +149,28 @@ export class ShiftSettingsComponent implements OnInit {
       this.selection.clear();
       this.showEditor = false;
     }
+  }
+
+  private sortShiftsByEndTime(shifts: ShiftDocument[]): ShiftDocument[] {
+    return [...shifts].sort((a, b) => {
+      const endDiff = this.toSortableMinutes(a.endTime) - this.toSortableMinutes(b.endTime);
+      if (endDiff !== 0) {
+        return endDiff;
+      }
+      return this.toSortableMinutes(a.startTime) - this.toSortableMinutes(b.startTime);
+    });
+  }
+
+  private toSortableMinutes(time: ShiftTimeValue | null | undefined): number {
+    if (time == null || time.hour == null || time.minute == null) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    const hour = Number(time.hour);
+    const minute = Number(time.minute);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    return (hour * 60) + minute;
   }
 
   openAdd(): void {
