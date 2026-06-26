@@ -62,6 +62,7 @@ module.exports = {
   statusCollectionName: 'config-status',
   userCollectionName: 'config-user',
   shiftCollectionName: 'config-shift',
+  maintenanceShiftCollectionName: 'config-shift-maintenance',
   systemPreferencesCollectionName: 'system-preferences',
   stateTickerCollectionName: 'ticker-state',
   machineSessionCollectionName: 'session-machine',

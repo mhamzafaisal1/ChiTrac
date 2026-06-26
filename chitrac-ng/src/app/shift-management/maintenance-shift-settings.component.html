@@ -1,0 +1,67 @@
+<div class="shift-settings-page">
+  <header class="page-header">
+    <h1 class="page-title">Maintenance shift settings</h1>
+    <p class="page-lede">
+      Manage scheduled maintenance windows for updates, settings changes, and other planned system work.
+    </p>
+  </header>
+
+  <p class="hint" *ngIf="isLoading">Loading maintenance shifts...</p>
+
+  <section class="shifts-section" aria-labelledby="maintenance-shifts-list-heading">
+    <div class="shifts-section-header">
+      <h2 id="maintenance-shifts-list-heading" class="section-title">Defined maintenance shifts</h2>
+      <p class="section-help">
+        Shown in order by start time. Active maintenance shifts cannot overlap active work shifts or other active maintenance shifts.
+      </p>
+    </div>
+
+    <div class="shifts-layout">
+      <div class="shift-actions">
+        <button mat-flat-button (click)="openAdd()"><mat-icon>add</mat-icon>Add</button>
+        <button mat-flat-button [disabled]="!canEditOrDelete" (click)="openEdit()"><mat-icon>edit</mat-icon>Edit</button>
+        <button mat-flat-button [disabled]="!canEditOrDelete" (click)="deleteShift()"><mat-icon>delete</mat-icon>Delete</button>
+        <button mat-stroked-button *ngIf="showEditor" (click)="closeEditor()">Close form</button>
+      </div>
+
+      <div class="shift-table-region">
+        <div class="table-legend" aria-hidden="true">Maintenance shift (name - hours - days - status)</div>
+        <div class="shift-table-wrap">
+          <table
+            mat-table
+            [dataSource]="dataSource"
+            class="shifts-table">
+            <ng-container matColumnDef="summary">
+              <td mat-cell *matCellDef="let row">{{ formatShiftRow(row) }}</td>
+            </ng-container>
+            <tr
+              mat-row
+              *matRowDef="let row; columns: displayedColumns"
+              [class.selected-row]="selection.isSelected(row)"
+              (click)="selectRow(row)">
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section
+    *ngIf="showEditor"
+    @editorReveal
+    class="shift-editor-panel"
+    aria-labelledby="maintenance-shift-editor-heading">
+    <h2 id="maintenance-shift-editor-heading" class="editor-title">
+      {{ editorMode === 'add' ? 'Add maintenance shift' : 'Edit maintenance shift' }}
+    </h2>
+    <p class="editor-subtitle">
+      Set name, active status, days, and maintenance window. Save when finished.
+    </p>
+    <app-maintenance-shift-crud
+      class="shift-crud-host"
+      [editorMode]="editorMode"
+      [initialShift]="editorShift"
+      (saved)="onShiftSaved()">
+    </app-maintenance-shift-crud>
+  </section>
+</div>

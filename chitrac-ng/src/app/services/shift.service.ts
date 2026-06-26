@@ -60,6 +60,10 @@ export interface ShiftDefinitionPayload {
   name?: string;
 }
 
+export type MaintenanceShiftDocument = Omit<ShiftDocument, 'breaks'>;
+
+export type MaintenanceShiftDefinitionPayload = Omit<ShiftDefinitionPayload, 'breaks'>;
+
 @Injectable({
   providedIn: 'root',
 })
@@ -92,5 +96,31 @@ export class ShiftService {
       );
     }
     return this.http.post<ShiftDefinitionPayload>(`${this.alphaUrl}/shifts`, shift);
+  }
+
+  /** All maintenance shifts (active and inactive), sorted by start time on the server. */
+  getAllMaintenanceShifts(): Observable<{ shifts: MaintenanceShiftDocument[] }> {
+    return this.http.get<{ shifts: MaintenanceShiftDocument[] }>(`${this.alphaUrl}/maintenance-shifts`);
+  }
+
+  deleteMaintenanceShift(id: string): Observable<void> {
+    return this.http.delete<void>(
+      `${this.alphaUrl}/maintenance-shifts/${encodeURIComponent(id)}`
+    );
+  }
+
+  saveMaintenanceShiftDefinition(
+    shift: MaintenanceShiftDefinitionPayload
+  ): Observable<MaintenanceShiftDefinitionPayload> {
+    if (shift._id) {
+      return this.http.put<MaintenanceShiftDefinitionPayload>(
+        `${this.alphaUrl}/maintenance-shifts/${encodeURIComponent(String(shift._id))}`,
+        shift
+      );
+    }
+    return this.http.post<MaintenanceShiftDefinitionPayload>(
+      `${this.alphaUrl}/maintenance-shifts`,
+      shift
+    );
   }
 }

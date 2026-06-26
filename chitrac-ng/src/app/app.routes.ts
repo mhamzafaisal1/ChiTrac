@@ -34,6 +34,7 @@ import { UserManagementComponent } from './user-management/user-management.compo
 import { UserProfileComponent } from './user-profile/user-profile.component';
 import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
+import { MaintenanceShiftSettingsComponent } from './shift-management/maintenance-shift-settings.component';
 import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
 import { SystemSettingsComponent } from './system-settings/system-settings.component';
 import { PermissionLevels } from './user.service';
@@ -48,6 +49,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/system', component: SystemSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/profile', component: UserProfileComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.profile } },
 	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },
+	{ path: 'ng/settings/maintenance-shifts', component: MaintenanceShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.apiTokens } },
 	{ path: 'ng/settings/root/users', component: UserManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
