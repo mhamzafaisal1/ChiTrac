@@ -86,6 +86,12 @@ export class UserService {
     }));
   }
 
+  public clearStoredSession(): void {
+    localStorage.setItem('user', JSON.stringify({ username: null }));
+    localStorage.removeItem('token');
+    this.userSubject.next({ username: null });
+  }
+
   public getToken(): string | null {
     return localStorage.getItem('token');
   }

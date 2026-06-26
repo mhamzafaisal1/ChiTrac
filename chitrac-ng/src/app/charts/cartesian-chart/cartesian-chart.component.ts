@@ -86,6 +86,9 @@ import {
     private tooltipEl?: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private tooltipTimer: ReturnType<typeof setTimeout> | null = null;
     private resizeObserver?: ResizeObserver;
+    private readonly chartTextColor = 'var(--theme-color-on-surface-variant, #333)';
+    private readonly chartAxisColor = 'color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 55%, transparent)';
+    private readonly chartSurfaceColor = 'var(--theme-color-surface, #fff)';
   
     /** external API */
     updateData = (cfgOrSeries: CartesianChartConfig | XYSeries[]) => {
@@ -194,8 +197,6 @@ import {
   
       const innerW = Math.max(10, width - margin.left - margin.right);
       const innerH = Math.max(10, height - margin.top - margin.bottom);
-      const isDark = document.body.classList.contains('dark-theme');
-      const textColor = isDark ? '#e0e0e0' : '#333';
   
       // ===== Title =====
       if (cfg.title) {
@@ -208,7 +209,7 @@ import {
           .attr('x', (width / 2) - margin.left)
           .attr('y', titleY)
           .attr('text-anchor', 'middle')
-          .style('fill', textColor)
+          .style('fill', this.chartTextColor)
           .text(cfg.title);
       }
   
@@ -250,9 +251,10 @@ import {
         (ax as any).tickPadding(8);               // add padding between ticks and axis label
 
         xAxisG.attr('transform', `translate(0,${innerH})`).call(ax as any);
+        this.applyAxisTheme(xAxisG);
 
         const xt = xAxisG.selectAll<SVGTextElement, unknown>('text')
-                         .style('fill', textColor).style('font-size', '12px');
+                         .style('fill', this.chartTextColor).style('font-size', '12px');
 
         if (rotateTicks) {
           xt.attr('transform', 'rotate(-45)')
@@ -264,18 +266,21 @@ import {
         yAxisG.call(
             d3.axisLeft(yScale as d3.ScaleLinear<number, number>)
               .tickFormat(cfg.yTickFormat ? (d: d3.NumberValue) => cfg.yTickFormat!(+d) : undefined)
-          )
-          .selectAll('text').style('fill', textColor).style('font-size', '12px');
+          );
+        this.applyAxisTheme(yAxisG);
+        yAxisG.selectAll('text').style('fill', this.chartTextColor).style('font-size', '12px');
       } else {
         // horizontal: x is linear (bottom), y is band (left = categories)
         const xAx = d3.axisBottom(yScaleH as d3.ScaleLinear<number, number>);
         if (cfg.xTickFormat) (xAx as any).tickFormat(cfg.xTickFormat);
-        xAxisG.attr('transform', `translate(0,${innerH})`).call(xAx as any)
-              .selectAll('text').style('fill', textColor).style('font-size', '12px');
+        xAxisG.attr('transform', `translate(0,${innerH})`).call(xAx as any);
+        this.applyAxisTheme(xAxisG);
+        xAxisG.selectAll('text').style('fill', this.chartTextColor).style('font-size', '12px');
         const yAx = d3.axisLeft(yScale as d3.ScaleBand<string>);
         if (cfg.yTickFormat) (yAx as any).tickFormat((d: string) => cfg.yTickFormat!(d as any));
-        yAxisG.call(yAx)
-              .selectAll('text').style('fill', textColor).style('font-size', '12px');
+        yAxisG.call(yAx);
+        this.applyAxisTheme(yAxisG);
+        yAxisG.selectAll('text').style('fill', this.chartTextColor).style('font-size', '12px');
       }
 
       // ===== Axis Labels =====
@@ -288,7 +293,7 @@ import {
           .attr('x', innerW / 2)
           .attr('y', innerH + xLabelOffset)
           .attr('text-anchor', 'middle')
-          .style('fill', textColor)
+          .style('fill', this.chartTextColor)
           .style('font-size', '14px')
           .text(cfg.xLabel);
       }
@@ -300,7 +305,7 @@ import {
           .attr('x', -innerH / 2)
           .attr('y', -Math.max(28, (cfg.margin?.left ?? 50) - 12)) // left of y-axis
           .attr('text-anchor', 'middle')
-          .style('fill', textColor).style('font-size', '14px')
+          .style('fill', this.chartTextColor).style('font-size', '14px')
           .text(cfg.yLabel);
       }
 
@@ -316,7 +321,7 @@ import {
           items.forEach(it => {
             const row = lg.append('g').attr('transform', `translate(${xOff},0)`);
             row.append('rect').attr('width', 12).attr('height', 12).attr('fill', it.color);
-            row.append('text').attr('x', 16).attr('y', 10).text(it.title).style('fill', textColor).style('font-size','12px');
+            row.append('text').attr('x', 16).attr('y', 10).text(it.title).style('fill', this.chartTextColor).style('font-size','12px');
             xOff += 16 + (it.title.length * 7) + 18;
           });
         } else if (cfg.legend.position === 'right') {
@@ -325,7 +330,7 @@ import {
           items.forEach(it => {
             const row = lg.append('g').attr('transform', `translate(0, ${yOff})`);
             row.append('rect').attr('width', 12).attr('height', 12).attr('fill', it.color);
-            row.append('text').attr('x', 16).attr('y', 10).text(it.title).style('fill', textColor).style('font-size','12px');
+            row.append('text').attr('x', 16).attr('y', 10).text(it.title).style('fill', this.chartTextColor).style('font-size','12px');
             yOff += 20;
           });
         }
@@ -430,6 +435,11 @@ import {
         pie: cfg.pie,
         series: cfg.series || []
       };
+    }
+
+    private applyAxisTheme(axisG: d3.Selection<SVGGElement, unknown, null, undefined>): void {
+      axisG.selectAll('path,line')
+        .style('stroke', this.chartAxisColor);
     }
   
     private collectXDomain(cfg: CartesianChartConfig): (string|number|Date)[] {
@@ -673,8 +683,6 @@ import {
       
       const innerW = Math.max(10, width - margin.left - margin.right);
       const innerH = Math.max(10, height - margin.top - margin.bottom);
-      const isDark = document.body.classList.contains('dark-theme');
-      const textColor = isDark ? '#e0e0e0' : '#333';
 
       // Guard against mixing pie with Cartesian types
       const mixed = cfg.series.some(s => s.type !== 'pie' && s.type !== 'donut');
@@ -722,7 +730,7 @@ import {
         .append('path')
         .attr('d', arc as any)
         .attr('fill', d => color(d.data.name))
-        .attr('stroke', isDark ? '#1f1f1f' : '#fff')
+        .attr('stroke', this.chartSurfaceColor)
         .style('stroke-width', '2px');
 
       // callout lines + labels
@@ -733,7 +741,7 @@ import {
         .data(arcs)
         .enter()
         .append('polyline')
-        .attr('stroke', textColor)
+        .attr('stroke', this.chartTextColor)
         .attr('fill', 'none')
         .attr('stroke-width', 1);
 
@@ -743,7 +751,7 @@ import {
         .append('text')
         .attr('class','cc-pie-label')
         .attr('dy','0.35em')
-        .style('fill', textColor)
+        .style('fill', this.chartTextColor)
         .style('font-size','12px');
 
       arcs.forEach((d, i) => {
@@ -771,7 +779,7 @@ import {
           .attr('x', width / 2)
           .attr('y', 22)
           .attr('text-anchor', 'middle')
-          .style('fill', textColor)
+          .style('fill', this.chartTextColor)
           .style('font-size', '14px')
           .text(cfg.title);
       }

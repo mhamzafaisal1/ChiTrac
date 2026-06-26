@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
@@ -34,6 +34,9 @@ export class SettingsService {
 
   private currentThemeSubject = new BehaviorSubject<'light' | 'dark'>('light');
   public currentTheme$ = this.currentThemeSubject.asObservable();
+  private readonly preferenceRequestOptions = {
+    headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' })
+  };
 
   constructor(private http: HttpClient) {}
 
@@ -97,7 +100,7 @@ export class SettingsService {
    * Get user's theme preference from server
    */
   getUserTheme(): Observable<ThemeResponse> {
-    return this.http.get<ThemeResponse>('/api/preferences/user/theme').pipe(
+    return this.http.get<ThemeResponse>('/api/preferences/user/theme', this.preferenceRequestOptions).pipe(
       tap(response => {
         this.currentThemeSubject.next(response.theme);
         console.log('[SettingsService] Theme loaded:', response);
@@ -109,7 +112,7 @@ export class SettingsService {
    * Save user's theme preference to server
    */
   saveUserTheme(theme: 'light' | 'dark'): Observable<any> {
-    return this.http.put('/api/preferences/user/theme', { theme }).pipe(
+    return this.http.put('/api/preferences/user/theme', { theme }, this.preferenceRequestOptions).pipe(
       tap(() => {
         this.currentThemeSubject.next(theme);
         console.log('[SettingsService] Theme saved:', theme);

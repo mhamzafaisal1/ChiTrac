@@ -96,6 +96,9 @@ export class AppComponent implements OnInit {
       },
       error: (err) => {
         console.error('[AppComponent] Failed to load user theme, using default', err);
+        if (err?.status === 401) {
+          this.userService.clearStoredSession();
+        }
         // Fall back to default theme on error
         this.loadDefaultTheme();
       }
@@ -117,7 +120,12 @@ export class AppComponent implements OnInit {
     if (user) {
       this.settingsService.saveUserTheme(newTheme).subscribe({
         next: () => console.log('[AppComponent] Theme preference saved'),
-        error: (err) => console.error('[AppComponent] Failed to save theme preference', err)
+        error: (err) => {
+          console.error('[AppComponent] Failed to save theme preference', err);
+          if (err?.status === 401) {
+            this.userService.clearStoredSession();
+          }
+        }
       });
     } else {
       console.log('[AppComponent] Theme changed locally (not saved - user not logged in)');
