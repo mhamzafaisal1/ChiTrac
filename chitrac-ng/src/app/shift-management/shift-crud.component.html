@@ -59,7 +59,10 @@
     </div>
   </section>
 
-  <div class="save-row">
+  <div class="form-actions-row">
+    <button mat-stroked-button type="button" [disabled]="isSaving" (click)="cancel()">
+      Cancel
+    </button>
     <button mat-flat-button color="primary" [disabled]="isSaving" (click)="saveShift()">
       {{ isSaving ? 'Saving...' : 'Save Shift' }}
     </button>
