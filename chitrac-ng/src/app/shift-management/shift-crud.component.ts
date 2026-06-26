@@ -103,6 +103,16 @@ export class ShiftCrudComponent {
     return this.selection.selected.length > 0;
   }
 
+  get areAllDaysSelected(): boolean {
+    return this.dayOptions.every((day) => this.selectedDays.includes(day.value));
+  }
+
+  toggleAllDays(): void {
+    this.selectedDays = this.areAllDaysSelected
+      ? []
+      : this.dayOptions.map((day) => day.value);
+  }
+
   formatBreakRange(breakValue: EditableBreak): string {
     return `${formatTime(breakValue.startTime)} - ${formatTime(breakValue.endTime)}`;
   }
