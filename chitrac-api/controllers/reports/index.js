@@ -22,6 +22,26 @@ function isValidMachineReportRecipientEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
 }
 
+function getConfiguredStationCount(machine) {
+  if (Array.isArray(machine?.stations)) {
+    const validStations = new Set(
+      machine.stations.filter((station) => Number.isInteger(Number(station)) && Number(station) > 0)
+        .map(Number)
+    );
+    return Math.max(1, validStations.size);
+  }
+
+  // Support legacy machine documents where stations was stored as a count.
+  const legacyStationCount = Number(machine?.stations);
+  if (Number.isInteger(legacyStationCount) && legacyStationCount > 0) {
+    return legacyStationCount;
+  }
+
+  // Existing config-machine records use lanes as the installed station count.
+  const laneCount = Number(machine?.lanes);
+  return Number.isInteger(laneCount) && laneCount > 0 ? laneCount : 1;
+}
+
 module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
@@ -1046,6 +1066,42 @@ module.exports = function (server) {
         };
       }
 
+      const machineSerials = [
+        ...new Set(
+          [...machineRecords, ...machineItemRecords]
+            .map((record) => record.machineSerial)
+            .filter((machineSerial) => machineSerial !== undefined && machineSerial !== null)
+        ),
+      ];
+      const serialCandidates = [
+        ...new Set(
+          machineSerials.flatMap((machineSerial) => {
+            const numericSerial = Number(machineSerial);
+            return Number.isFinite(numericSerial)
+              ? [String(machineSerial), numericSerial]
+              : [String(machineSerial)];
+          })
+        ),
+      ];
+      const machineConfigs = serialCandidates.length
+        ? await db
+            .collection(config.machineCollectionName)
+            .find({
+              $or: [
+                { serial: { $in: serialCandidates } },
+                { id: { $in: serialCandidates } },
+              ],
+            })
+            .project({ serial: 1, id: 1, stations: 1, lanes: 1 })
+            .toArray()
+        : [];
+      const stationCountBySerial = new Map(
+        machineConfigs.map((machine) => [
+          String(machine.serial ?? machine.id),
+          getConfiguredStationCount(machine),
+        ])
+      );
+
       // Aggregate machines by serial across all dates
       const machineMap = new Map();
       for (const record of machineRecords) {
@@ -1117,6 +1173,8 @@ module.exports = function (server) {
       const results = [];
 
       for (const [serial, machineData] of machineMap) {
+        const stationCount = stationCountBySerial.get(String(serial)) || 1;
+
         // Get all items for this machine
         const machineItems = Array.from(itemMap.values()).filter(item => item.machineSerial === serial);
 
@@ -1143,11 +1201,12 @@ module.exports = function (server) {
           // Calculate item metrics using allocated runtime
           const itemHours = itemAllocatedRuntimeMs / 3600000;
           const itemPph = itemHours > 0 ? item.totalCounts / itemHours : 0;
-          const itemEfficiency = (item.itemStandard || 0) > 0 ? (itemPph / item.itemStandard) * 100 : 0;
+          const machineItemStandard = (item.itemStandard || 0) * stationCount;
+          const itemEfficiency = machineItemStandard > 0 ? (itemPph / machineItemStandard) * 100 : 0;
 
           itemSummaries[item.itemId] = {
             name: item.itemName,
-            standard: item.itemStandard || 0,
+            standard: machineItemStandard,
             countTotal: item.totalCounts,
             workedTimeFormatted: formatDuration(itemAllocatedRuntimeMs),
             pph: Math.round(itemPph * 100) / 100,
@@ -1155,7 +1214,7 @@ module.exports = function (server) {
           };
 
           // Calculate weighted standard for machine total
-          proratedStandard += itemRuntimeProportion * (item.itemStandard || 0);
+          proratedStandard += itemRuntimeProportion * machineItemStandard;
         }
 
         // Calculate machine Total row using machine's runtimeMs (not workedTimeMs)
@@ -1181,7 +1240,8 @@ module.exports = function (server) {
         results.push({
           machine: {
             name: machineData.machineName,
-            serial: machineData.machineSerial
+            serial: machineData.machineSerial,
+            stationCount,
           },
           machineSummary: {
             totalCount: itemTotalCounts,
