@@ -25,6 +25,11 @@ export interface UserResponse {
   user: ManagedUser;
 }
 
+export interface PasswordResetResponse {
+  success: boolean;
+  message: string;
+}
+
 export interface UserSaveRequest {
   username: string;
   password?: string;
@@ -56,6 +61,17 @@ export class UserManagementService {
 
   updateUser(id: string, user: UserSaveRequest): Observable<UserResponse> {
     return this.http.put<UserResponse>(`${this.apiUrl}/${id}`, user);
+  }
+
+  sendPasswordReset(id: string): Observable<PasswordResetResponse> {
+    return this.http.post<PasswordResetResponse>(`${this.apiUrl}/${id}/password-reset`, {});
+  }
+
+  completePasswordReset(token: string, password: string): Observable<PasswordResetResponse> {
+    return this.http.post<PasswordResetResponse>(`${this.apiUrl}/password-reset/complete`, {
+      token,
+      password
+    });
   }
 
   deleteUser(id: string): Observable<{ success: boolean; message: string }> {

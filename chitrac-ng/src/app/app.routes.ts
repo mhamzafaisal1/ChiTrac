@@ -40,6 +40,7 @@ import { SystemSettingsComponent } from './system-settings/system-settings.compo
 import { PermissionLevels } from './user.service';
 import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
 import { TestComponent } from './test/test.component';
+import { PasswordResetComponent } from './password-reset/password-reset.component';
 
 export const routes: Routes = [
 	// Settings pages
@@ -59,6 +60,7 @@ export const routes: Routes = [
 	
 	// Login/Auth
 	{ path: 'ng/login', component: UserLoginComponent },
+	{ path: 'ng/reset-password', component: PasswordResetComponent },
 	
 	// Main Dashboards
 	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent },

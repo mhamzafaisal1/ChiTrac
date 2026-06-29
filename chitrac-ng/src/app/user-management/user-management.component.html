@@ -117,21 +117,35 @@
           <input matInput formControlName="restrictions">
         </mat-form-field>
 
-        <mat-form-field appearance="outline">
-          <mat-label>{{ selectedUser ? 'New Password' : 'Password' }}</mat-label>
+        <mat-form-field appearance="outline" *ngIf="!selectedUser">
+          <mat-label>Password</mat-label>
           <input matInput type="password" formControlName="password" autocomplete="new-password" maxlength="64">
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('required')">Password is required for new users</mat-error>
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('minlength')">Use at least 6 characters</mat-error>
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('maxlength')">Use no more than 64 characters</mat-error>
         </mat-form-field>
 
+        <div class="password-reset-action" *ngIf="selectedUser">
+          <button
+            mat-stroked-button
+            color="primary"
+            type="button"
+            (click)="sendPasswordReset()"
+            [disabled]="isSaving || isSendingReset || !selectedUser.email">
+            <mat-icon>mail</mat-icon>
+            {{ isSendingReset ? 'Sending...' : 'Email Password Reset' }}
+          </button>
+          <span *ngIf="selectedUser.email">The link will be sent to {{ selectedUser.email }}.</span>
+          <span *ngIf="!selectedUser.email">Save a valid email address before sending a reset link.</span>
+        </div>
+
         <mat-slide-toggle formControlName="active">Active</mat-slide-toggle>
       </mat-dialog-content>
 
       <mat-dialog-actions align="end">
-        <button mat-button type="button" (click)="closeUserDialog()" [disabled]="isSaving">Cancel</button>
-        <button mat-button type="button" (click)="clearUserForm()" [disabled]="isSaving" *ngIf="!selectedUser">Clear</button>
-        <button mat-flat-button color="primary" type="submit" [disabled]="isSaving">
+        <button mat-button type="button" (click)="closeUserDialog()" [disabled]="isSaving || isSendingReset">Cancel</button>
+        <button mat-button type="button" (click)="clearUserForm()" [disabled]="isSaving || isSendingReset" *ngIf="!selectedUser">Clear</button>
+        <button mat-flat-button color="primary" type="submit" [disabled]="isSaving || isSendingReset">
           <mat-icon>save</mat-icon>
           {{ isSaving ? 'Saving...' : 'Save User' }}
         </button>

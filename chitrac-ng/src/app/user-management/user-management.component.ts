@@ -51,6 +51,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
   displayedColumns: string[] = ['username', 'email', 'permissionLevel', 'active', 'updatedAt', 'actions'];
   selectedUser: ManagedUser | null = null;
   isSaving = false;
+  isSendingReset = false;
   isLoading = false;
   currentPermissionLevel = 3;
   private userDialogRef: MatDialogRef<unknown> | null = null;
@@ -175,7 +176,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       active: value.active !== false
     };
 
-    if (password) {
+    if (!this.selectedUser && password) {
       payload.password = password;
     }
 
@@ -201,6 +202,24 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
       error: (err) => {
         this.isSaving = false;
         this.showError(err, 'Failed to save user');
+      }
+    });
+  }
+
+  sendPasswordReset(): void {
+    const user = this.selectedUser;
+    if (!user || !user.email || this.isSendingReset) return;
+    if (!confirm(`Email a password reset link to ${user.email}?`)) return;
+
+    this.isSendingReset = true;
+    this.userManagementService.sendPasswordReset(user._id).subscribe({
+      next: () => {
+        this.isSendingReset = false;
+        this.snackBar.open(`Password reset email sent to ${user.email}`, 'Close', { duration: 4000 });
+      },
+      error: (err) => {
+        this.isSendingReset = false;
+        this.showError(err, 'Failed to send password reset email');
       }
     });
   }
@@ -263,7 +282,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     this.userDialogRef = this.dialog.open(this.userDialog, {
       width: '460px',
       maxWidth: 'calc(100vw - 32px)',
-      disableClose: this.isSaving,
+      disableClose: this.isSaving || this.isSendingReset,
       autoFocus: 'first-tabbable'
     });
 

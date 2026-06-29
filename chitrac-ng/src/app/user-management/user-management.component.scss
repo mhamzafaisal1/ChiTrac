@@ -6,6 +6,19 @@
   color: var(--theme-color-text, #1f2933);
 }
 
+.password-reset-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+
+  span {
+    color: var(--mat-sys-on-surface-variant);
+    font-size: 12px;
+  }
+}
+
 .header {
   margin-bottom: 24px;
 
