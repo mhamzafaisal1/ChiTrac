@@ -1,30 +1,22 @@
 import { Component, OnInit, OnDestroy, ElementRef, Renderer2 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
-import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
-interface OperatorSummaryRow {
-  operatorName: string;
-  machineName: string;
-  itemName: string;
-  runtimeFormatted: { hours: number; minutes: number };
-  count: number;
-  misfeed: number;
-  pph: number;
-  standard: number;
-  efficiency: number;
+interface OperatorReportGroup {
+  key: string;
+  summary: any;
+  details: any[];
 }
 
 @Component({
@@ -32,13 +24,11 @@ interface OperatorSummaryRow {
     imports: [
         CommonModule,
         HttpClientModule,
-        FormsModule,
         MatFormFieldModule,
         MatInputModule,
         MatButtonModule,
         MatIconModule,
-        MatSlideToggleModule,
-        BaseTableComponent,
+        MatTooltipModule,
         DateTimePickerComponent
     ],
     templateUrl: './operator-report.component.html',
@@ -48,7 +38,10 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
   columns: string[] = [];
+  summaryColumns: string[] = ['Operator', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+  detailColumns: string[] = ['Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
   rows: any[] = [];
+  reportGroups: OperatorReportGroup[] = [];
   columnTooltips: { [column: string]: string } = {
     'Total Time (Runtime)': 'Amount of time operator has been running across all machines',
     'Total Count': 'Amount of pieces fed by operator',
@@ -61,6 +54,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
   showSummaryOnly: boolean = false;
+  expandedGroupKeys = new Set<string>();
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
@@ -144,41 +138,81 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
 
   private processTableData(results: any[]): void {
     const formattedData: any[] = [];
+    this.reportGroups = [];
+    this.expandedGroupKeys.clear();
 
     results.forEach((operator: any) => {
       const summary = operator.operatorSummary;
       const operatorId = operator.operator.id;
       const operatorName = this.normalizeOperatorName(operator.operator.name, operatorId);
 
-      // Add operator-wide summary
-      formattedData.push({
-        'Operator': operatorName,
-        'Item': 'TOTAL',
-        'Total Time (Runtime)': `${summary.runtimeFormatted.hours}h ${summary.runtimeFormatted.minutes}m`,
-        'Total Count': summary.totalCount,
-        'PPH': summary.pph,
-        'Standard': summary.proratedStandard ? Number(summary.proratedStandard).toFixed(2) : 'N/A',
-        'Efficiency': summary.efficiency !== null ? `${summary.efficiency}%` : 'N/A',
-        '_tooltipItemId': ''
-      });
+      const summaryRow = this.formatOperatorSummaryRow(operatorName, summary);
+      const detailRows: any[] = [];
+
+      formattedData.push(summaryRow);
 
       // Add item summaries under this operator
-      Object.entries(summary.itemSummaries).forEach(([itemId, item]: [string, any]) => {
-        formattedData.push({
-          'Operator': operatorName,
-          'Item': item.name,
-          'Total Time (Runtime)': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
-          'Total Count': item.countTotal,
-          'PPH': item.pph,
-          'Standard': item.standard ? Number(item.standard).toFixed(2) : 'N/A',
-          'Efficiency': item.efficiency !== null ? `${item.efficiency}%` : 'N/A',
-          '_tooltipItemId': itemId
-        });
+      Object.entries(summary.itemSummaries ?? {}).forEach(([itemId, item]: [string, any]) => {
+        const detailRow = this.formatOperatorDetailRow(operatorName, itemId, item);
+        detailRows.push(detailRow);
+        formattedData.push(detailRow);
+      });
+
+      this.reportGroups.push({
+        key: `${operatorId || operatorName || this.reportGroups.length}`,
+        summary: summaryRow,
+        details: detailRows
       });
     });
 
     this.columns = ['Operator', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
+  }
+
+  private formatOperatorSummaryRow(operatorName: string, summary: any): any {
+    const runtime = summary.runtimeFormatted ?? { hours: 0, minutes: 0 };
+
+    return {
+      'Operator': operatorName,
+      'Item': 'TOTAL',
+      'Total Time (Runtime)': `${runtime.hours ?? 0}h ${runtime.minutes ?? 0}m`,
+      'Total Count': summary.totalCount ?? 0,
+      'PPH': summary.pph ?? 0,
+      'Standard': summary.proratedStandard ? Number(summary.proratedStandard).toFixed(2) : 'N/A',
+      'Efficiency': summary.efficiency !== null && summary.efficiency !== undefined ? `${summary.efficiency}%` : 'N/A',
+      '_tooltipItemId': ''
+    };
+  }
+
+  private formatOperatorDetailRow(operatorName: string, itemId: string, item: any): any {
+    const workedTime = item.workedTimeFormatted ?? { hours: 0, minutes: 0 };
+
+    return {
+      'Operator': operatorName,
+      'Item': item.name,
+      'Total Time (Runtime)': `${workedTime.hours ?? 0}h ${workedTime.minutes ?? 0}m`,
+      'Total Count': item.countTotal,
+      'PPH': item.pph,
+      'Standard': item.standard ? Number(item.standard).toFixed(2) : 'N/A',
+      'Efficiency': item.efficiency !== null && item.efficiency !== undefined ? `${item.efficiency}%` : 'N/A',
+      '_tooltipItemId': itemId
+    };
+  }
+
+  toggleGroup(group: OperatorReportGroup): void {
+    if (this.expandedGroupKeys.has(group.key)) {
+      this.expandedGroupKeys.delete(group.key);
+    } else {
+      this.expandedGroupKeys.add(group.key);
+    }
+  }
+
+  isGroupExpanded(group: OperatorReportGroup): boolean {
+    return this.expandedGroupKeys.has(group.key);
+  }
+
+  trackGroupByKey(_: number, group: OperatorReportGroup): string {
+    return group.key;
   }
 
   getCellTooltip(row: any, column: string): string {
