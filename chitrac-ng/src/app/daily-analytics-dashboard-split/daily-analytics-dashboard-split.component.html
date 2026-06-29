@@ -1,6 +1,6 @@
 <div class="dashboard-container" [class.dark-mode]="isDarkTheme">
   <div class="dashboard-wrapper">
-    <div class="charts-grid">
+    <div class="charts-grid" #chartsGrid>
       <!-- Machine Run/Pause/Fault Time Chart -->
       <app-chart-tile
         title="Machine Run/Pause/Fault Time"

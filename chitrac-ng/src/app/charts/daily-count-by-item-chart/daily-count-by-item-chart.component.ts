@@ -62,6 +62,15 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if ((changes['chartWidth'] || changes['chartHeight']) && this.chartConfig) {
+      this.chartConfig = {
+        ...this.chartConfig,
+        width: this.chartWidth,
+        height: this.chartHeight
+      };
+      this.cdr.markForCheck();
+    }
+
     if (changes['preloadedData'] && this.preloadedData) {
       this.stopPolling();
       this.consumeResponse('once')({ itemTotals: this.preloadedData });
@@ -265,6 +274,13 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   setAvailableSize(w: number, h: number): void {
     this.chartWidth = w;
     this.chartHeight = h;
+    if (this.chartConfig) {
+      this.chartConfig = {
+        ...this.chartConfig,
+        width: this.chartWidth,
+        height: this.chartHeight
+      };
+    }
     this.cdr.markForCheck();
   }
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit } from "@angular/core";
+import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, NgZone } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { Subject } from "rxjs";
 import { takeUntil } from "rxjs/operators";
@@ -30,6 +30,7 @@ import { EfficiencyByMachineGroupBarChartComponent } from "../charts/efficiency-
     styleUrls: ['./daily-analytics-dashboard-split.component.scss']
 })
 export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy, AfterViewInit {
+  @ViewChild('chartsGrid') chartsGrid!: ElementRef<HTMLElement>;
   @ViewChild(DailyCountByItemChartComponent) itemChart!: DailyCountByItemChartComponent;
   
   isDarkTheme: boolean = false;
@@ -37,18 +38,19 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   chartHeight: number = 450;
   preloadedData: any = null;
   private websocketStatus: WebsocketConnectionStatus = 'disconnected';
-  private readonly handleResize = () => this.calculateChartDimensions();
+  private resizeObserver?: ResizeObserver;
+  private resizeFrame: number | null = null;
   private destroy$ = new Subject<void>();
 
   constructor(
     private websocketService: WebsocketService,
     private dateTimeService: DateTimeService,
-    private dashboardTimeframeService: DashboardTimeframeService
+    private dashboardTimeframeService: DashboardTimeframeService,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit(): void {
     this.detectTheme();
-    this.calculateChartDimensions();
     this.websocketService.ensureConnected();
     if (!this.dateTimeService.getConfirmed()) {
       this.dashboardTimeframeService.applyDefault()
@@ -66,27 +68,23 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
           this.preloadedData = null;
         }
       });
-
     this.websocketService.dashboardCache$
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => this.applyWebsocketCache());
-    
-    // Listen for window resize to recalculate chart dimensions
-    window.addEventListener('resize', this.handleResize);
   }
 
   ngAfterViewInit(): void {
-    // Call setAvailableSize on chart components after view init
-    setTimeout(() => {
-      if (this.itemChart) {
-        this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
-      }
-    }, 0);
+    this.setupChartResizeObserver();
+    this.scheduleChartDimensionUpdate();
   }
 
   ngOnDestroy(): void {
-    // Clean up event listener
-    window.removeEventListener('resize', this.handleResize);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
+    if (this.resizeFrame !== null) {
+      cancelAnimationFrame(this.resizeFrame);
+    }
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -95,40 +93,46 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     this.isDarkTheme = document.body.classList.contains('dark-theme');
   }
 
-  private calculateChartDimensions(): void {
-    // Mobile: use fixed readable height, don't calculate from viewport
-    if (window.innerWidth <= 768) {
-      this.chartWidth = Math.floor(window.innerWidth * 0.95);
-      this.chartHeight = 350; // Fixed readable height for mobile charts
-      
-      // Update chart components with new dimensions
-      if (this.itemChart) {
-        this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
-      }
+  private setupChartResizeObserver(): void {
+    if (!this.chartsGrid?.nativeElement || typeof ResizeObserver === 'undefined') {
       return;
     }
 
-    // Calculate responsive chart dimensions for desktop/tablet
-    let tilesPerRow = 3; // Default for large screens
-    let tilesPerColumn = 2; // Default for large screens (2 rows)
-    
-    if (window.innerWidth <= 1200) {
-      tilesPerRow = 2;
-      tilesPerColumn = 3; // 3 rows on tablet
+    this.ngZone.runOutsideAngular(() => {
+      this.resizeObserver = new ResizeObserver(() => this.scheduleChartDimensionUpdate());
+      this.resizeObserver.observe(this.chartsGrid.nativeElement);
+
+      this.chartsGrid.nativeElement
+        .querySelectorAll('app-chart-tile')
+        .forEach((tile) => this.resizeObserver?.observe(tile));
+    });
+  }
+
+  private scheduleChartDimensionUpdate(): void {
+    if (this.resizeFrame !== null) {
+      cancelAnimationFrame(this.resizeFrame);
     }
 
-    // Calculate tile dimensions based on viewport
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    
-    const tileWidth = viewportWidth / tilesPerRow;
-    const tileHeight = viewportHeight / tilesPerColumn; // Dynamic rows based on layout
+    this.resizeFrame = requestAnimationFrame(() => {
+      this.resizeFrame = null;
+      this.ngZone.run(() => this.updateChartDimensionsFromTile());
+    });
+  }
 
-    // Set chart dimensions with some padding
-    this.chartWidth = Math.floor(tileWidth * 0.95); // 95% of tile width
-    this.chartHeight = Math.floor(tileHeight * 0.95); // 95% of tile height
+  private updateChartDimensionsFromTile(): void {
+    const tile = this.chartsGrid?.nativeElement.querySelector('app-chart-tile');
+    if (!tile) return;
 
-    // Update chart components with new dimensions
+    const { width, height } = tile.getBoundingClientRect();
+    const nextWidth = Math.floor(width);
+    const nextHeight = Math.floor(height);
+
+    if (nextWidth <= 0 || nextHeight <= 0) return;
+    if (nextWidth === this.chartWidth && nextHeight === this.chartHeight) return;
+
+    this.chartWidth = nextWidth;
+    this.chartHeight = nextHeight;
+
     if (this.itemChart) {
       this.itemChart.setAvailableSize(this.chartWidth, this.chartHeight);
     }
