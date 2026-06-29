@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
+import { displayInteger } from '../../shared/utils/display-number';
 
 interface OperatorReportGroup {
   key: string;
@@ -177,8 +178,8 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
       'Item': 'TOTAL',
       'Total Time (Runtime)': `${runtime.hours ?? 0}h ${runtime.minutes ?? 0}m`,
       'Total Count': summary.totalCount ?? 0,
-      'PPH': summary.pph ?? 0,
-      'Standard': summary.proratedStandard ? Number(summary.proratedStandard).toFixed(2) : 'N/A',
+      'PPH': displayInteger(summary.pph),
+      'Standard': displayInteger(summary.proratedStandard, 'N/A'),
       'Efficiency': summary.efficiency !== null && summary.efficiency !== undefined ? `${summary.efficiency}%` : 'N/A',
       '_tooltipItemId': ''
     };
@@ -192,8 +193,8 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
       'Item': item.name,
       'Total Time (Runtime)': `${workedTime.hours ?? 0}h ${workedTime.minutes ?? 0}m`,
       'Total Count': item.countTotal,
-      'PPH': item.pph,
-      'Standard': item.standard ? Number(item.standard).toFixed(2) : 'N/A',
+      'PPH': displayInteger(item.pph),
+      'Standard': displayInteger(item.standard, 'N/A'),
       'Efficiency': item.efficiency !== null && item.efficiency !== undefined ? `${item.efficiency}%` : 'N/A',
       '_tooltipItemId': itemId
     };

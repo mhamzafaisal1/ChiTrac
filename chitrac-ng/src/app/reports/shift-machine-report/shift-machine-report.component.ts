@@ -17,6 +17,7 @@ import { BaseTableComponent } from '../../components/base-table/base-table.compo
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
+import { displayInteger } from '../../shared/utils/display-number';
 
 @Component({
   selector: 'app-shift-machine-report',
@@ -161,8 +162,8 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
           Item: item.name ?? '',
           'Total Time (Runtime)': `${hours}h ${minutes}m`,
           'Total Count': item.countTotal ?? 0,
-          PPH: item.pph ?? 0,
-          Standard: item.standard != null ? Number(item.standard).toFixed(2) : '',
+          PPH: displayInteger(item.pph),
+          Standard: displayInteger(item.standard, ''),
           Efficiency: item.efficiency != null ? `${item.efficiency}%` : '',
         });
       });

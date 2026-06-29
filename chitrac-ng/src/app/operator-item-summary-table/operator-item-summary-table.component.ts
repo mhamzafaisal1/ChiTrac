@@ -7,6 +7,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { displayInteger } from '../shared/utils/display-number';
 
 interface ItemSummaryRow {
   machineName?: string;
@@ -73,8 +74,8 @@ export class OperatorItemSummaryTableComponent implements OnInit, OnChanges {
         'Worked Time': `${row.workedTimeFormatted?.hours || 0}h ${row.workedTimeFormatted?.minutes || 0}m`,
         'Count': row.count || 0,
         'Misfeed': row.misfeed || 0,
-        'PPH': row.pph || 0,
-        'Standard': row.standard || 0,
+        'PPH': displayInteger(row.pph),
+        'Standard': displayInteger(row.standard),
         'Efficiency': `${row.efficiency || 0}%`
       }));
     } catch (error) {

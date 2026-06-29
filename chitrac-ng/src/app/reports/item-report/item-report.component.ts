@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { displayInteger } from '../../shared/utils/display-number';
 
 interface ItemSummary {
   itemId?: number | string;
@@ -110,8 +111,8 @@ export class ItemReportComponent implements OnInit, OnDestroy {
           'Item Name': item.itemName,
           'Worked Time': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
           'Count Total': item.count,
-          'PPH': item.pph,
-          'Standard': item.standard,
+          'PPH': displayInteger(item.pph),
+          'Standard': displayInteger(item.standard),
           'Efficiency': `${item.efficiency}%`,
           '_tooltipItemId': item.itemId ?? ''
         }));
