@@ -1,10 +1,12 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
 const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
 const { getEmailValidationError } = require('../../utils/emailValidation');
+const { sendPasswordResetEmail } = require('../../modules/passwordResetEmail');
 
 module.exports = function(server) {
   const router = express.Router();
@@ -180,8 +182,8 @@ module.exports = function(server) {
     };
   }
 
-  function buildUserUpdate(body, includePassword, existingUser) {
-    const update = {
+  function buildUserUpdate(body, existingUser) {
+    return {
       'local.username': `${body.username || ''}`.trim(),
       email: `${body.email || ''}`.trim(),
       role: `${body.role || 'user'}`.trim() || 'user',
@@ -193,12 +195,10 @@ module.exports = function(server) {
       active: body.active !== false,
       timestamps: stampUserUpdate(existingUser)
     };
+  }
 
-    if (includePassword && body.password) {
-      update['local.password'] = bcrypt.hashSync(body.password, bcrypt.genSaltSync(10));
-    }
-
-    return update;
+  function hashResetToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
   function signUserToken(user) {
@@ -356,6 +356,116 @@ module.exports = function(server) {
     }
   });
 
+  router.post('/password-reset/complete', async (req, res) => {
+    try {
+      const token = typeof req.body.token === 'string' ? req.body.token.trim() : '';
+      const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+      if (!token || !isValidPasswordLength(password)) {
+        return res.status(400).json({
+          error: token ? passwordLengthError() : 'This password reset link is invalid or has expired'
+        });
+      }
+
+      const now = new Date();
+      const result = await userCollection.updateOne(
+        {
+          'passwordReset.tokenHash': hashResetToken(token),
+          'passwordReset.expiresAt': { $gt: now },
+          active: { $ne: false }
+        },
+        {
+          $set: {
+            'local.password': bcrypt.hashSync(password, bcrypt.genSaltSync(10)),
+            'timestamps.update': now
+          },
+          $unset: { passwordReset: '' }
+        }
+      );
+
+      if (result.modifiedCount !== 1) {
+        return res.status(400).json({ error: 'This password reset link is invalid or has expired' });
+      }
+
+      logger?.info?.('User password reset completed');
+      return res.json({ success: true, message: 'Password updated' });
+    } catch (error) {
+      logger?.error?.('Error completing password reset:', error);
+      return res.status(500).json({ error: 'Failed to reset password' });
+    }
+  });
+
+  router.post('/:id/password-reset', requireUsersAccess, async (req, res) => {
+    let userId;
+    let tokenHash;
+
+    try {
+      userId = new ObjectId(req.params.id);
+      const existingUser = await userCollection.findOne(getVisibleUserFilter(req.authUser, { _id: userId }));
+      if (!existingUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (existingUser.active === false) {
+        return res.status(400).json({ error: 'Cannot reset the password for an inactive user' });
+      }
+
+      const email = `${existingUser.email || ''}`.trim();
+      const emailError = getEmailValidationError(email);
+      if (!email || emailError) {
+        return res.status(400).json({ error: 'User must have a valid email address' });
+      }
+      if (!config.appBaseUrl) {
+        return res.status(503).json({ error: 'APP_BASE_URL is not configured on the server' });
+      }
+      const lastRequestedAt = toDateValue(existingUser.passwordReset?.requestedAt);
+      if (lastRequestedAt && Date.now() - lastRequestedAt.getTime() < 60 * 1000) {
+        return res.status(429).json({ error: 'Please wait before sending another password reset email' });
+      }
+
+      const token = crypto.randomBytes(32).toString('base64url');
+      tokenHash = hashResetToken(token);
+      const expiresAt = new Date(Date.now() + config.passwordResetExpirationMs);
+      const requestedBy = req.authUser?._id || null;
+
+      await userCollection.updateOne(
+        getVisibleUserFilter(req.authUser, { _id: userId }),
+        {
+          $set: {
+            passwordReset: {
+              tokenHash,
+              expiresAt,
+              requestedAt: new Date(),
+              requestedBy
+            }
+          }
+        }
+      );
+
+      const resetUrl = `${config.appBaseUrl}/ng/reset-password?token=${encodeURIComponent(token)}`;
+      await sendPasswordResetEmail({
+        to: email,
+        username: existingUser.local?.username || 'ChiTrac user',
+        resetUrl,
+        expiresInMinutes: config.passwordResetExpirationMinutes
+      });
+
+      logger?.info?.(`Password reset email sent for user ${userId}`);
+      return res.json({ success: true, message: 'Password reset email sent' });
+    } catch (error) {
+      if (userId && tokenHash) {
+        await userCollection.updateOne(
+          { _id: userId, 'passwordReset.tokenHash': tokenHash },
+          { $unset: { passwordReset: '' } }
+        ).catch(cleanupError => logger?.error?.('Failed to clean up password reset token:', cleanupError));
+      }
+      logger?.error?.('Error sending password reset email:', error);
+      const status = error?.code === 'SMTP_CONFIG' ? 503 : 500;
+      return res.status(status).json({
+        error: status === 503 ? 'Email is not configured on the server' : 'Failed to send password reset email'
+      });
+    }
+  });
+
   router.put('/:id', requireUsersAccess, async (req, res) => {
     try {
       const userId = new ObjectId(req.params.id);
@@ -369,9 +479,6 @@ module.exports = function(server) {
       const emailError = getEmailValidationError(email);
       if (emailError) {
         return res.status(400).json({ error: emailError });
-      }
-      if (req.body.password && !isValidPasswordLength(`${req.body.password}`)) {
-        return res.status(400).json({ error: passwordLengthError() });
       }
       if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
         return res.status(403).json({ error: 'Cannot assign a higher permission level than your own' });
@@ -390,7 +497,7 @@ module.exports = function(server) {
         return res.status(409).json({ error: 'That username is already taken' });
       }
 
-      const update = buildUserUpdate(req.body, !!req.body.password, existingUser);
+      const update = buildUserUpdate(req.body, existingUser);
       const result = await userCollection.updateOne(getVisibleUserFilter(req.authUser, { _id: userId }), { $set: update });
       if (result.matchedCount === 0) {
         return res.status(404).json({ error: 'User not found' });

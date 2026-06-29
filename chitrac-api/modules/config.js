@@ -19,6 +19,10 @@ const userSessionExpirationHours = parsePositiveNumber(
   process.env.USER_SESSION_EXPIRATION_HOURS,
   defaultUserSessionExpirationHours
 );
+const passwordResetExpirationMinutes = parsePositiveNumber(
+  process.env.PASSWORD_RESET_EXPIRATION_MINUTES,
+  60
+);
 const userPermissionsLevels = [
   'Root',
   'SysAdmin',
@@ -78,6 +82,9 @@ module.exports = {
   httpsEnabledEnvConfigured: hasHttpsEnabledEnv,
   userSessionExpirationHours,
   userSessionExpirationMs: userSessionExpirationHours * 60 * 60 * 1000,
+  appBaseUrl: (process.env.APP_BASE_URL || '').trim().replace(/\/+$/, ''),
+  passwordResetExpirationMinutes,
+  passwordResetExpirationMs: passwordResetExpirationMinutes * 60 * 1000,
   httpsPort: parseInt(process.env.HTTPS_PORT, 10) || 50443,
   certificatesDir: path.join(__dirname, '..', 'certificates'),
   httpsKeyFile: 'chitrac.key',
