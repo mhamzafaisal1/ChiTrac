@@ -10,6 +10,7 @@ import { ItemService } from '../services/item.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
+import { displayInteger } from '../shared/utils/display-number';
 
 @Component({
     selector: 'app-item-analytics-dashboard',
@@ -189,8 +190,8 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Item Name': row.itemName,
         'Worked Time': `${hours}h ${minutes}m`,
         'Count': row.count,
-        'PPH': row.pph,
-        'Standard': row.standard,
+        'PPH': displayInteger(row.pph),
+        'Standard': displayInteger(row.standard),
         'Efficiency (%)': row.efficiency
       };
     });        

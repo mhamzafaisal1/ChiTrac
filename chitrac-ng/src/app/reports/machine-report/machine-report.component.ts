@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
+import { displayInteger } from '../../shared/utils/display-number';
 
 interface MachineReportGroup {
   key: string;
@@ -189,8 +190,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       'Item': item.name ?? '',
       'Total Time (Runtime)': `${hours}h ${minutes}m`,
       'Total Count': item.countTotal ?? 0,
-      'PPH': item.pph ?? 0,
-      'Standard': item.standard != null ? Number(item.standard).toFixed(2) : '',
+      'PPH': displayInteger(item.pph),
+      'Standard': displayInteger(item.standard, ''),
       'Efficiency': item.efficiency != null ? `${item.efficiency}%` : '',
       '_tooltipMachineSerial': machineSerial ?? '',
       '_tooltipItemId': isDetail ? item.itemId : ''
@@ -207,8 +208,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       'Item': 'Total',
       'Total Time (Runtime)': `${hours}h ${minutes}m`,
       'Total Count': summary.totalCount ?? 0,
-      'PPH': summary.pph ?? 0,
-      'Standard': summary.proratedStandard != null ? Number(summary.proratedStandard).toFixed(2) : '',
+      'PPH': displayInteger(summary.pph),
+      'Standard': displayInteger(summary.proratedStandard, ''),
       'Efficiency': summary.efficiency != null ? `${summary.efficiency}%` : '',
       '_tooltipMachineSerial': machineSerial ?? '',
       '_tooltipItemId': ''

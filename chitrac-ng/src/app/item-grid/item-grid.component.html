@@ -23,7 +23,7 @@
   <!-- Pace Standard Column -->
   <ng-container matColumnDef="standard">
     <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by Pace Standard">Pace Standard</th>
-    <td mat-cell *matCellDef="let item">{{ item.standard || 0 }}</td>
+    <td mat-cell *matCellDef="let item">{{ (item.standard || 0) | number:'1.0-0' }}</td>
   </ng-container>
 
   <!-- Active Column -->

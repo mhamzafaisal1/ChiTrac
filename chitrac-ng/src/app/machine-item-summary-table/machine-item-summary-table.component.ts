@@ -6,6 +6,7 @@ import { BaseTableComponent } from '../components/base-table/base-table.componen
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { MachineService } from '../services/machine.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { displayInteger } from '../shared/utils/display-number';
 
 @Component({
     selector: 'app-machine-item-summary-table',
@@ -110,8 +111,8 @@ export class MachineItemSummaryTableComponent implements OnInit {
         'Item Name': item.name || 'Unknown',
         'Total Count': count,
         'Worked Time': workedTimeStr,
-        'PPH': item.pph ?? 0,
-        'Standard': item.standard ?? 0,
+        'PPH': displayInteger(item.pph),
+        'Standard': displayInteger(item.standard),
         'Efficiency': `${efficiencyPercentage}%`
       };
     });
