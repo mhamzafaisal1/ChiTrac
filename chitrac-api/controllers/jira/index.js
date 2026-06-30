@@ -113,19 +113,16 @@ module.exports = function (server) {
     };
   }
 
-  function buildDescription({ body, reporter, existingIssue }) {
+  function buildDescription({ body, reporter }) {
     const timestamp = sanitizeText(body.timestamp, new Date().toISOString());
     const serverName = config.systemName || "ChiTrac";
     const details = stringifyDetails(body.fullError);
-    const intro = existingIssue
-      ? "Another matching ChiTrac error report was submitted."
-      : "This bug was automatically reported from the ChiTrac error modal.";
 
     return {
       type: "doc",
       version: 1,
       content: [
-        adfParagraph(intro),
+        adfParagraph("This bug was automatically reported from the ChiTrac error modal."),
         adfHeading("Context"),
         adfParagraph(`Server: ${serverName}`),
         adfParagraph(`Reported by: ${reporter.username || body.user?.username || "Unknown user"}`),
@@ -208,7 +205,7 @@ module.exports = function (server) {
     const autoReportedLabel = (config.jira.labels || []).includes("auto-reported")
       ? ' AND labels = "auto-reported"'
       : "";
-    const jql = `project = "${projectKey}" AND issuetype = "${issueTypeName}"${autoReportedLabel} AND summary ~ "\\"${summaryPhrase}\\"" ORDER BY created DESC`;
+    const jql = `project = "${projectKey}" AND issuetype = "${issueTypeName}" AND resolution = Unresolved${autoReportedLabel} AND summary ~ "\\"${summaryPhrase}\\"" ORDER BY created DESC`;
 
     const searchResult = await jiraRequest("/rest/api/3/search/jql", {
       method: "POST",
@@ -252,7 +249,7 @@ module.exports = function (server) {
       if (existingIssue?.key) {
         await addJiraComment(
           existingIssue.key,
-          buildDescription({ body: req.body, reporter: req.authUser || {}, existingIssue: true })
+          buildDescription({ body: req.body, reporter: req.authUser || {} })
         );
 
         return res.status(200).json({
@@ -269,7 +266,7 @@ module.exports = function (server) {
           project: { key: config.jira.projectKey },
           issuetype: { id: config.jira.issueTypeId },
           summary,
-          description: buildDescription({ body: req.body, reporter: req.authUser || {}, existingIssue: false }),
+          description: buildDescription({ body: req.body, reporter: req.authUser || {} }),
           labels: config.jira.labels || []
         }
       };
