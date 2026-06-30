@@ -91,7 +91,8 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 - [/api/alpha/analytics/item-dashboard-summary](#apialphaanalyticsitem-dashboard-summary)
 - [/api/alpha/analytics/item-sessions-summary](#apialphaanalyticsitem-sessions-summary)
 - [/api/alpha/historic-data-test](#apialphahistoric-data-test)
-- [/api/alpha/sample/machineOverview](#apialphasamplemachineoverview)
+- [/api/alpha/machineOverview](#apialphamachineoverview)
+- [/api/alpha/sample/machineOverview](#apialphamachineoverview) (legacy alias)
 
 
 ---
@@ -2519,7 +2520,9 @@ GET /api/alpha/analytics/operator-item-sessions-summary?operatorId=135790&start=
 
 All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.
 
-### /api/alpha/sample/machineOverview
+### /api/alpha/machineOverview
+
+The legacy `/api/alpha/sample/machineOverview` path is an alias that returns the same response.
 
 Returns a comprehensive machine overview snapshot for a single machine using **today’s** date in the `America/Chicago` timezone. Data is sourced from the `totals-daily` cache, state ticker, and fault-session collections and is intended primarily as a sample/utility route for dashboards.
 
@@ -2587,8 +2590,8 @@ Returns a comprehensive machine overview snapshot for a single machine using **t
 
 **Example Requests:**
 ```http
-GET /api/alpha/sample/machineOverview
-GET /api/alpha/sample/machineOverview?serial=63520
+GET /api/alpha/machineOverview
+GET /api/alpha/machineOverview?serial=63520
 ```
 
 **Error Responses:**

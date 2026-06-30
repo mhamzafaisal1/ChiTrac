@@ -1779,7 +1779,8 @@ hue-6-2: #e6c07b
 <li data-line="95" class="code-line" dir="auto"><a href="#apialphaanalyticsitem-dashboard-summary" data-href="#apialphaanalyticsitem-dashboard-summary">/api/alpha/analytics/item-dashboard-summary</a></li>
 <li data-line="96" class="code-line" dir="auto"><a href="#apialphaanalyticsitem-sessions-summary" data-href="#apialphaanalyticsitem-sessions-summary">/api/alpha/analytics/item-sessions-summary</a></li>
 <li data-line="97" class="code-line" dir="auto"><a href="#apialphahistoric-data-test" data-href="#apialphahistoric-data-test">/api/alpha/historic-data-test</a></li>
-<li data-line="98" class="code-line" dir="auto"><a href="#apialphasamplemachineoverview" data-href="#apialphasamplemachineoverview">/api/alpha/sample/machineOverview</a></li>
+<li data-line="98" class="code-line" dir="auto"><a href="#apialphamachineoverview" data-href="#apialphamachineoverview">/api/alpha/machineOverview</a></li>
+<li class="code-line" dir="auto"><a href="#apialphamachineoverview" data-href="#apialphamachineoverview">/api/alpha/sample/machineOverview</a> (legacy alias)</li>
 </ul>
 <hr data-line="101" class="code-line" dir="auto">
 <h2 data-line="103" class="code-line" dir="auto" id="dashboard-1" tabindex="-1">Dashboard</h2>
@@ -4563,7 +4564,8 @@ Fault Data (if available; bookended to the active time range)</p>
 </code></pre>
 <p data-line="2693" class="code-line" dir="auto"><strong>Versioning &amp; Stability:</strong></p>
 <p data-line="2695" class="code-line" dir="auto">All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.</p>
-<h3 data-line="2697" class="code-line" dir="auto" id="apialphasamplemachineoverview" tabindex="-1">/api/alpha/sample/machineOverview</h3>
+<h3 data-line="2697" class="code-line" dir="auto" id="apialphamachineoverview" tabindex="-1">/api/alpha/machineOverview</h3>
+<p class="code-line" dir="auto">The legacy <code>/api/alpha/sample/machineOverview</code> path is an alias that returns the same response.</p>
 <p data-line="2699" class="code-line" dir="auto">Returns a comprehensive machine overview snapshot for a single machine using <strong>today’s</strong> date in the <code>America/Chicago</code> timezone. Data is sourced from the <code>totals-daily</code> cache, state ticker, and fault-session collections and is intended primarily as a sample/utility route for dashboards.</p>
 <p data-line="2701" class="code-line" dir="auto"><strong>Method:</strong> GET<br>
 <strong>Auth:</strong> Same as other /api/alpha routes<br>
@@ -4638,8 +4640,8 @@ Fault Data (if available; bookended to the active time range)</p>
 <span class="hljs-punctuation">}</span>
 </code></pre>
 <p data-line="2763" class="code-line" dir="auto"><strong>Example Requests:</strong></p>
-<pre><code data-line="2764" class="code-line language-http" dir="auto">GET /api/alpha/sample/machineOverview
-GET /api/alpha/sample/machineOverview?serial=63520
+<pre><code data-line="2764" class="code-line language-http" dir="auto">GET /api/alpha/machineOverview
+GET /api/alpha/machineOverview?serial=63520
 </code></pre>
 <p data-line="2769" class="code-line" dir="auto"><strong>Error Responses:</strong></p>
 <p data-line="2771" class="code-line" dir="auto"><strong>500 Internal Server Error</strong></p>
