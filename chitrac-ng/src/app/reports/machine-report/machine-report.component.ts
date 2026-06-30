@@ -58,6 +58,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isEmailing: boolean = false;
   showSummaryOnly: boolean = false;
   expandedGroupKeys = new Set<string>();
+  sortColumn: string | null = null;
+  sortDirection: 'asc' | 'desc' = 'asc';
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
@@ -127,6 +129,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     const formattedData: any[] = [];
     this.reportGroups = [];
     this.expandedGroupKeys.clear();
+    this.sortColumn = null;
+    this.sortDirection = 'asc';
 
     if (!results || !Array.isArray(results)) {
       this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
@@ -230,6 +234,38 @@ export class MachineReportComponent implements OnInit, OnDestroy {
 
   trackGroupByKey(_: number, group: MachineReportGroup): string {
     return group.key;
+  }
+
+  sortBySummary(column: string): void {
+    if (this.sortColumn === column) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortColumn = column;
+      this.sortDirection = 'asc';
+    }
+
+    const direction = this.sortDirection === 'asc' ? 1 : -1;
+    this.reportGroups = this.reportGroups
+      .map((group, index) => ({ group, index }))
+      .sort((a, b) => {
+        const left = this.getSummarySortValue(a.group.summary, column);
+        const right = this.getSummarySortValue(b.group.summary, column);
+        const comparison = typeof left === 'string' && typeof right === 'string'
+          ? left.localeCompare(right, undefined, { sensitivity: 'base' })
+          : Number(left) - Number(right);
+        return comparison === 0 ? a.index - b.index : comparison * direction;
+      })
+      .map(({ group }) => group);
+  }
+
+  private getSummarySortValue(summary: any, column: string): string | number {
+    const value = summary?.[column];
+    if (column === 'Machine') return String(value ?? '');
+    if (column === 'Total Time (Runtime)') {
+      const match = String(value ?? '').match(/(\d+)h\s*(\d+)m/);
+      return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+    }
+    return Number.parseFloat(String(value ?? '').replace(/[,%]/g, '')) || 0;
   }
 
   getCellTooltip(row: any, column: string): string {
