@@ -343,6 +343,35 @@ module.exports = function (server) {
       }
       
       console.log(`[OPERATOR-CACHE] Aggregated ${operatorDataMap.size} operators`);
+
+      const itemDefinitions = await db
+        .collection(config.itemCollectionName)
+        .find({})
+        .project({ id: 1, number: 1, standard: 1 })
+        .toArray();
+      const itemStandardById = new Map();
+      for (const itemDefinition of itemDefinitions) {
+        const itemId = itemDefinition.id ?? itemDefinition.number;
+        const standard = Number(itemDefinition.standard);
+        if (itemId != null && Number.isFinite(standard)) {
+          itemStandardById.set(String(itemId), standard);
+        }
+      }
+
+      // Older operator-item cache records do not include workedTimeMs. Build an
+      // actual-work-time lookup so those records can use the operator's time on
+      // the corresponding machine/day instead of standard-derived time credit.
+      const operatorMachineWorkByKey = new Map();
+      for (const record of operatorMachineCache) {
+        const key = `${record.operatorId}|${record.date || ''}|${record.machineSerial ?? ''}`;
+        const aggregate = operatorMachineWorkByKey.get(key) || {
+          workedTimeMs: 0,
+          totalCounts: 0,
+        };
+        aggregate.workedTimeMs += Number(record.workedTimeMs) || 0;
+        aggregate.totalCounts += Number(record.totalCounts) || 0;
+        operatorMachineWorkByKey.set(key, aggregate);
+      }
       
       // Return empty results if no data found
       if (operatorDataMap.size === 0) {
@@ -413,9 +442,17 @@ module.exports = function (server) {
           seenItemNames.add(normalizedName);
           
           const counts = Number(cacheItem.totalCounts) || 0;
-          const standard = Number(cacheItem.itemStandard) || 0;
-          // Cache records use totalTimeCreditMs instead of workedTimeMs
-          const workedMs = Number(cacheItem.totalTimeCreditMs) || 0;
+          const definitionStandard = itemStandardById.get(String(cacheItem.itemId));
+          const standard = definitionStandard ?? (Number(cacheItem.itemStandard) || 0);
+          const directWorkedMs = Number(cacheItem.workedTimeMs) || 0;
+          const machineWorkKey =
+            `${cacheItem.operatorId}|${cacheItem.date || ''}|${cacheItem.machineSerial ?? ''}`;
+          const machineWork = operatorMachineWorkByKey.get(machineWorkKey);
+          const workedMs = directWorkedMs > 0
+            ? directWorkedMs
+            : machineWork?.workedTimeMs > 0 && machineWork.totalCounts > 0
+              ? machineWork.workedTimeMs * (counts / machineWork.totalCounts)
+              : 0;
           
           if (!allItemsMap.has(normalizedName)) {
             allItemsMap.set(normalizedName, {
@@ -472,7 +509,8 @@ module.exports = function (server) {
           seenItemNames.add(normalizedName);
           
           const counts = Number(sessionItem.totalCounts) || 0;
-          const standard = Number(sessionItem.itemStandard) || 0;
+          const definitionStandard = itemStandardById.get(String(sessionItem.itemId));
+          const standard = definitionStandard ?? (Number(sessionItem.itemStandard) || 0);
           
           // For session items, calculate worked time proportionally
           const sessionWorkedMs = operatorData.totalWorkedMs > 0 && operatorData.totalCount > 0
