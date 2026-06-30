@@ -3,6 +3,7 @@ module.exports = {
     required: [
       'serial',
       'name',
+      'ipAddress',
       'active',
       'lanes',
       'stations'
@@ -60,4 +61,3 @@ module.exports = {
     },
     additionalProperties: false
   };
-  

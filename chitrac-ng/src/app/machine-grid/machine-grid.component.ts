@@ -41,7 +41,7 @@ export class MachineGridComponent implements OnInit, OnDestroy {
   sub: Subscription;
   page = 1;
   paginationSize = 10;
-  displayedColumns: string[] = ['serial', 'name', 'lanes', 'active', 'actions'];
+  displayedColumns: string[] = ['serial', 'name', 'ipAddress', 'lanes', 'active'];
 
   error: string | null = null;
 
@@ -50,7 +50,9 @@ export class MachineGridComponent implements OnInit, OnDestroy {
     name: null,
     active: true,
     ipAddress: '',
-    lanes: 1
+    lanes: 1,
+    stations: [1],
+    groups: []
   });
   
 
@@ -104,87 +106,69 @@ export class MachineGridComponent implements OnInit, OnDestroy {
     this.page = e.pageIndex;
   }
 
-  openDialog(machine: MachineConfig): void {
-    if (!machine) {
-      machine = this.emptyMachine;
-    }
+  private refreshTable(): void {
+    if (this.sub) this.sub.unsubscribe();
+    this.sub = this.getMachines.subscribe({
+      next: this.getMachinesSubFunction,
+      error: (err) => {
+        console.error('Error in subscription:', err);
+        this.error = 'Failed to load machines. Please try again.';
+      }
+    });
+  }
 
-    let dialogRef = this.dialog.open(MachineDialogCuComponent, {
-      data: machine,
+  openDialog(machine: MachineConfig | null): void {
+    const data = machine ? { ...machine } : { ...this.emptyMachine };
+    const dialogRef = this.dialog.open(MachineDialogCuComponent, {
+      data,
       disableClose: true
     });
+    this.setupDialogHandlers(dialogRef);
+  }
 
-    dialogRef.afterClosed().subscribe(dialogMachine => {
+  private setupDialogHandlers(dialogRef: any): void {
+    dialogRef.afterClosed().subscribe((dialogMachine: MachineConfig | null) => {
       if (!dialogMachine) {
-        console.log('Exited');
-      } else if (dialogMachine._id) {
-        console.log('Editing submit');
-        const submitSub = this.configurationService.putMachineConfig(dialogMachine).subscribe({
-          next: (res) => {
-            console.log('Update successful:', res);
-            this.sub.unsubscribe();
-            this.sub = this.getMachines.subscribe({
-              next: this.getMachinesSubFunction,
-              error: (err) => {
-                console.error('Error in subscription:', err);
-                this.error = 'Failed to load machines. Please try again.';
-              }
-            });
-            this.selectionModel.clear();
-          },
-          error: (err) => {
-            console.error('Update failed:', err);
-            dialogMachine.error = err;
-            dialogRef = this.dialog.open(MachineDialogCuComponent, {
-              data: dialogMachine,
-              disableClose: true,
-              panelClass: 'error-dialog'
-            });
-          }
-        });
-      } else if (dialogMachine.name) {
-        console.log('Creating submit');
-        const submitSub = this.configurationService.postMachineConfig(dialogMachine).subscribe({
-          next: (res) => {
-            console.log('Create successful:', res);
-            this.sub.unsubscribe();
-            this.sub = this.getMachines.subscribe({
-              next: this.getMachinesSubFunction,
-              error: (err) => {
-                console.error('Error in subscription:', err);
-                this.error = 'Failed to load machines. Please try again.';
-              }
-            });
-          },
-          error: (err) => {
-            console.error('Create failed:', err);
-            dialogMachine.error = err;
-            dialogRef = this.dialog.open(MachineDialogCuComponent, {
-              data: dialogMachine,
-              disableClose: true,
-              panelClass: 'error-dialog'
-            });
-          }
-        });
-      } else {
-        console.log('Cancel');
+        return;
       }
+
+      const action$ = dialogMachine._id
+        ? this.configurationService.putMachineConfig(dialogMachine)
+        : this.configurationService.postMachineConfig(dialogMachine);
+
+      action$.subscribe({
+        next: () => {
+          this.refreshTable();
+          this.selectionModel.clear();
+        },
+        error: (err) => {
+          console.error('Machine operation failed:', err);
+          const errorPayload = err?.error || {};
+          const retryMachine = {
+            ...dialogMachine,
+            error: {
+              message: errorPayload.error || err.message || 'Machine operation failed.',
+              fieldErrors: errorPayload.fieldErrors || {}
+            }
+          };
+          const errorDialogRef = this.dialog.open(MachineDialogCuComponent, {
+            data: retryMachine,
+            disableClose: true,
+            panelClass: 'error-dialog'
+          });
+          this.setupDialogHandlers(errorDialogRef);
+        }
+      });
     });
   }
 
   deleteMachine(machine: MachineConfig): void {
     if (machine) {
-      const submitSub = this.configurationService.deleteMachineConfig(machine._id).subscribe({
+      this.configurationService.deleteMachineConfig(machine._id).subscribe({
         next: (res) => {
           console.log('Delete successful:', res);
-          this.sub.unsubscribe();
-          this.sub = this.getMachines.subscribe({
-            next: this.getMachinesSubFunction,
-            error: (err) => {
-              console.error('Error in subscription:', err);
-              this.error = 'Failed to load machines. Please try again.';
-            }
-          });
+          this.refreshTable();
+          this.selectionModel.clear();
         },
         error: (err) => {
           console.error('Delete failed:', err);

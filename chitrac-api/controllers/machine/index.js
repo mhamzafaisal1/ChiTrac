@@ -37,6 +37,52 @@ function constructor(server) {
 	const configService = require('../../services/mongo/');
 	const machineValidator = require('../../middleware/machineValidator')(server);
 
+	function escapeRegex(value) {
+		return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	}
+
+	async function getMachineUniquenessErrors(machine, excludedId = null) {
+		const serial = Number(machine.serial);
+		const name = String(machine.name || '').trim();
+		const ipAddress = String(machine.ipAddress || '').trim();
+		const query = {
+			$or: [
+				{ serial },
+				{ name: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } },
+				{ ipAddress }
+			]
+		};
+
+		if (excludedId) {
+			query._id = { $ne: new ObjectId(excludedId) };
+		}
+
+		const matches = await collection
+			.find(query)
+			.project({ serial: 1, name: 1, ipAddress: 1 })
+			.toArray();
+		const fieldErrors = {};
+
+		if (matches.some(existing => Number(existing.serial) === serial)) {
+			fieldErrors.serial = 'Serial is already in use.';
+		}
+		if (matches.some(existing => String(existing.name || '').trim().toLowerCase() === name.toLowerCase())) {
+			fieldErrors.name = 'Name is already in use.';
+		}
+		if (matches.some(existing => String(existing.ipAddress || '').trim() === ipAddress)) {
+			fieldErrors.ipAddress = 'IP address is already in use.';
+		}
+
+		return fieldErrors;
+	}
+
+	function sendMachineUniquenessError(res, fieldErrors) {
+		return res.status(409).json({
+			error: 'A machine with one or more of these values already exists.',
+			fieldErrors
+		});
+	}
+
 	/*** Service consumption functions */
   function resolveDashboardDetailRange(req) {
     const hasStart = typeof req.query.start !== "undefined" || typeof req.query.startTime !== "undefined";
@@ -154,6 +200,13 @@ function constructor(server) {
 	async function createMachine(req, res, next) {
   try {
     const machine = { ...req.body }; // clone for safety
+    machine.name = String(machine.name).trim();
+    machine.ipAddress = String(machine.ipAddress).trim();
+
+    const fieldErrors = await getMachineUniquenessErrors(machine);
+    if (Object.keys(fieldErrors).length) {
+      return sendMachineUniquenessError(res, fieldErrors);
+    }
 
     // 🪵 Log the raw incoming payload
     logger.debug('[createMachine] Incoming payload:', {
@@ -204,7 +257,14 @@ function constructor(server) {
 	async function upsertMachine(req, res, next) {
 		try {
 			const id = req.params.id;
-			let updates = req.body;
+			let updates = { ...req.body };
+			updates.name = String(updates.name).trim();
+			updates.ipAddress = String(updates.ipAddress).trim();
+
+			const fieldErrors = await getMachineUniquenessErrors(updates, id);
+			if (Object.keys(fieldErrors).length) {
+				return sendMachineUniquenessError(res, fieldErrors);
+			}
 	
 			logger.debug('[upsertMachine] Processing update:', {
 				id: id,

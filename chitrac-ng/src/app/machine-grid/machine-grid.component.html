@@ -1,63 +1,67 @@
-<div class="container">
-  <div class="header">
-    <h2>Machines</h2>
-    <button mat-raised-button color="primary" (click)="openDialog(null)">
-        <mat-icon>add</mat-icon>
-        Add Machine
-      </button>      
-  </div>
-
-  <div class="table-container">
-    <table mat-table [dataSource]="dataSource" matSort>
- <!-- Serial Column -->
-<ng-container matColumnDef="serial">
+<table mat-table [dataSource]="dataSource" matSort>
+  <ng-container matColumnDef="serial">
     <th mat-header-cell *matHeaderCellDef mat-sort-header>Serial</th>
     <td mat-cell *matCellDef="let machine">{{ machine.serial }}</td>
   </ng-container>
-  
-  <!-- Name Column -->
+
   <ng-container matColumnDef="name">
     <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
     <td mat-cell *matCellDef="let machine">{{ machine.name }}</td>
   </ng-container>
 
-  <!-- Lanes Column -->
+  <ng-container matColumnDef="ipAddress">
+    <th mat-header-cell *matHeaderCellDef mat-sort-header>IP Address</th>
+    <td mat-cell *matCellDef="let machine">{{ machine.ipAddress }}</td>
+  </ng-container>
+
   <ng-container matColumnDef="lanes">
     <th mat-header-cell *matHeaderCellDef mat-sort-header>Lanes</th>
     <td mat-cell *matCellDef="let machine">{{ machine.lanes }}</td>
   </ng-container>
-  
-  <!-- Active Column -->
+
   <ng-container matColumnDef="active">
     <th mat-header-cell *matHeaderCellDef mat-sort-header>Active</th>
     <td mat-cell *matCellDef="let machine">
-      <span *ngIf="machine.active">Active</span>
-      <span *ngIf="!machine.active">Inactive</span>
+      {{ machine.active ? "Active" : "Inactive" }}
     </td>
   </ng-container>
-  
-  <!-- Actions Column -->
-  <ng-container matColumnDef="actions">
-    <th mat-header-cell *matHeaderCellDef>Actions</th>
-    <td mat-cell *matCellDef="let machine">
-      <button mat-icon-button color="primary" (click)="openDialog(machine)">
-        <mat-icon>edit</mat-icon>
-      </button>
-      <button mat-icon-button color="warn" (click)="deleteMachine(machine)">
-        <mat-icon>delete</mat-icon>
-      </button>
-    </td>
-  </ng-container>
-  
+
   <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-  <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
-  
-    </table>
+  <tr
+    mat-row
+    *matRowDef="let row; columns: displayedColumns"
+    [ngClass]="{ selectedRow: selectionModel.isSelected(row) }"
+    (click)="selectionModel.toggle(row)"
+  ></tr>
+</table>
 
-    <mat-paginator [pageSize]="paginationSize" [pageSizeOptions]="[5, 10, 25, 100]" (page)="handlePageEvent($event)"></mat-paginator>
-  </div>
+<mat-paginator
+  [pageSize]="paginationSize"
+  [pageSizeOptions]="[5, 10, 25, 100]"
+  (page)="handlePageEvent($event)"
+  aria-label="Select page"
+></mat-paginator>
 
-  <div *ngIf="error" class="error-message">
-    {{error}}
-  </div>
-</div> 
+<mat-divider></mat-divider>
+
+<div class="cud-buttons">
+  <button mat-flat-button (click)="openDialog(null)">
+    <mat-icon>add</mat-icon>New Machine
+  </button>
+  <button
+    mat-flat-button
+    [disabled]="selectionModel.selected.length === 0"
+    (click)="openDialog(selectionModel.selected[0])"
+  >
+    <mat-icon>edit</mat-icon>Edit Machine
+  </button>
+  <button
+    mat-flat-button
+    [disabled]="selectionModel.selected.length === 0"
+    (click)="deleteMachine(selectionModel.selected[0])"
+  >
+    <mat-icon>delete</mat-icon>Delete Machine
+  </button>
+</div>
+
+<div *ngIf="error" class="error-message">{{ error }}</div>
