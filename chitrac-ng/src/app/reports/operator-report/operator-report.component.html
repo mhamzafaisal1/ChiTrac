@@ -57,14 +57,21 @@
   <div class="table-container" [class.loading]="isLoading">
     <div class="report-table" *ngIf="reportGroups.length">
       <div class="report-header report-grid">
-        <div
+        <button
+          type="button"
+          class="sort-header"
           *ngFor="let column of summaryColumns"
+          (click)="sortBySummary(column)"
           [matTooltip]="columnTooltips[column] || ''"
           [matTooltipDisabled]="!columnTooltips[column]"
           [matTooltipShowDelay]="700"
+          [attr.aria-label]="'Sort by ' + column"
         >
-          {{ column }}
-        </div>
+          <span>{{ column }}</span>
+          <mat-icon *ngIf="sortColumn === column">
+            {{ sortDirection === "asc" ? "arrow_upward" : "arrow_downward" }}
+          </mat-icon>
+        </button>
       </div>
 
       <div class="report-group" *ngFor="let group of reportGroups; trackBy: trackGroupByKey">
@@ -78,7 +85,9 @@
           <span class="entity-cell">
             <mat-icon>{{ isGroupExpanded(group) ? "expand_more" : "chevron_right" }}</mat-icon>
             <span class="entity-name">{{ group.summary["Operator"] }}</span>
-            <span class="detail-count" *ngIf="group.details.length">{{ group.details.length }}</span>
+            <span class="detail-count" *ngIf="group.details.length">
+              {{ group.details.length }} {{ group.details.length === 1 ? "item" : "items" }}
+            </span>
           </span>
           <span>{{ group.summary["Total Time (Runtime)"] }}</span>
           <span>{{ group.summary["Total Count"] }}</span>

@@ -110,6 +110,27 @@
     text-transform: uppercase;
   }
 
+  .sort-header {
+    min-width: 0;
+    padding: 0 0.75rem 0 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-transform: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+
+    mat-icon {
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+    }
+  }
+
   .report-group {
     border-bottom: 1px solid color-mix(in srgb, var(--theme-color-on-surface-variant, #1f2937) 10%, transparent);
   }
@@ -117,7 +138,7 @@
   .summary-row {
     width: 100%;
     min-height: 54px;
-    padding: 0 1rem;
+    padding: 0 1rem 0 0.75rem;
     border: 0;
     border-left: 4px solid transparent;
     background: var(--theme-color-table-row-background);
@@ -182,7 +203,7 @@
   }
 
   .detail-panel {
-    padding: 0.75rem 1rem 1rem 3.25rem;
+    padding: 0.75rem 1rem 1rem;
     background: color-mix(in srgb, var(--theme-color-surface-container, #f5f7fa) 76%, var(--theme-color-surface, #fff));
   }
 
@@ -192,12 +213,26 @@
     font-size: 0.84rem;
     color: var(--theme-color-text);
 
+    thead,
+    tbody {
+      display: block;
+    }
+
+    tr {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.5fr) repeat(5, minmax(100px, 0.7fr));
+      align-items: center;
+    }
+
     th,
     td {
-      padding: 0.6rem 0.75rem;
+      min-width: 0;
+      padding: 0.6rem 0.75rem 0.6rem 0;
       border-bottom: 1px solid color-mix(in srgb, var(--theme-color-on-surface-variant, #1f2937) 10%, transparent);
       text-align: left;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     th {
