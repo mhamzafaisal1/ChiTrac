@@ -2,7 +2,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const ajvErrors = require('ajv-errors');
 
-const itemSchema = require('../schemas/itemSchema.js');
+const itemSchema = require('../schemas/itemCrudSchema.js');
 
 const ajv = new Ajv({ allErrors: true, useDefaults: true });
 addFormats(ajv);
@@ -52,4 +52,4 @@ function itemValidator(server) {
   };
 }
 
-module.exports = itemValidator; 
+module.exports = itemValidator;

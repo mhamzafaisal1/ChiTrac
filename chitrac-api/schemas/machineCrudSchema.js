@@ -1,3 +1,5 @@
+// CRUD API schema for the current machine collection shape.
+// The normalized/internal machine schema and utilities live in machine.js.
 module.exports = {
     type: 'object',
     required: [

@@ -1,3 +1,5 @@
+// CRUD API schema for the current item collection shape.
+// The normalized/internal item schema and utilities live in item.js.
 module.exports = {
     type: 'object',
     required: [
