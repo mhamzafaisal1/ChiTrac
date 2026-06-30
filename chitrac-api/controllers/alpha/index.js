@@ -425,7 +425,7 @@ function constructor(server) {
     });
   });
 
-  router.get("/sample/machineOverview", async (req, res, next) => {
+  router.get(["/machineOverview", "/sample/machineOverview"], async (req, res, next) => {
     try {
       const serialParam =
         typeof req.query.serial !== "undefined"
