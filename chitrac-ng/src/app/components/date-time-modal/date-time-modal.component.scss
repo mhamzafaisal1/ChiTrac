@@ -1,8 +1,8 @@
 :host {
   display: block;
   width: 100%;
-  min-width: 600px;
-  max-width: 800px;
+  min-width: 520px;
+  max-width: 620px;
   overflow: visible;
 }
 
@@ -12,7 +12,7 @@
   padding: 1rem;
   background-color: var(--theme-color-surface);
   color: var(--theme-color-on-surface-variant);
-  min-width: 600px;
+  min-width: 520px;
   min-height: 350px;
   position: relative;
   overflow-x: hidden;
@@ -21,12 +21,12 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    flex: 1;
-    min-width: 0; // Allow flex item to shrink
+    flex: 0 0 220px;
+    min-width: 220px;
 
     mat-form-field {
-      width: 100%;
-      min-width: 0; // Allow form fields to shrink
+      width: 220px;
+      min-width: 0;
     }
   }
 
@@ -44,55 +44,29 @@
     min-width: 200px;
     max-width: 250px;
 
-    mat-radio-group {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
+    .shift-hint {
+      margin: 0;
+      font-size: 0.8rem;
+      color: var(--mat-form-field-error-text-color, #f44336);
     }
 
-    .timeframe-section {
-      margin-top: 1rem;
+    .timeframe-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: none;
+      overflow-y: visible;
 
-      .shift-hint {
-        margin: 0 0 0.5rem 0;
-        font-size: 0.8rem;
-        color: var(--mat-form-field-error-text-color, #f44336);
-      }
+      button {
+        width: 100%;
+        font-size: 0.75rem;
+        padding: 6px 10px;
+        white-space: nowrap;
 
-      .shift-buttons {
-        margin-bottom: 1rem;
-      }
-      
-      h4 {
-        margin: 0 0 0.75rem 0;
-        font-size: 0.9rem;
-        font-weight: 500;
-        color: var(--theme-color-on-surface-variant);
-      }
-
-      .timeframe-buttons {
-        display: flex;
-        flex-direction: column;
-        gap: 0.4rem;
-        max-height: none;
-        overflow-y: visible;
-
-        button {
-          width: 100%;
-          font-size: 0.75rem;
-          padding: 6px 10px;
-          white-space: nowrap;
-          
-          &.selected {
-            background-color: var(--theme-color-primary);
-            color: var(--theme-color-on-primary);
-            border-color: var(--theme-color-primary);
-          }
-
-          &:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-          }
+        &.selected {
+          background-color: var(--theme-color-primary);
+          color: var(--theme-color-on-primary);
+          border-color: var(--theme-color-primary);
         }
       }
     }
