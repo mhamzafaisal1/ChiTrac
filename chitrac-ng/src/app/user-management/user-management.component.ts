@@ -17,7 +17,12 @@ import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { ManagedUser, UserManagementService, UserSaveRequest } from '../services/user-management.service';
+import {
+  ManagedUser,
+  UserManagementService,
+  UserRoleOption,
+  UserSaveRequest
+} from '../services/user-management.service';
 import { UserService } from '../user.service';
 
 const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
@@ -54,17 +59,16 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
   isSendingReset = false;
   isLoading = false;
   currentPermissionLevel = 3;
+  roleOptions: UserRoleOption[] = [];
   private userDialogRef: MatDialogRef<unknown> | null = null;
 
   userFormGroup = new FormGroup({
     username: new FormControl('', [Validators.required, Validators.minLength(4)]),
     email: new FormControl('', [Validators.pattern(EMAIL_PATTERN)]),
-    role: new FormControl('user', [Validators.required]),
-    permissionLevel: new FormControl(3, [Validators.required, Validators.min(0)]),
-    groups: new FormControl(''),
-    restrictions: new FormControl(''),
+    role: new FormControl('', [Validators.required]),
     active: new FormControl(true),
-    password: new FormControl('', [Validators.minLength(6), Validators.maxLength(64)])
+    password: new FormControl('', [Validators.minLength(6), Validators.maxLength(64)]),
+    confirmPassword: new FormControl('')
   });
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
@@ -81,8 +85,8 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
   ngOnInit(): void {
     this.userService.user.subscribe(user => {
       this.currentPermissionLevel = this.userService.getPermissionLevel(user);
-      this.applyPermissionLevelValidator();
     });
+    this.userFormGroup.valueChanges.subscribe(() => this.validatePasswordConfirmation());
     this.loadUsers();
   }
 
@@ -96,6 +100,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     this.userManagementService.getUsers().subscribe({
       next: (res) => {
         this.users = res.users;
+        this.roleOptions = res.roles || [];
         this.dataSource.data = res.users;
         this.isLoading = false;
       },
@@ -121,29 +126,27 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
   }
 
   private resetUserForm(): void {
+    this.configurePasswordValidators(true);
     this.userFormGroup.reset({
       username: '',
       email: '',
-      role: 'user',
-      permissionLevel: this.currentPermissionLevel,
-      groups: '',
-      restrictions: '',
+      role: this.getRoleForLevel(this.currentPermissionLevel),
       active: true,
-      password: ''
+      password: '',
+      confirmPassword: ''
     });
   }
 
   editUser(user: ManagedUser): void {
     this.selectedUser = user;
+    this.configurePasswordValidators(false);
     this.userFormGroup.reset({
       username: user.username,
       email: user.email || '',
-      role: user.role || 'user',
-      permissionLevel: user.permissions?.level ?? 3,
-      groups: (user.groups || []).join(', '),
-      restrictions: (user.restrictions || []).join(', '),
+      role: this.getAvailableRoleName(user),
       active: user.active !== false,
-      password: ''
+      password: '',
+      confirmPassword: ''
     });
     this.openUserDialog();
   }
@@ -156,28 +159,22 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
     const value = this.userFormGroup.value;
     const password = `${value.password || ''}`;
-    const permissionLevel = Number(value.permissionLevel ?? this.currentPermissionLevel);
-
-    if (permissionLevel < this.currentPermissionLevel) {
-      this.userFormGroup.get('permissionLevel')?.setErrors({ min: true });
-      this.userFormGroup.get('permissionLevel')?.markAsTouched();
+    if (password !== `${value.confirmPassword || ''}`) {
+      this.validatePasswordConfirmation();
+      this.userFormGroup.get('confirmPassword')?.markAsTouched();
       return;
     }
 
     const payload: UserSaveRequest = {
       username: `${value.username || ''}`.trim(),
       email: `${value.email || ''}`.trim(),
-      role: `${value.role || 'user'}`.trim(),
-      permissions: {
-        level: permissionLevel
-      },
-      groups: this.parseList(value.groups),
-      restrictions: this.parseList(value.restrictions),
+      role: `${value.role || ''}`.trim(),
       active: value.active !== false
     };
 
-    if (!this.selectedUser && password) {
+    if (password) {
       payload.password = password;
+      payload.confirmPassword = `${value.confirmPassword || ''}`;
     }
 
     if (!this.selectedUser && !payload.password) {
@@ -245,25 +242,48 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     return new Date(date).toLocaleString();
   }
 
-  private parseList(value: unknown): string[] {
-    if (Array.isArray(value)) return value.map(x => `${x}`.trim()).filter(Boolean);
-    return `${value || ''}`.split(',').map(x => x.trim()).filter(Boolean);
+  get availableRoleOptions(): UserRoleOption[] {
+    return this.roleOptions.filter(option => option.level >= this.currentPermissionLevel);
   }
 
-  private applyPermissionLevelValidator(): void {
-    const control = this.userFormGroup.get('permissionLevel');
-    if (!control) return;
+  private getRoleForLevel(level: number): string {
+    return this.availableRoleOptions.find(option => option.level === level)?.name
+      || this.availableRoleOptions[0]?.name
+      || '';
+  }
 
-    control.setValidators([
-      Validators.required,
-      Validators.min(this.currentPermissionLevel)
+  private getAvailableRoleName(user: ManagedUser): string {
+    const byName = this.availableRoleOptions.find(
+      option => option.name.toLowerCase() === `${user.role || ''}`.toLowerCase()
+    );
+    return byName?.name || this.getRoleForLevel(user.permissions?.level ?? this.currentPermissionLevel);
+  }
+
+  private configurePasswordValidators(required: boolean): void {
+    const password = this.userFormGroup.get('password');
+    const confirmation = this.userFormGroup.get('confirmPassword');
+    password?.setValidators([
+      ...(required ? [Validators.required] : []),
+      Validators.minLength(6),
+      Validators.maxLength(64)
     ]);
+    confirmation?.setValidators(required ? [Validators.required] : []);
+    password?.updateValueAndValidity({ emitEvent: false });
+    confirmation?.updateValueAndValidity({ emitEvent: false });
+  }
 
-    if (Number(control.value) < this.currentPermissionLevel) {
-      control.setValue(this.currentPermissionLevel);
+  private validatePasswordConfirmation(): void {
+    const password = this.userFormGroup.get('password');
+    const confirmation = this.userFormGroup.get('confirmPassword');
+    if (!password || !confirmation) return;
+
+    const errors = { ...(confirmation.errors || {}) };
+    if (`${password.value || ''}` !== `${confirmation.value || ''}`) {
+      errors['passwordMismatch'] = true;
+    } else {
+      delete errors['passwordMismatch'];
     }
-
-    control.updateValueAndValidity({ emitEvent: false });
+    confirmation.setErrors(Object.keys(errors).length ? errors : null, { emitEvent: false });
   }
 
   private applySavedUser(user: ManagedUser): void {

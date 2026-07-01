@@ -19,6 +19,12 @@ export interface ManagedUser {
 
 export interface UserListResponse {
   users: ManagedUser[];
+  roles: UserRoleOption[];
+}
+
+export interface UserRoleOption {
+  name: string;
+  level: number;
 }
 
 export interface UserResponse {
@@ -33,13 +39,9 @@ export interface PasswordResetResponse {
 export interface UserSaveRequest {
   username: string;
   password?: string;
+  confirmPassword?: string;
   email?: string;
   role?: string;
-  permissions?: {
-    level: number;
-  };
-  groups?: string[];
-  restrictions?: string[];
   active?: boolean;
 }
 

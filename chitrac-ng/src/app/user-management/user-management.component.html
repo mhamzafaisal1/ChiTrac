@@ -94,35 +94,26 @@
         <mat-form-field appearance="outline">
           <mat-label>Role</mat-label>
           <mat-select formControlName="role">
-            <mat-option value="user">User</mat-option>
-            <mat-option value="admin">Admin</mat-option>
-            <mat-option value="root">Root</mat-option>
+            <mat-option *ngFor="let role of availableRoleOptions" [value]="role.name">
+              {{ role.name }}
+            </mat-option>
           </mat-select>
+          <mat-error *ngIf="userFormGroup.get('role')?.hasError('required')">Role is required</mat-error>
         </mat-form-field>
 
         <mat-form-field appearance="outline">
-          <mat-label>Permission Level</mat-label>
-          <input matInput type="number" [min]="currentPermissionLevel" formControlName="permissionLevel">
-          <mat-error *ngIf="userFormGroup.get('permissionLevel')?.hasError('required')">Permission level is required</mat-error>
-          <mat-error *ngIf="userFormGroup.get('permissionLevel')?.hasError('min')">Permission level cannot be higher than your own access</mat-error>
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Groups</mat-label>
-          <input matInput formControlName="groups">
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Restrictions</mat-label>
-          <input matInput formControlName="restrictions">
-        </mat-form-field>
-
-        <mat-form-field appearance="outline" *ngIf="!selectedUser">
-          <mat-label>Password</mat-label>
+          <mat-label>{{ selectedUser ? 'New Password (optional)' : 'Password' }}</mat-label>
           <input matInput type="password" formControlName="password" autocomplete="new-password" maxlength="64">
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('required')">Password is required for new users</mat-error>
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('minlength')">Use at least 6 characters</mat-error>
           <mat-error *ngIf="userFormGroup.get('password')?.hasError('maxlength')">Use no more than 64 characters</mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>{{ selectedUser ? 'Confirm New Password' : 'Confirm Password' }}</mat-label>
+          <input matInput type="password" formControlName="confirmPassword" autocomplete="new-password" maxlength="64">
+          <mat-error *ngIf="userFormGroup.get('confirmPassword')?.hasError('required')">Confirm the password</mat-error>
+          <mat-error *ngIf="userFormGroup.get('confirmPassword')?.hasError('passwordMismatch')">Passwords do not match</mat-error>
         </mat-form-field>
 
         <div class="password-reset-action" *ngIf="selectedUser">
