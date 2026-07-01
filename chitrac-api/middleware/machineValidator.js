@@ -2,7 +2,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const ajvErrors = require('ajv-errors');
 
-const machineSchema = require('../schemas/machineSchema.js');
+const machineSchema = require('../schemas/machineCrudSchema.js');
 
 const ajv = new Ajv({ allErrors: true, useDefaults: true });
 addFormats(ajv);

@@ -78,6 +78,18 @@ module.exports = function(server) {
     return typeof targetLevel === 'number' && authLevel !== null && targetLevel >= authLevel;
   }
 
+  function getRoleOptions() {
+    return (config.userPermissionsLevels || []).map((name, level) => ({
+      name: `${name}`.trim(),
+      level
+    }));
+  }
+
+  function resolveRole(role) {
+    const requestedRole = `${role || ''}`.trim().toLowerCase();
+    return getRoleOptions().find(option => option.name.toLowerCase() === requestedRole) || null;
+  }
+
   function requireUser(req, res, next) {
     if (config.enableApiTokenCheck === false) {
       req.tokenPayload = { bypassed: true };
@@ -111,11 +123,6 @@ module.exports = function(server) {
       return value.split(',').map(x => x.trim()).filter(Boolean);
     }
     return [];
-  }
-
-  function normalizePermissionLevel(value, defaultLevel = 3) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultLevel;
   }
 
   function isValidPasswordLength(password) {
@@ -182,19 +189,25 @@ module.exports = function(server) {
     };
   }
 
-  function buildUserUpdate(body, existingUser) {
-    return {
+  function buildUserUpdate(body, existingUser, roleOption) {
+    const update = {
       'local.username': `${body.username || ''}`.trim(),
       email: `${body.email || ''}`.trim(),
-      role: `${body.role || 'user'}`.trim() || 'user',
+      role: roleOption.name,
       permissions: {
-        level: normalizePermissionLevel(body.permissions?.level ?? body.permissionLevel)
+        level: roleOption.level
       },
-      groups: normalizeStringArray(body.groups),
-      restrictions: normalizeStringArray(body.restrictions),
+      groups: normalizeStringArray(existingUser.groups),
+      restrictions: normalizeStringArray(existingUser.restrictions),
       active: body.active !== false,
       timestamps: stampUserUpdate(existingUser)
     };
+
+    if (body.password) {
+      update['local.password'] = bcrypt.hashSync(`${body.password}`, bcrypt.genSaltSync(10));
+    }
+
+    return update;
   }
 
   function hashResetToken(token) {
@@ -297,7 +310,10 @@ module.exports = function(server) {
       const users = await userCollection.find(getVisibleUserFilter(req.authUser))
         .sort({ 'local.username': 1 })
         .toArray();
-      res.json({ users: users.map(sanitizeUser) });
+      res.json({
+        users: users.map(sanitizeUser),
+        roles: getRoleOptions()
+      });
     } catch (error) {
       logger?.error?.('Error fetching users:', error);
       res.status(500).json({ error: 'Failed to fetch users' });
@@ -308,8 +324,8 @@ module.exports = function(server) {
     try {
       const username = `${req.body.username || ''}`.trim();
       const password = `${req.body.password || ''}`;
-      const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
       const email = `${req.body.email || ''}`.trim();
+      const roleOption = resolveRole(req.body.role);
 
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
@@ -321,7 +337,13 @@ module.exports = function(server) {
       if (!isValidPasswordLength(password)) {
         return res.status(400).json({ error: passwordLengthError() });
       }
-      if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
+      if (password !== `${req.body.confirmPassword || ''}`) {
+        return res.status(400).json({ error: 'Passwords do not match' });
+      }
+      if (!roleOption) {
+        return res.status(400).json({ error: 'Select a valid role' });
+      }
+      if (!canManagePermissionLevel(req.authUser, roleOption.level)) {
         return res.status(403).json({ error: 'Cannot create a user with a higher permission level than your own' });
       }
 
@@ -337,12 +359,12 @@ module.exports = function(server) {
           password: bcrypt.hashSync(password, bcrypt.genSaltSync(10))
         },
         email,
-        role: `${req.body.role || 'user'}`.trim() || 'user',
+        role: roleOption.name,
         permissions: {
-          level: permissionLevel
+          level: roleOption.level
         },
-        groups: normalizeStringArray(req.body.groups),
-        restrictions: normalizeStringArray(req.body.restrictions),
+        groups: [],
+        restrictions: [],
         active: req.body.active !== false,
         timestamps
       };
@@ -470,8 +492,9 @@ module.exports = function(server) {
     try {
       const userId = new ObjectId(req.params.id);
       const username = `${req.body.username || ''}`.trim();
-      const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
       const email = `${req.body.email || ''}`.trim();
+      const password = `${req.body.password || ''}`;
+      const roleOption = resolveRole(req.body.role);
 
       if (username.length < 4) {
         return res.status(400).json({ error: 'Username must be at least 4 characters' });
@@ -480,8 +503,17 @@ module.exports = function(server) {
       if (emailError) {
         return res.status(400).json({ error: emailError });
       }
-      if (!canManagePermissionLevel(req.authUser, permissionLevel)) {
+      if (!roleOption) {
+        return res.status(400).json({ error: 'Select a valid role' });
+      }
+      if (!canManagePermissionLevel(req.authUser, roleOption.level)) {
         return res.status(403).json({ error: 'Cannot assign a higher permission level than your own' });
+      }
+      if (password && !isValidPasswordLength(password)) {
+        return res.status(400).json({ error: passwordLengthError() });
+      }
+      if (password && password !== `${req.body.confirmPassword || ''}`) {
+        return res.status(400).json({ error: 'Passwords do not match' });
       }
 
       const existingUser = await userCollection.findOne(getVisibleUserFilter(req.authUser, { _id: userId }));
@@ -497,7 +529,7 @@ module.exports = function(server) {
         return res.status(409).json({ error: 'That username is already taken' });
       }
 
-      const update = buildUserUpdate(req.body, existingUser);
+      const update = buildUserUpdate(req.body, existingUser, roleOption);
       const result = await userCollection.updateOne(getVisibleUserFilter(req.authUser, { _id: userId }), { $set: update });
       if (result.matchedCount === 0) {
         return res.status(404).json({ error: 'User not found' });
