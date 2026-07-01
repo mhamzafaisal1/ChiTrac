@@ -277,6 +277,11 @@
   grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 1rem;
   align-items: start;
+  transition: opacity 150ms ease;
+
+  &.disabled {
+    opacity: 0.48;
+  }
 }
 
 .picker-option-section {
