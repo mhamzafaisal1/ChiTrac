@@ -137,7 +137,7 @@
       <a mat-list-item (click)="prevMenu()">
         <mat-icon>arrow_back</mat-icon><span>Back</span>
       </a>
-      <a mat-list-item *ngIf="false" href="#">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.settings)" routerLink="/ng/settings/machines" (click)="closeMenu()">
         <mat-icon>local_laundry_service</mat-icon><span>Machines</span>
       </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.profile)" routerLink="/ng/settings/profile" (click)="closeMenu()">

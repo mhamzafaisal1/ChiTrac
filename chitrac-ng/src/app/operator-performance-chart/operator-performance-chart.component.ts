@@ -147,6 +147,13 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       index++;
     });
 
+    const values = series.flatMap(operatorSeries =>
+      operatorSeries.data.map(point => point.y)
+    );
+    const yMin = values.length
+      ? Math.floor((Math.min(...values) - 5) / 10) * 10
+      : 0;
+
     return {
       title: `Operator Performance - ${data.machine?.name || 'Machine'}`,
       width: this.chartWidth || 600,
@@ -155,6 +162,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       xType: 'category',
       xLabel: 'Hour',
       yLabel: 'Efficiency (%)',
+      yMin,
       margin: {
         top: this.marginTop,
         right: this.marginRight,

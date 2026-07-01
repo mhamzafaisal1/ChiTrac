@@ -1,6 +1,6 @@
 /** Angular imports */
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 /** Other module imports */
 import { Observable } from 'rxjs';
@@ -16,6 +16,9 @@ import { MachineConfig } from './shared/models/machine.model';
   providedIn: 'root'
 })
 export class ConfigurationService {
+  private readonly locallyHandledErrorOptions = {
+    headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' })
+  };
 
   constructor(private http: HttpClient) { }
 
@@ -102,11 +105,19 @@ export class ConfigurationService {
   }
 
   public postMachineConfig(machine: MachineConfig): Observable<MachineConfig> {
-    return this.http.post<MachineConfig>('/api/machine/config', machine);
+    return this.http.post<MachineConfig>(
+      '/api/machine/config',
+      machine,
+      this.locallyHandledErrorOptions
+    );
   }
 
   public putMachineConfig(machine: MachineConfig): Observable<MachineConfig> {
-    return this.http.put<MachineConfig>(`/api/machine/config/${machine._id}`, machine);
+    return this.http.put<MachineConfig>(
+      `/api/machine/config/${machine._id}`,
+      machine,
+      this.locallyHandledErrorOptions
+    );
   }
 
   public deleteMachineConfig(_id: string): Observable<MachineConfig> {

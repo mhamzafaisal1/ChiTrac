@@ -53,6 +53,7 @@ import {
     xType?: XType;                  // default 'category'
     xLabel?: string;
     yLabel?: string;
+    yMin?: number;
     showAxisLabels?: boolean;
     xTickFormat?: (v:any)=>string;
     yTickFormat?: (v:number)=>string;
@@ -171,11 +172,12 @@ import {
       // Compute domains early for auto left-margin
       const allX = this.collectXDomain(cfg);
       const yMax = this.collectYMax(cfg, allX);
+      const yMin = Number.isFinite(cfg.yMin) ? cfg.yMin! : 0;
       const isHorizontal = cfg.orientation === 'horizontal';
 
       // Auto-fit left margin for y-axis tick labels (vertical charts with numeric y-axis)
       if (!isHorizontal) {
-        const yTicks = d3.scaleLinear().domain([0, yMax]).nice().ticks(6);
+        const yTicks = d3.scaleLinear().domain([yMin, yMax]).nice().ticks(6);
         const yLabels = yTicks.map(t => cfg.yTickFormat ? cfg.yTickFormat(t) : String(t));
         const neededLeft = Math.max(50, ...yLabels.map(s => s.length * 7)) + 18;
         cfg.margin = {
@@ -217,7 +219,7 @@ import {
       const xScale = this.buildXScale(cfg, allX, innerW, innerH, isHorizontal);
       const yScale = isHorizontal
         ? this.buildBandScale(allX.map(String), [0, innerH], this.getBarPadding(cfg))
-        : d3.scaleLinear().domain([0, yMax]).nice().range([innerH, 0]);
+        : d3.scaleLinear().domain([yMin, yMax]).nice().range([innerH, 0]);
   
       const yScaleH = isHorizontal
         ? d3.scaleLinear().domain([0, yMax]).nice().range([0, innerW])
@@ -425,6 +427,7 @@ import {
         xType: cfg.xType || 'category',
         xLabel: cfg.xLabel,
         yLabel: cfg.yLabel,
+        yMin: cfg.yMin,
         showAxisLabels: cfg.showAxisLabels,
         xTickFormat: cfg.xTickFormat,
         yTickFormat: cfg.yTickFormat,

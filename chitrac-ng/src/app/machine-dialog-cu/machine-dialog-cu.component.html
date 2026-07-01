@@ -1,78 +1,80 @@
 <form [formGroup]="machineFormGroup">
-  <h2 *ngIf="machine._id" mat-dialog-title>Editing {{ machine.name }}</h2>
+  <h2 *ngIf="machine._id" mat-dialog-title>Editing {{ machineName }}</h2>
   <h2 *ngIf="!machine._id" mat-dialog-title>Create New Machine</h2>
 
   <mat-dialog-content>
     <mat-form-field>
       <mat-label>Serial</mat-label>
-      <input matInput type="number" formControlName="serial" required>
+      <input matInput type="number" formControlName="serial" required />
       <mat-error *ngIf="machineFormGroup.get('serial')?.hasError('required')">
         Serial is required
       </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('serial')?.hasError('min')">
+        Serial must be at least 1
+      </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('serial')?.hasError('duplicate')">
+        {{ getDuplicateError("serial") }}
+      </mat-error>
     </mat-form-field>
-    
+
     <mat-form-field>
       <mat-label>Name</mat-label>
-      <input matInput formControlName="name" required>
+      <input matInput formControlName="name" required />
       <mat-error *ngIf="machineFormGroup.get('name')?.hasError('required')">
         Name is required
       </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('name')?.hasError('minlength')">
+        Name must be at least 2 characters
+      </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('name')?.hasError('duplicate')">
+        {{ getDuplicateError("name") }}
+      </mat-error>
     </mat-form-field>
-    
+
     <mat-form-field>
       <mat-label>IP Address</mat-label>
-      <input matInput formControlName="ipAddress">
+      <input matInput formControlName="ipAddress" required />
+      <mat-error *ngIf="machineFormGroup.get('ipAddress')?.hasError('required')">
+        IP address is required
+      </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('ipAddress')?.hasError('pattern')">
+        Enter a valid IPv4 address
+      </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('ipAddress')?.hasError('duplicate')">
+        {{ getDuplicateError("ipAddress") }}
+      </mat-error>
     </mat-form-field>
-    
+
     <mat-form-field>
       <mat-label>Lanes</mat-label>
-      <input matInput type="number" formControlName="lanes" required>
+      <input matInput type="number" formControlName="lanes" required />
       <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('required')">
         Lanes are required
       </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('min')">
+        Lanes must be at least 1
+      </mat-error>
     </mat-form-field>
-    
+
     <mat-slide-toggle formControlName="active" labelPosition="before">
       Active
     </mat-slide-toggle>
-
-    <mat-form-field>
-      <mat-label>Stations (comma-separated)</mat-label>
-      <input matInput [value]="machine.stations?.join(',')" (input)="onStationsChange($event)" required>
-    </mat-form-field>
-    
-    <div formArrayName="groups">
-      <div *ngFor="let group of groups.controls; let i = index" [formGroupName]="i">
-        <mat-form-field>
-          <mat-label>Group Name</mat-label>
-          <input matInput formControlName="name" required>
-        </mat-form-field>
-        <mat-form-field>
-          <mat-label>Cost Center</mat-label>
-          <input matInput formControlName="costCenter">
-        </mat-form-field>
-        <mat-form-field>
-          <mat-label>Department ID</mat-label>
-          <input matInput formControlName="departmentId">
-        </mat-form-field>
-        <button mat-button color="warn" (click)="removeGroup(i)">Remove Group</button>
-        <mat-divider></mat-divider>
-      </div>
-    </div>
-    
-    <button mat-button color="accent" (click)="addGroup()">Add Group</button>
-    
-    
   </mat-dialog-content>
 
   <mat-dialog-actions align="end">
     <button mat-button [mat-dialog-close]="null">Cancel</button>
-    <button mat-raised-button color="primary" [mat-dialog-close]="machine" [disabled]="!machineFormGroup.valid">
+    <button
+      type="button"
+      mat-raised-button
+      color="primary"
+      (click)="submit()"
+      [disabled]="machineFormGroup.invalid"
+    >
       Save
     </button>
   </mat-dialog-actions>
 
-  <div *ngIf="error" class="error-message">
-    {{error}}
+  <div *ngIf="error?.message" class="error-message">
+    {{ error?.message }}
   </div>
-</form> 
+</form>

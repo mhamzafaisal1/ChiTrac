@@ -1,3 +1,5 @@
+// Normalized/internal machine schema used as a building block by event and
+// analytics schemas. The current Machine CRUD request schema is machineCrudSchema.js.
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const ajv = new Ajv({ strictSchema: false });
