@@ -571,11 +571,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
 
       bucket.totalRuntimeMs += runtimeMs;
 
-      const rawCounts = Array.isArray(s.counts)
-        ? s.counts
-        : Array.isArray(s.counts?.valid)
-          ? s.counts.valid
-          : [];
+      const rawCounts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
       const counts = rawCounts
         .map((c) => ({
           timestamp:

@@ -6,18 +6,23 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { displayInteger } from '../../shared/utils/display-number';
+
+interface ShiftMachineReportGroup {
+  key: string;
+  summary: any;
+  details: any[];
+}
 
 @Component({
   selector: 'app-shift-machine-report',
@@ -29,11 +34,10 @@ import { displayInteger } from '../../shared/utils/display-number';
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatSlideToggleModule,
+    MatTooltipModule,
     MatDatepickerModule,
     MatNativeDateModule,
     MatSelectModule,
-    BaseTableComponent,
   ],
   providers: [provideNativeDateAdapter()],
   templateUrl: './shift-machine-report.component.html',
@@ -46,19 +50,28 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
   selectedShiftId: string | null = null;
   selectedShift: ShiftListItem | null = null;
   columns: string[] = [];
+  summaryColumns: string[] = ['Machine', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+  detailColumns: string[] = ['Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
   rows: any[] = [];
+  reportGroups: ShiftMachineReportGroup[] = [];
+  columnTooltips: { [column: string]: string } = {
+    'Total Time (Runtime)': 'Amount of time machine has been running during the selected shift',
+    'Total Count': 'Amount of pieces fed into the machine/line.',
+    'PPH': 'Pieces Per Hour',
+    'Standard': 'Pieces Per Hour Goal',
+    'Efficiency': 'Percent of goal pace being achieved.',
+  };
   isDarkTheme: boolean = false;
   isLoading: boolean = false;
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
-  showSummaryOnly: boolean = false;
+  expandedGroupKeys = new Set<string>();
+  sortColumn: string | null = null;
+  sortDirection: 'asc' | 'desc' = 'asc';
   shiftsLoadError: string | null = null;
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
-    if (this.showSummaryOnly) {
-      return this.rows.filter((row) => row['Item'] === 'Total');
-    }
     return this.rows;
   }
 
@@ -134,6 +147,10 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
 
   private processTableData(results: any[]): void {
     const formattedData: any[] = [];
+    this.reportGroups = [];
+    this.expandedGroupKeys.clear();
+    this.sortColumn = null;
+    this.sortDirection = 'asc';
 
     if (!results || !Array.isArray(results)) {
       this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
@@ -146,33 +163,125 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
       if (!summary) return;
 
       const itemSummaries = summary.itemSummaries;
-      const items = itemSummaries != null ? Object.values(itemSummaries) : [];
+      const items = itemSummaries != null
+        ? Object.entries(itemSummaries).map(([itemId, item]: [string, any]) => ({ ...item, itemId }))
+        : [];
 
       const totalItem = items.find((item: any) => item.name === 'Total');
       const otherItems = items.filter((item: any) => item.name !== 'Total');
       const sortedItems = totalItem ? [totalItem, ...otherItems] : items;
+      const machineName = machine.machine?.name ?? '';
+      const machineSerial = machine.machine?.serial ?? '';
+      const detailRows: any[] = [];
+      let summaryRow: any | null = null;
 
       sortedItems.forEach((item: any) => {
         const wt = item.workedTimeFormatted;
         const hours = wt != null && typeof wt.hours === 'number' ? wt.hours : 0;
         const minutes = wt != null && typeof wt.minutes === 'number' ? wt.minutes : 0;
 
-        formattedData.push({
-          Machine: machine.machine?.name ?? '',
+        const row = {
+          Machine: machineName,
           Item: item.name ?? '',
           'Total Time (Runtime)': `${hours}h ${minutes}m`,
           'Total Count': item.countTotal ?? 0,
           PPH: displayInteger(item.pph),
           Standard: displayInteger(item.standard, ''),
           Efficiency: item.efficiency != null ? `${item.efficiency}%` : '',
-        });
+          _tooltipMachineSerial: machineSerial,
+          _tooltipItemId: item.name === 'Total' ? '' : item.itemId,
+        };
+        formattedData.push(row);
+        if (item.name === 'Total') {
+          summaryRow = row;
+        } else {
+          detailRows.push(row);
+        }
+      });
+
+      if (!summaryRow) {
+        const runtime = summary.runtimeFormatted ?? summary.workedTimeFormatted ?? { hours: 0, minutes: 0 };
+        summaryRow = {
+          Machine: machineName,
+          Item: 'Total',
+          'Total Time (Runtime)': `${runtime.hours ?? 0}h ${runtime.minutes ?? 0}m`,
+          'Total Count': summary.totalCount ?? 0,
+          PPH: displayInteger(summary.pph),
+          Standard: displayInteger(summary.proratedStandard, ''),
+          Efficiency: summary.efficiency != null ? `${summary.efficiency}%` : '',
+          _tooltipMachineSerial: machineSerial,
+          _tooltipItemId: '',
+        };
+        formattedData.push(summaryRow);
+      }
+
+      this.reportGroups.push({
+        key: `${machineSerial || machineName || this.reportGroups.length}`,
+        summary: summaryRow,
+        details: detailRows,
       });
     });
 
-    this.columns = formattedData.length
-      ? Object.keys(formattedData[0])
-      : ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+    this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
+  }
+
+  toggleGroup(group: ShiftMachineReportGroup): void {
+    if (this.expandedGroupKeys.has(group.key)) {
+      this.expandedGroupKeys.delete(group.key);
+    } else {
+      this.expandedGroupKeys.add(group.key);
+    }
+  }
+
+  isGroupExpanded(group: ShiftMachineReportGroup): boolean {
+    return this.expandedGroupKeys.has(group.key);
+  }
+
+  trackGroupByKey(_: number, group: ShiftMachineReportGroup): string {
+    return group.key;
+  }
+
+  sortBySummary(column: string): void {
+    if (this.sortColumn === column) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortColumn = column;
+      this.sortDirection = 'asc';
+    }
+
+    const direction = this.sortDirection === 'asc' ? 1 : -1;
+    this.reportGroups = this.reportGroups
+      .map((group, index) => ({ group, index }))
+      .sort((a, b) => {
+        const left = this.getSummarySortValue(a.group.summary, column);
+        const right = this.getSummarySortValue(b.group.summary, column);
+        const comparison = typeof left === 'string' && typeof right === 'string'
+          ? left.localeCompare(right, undefined, { sensitivity: 'base' })
+          : Number(left) - Number(right);
+        return comparison === 0 ? a.index - b.index : comparison * direction;
+      })
+      .map(({ group }) => group);
+  }
+
+  private getSummarySortValue(summary: any, column: string): string | number {
+    const value = summary?.[column];
+    if (column === 'Machine') return String(value ?? '');
+    if (column === 'Total Time (Runtime)') {
+      const match = String(value ?? '').match(/(\d+)h\s*(\d+)m/);
+      return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+    }
+    return Number.parseFloat(String(value ?? '').replace(/[,%]/g, '')) || 0;
+  }
+
+  getCellTooltip(row: any, column: string): string {
+    if (column === 'Machine' && row?._tooltipMachineSerial !== '') {
+      return `Serial: ${row._tooltipMachineSerial}`;
+    }
+    if (column === 'Item' && row?._tooltipItemId !== '') {
+      return `Item ID: ${row._tooltipItemId}`;
+    }
+    return '';
   }
 
   getEfficiencyClass(value: any, column: string): string {
