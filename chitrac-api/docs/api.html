@@ -1744,6 +1744,7 @@ hue-6-2: #e6c07b
 </ul>
 <h3 data-line="62" class="code-line" dir="auto" id="alpha" tabindex="-1">Alpha</h3>
 <ul data-line="63" class="code-line" dir="auto">
+<li class="code-line" dir="auto"><a href="#apialphashifts" data-href="#apialphashifts">/api/alpha/shifts</a></li>
 <li data-line="63" class="code-line" dir="auto"><a href="#apialphatimestamp" data-href="#apialphatimestamp">/api/alpha/timestamp</a></li>
 <li data-line="64" class="code-line" dir="auto"><a href="#apialphacurrenttimeget" data-href="#apialphacurrenttimeget">/api/alpha/currentTime/get</a></li>
 <li data-line="65" class="code-line" dir="auto"><a href="#apialphaac360get" data-href="#apialphaac360get">/api/alpha/ac360/get</a></li>
@@ -2750,7 +2751,7 @@ Aggregated fault statistics by code and name (only present when <code>include</c
 <h2 data-line="911" class="code-line" dir="auto" id="item-1" tabindex="-1">Item</h2>
 <p data-line="913" class="code-line" dir="auto"><a id="apiitemconfig"></a></p>
 <h3 data-line="915" class="code-line" dir="auto" id="apiitemconfig" tabindex="-1">/api/item/config</h3>
-<p data-line="917" class="code-line" dir="auto">CRUD-style configuration for <strong>items</strong> stored in MongoDB (<code>item</code> collection). JSON routes use the shared configuration service; <strong>POST</strong> and <strong>PUT</strong> run through <strong><code>itemValidator</code></strong>.</p>
+<p data-line="917" class="code-line" dir="auto">CRUD-style configuration for <strong>items</strong> stored in MongoDB (<code>config-item</code> collection). JSON routes use the shared configuration service; <strong>POST</strong> and <strong>PUT</strong> run through <strong><code>itemValidator</code></strong>.</p>
 <table data-line="919" class="code-line" dir="auto">
 <thead data-line="919" class="code-line" dir="auto">
 <tr data-line="919" class="code-line" dir="auto">
@@ -2764,49 +2765,49 @@ Aggregated fault statistics by code and name (only present when <code>include</c
 <tr data-line="921" class="code-line" dir="auto">
 <td>GET</td>
 <td><code>/api/item/config</code></td>
-<td>Required</td>
-<td>Returns all item documents (JSON).</td>
+<td>None</td>
+<td>Returns all item documents as a JSON array.</td>
 </tr>
 <tr data-line="922" class="code-line" dir="auto">
 <td>GET</td>
 <td><code>/api/item/config/xml</code></td>
-<td>Required</td>
+<td>None</td>
 <td>Same data as <strong>XML</strong> (<code>item</code> root).</td>
 </tr>
 <tr data-line="923" class="code-line" dir="auto">
 <td>POST</td>
 <td><code>/api/item/config</code></td>
-<td>Required</td>
-<td>Create or upsert (validator).</td>
+<td>None</td>
+<td>Create an item (validator).</td>
 </tr>
 <tr data-line="924" class="code-line" dir="auto">
 <td>PUT</td>
 <td><code>/api/item/config/:id</code></td>
-<td>Required</td>
+<td>None</td>
 <td>Update by MongoDB <code>_id</code> (validator).</td>
 </tr>
 <tr data-line="925" class="code-line" dir="auto">
 <td>DELETE</td>
 <td><code>/api/item/config/:id</code></td>
-<td>Required</td>
-<td>Delete by id.</td>
+<td>None</td>
+<td>Delete by MongoDB <code>_id</code>.</td>
 </tr>
 </tbody>
 </table>
 <p data-line="927" class="code-line" dir="auto"><strong>Query parameters (GET JSON):</strong> None required.</p>
 <p data-line="929" class="code-line" dir="auto"><strong>Data Format (GET JSON):</strong></p>
-<pre><code data-line="930" class="code-line language-json" dir="auto"><span class="hljs-punctuation">{</span>
-  <span class="hljs-attr">"items"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span>
-    <span class="hljs-punctuation">{</span>
-      <span class="hljs-attr">"number"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">1</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"name"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Incontinent Pad"</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"pace"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">720</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"area"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">1</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"department"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Towels"</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"weight"</span><span class="hljs-punctuation">:</span> <span class="hljs-literal"><span class="hljs-keyword">null</span></span>
-    <span class="hljs-punctuation">}</span>
-  <span class="hljs-punctuation">]</span>
-<span class="hljs-punctuation">}</span>
+<pre><code data-line="930" class="code-line language-json" dir="auto">[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "active": true,
+    "number": 1,
+    "name": "Incontinent Pad",
+    "standard": 720,
+    "area": 1,
+    "department": "Towels",
+    "weight": null
+  }
+]
 </code></pre>
 <p data-line="945" class="code-line" dir="auto"><strong>Example Requests:</strong></p>
 <pre><code data-line="946" class="code-line" dir="auto">GET /api/item/config
@@ -2906,7 +2907,7 @@ DELETE /api/item/config/507f1f77bcf86cd799439011
 <h2 data-line="1056" class="code-line" dir="auto" id="machine-1" tabindex="-1">Machine</h2>
 <p data-line="1058" class="code-line" dir="auto"><a id="apimachineconfig"></a></p>
 <h3 data-line="1060" class="code-line" dir="auto" id="apimachineconfig" tabindex="-1">/api/machine/config</h3>
-<p data-line="1062" class="code-line" dir="auto">CRUD-style configuration for <strong>machines</strong> (<code>machine</code> collection). <strong>POST</strong>, <strong>PUT</strong>, and <strong>DELETE</strong> use <strong><code>machineValidator</code></strong> on write paths.</p>
+<p data-line="1062" class="code-line" dir="auto">CRUD-style configuration for <strong>machines</strong> stored in MongoDB (<code>config-machine</code> collection). <strong>POST</strong> and <strong>PUT</strong> use <strong><code>machineValidator</code></strong>.</p>
 <table data-line="1064" class="code-line" dir="auto">
 <thead data-line="1064" class="code-line" dir="auto">
 <tr data-line="1064" class="code-line" dir="auto">
@@ -2920,46 +2921,46 @@ DELETE /api/item/config/507f1f77bcf86cd799439011
 <tr data-line="1066" class="code-line" dir="auto">
 <td>GET</td>
 <td><code>/api/machine/config</code></td>
-<td>Required</td>
-<td>All machine documents (JSON).</td>
+<td>None</td>
+<td>Returns all machine documents as a JSON array.</td>
 </tr>
 <tr data-line="1067" class="code-line" dir="auto">
 <td>GET</td>
 <td><code>/api/machine/config/xml</code></td>
-<td>Required</td>
+<td>None</td>
 <td>Same data as <strong>XML</strong> (<code>machine</code> root).</td>
 </tr>
 <tr data-line="1068" class="code-line" dir="auto">
 <td>POST</td>
 <td><code>/api/machine/config</code></td>
-<td>Required</td>
+<td>None</td>
 <td>Create machine (validator).</td>
 </tr>
 <tr data-line="1069" class="code-line" dir="auto">
 <td>PUT</td>
 <td><code>/api/machine/config/:id</code></td>
-<td>Required</td>
+<td>None</td>
 <td>Update by MongoDB <code>_id</code> (validator).</td>
 </tr>
 <tr data-line="1070" class="code-line" dir="auto">
 <td>DELETE</td>
 <td><code>/api/machine/config/:id</code></td>
-<td>Required</td>
-<td>Delete by id.</td>
+<td>None</td>
+<td>Delete by MongoDB <code>_id</code>.</td>
 </tr>
 </tbody>
 </table>
 <p data-line="1072" class="code-line" dir="auto"><strong>Data Format (GET JSON):</strong></p>
-<pre><code data-line="1073" class="code-line language-json" dir="auto"><span class="hljs-punctuation">{</span>
-  <span class="hljs-attr">"machines"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span>
-    <span class="hljs-punctuation">{</span>
-      <span class="hljs-attr">"serial"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">63520</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"name"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Flipper 1"</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"ipAddress"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"192.168.0.31"</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"lanes"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">1</span>
-    <span class="hljs-punctuation">}</span>
-  <span class="hljs-punctuation">]</span>
-<span class="hljs-punctuation">}</span>
+<pre><code data-line="1073" class="code-line language-json" dir="auto">[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "active": true,
+    "serial": 63520,
+    "name": "Flipper 1",
+    "ipAddress": "192.168.0.31",
+    "lanes": 1
+  }
+]
 </code></pre>
 <p data-line="1086" class="code-line" dir="auto"><strong>Example Requests:</strong></p>
 <pre><code data-line="1087" class="code-line" dir="auto">GET /api/machine/config
@@ -3359,7 +3360,7 @@ GET /api/machine/analytics/machine-dashboard-daily-cached?serial=67808
 <h2 data-line="1487" class="code-line" dir="auto" id="operator-1" tabindex="-1">Operator</h2>
 <p data-line="1489" class="code-line" dir="auto"><a id="apioperatorconfig"></a></p>
 <h3 data-line="1491" class="code-line" dir="auto" id="apioperatorconfig" tabindex="-1">/api/operator/config</h3>
-<p data-line="1493" class="code-line" dir="auto">Configuration for <strong>operators</strong> (<code>operator</code> collection). <strong>GET</strong> routes use session auth like other JSON configuration endpoints. <strong>POST</strong>, <strong>PUT</strong>, and <strong>DELETE</strong> require a valid <strong>JWT</strong> (<code>Authorization: Bearer …</code>, or <code>token</code> in query/body) unless <strong><code>enableApiTokenCheck</code></strong> is disabled in server config.</p>
+<p data-line="1493" class="code-line" dir="auto">Configuration for <strong>operators</strong> stored in MongoDB (<code>config-operator</code> collection). <strong>GET</strong> routes do not currently enforce authentication. <strong>POST</strong>, <strong>PUT</strong>, and <strong>DELETE</strong> require a valid <strong>JWT</strong> (<code>Authorization: Bearer token</code>, or <code>token</code> in query/body) unless <strong><code>enableApiTokenCheck</code></strong> is disabled in server config.</p>
 <table data-line="1495" class="code-line" dir="auto">
 <thead data-line="1495" class="code-line" dir="auto">
 <tr data-line="1495" class="code-line" dir="auto">
@@ -3373,13 +3374,13 @@ GET /api/machine/analytics/machine-dashboard-daily-cached?serial=67808
 <tr data-line="1497" class="code-line" dir="auto">
 <td>GET</td>
 <td><code>/api/operator/config</code></td>
-<td>Required (session)</td>
-<td>All operators (JSON). Optional query <strong><code>filterTestOperators=true</code></strong> excludes codes <strong>&gt; 500000</strong>.</td>
+<td>None</td>
+<td>All operators as a JSON array. Optional query <strong><code>filterTestOperators=true</code></strong> excludes codes <strong>&gt; 500000</strong>.</td>
 </tr>
 <tr data-line="1498" class="code-line" dir="auto">
 <td>GET</td>
 <td><code>/api/operator/config/xml</code></td>
-<td>Required</td>
+<td>None</td>
 <td>Operators as <strong>XML</strong> (<code>operator</code> root; simplified name fields).</td>
 </tr>
 <tr data-line="1499" class="code-line" dir="auto">
@@ -3422,14 +3423,17 @@ GET /api/machine/analytics/machine-dashboard-daily-cached?serial=67808
 </tbody>
 </table>
 <p data-line="1509" class="code-line" dir="auto"><strong>Data Format (GET JSON):</strong></p>
-<pre><code data-line="1510" class="code-line language-json" dir="auto"><span class="hljs-punctuation">{</span>
-  <span class="hljs-attr">"operators"</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">[</span>
-    <span class="hljs-punctuation">{</span>
-      <span class="hljs-attr">"code"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">117811</span><span class="hljs-punctuation">,</span>
-      <span class="hljs-attr">"name"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Brian Iguchi"</span>
-    <span class="hljs-punctuation">}</span>
-  <span class="hljs-punctuation">]</span>
-<span class="hljs-punctuation">}</span>
+<pre><code data-line="1510" class="code-line language-json" dir="auto">[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "active": true,
+    "code": 117811,
+    "name": {
+      "first": "Brian",
+      "surname": "Iguchi"
+    }
+  }
+]
 </code></pre>
 <p data-line="1521" class="code-line" dir="auto"><strong>Example Requests:</strong></p>
 <pre><code data-line="1522" class="code-line" dir="auto">GET /api/operator/config
@@ -3451,7 +3455,7 @@ DELETE /api/operator/config/507f1f77bcf86cd799439011
 <h3 data-line="1546" class="code-line" dir="auto" id="apioperatorconfigxml" tabindex="-1">/api/operator/config/xml</h3>
 <p data-line="1548" class="code-line" dir="auto">Same operator set as <strong><code>GET /api/operator/config</code></strong>, serialized to <strong>XML</strong>. See <strong><code>/api/operator/config</code></strong> for auth and filtering.</p>
 <p data-line="1550" class="code-line" dir="auto"><strong>Method:</strong> GET<br>
-<strong>Auth:</strong> Required<br>
+<strong>Auth:</strong> None<br>
 <strong>Idempotent:</strong> Yes</p>
 <hr data-line="1554" class="code-line" dir="auto">
 <p data-line="1556" class="code-line" dir="auto"><a id="apioperatornew-id"></a></p>
@@ -3713,6 +3717,60 @@ GET /api/operator/analytics/operator-details-cached?start=2025-05-01T00:00:00.00
 </code></pre>
 <p data-line="1786" class="code-line" dir="auto"><strong>Versioning &amp; Stability:</strong> Alpha.</p>
 <hr data-line="1788" class="code-line" dir="auto">
+<h2 class="code-line" dir="auto" id="shift-configuration" tabindex="-1">Shift Configuration</h2>
+<h3 class="code-line" dir="auto" id="apialphashifts" tabindex="-1">/api/alpha/shifts</h3>
+<p class="code-line" dir="auto">CRUD configuration for production shifts stored in the <code>config-shift</code> collection. Results are sorted by shift start time.</p>
+<table class="code-line" dir="auto">
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/alpha/shifts</code></td>
+<td>List all shifts as <code>{ "shifts": [...] }</code>.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/alpha/shifts</code></td>
+<td>Create a shift. Returns the created shift with status <code>201</code>.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/alpha/shifts/:id</code></td>
+<td>Replace the editable configuration for an existing shift.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/alpha/shifts/:id</code></td>
+<td>Delete a shift. Returns status <code>204</code>.</td>
+</tr>
+</tbody>
+</table>
+<p class="code-line" dir="auto"><strong>Auth:</strong> None currently enforced by these routes.</p>
+<p class="code-line" dir="auto"><strong>POST/PUT JSON body:</strong></p>
+<pre><code class="code-line language-json" dir="auto">{
+  "name": "Day Shift",
+  "active": true,
+  "startTime": { "hour": 6, "minute": 0 },
+  "endTime": { "hour": 14, "minute": 0 },
+  "activeDays": [1, 2, 3, 4, 5],
+  "breaks": [
+    {
+      "name": "Lunch",
+      "active": true,
+      "startTime": { "hour": 10, "minute": 0 },
+      "endTime": { "hour": 10, "minute": 30 }
+    }
+  ]
+}</code></pre>
+<p class="code-line" dir="auto"><strong>Validation:</strong> Start must be before end; <code>activeDays</code> must contain integers 1 (Monday) through 7 (Sunday); breaks must be valid, non-overlapping, and contained within the shift. Active shifts may not overlap another active production or maintenance shift on a shared day.</p>
+<p class="code-line" dir="auto"><strong>Common errors:</strong> <code>400</code> invalid body or id, <code>404</code> shift not found, <code>409</code> active shift overlap, and <code>500</code> server error.</p>
+<hr class="code-line" dir="auto">
 <h2 data-line="1790" class="code-line" dir="auto" id="reports-1" tabindex="-1">Reports</h2>
 <h3 data-line="1792" class="code-line" dir="auto" id="apireportsshifts" tabindex="-1">/api/reports/shifts</h3>
 <p data-line="1794" class="code-line" dir="auto">Lists <strong>active</strong> shift definitions from the <code>shift</code> collection, sorted by name. Used by the shift-scoped machine report UI to populate the shift selector.</p>
