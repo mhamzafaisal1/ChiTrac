@@ -74,7 +74,7 @@ export const routes: Routes = [
 	// Reports
 	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
 	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
-	{ path: 'ng/reports/shift-comparison-report', component: ShiftComparisonReportComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.reports } },
+	{ path: 'ng/reports/shift-comparison-report', component: ShiftComparisonReportComponent },
 	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
 	{ path: 'ng/reports/item-report', component: ItemReportComponent },
 	{ path: 'ng/reports/fault-report', component: FaultReportComponent },

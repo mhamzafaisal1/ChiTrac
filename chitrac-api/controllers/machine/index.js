@@ -9,6 +9,7 @@ const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require
 const { DateTime } = require("luxon");
 const config = require("../../modules/config");
 const { loadActiveShifts, computeShiftElapsedMs, getShiftDayHourEnvelope } = require("../../utils/shiftElapsed");
+const { getSessionDataForPartialDays } = require("../../utils/reportFunctions");
 const {
   buildMachineSummaryFromDailyCache,
   buildMachineSummaryFromShiftCache,
@@ -36,6 +37,77 @@ function constructor(server) {
 	const xmlParser = server.xmlParser;
 	const configService = require('../../services/mongo/');
 	const machineValidator = require('../../middleware/machineValidator')(server);
+
+  async function buildMachineSummaryFromSessions(start, end, serial, shiftOid) {
+    const sessionData = await getSessionDataForPartialDays(
+      db,
+      [{ start, end }],
+      serial,
+      { shiftId: String(shiftOid) }
+    );
+    const records = sessionData.machines || [];
+    const serials = [...new Set(records.map(record => Number(record.machineSerial)))]
+      .filter(Number.isFinite);
+    const tickers = serials.length
+      ? await db.collection(config.stateTickerCollectionName)
+          .find({
+            $or: [
+              { "machine.id": { $in: serials } },
+              { "machine.serial": { $in: serials } },
+            ],
+          })
+          .sort({ timestamp: -1 })
+          .toArray()
+      : [];
+    const statusBySerial = new Map();
+    tickers.forEach(ticker => {
+      const tickerSerial = Number(ticker.machine?.id ?? ticker.machine?.serial);
+      if (!statusBySerial.has(tickerSerial)) {
+        statusBySerial.set(tickerSerial, {
+          code: ticker.status?.id ?? ticker.status?.code ?? 0,
+          name: ticker.status?.name || "Unknown",
+          color: ticker.status?.softrolColor || "None",
+        });
+      }
+    });
+
+    return records.map(record => {
+      const machineSerial = Number(record.machineSerial);
+      const runtimeMs = Number(record.runtimeMs) || 0;
+      const workedMs = Number(record.workedTimeMs) || 0;
+      const availability = 1;
+      const throughput = 1;
+      const efficiency = runtimeMs > 0 ? Math.min(workedMs / (runtimeMs * 4), 1) : 0;
+      const oee = availability * throughput * efficiency;
+
+      return {
+        machine: {
+          serial: machineSerial,
+          name: record.machineName || `Serial ${machineSerial}`,
+        },
+        currentStatus: statusBySerial.get(machineSerial) || {
+          code: 0,
+          name: "Unknown",
+          color: "None",
+        },
+        metrics: {
+          runtime: { total: runtimeMs, formatted: formatDuration(runtimeMs) },
+          downtime: { total: 0, formatted: formatDuration(0) },
+          output: {
+            totalCount: Number(record.totalCounts) || 0,
+            misfeedCount: Number(record.totalMisfeeds) || 0,
+          },
+          performance: {
+            availability: { value: availability, percentage: "100.00" },
+            throughput: { value: throughput, percentage: "100.00" },
+            efficiency: { value: efficiency, percentage: (efficiency * 100).toFixed(2) },
+            oee: { value: oee, percentage: (oee * 100).toFixed(2) },
+          },
+        },
+        timeRange: { start, end },
+      };
+    });
+  }
 
 	function escapeRegex(value) {
 		return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -390,6 +462,9 @@ function constructor(server) {
         } else {
           logger.warn(
             `[machineSessions] No shift cached machine data found for shift ${shiftOid} on ${result.dateStr}, falling back to sessions`
+          );
+          return res.json(
+            await buildMachineSummaryFromSessions(start, end, serial, shiftOid)
           );
         }
 
