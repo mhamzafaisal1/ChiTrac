@@ -340,8 +340,11 @@ module.exports = function faultHistoryRoute(server) {
           { $match: { $expr: { $lt: ["$ovStart", "$ovEnd"] } } },
           {
             $project: {
+              _id: 1,
+              machine: 1,
               code: { $ifNull: ["$states.start.status.id", "$startState.status.code"] },
               name: { $ifNull: ["$states.start.status.name", "$startState.status.name"] },
+              faultTimestamp: "$timestamps.start",
               ovStart: 1,
               ovEnd: 1,
             },
@@ -360,14 +363,34 @@ module.exports = function faultHistoryRoute(server) {
           name,
           count: 0,
           totalDurationSeconds: 0,
+          faults: [],
         };
         prev.count += 1;
         prev.totalDurationSeconds += durSec;
+        prev.faults.push({
+          id: r._id,
+          timestamp: r.faultTimestamp,
+          machineSerial: r.machine?.serial ?? r.machine?.id ?? null,
+          machineName:
+            r.machine?.name ??
+            `Machine ${r.machine?.serial ?? r.machine?.id ?? "Unknown"}`,
+          durationSeconds: durSec,
+          formatted: {
+            hours: Math.floor(durSec / 3600),
+            minutes: Math.floor((durSec % 3600) / 60),
+            seconds: durSec % 60,
+          },
+        });
         summaryMap.set(key, prev);
       }
 
       const summaries = Array.from(summaryMap.values()).map((s) => {
         const t = s.totalDurationSeconds;
+        s.faults.sort(
+          (a, b) =>
+            b.durationSeconds - a.durationSeconds ||
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
         return {
           code: s.code,
           name: s.name,
@@ -378,8 +401,13 @@ module.exports = function faultHistoryRoute(server) {
             minutes: Math.floor((t % 3600) / 60),
             seconds: t % 60,
           },
+          faults: s.faults,
         };
-      });
+      }).sort(
+        (a, b) =>
+          b.totalDurationSeconds - a.totalDurationSeconds ||
+          String(a.name).localeCompare(String(b.name))
+      );
 
       return res.json({
         context: { start: startDate, end: endDate },

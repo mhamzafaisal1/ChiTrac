@@ -24,6 +24,7 @@ import { ShiftListItem, ShiftService } from '../services/shift.service';
 type ComparisonEntityType = 'machines' | 'operators';
 type WizardStep = 'chooseType' | 'chooseEntities' | 'chooseTimeframes' | 'results';
 type TimeframeKey = 'primary' | 'secondary';
+type PickerMode = 'custom' | 'shift' | 'today' | 'thisWeek' | 'thisMonth' | 'thisYear';
 
 interface ComparisonOption {
   id: number;
@@ -35,6 +36,7 @@ interface ComparisonTimeframe {
   start: Date;
   end: Date;
   shiftId: string | null;
+  mode?: PickerMode;
 }
 
 interface MetricRow {
@@ -107,6 +109,7 @@ export class ComparisonDashboardComponent implements OnInit {
   pickerStart: Date = this.startOfToday();
   pickerEnd: Date = new Date();
   pickerShiftId: string | null = null;
+  pickerMode: PickerMode = 'custom';
   shifts: ShiftListItem[] = [];
   shiftsLoadError: string | null = null;
   resultColumns: ComparisonColumn[] = [];
@@ -219,6 +222,7 @@ export class ComparisonDashboardComponent implements OnInit {
     this.pickerStart = current?.start ? new Date(current.start) : this.startOfToday();
     this.pickerEnd = current?.end ? new Date(current.end) : new Date();
     this.pickerShiftId = current?.shiftId || null;
+    this.pickerMode = current?.mode || (current?.shiftId ? 'shift' : 'custom');
   }
 
   confirmPicker(): void {
@@ -229,7 +233,8 @@ export class ComparisonDashboardComponent implements OnInit {
     const nextTimeframe = {
       start: new Date(this.pickerStart),
       end: new Date(this.pickerEnd),
-      shiftId: this.pickerShiftId
+      shiftId: this.pickerShiftId,
+      mode: this.pickerMode
     };
 
     if (this.activePicker === 'primary') {
@@ -242,13 +247,21 @@ export class ComparisonDashboardComponent implements OnInit {
 
   clearPickerShift(): void {
     this.pickerShiftId = null;
+    this.pickerMode = 'custom';
   }
 
   selectPickerShift(shiftId: string): void {
     this.pickerShiftId = shiftId;
+    this.pickerMode = 'shift';
   }
 
-  onPickerQuickSelect(timeframe: 'today' | 'thisWeek' | 'thisMonth' | 'thisYear'): void {
+  onPickerQuickSelect(timeframe: PickerMode): void {
+    if (timeframe === 'custom') {
+      this.pickerShiftId = null;
+      this.pickerMode = 'custom';
+      return;
+    }
+
     const now = new Date();
     let start: Date;
 
@@ -270,10 +283,18 @@ export class ComparisonDashboardComponent implements OnInit {
         start = new Date(now.getFullYear(), 0, 1);
         start.setHours(0, 0, 0, 0);
         break;
+      default:
+        return;
     }
 
+    this.pickerShiftId = null;
+    this.pickerMode = timeframe;
     this.pickerStart = start;
     this.pickerEnd = now;
+  }
+
+  isManualPickerEnabled(): boolean {
+    return this.pickerMode === 'custom';
   }
 
   getOptionLabel(id: number | null): string {

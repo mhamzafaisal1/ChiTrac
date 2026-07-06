@@ -473,6 +473,9 @@ function constructor(server) {
           logger.warn(
             `[operatorSessions] No shift cached operator data found for shift ${shiftOid} on ${result.dateStr}, falling back to sessions`
           );
+          return res.json(
+            await buildOperatorSummaryFromSessions(start, end, operatorId, shiftOid, shiftDoc)
+          );
         }
 
         return res.json(result.data);

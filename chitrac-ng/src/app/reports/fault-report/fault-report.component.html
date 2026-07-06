@@ -2,9 +2,7 @@
   <div class="loading-overlay" *ngIf="isLoading">
     <div class="loading-content">
       <div class="loading-spinner"></div>
-      <div class="loading-text">
-        {{ isDownloading ? "Downloading PDF..." : isDownloadingCsv ? "Downloading CSV..." : "Fetching data..." }}
-      </div>
+      <div class="loading-text">Fetching data...</div>
     </div>
   </div>
 
@@ -18,16 +16,6 @@
       [(value)]="endTime"
     ></app-date-time-picker>
 
-    <div class="report-mode-toggle">
-      <span class="toggle-label" style="margin-right: 12px;">Detailed</span>
-      <mat-slide-toggle
-        [(ngModel)]="showSummaryOnly"
-        (change)="onReportModeChange()"
-        color="primary">
-      </mat-slide-toggle>
-      <span class="toggle-label" style="margin-left: 12px;">Summary</span>
-    </div>
-
     <div class="button-group">
       <button
         mat-flat-button
@@ -36,40 +24,95 @@
         [disabled]="!startTime || !endTime || isLoading"
       >
         <mat-icon>refresh</mat-icon>
-        {{ isLoading && !isDownloading && !isDownloadingCsv ? "Loading..." : "Fetch Data" }}
+        {{ isLoading ? "Loading..." : "Fetch Data" }}
       </button>
       <button
         mat-flat-button
         color="primary"
         (click)="downloadPdf()"
-        [disabled]="!rows.length || isLoading"
+        [disabled]="!reportGroups.length || isLoading"
       >
         <mat-icon>picture_as_pdf</mat-icon>
-        {{ isLoading && isDownloading ? "Downloading..." : "Download Fault Report PDF" }}
+        {{ isDownloading ? "Downloading..." : "Download Fault Report PDF" }}
       </button>
-
       <button
         mat-flat-button
         color="primary"
         (click)="downloadCsv()"
-        [disabled]="!rows.length || isLoading"
+        [disabled]="!reportGroups.length || isLoading"
       >
         <mat-icon>table_chart</mat-icon>
-        {{ isLoading && isDownloadingCsv ? "Downloading..." : "Download CSV" }}
+        {{ isDownloadingCsv ? "Downloading..." : "Download CSV" }}
       </button>
     </div>
   </div>
 
-  <div class="table-container" [class.loading]="isLoading">
-    <base-table
-      *ngIf="rows.length"
-      [class.dark]="isDarkTheme"
-      [class.light]="!isDarkTheme"
-      [columns]="columns"
-      [rows]="displayedRows"
-      [getCellClass]="getEfficiencyClass.bind(this)"
-      style="height:93%; border-radius: 4px;"
+  <div class="table-container" [class.loading]="isLoading" *ngIf="reportGroups.length">
+    <div class="summary-header report-grid" role="row">
+      <button
+        type="button"
+        class="sort-header"
+        *ngFor="let column of summaryColumns"
+        (click)="sortBySummary(column)"
+      >
+        <span>{{ column }}</span>
+        <mat-icon *ngIf="sortColumn === column">
+          {{ sortDirection === "asc" ? "arrow_upward" : "arrow_downward" }}
+        </mat-icon>
+      </button>
+    </div>
+
+    <section
+      class="fault-group"
+      *ngFor="let group of reportGroups; trackBy: trackGroupByKey"
     >
-    </base-table>
+      <button
+        type="button"
+        class="summary-row report-grid"
+        [class.expanded]="isGroupExpanded(group)"
+        [attr.aria-expanded]="isGroupExpanded(group)"
+        (click)="toggleGroup(group)"
+      >
+        <span class="fault-cell">
+          <mat-icon>
+            {{ isGroupExpanded(group) ? "expand_more" : "chevron_right" }}
+          </mat-icon>
+          <span class="entity-name">{{ group.summary["Fault"] }}</span>
+          <span class="detail-count" *ngIf="group.details.length">
+            {{ group.details.length }}
+            {{ group.details.length === 1 ? "occurrence" : "occurrences" }}
+          </span>
+        </span>
+        <span>{{ group.summary["Count"] }}</span>
+        <span>{{ group.summary["Total Duration"] }}</span>
+      </button>
+
+      <div class="detail-panel" *ngIf="isGroupExpanded(group)">
+        <table class="detail-table" *ngIf="group.details.length; else noFaultDetails">
+          <colgroup>
+            <col class="primary-column" />
+            <col class="count-column" />
+            <col class="duration-column" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th *ngFor="let column of detailColumns">{{ column }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let detail of group.details">
+              <td>{{ detail["Timestamp"] }}</td>
+              <td [attr.title]="getMachineTooltip(detail)">
+                {{ detail["Machine"] }}
+              </td>
+              <td>{{ detail["Duration"] }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <ng-template #noFaultDetails>
+          <div class="empty-details">No individual fault history available</div>
+        </ng-template>
+      </div>
+    </section>
   </div>
 </div>
