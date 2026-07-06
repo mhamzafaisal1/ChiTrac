@@ -56,6 +56,7 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 - [/api/reports/analytics/item-sessions-summary-daily-cache](#apireportsanalyticsitem-sessions-summary-daily-cache)
 
 ### Alpha
+- [/api/alpha/shifts](#apialphashifts)
 - [/api/alpha/timestamp](#apialphatimestamp)
 - [/api/alpha/currentTime/get](#apialphacurrenttimeget)
 - [/api/alpha/ac360/get](#apialphaac360get)
@@ -911,32 +912,32 @@ GET /api/fault/analytics/fault-report-detailed?start=2025-05-01T00:00:00.000Z&en
 
 ### /api/item/config
 
-CRUD-style configuration for **items** stored in MongoDB (`item` collection). JSON routes use the shared configuration service; **POST** and **PUT** run through **`itemValidator`**.
+CRUD-style configuration for **items** stored in MongoDB (`config-item` collection). JSON routes use the shared configuration service; **POST** and **PUT** run through **`itemValidator`**.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/item/config` | Required | Returns all item documents (JSON). |
-| GET | `/api/item/config/xml` | Required | Same data as **XML** (`item` root). |
-| POST | `/api/item/config` | Required | Create or upsert (validator). |
-| PUT | `/api/item/config/:id` | Required | Update by MongoDB `_id` (validator). |
-| DELETE | `/api/item/config/:id` | Required | Delete by id. |
+| GET | `/api/item/config` | None | Returns all item documents as a JSON array. |
+| GET | `/api/item/config/xml` | None | Same data as **XML** (`item` root). |
+| POST | `/api/item/config` | None | Create an item (validator). |
+| PUT | `/api/item/config/:id` | None | Update by MongoDB `_id` (validator). |
+| DELETE | `/api/item/config/:id` | None | Delete by MongoDB `_id`. |
 
 **Query parameters (GET JSON):** None required.
 
 **Data Format (GET JSON):**
 ```json
-{
-  "items": [
-    {
-      "number": 1,
-      "name": "Incontinent Pad",
-      "pace": 720,
-      "area": 1,
-      "department": "Towels",
-      "weight": null
-    }
-  ]
-}
+[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "active": true,
+    "number": 1,
+    "name": "Incontinent Pad",
+    "standard": 720,
+    "area": 1,
+    "department": "Towels",
+    "weight": null
+  }
+]
 ```
 
 **Example Requests:**
@@ -1056,28 +1057,28 @@ GET /api/item/analytics/items-summary-daily-cache?start=2025-05-01T00:00:00.000Z
 
 ### /api/machine/config
 
-CRUD-style configuration for **machines** (`machine` collection). **POST**, **PUT**, and **DELETE** use **`machineValidator`** on write paths.
+CRUD-style configuration for **machines** stored in MongoDB (`config-machine` collection). **POST** and **PUT** use **`machineValidator`**.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/machine/config` | Required | All machine documents (JSON). |
-| GET | `/api/machine/config/xml` | Required | Same data as **XML** (`machine` root). |
-| POST | `/api/machine/config` | Required | Create machine (validator). |
-| PUT | `/api/machine/config/:id` | Required | Update by MongoDB `_id` (validator). |
-| DELETE | `/api/machine/config/:id` | Required | Delete by id. |
+| GET | `/api/machine/config` | None | Returns all machine documents as a JSON array. |
+| GET | `/api/machine/config/xml` | None | Same data as **XML** (`machine` root). |
+| POST | `/api/machine/config` | None | Create a machine (validator). |
+| PUT | `/api/machine/config/:id` | None | Update by MongoDB `_id` (validator). |
+| DELETE | `/api/machine/config/:id` | None | Delete by MongoDB `_id`. |
 
 **Data Format (GET JSON):**
 ```json
-{
-  "machines": [
-    {
-      "serial": 63520,
-      "name": "Flipper 1",
-      "ipAddress": "192.168.0.31",
-      "lanes": 1
-    }
-  ]
-}
+[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "active": true,
+    "serial": 63520,
+    "name": "Flipper 1",
+    "ipAddress": "192.168.0.31",
+    "lanes": 1
+  }
+]
 ```
 
 **Example Requests:**
@@ -1487,12 +1488,12 @@ GET /api/machine/status/63520
 
 ### /api/operator/config
 
-Configuration for **operators** (`operator` collection). **GET** routes use session auth like other JSON configuration endpoints. **POST**, **PUT**, and **DELETE** require a valid **JWT** (`Authorization: Bearer …`, or `token` in query/body) unless **`enableApiTokenCheck`** is disabled in server config.
+Configuration for **operators** stored in MongoDB (`config-operator` collection). **GET** routes do not currently enforce authentication. **POST**, **PUT**, and **DELETE** require a valid **JWT** (`Authorization: Bearer token`, or `token` in query/body) unless **`enableApiTokenCheck`** is disabled in server config.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/operator/config` | Required (session) | All operators (JSON). Optional query **`filterTestOperators=true`** excludes codes **> 500000**. |
-| GET | `/api/operator/config/xml` | Required | Operators as **XML** (`operator` root; simplified name fields). |
+| GET | `/api/operator/config` | None | All operators as a JSON array. Optional query **`filterTestOperators=true`** excludes codes **> 500000**. |
+| GET | `/api/operator/config/xml` | None | Operators as **XML** (`operator` root; simplified name fields). |
 | POST | `/api/operator/config` | JWT | Create operator (unique **`code`**). |
 | PUT | `/api/operator/config/:id` | JWT | Update by MongoDB `_id`. |
 | DELETE | `/api/operator/config/:id` | JWT | Delete by id. |
@@ -1505,14 +1506,17 @@ Configuration for **operators** (`operator` collection). **GET** routes use sess
 
 **Data Format (GET JSON):**
 ```json
-{
-  "operators": [
-    {
-      "code": 117811,
-      "name": "Brian Iguchi"
+[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "active": true,
+    "code": 117811,
+    "name": {
+      "first": "Brian",
+      "surname": "Iguchi"
     }
-  ]
-}
+  }
+]
 ```
 
 **Example Requests:**
@@ -1545,7 +1549,7 @@ DELETE /api/operator/config/507f1f77bcf86cd799439011
 Same operator set as **`GET /api/operator/config`**, serialized to **XML**. See **`/api/operator/config`** for auth and filtering.
 
 **Method:** GET  
-**Auth:** Required  
+**Auth:** None<br>
 **Idempotent:** Yes
 
 ---
@@ -1781,6 +1785,47 @@ GET /api/operator/analytics/operator-machine-summary?start=2025-05-01T12:00:00.0
 ```
 
 **Versioning & Stability:** Alpha.
+
+---
+
+## Shift Configuration
+
+### /api/alpha/shifts
+
+CRUD configuration for production shifts stored in the `config-shift` collection. Results are sorted by shift start time.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/alpha/shifts` | List all shifts as `{ "shifts": [...] }`. |
+| POST | `/api/alpha/shifts` | Create a shift. Returns the created shift with status `201`. |
+| PUT | `/api/alpha/shifts/:id` | Replace the editable configuration for an existing shift. |
+| DELETE | `/api/alpha/shifts/:id` | Delete a shift. Returns status `204`. |
+
+**Auth:** None currently enforced by these routes.
+
+**POST/PUT JSON body:**
+
+```json
+{
+  "name": "Day Shift",
+  "active": true,
+  "startTime": { "hour": 6, "minute": 0 },
+  "endTime": { "hour": 14, "minute": 0 },
+  "activeDays": [1, 2, 3, 4, 5],
+  "breaks": [
+    {
+      "name": "Lunch",
+      "active": true,
+      "startTime": { "hour": 10, "minute": 0 },
+      "endTime": { "hour": 10, "minute": 30 }
+    }
+  ]
+}
+```
+
+**Validation:** Start must be before end; `activeDays` must contain integers 1 (Monday) through 7 (Sunday); breaks must be valid, non-overlapping, and contained within the shift. Active shifts may not overlap another active production or maintenance shift on a shared day.
+
+**Common errors:** `400` invalid body or id, `404` shift not found, `409` active shift overlap, and `500` server error.
 
 ---
 
