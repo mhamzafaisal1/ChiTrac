@@ -3,6 +3,7 @@ const { DateTime } = require("luxon");
 const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("./shiftElapsed");
 const { getSessionDataForPartialDays } = require("./reportFunctions");
+const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
 
 const TOTALS_SHIFT_COLLECTION = "totals-shift";
 
@@ -168,11 +169,15 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
     }
 
     const runtimeMs = record.runtimeMs || 0;
+    const breakTimeMs = record.breakTimeMs || 0;
+    const productiveElapsedMs = Math.max(0, elapsedMs - breakTimeMs);
     const totalCounts = record.totalCounts || 0;
     const totalMisfeeds = record.totalMisfeeds || 0;
-    const downtimeMs = Math.max(elapsedMs - runtimeMs, 0);
+    const downtimeMs = Math.max(productiveElapsedMs - runtimeMs, 0);
     const availability =
-      elapsedMs > 0 ? Math.min(Math.max(runtimeMs / elapsedMs, 0), 1) : 0;
+      productiveElapsedMs > 0
+        ? Math.min(Math.max(runtimeMs / productiveElapsedMs, 0), 1)
+        : 0;
     const totalOutput = totalCounts + totalMisfeeds;
     const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
     const runtimeHours = runtimeMs / 3600000;
@@ -275,14 +280,15 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
     : getTodayRange(now);
 
   const filter = {
-    entityType: "machine",
-    date: dateStr,
+    type: "machine",
+    "timestamps.create": calendarRange(dateStr),
   };
   if (options.serial) {
-    filter.machineSerial = parseInt(options.serial, 10);
+    filter["machine.id"] = parseInt(options.serial, 10);
   }
 
-  const records = await db.collection(config.totalsDailyCollectionName).find(filter).toArray();
+  const records = (await db.collection(config.totalsDailyCollectionName).find(filter).toArray())
+    .map(normalizeTotalsDocument);
   if (!records.length) {
     return {
       data: [],
@@ -314,15 +320,19 @@ async function buildMachineSummaryFromShiftCache(db, logger, config, options) {
   const { shiftOid, shiftDoc, start, end } = options;
   const dateStr = options.dateStr || getPlantDateStr(start);
   const filter = {
-    entityType: "machine",
-    date: dateStr,
-    shiftId: String(shiftOid),
+    type: "machine",
+    "timestamps.create": calendarRange(dateStr),
+    $or: [
+      { "shift.id": String(shiftOid) },
+      { "shift._id": shiftOid },
+    ],
   };
   if (options.serial) {
-    filter.machineSerial = parseInt(options.serial, 10);
+    filter["machine.id"] = parseInt(options.serial, 10);
   }
 
-  const records = await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray();
+  const records = (await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray())
+    .map(normalizeTotalsDocument);
   if (records.length > 0) {
     return {
       data: await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end),

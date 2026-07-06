@@ -1,6 +1,7 @@
 const { DateTime } = require("luxon");
 const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
 const { computeShiftElapsedMs } = require("./shiftElapsed");
+const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
 const {
   buildMachineStatusFromDailyTotals,
   buildMachineOEEFromDailyTotals,
@@ -46,9 +47,10 @@ function machineStatusFromRecords(records, start, end, shiftDoc) {
     .sort((a, b) => Number(a.machineSerial) - Number(b.machineSerial))
     .map((record) => {
       const runningMs = record.runtimeMs || 0;
+      const breakMs = record.breakTimeMs || 0;
       const pausedMs = record.pausedTimeMs || record.pauseTimeMs || 0;
       const faultedMs = record.faultTimeMs || 0;
-      const offlineMs = Math.max(0, elapsedMs - runningMs - pausedMs - faultedMs);
+      const offlineMs = Math.max(0, elapsedMs - breakMs - runningMs - pausedMs - faultedMs);
       return {
         serial: record.machineSerial,
         name: record.machineName || `Serial ${record.machineSerial}`,
@@ -65,7 +67,10 @@ function machineOeeFromRecords(records, start, end, shiftDoc) {
   return records
     .map((record) => {
       const runtimeMs = record.runtimeMs || 0;
-      const availability = windowMs > 0 ? Math.min(Math.max(runtimeMs / windowMs, 0), 1) : 0;
+      const productiveMs = Math.max(0, windowMs - (record.breakTimeMs || 0));
+      const availability = productiveMs > 0
+        ? Math.min(Math.max(runtimeMs / productiveMs, 0), 1)
+        : 0;
       const totalCounts = record.totalCounts || 0;
       const totalMisfeeds = record.totalMisfeeds || 0;
       const throughput = totalCounts + totalMisfeeds > 0 ? totalCounts / (totalCounts + totalMisfeeds) : 0;
@@ -173,11 +178,13 @@ function machineGroupEfficiencyFromRecords(records, previousRecords, start, end,
     let sumTotalMisfeeds = 0;
     let sumTotalTimeCreditMs = 0;
     let sumWorkedTimeMs = 0;
+    let sumBreakTimeMs = 0;
     for (const record of deptRecords) {
       sumRuntimeMs += record.runtimeMs || 0;
       sumTotalCounts += record.totalCounts || 0;
       sumTotalMisfeeds += record.totalMisfeeds || 0;
       sumTotalTimeCreditMs += record.totalTimeCreditMs || 0;
+      sumBreakTimeMs += record.breakTimeMs || 0;
       let workedMs = record.workedTimeMs || 0;
       if (workedMs === 0 && (record.totalTimeCreditMs || 0) > 0 && (record.runtimeMs || 0) > 0) {
         workedMs = record.runtimeMs;
@@ -185,7 +192,10 @@ function machineGroupEfficiencyFromRecords(records, previousRecords, start, end,
       sumWorkedTimeMs += workedMs;
     }
 
-    const availability = elapsedMs > 0 ? Math.min(Math.max(sumRuntimeMs / elapsedMs, 0), 1) : 0;
+    const productiveElapsedMs = Math.max(0, elapsedMs - sumBreakTimeMs);
+    const availability = productiveElapsedMs > 0
+      ? Math.min(Math.max(sumRuntimeMs / productiveElapsedMs, 0), 1)
+      : 0;
     const throughput = sumTotalCounts + sumTotalMisfeeds > 0
       ? sumTotalCounts / (sumTotalCounts + sumTotalMisfeeds)
       : 0;
@@ -218,7 +228,10 @@ function machineGroupEfficiencyFromRecords(records, previousRecords, start, end,
       machine: { name: departmentName },
       metrics: {
         runtime: { total: sumRuntimeMs, formatted: formatDuration(sumRuntimeMs) },
-        downtime: { total: Math.max(elapsedMs - sumRuntimeMs, 0), formatted: formatDuration(Math.max(elapsedMs - sumRuntimeMs, 0)) },
+        downtime: {
+          total: Math.max(productiveElapsedMs - sumRuntimeMs, 0),
+          formatted: formatDuration(Math.max(productiveElapsedMs - sumRuntimeMs, 0)),
+        },
         output: { totalCount: sumTotalCounts, misfeedCount: sumTotalMisfeeds },
         performance: {
           availability: { value: availability, percentage: (availability * 100).toFixed(2) },
@@ -262,8 +275,10 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     buildItemTotalsFromCache(db, start, end, logger),
     buildCountTotalsFromDailyTotals(db, end, logger),
     buildTopOperatorEfficiencyFromCache(db, start, end, logger),
-    db.collection(config.totalsDailyCollectionName).find({ entityType: "machine", date: dateStr }).toArray(),
-    db.collection(config.totalsDailyCollectionName).find({ entityType: "machine", date: yesterdayStr }).toArray(),
+    db.collection(config.totalsDailyCollectionName)
+      .find({ type: "machine", "timestamps.create": calendarRange(dateStr) }).toArray(),
+    db.collection(config.totalsDailyCollectionName)
+      .find({ type: "machine", "timestamps.create": calendarRange(yesterdayStr) }).toArray(),
   ]);
 
   let topOperators = topOperatorsInitial;
@@ -301,24 +316,36 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
 async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
   const { dateStr, start, end, shiftDoc, shiftOid, mode } = context;
   const baseFilter = {
-    date: dateStr,
-    shiftId: String(shiftOid),
+    "timestamps.create": calendarRange(dateStr),
+    $or: [
+      { "shift.id": String(shiftOid) },
+      { "shift._id": shiftOid },
+    ],
   };
 
   const [machineRecords, itemRecords, operatorRecords, dailyPreviousRecords] = await Promise.all([
-    db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, entityType: "machine" }).toArray(),
-    db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, entityType: "item" }).toArray(),
-    db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, entityType: "operator-machine" }).toArray(),
-    db.collection(config.totalsDailyCollectionName).find({ entityType: "machine", date: previousDateStr(dateStr) }).toArray(),
+    db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "machine" }).toArray(),
+    db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "item" }).toArray(),
+    db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "operator-machine" }).toArray(),
+    db.collection(config.totalsDailyCollectionName)
+      .find({
+        type: "machine",
+        "timestamps.create": calendarRange(previousDateStr(dateStr)),
+      }).toArray(),
   ]);
 
+  const normalizedMachines = machineRecords.map(normalizeTotalsDocument);
+  const normalizedItems = itemRecords.map(normalizeTotalsDocument);
+  const normalizedOperators = operatorRecords.map(normalizeTotalsDocument);
+  const normalizedPrevious = dailyPreviousRecords.map(normalizeTotalsDocument);
+
   const data = {
-    machineStatus: machineStatusFromRecords(machineRecords, start, end, shiftDoc),
-    machineOee: machineOeeFromRecords(machineRecords, start, end, shiftDoc),
-    itemTotals: itemTotalsFromRecords(itemRecords),
-    machineGroupEfficiency: machineGroupEfficiencyFromRecords(machineRecords, dailyPreviousRecords, start, end, shiftDoc),
-    topOperators: topOperatorsFromRecords(operatorRecords),
-    dailyCounts: await buildDailyCountsForShift(db, config, end, dateStr, machineRecords, logger),
+    machineStatus: machineStatusFromRecords(normalizedMachines, start, end, shiftDoc),
+    machineOee: machineOeeFromRecords(normalizedMachines, start, end, shiftDoc),
+    itemTotals: itemTotalsFromRecords(normalizedItems),
+    machineGroupEfficiency: machineGroupEfficiencyFromRecords(normalizedMachines, normalizedPrevious, start, end, shiftDoc),
+    topOperators: topOperatorsFromRecords(normalizedOperators),
+    dailyCounts: await buildDailyCountsForShift(db, config, end, dateStr, normalizedMachines, logger),
   };
 
   return envelope(data, {

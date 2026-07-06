@@ -9,6 +9,7 @@ const {
   getShiftDayHourEnvelope,
 } = require("../../utils/shiftElapsed");
 const { getSessionDataForPartialDays } = require("../../utils/reportFunctions");
+const { getValidCounts } = require("../../utils/count");
 const { getPlantDateStr } = require("../../utils/machineDashboardCache");
 const {
   getMachinesSummaryRealTime,
@@ -18,6 +19,11 @@ const {
   buildItemSummaryFromRecords,
   buildItemHourlyStackFromRecords,
   buildOperatorEfficiencyFromRecords,
+  buildFaultData,
+  buildMachineItemSummary,
+  buildItemHourlyStack,
+  buildOperatorEfficiency,
+  getBookendedStatesAndTimeRange,
   buildCurrentOperatorsFromTicker: buildCurrentOperators,
 } = require("../../utils/machineFunctions");
 
@@ -587,6 +593,17 @@ module.exports = function (server) {
             cacheDateForCharts
           );
           const currentOperators = await buildCurrentOperators(db, serial);
+          const faultStateWindow = await getBookendedStatesAndTimeRange(
+            db,
+            serial,
+            sessionStart,
+            sessionEnd
+          );
+          const faultData = buildFaultData(
+            faultStateWindow?.states || [],
+            sessionStart,
+            sessionEnd
+          );
 
           const latestTicker = tickerMap.get(serial);
 
@@ -602,10 +619,7 @@ module.exports = function (server) {
             performance,
             itemSummary,
             itemHourlyStack,
-            faultData: {
-              faultSummaries: [],
-              faultCycles: [],
-            },
+            faultData,
             operatorEfficiency,
             currentOperators,
             timestamp: record.lastUpdated || wallClockNow,
@@ -828,6 +842,20 @@ module.exports = function (server) {
         totalTimeCreditMs: record.workedTimeMs || 0,
         timeRange: { start, end },
       });
+      const stateWindow = await getBookendedStatesAndTimeRange(
+        db,
+        serialParam,
+        start,
+        end
+      );
+      const states = stateWindow?.states || [];
+      const counts = await getValidCounts(db, serialParam, start, end);
+      const [operatorEfficiency] = await Promise.all([
+        buildOperatorEfficiency(states, counts, start, end, serialParam),
+      ]);
+      const itemSummary = buildMachineItemSummary(states, counts, start, end);
+      const itemHourlyStack = buildItemHourlyStack(counts, start, end);
+      const faultData = buildFaultData(states, start, end);
       return res.json([
         {
           machine: {
@@ -839,13 +867,10 @@ module.exports = function (server) {
             name: "Unknown",
           },
           performance,
-          itemSummary: {
-            machineSummary: { totalCount: totalCounts, misfeedCount: 0 },
-            itemSummaries: {},
-          },
-          itemHourlyStack: [],
-          faultData: { faultSummaries: [], faultCycles: [] },
-          operatorEfficiency: [],
+          itemSummary,
+          itemHourlyStack,
+          faultData,
+          operatorEfficiency,
           currentOperators: await buildCurrentOperators(db, serialParam),
           timestamp: new Date(),
           sessionStart: start,
