@@ -4,6 +4,7 @@ module.exports = function (config) {
 
 function constructor(config) {
   const { MongoClient } = require("mongodb");
+  const { wrapDatabase } = require("./totalsCollectionAdapter");
   const conn = config.mongo?.connectionString;
   if (!conn || typeof conn !== "string" || !conn.trim()) {
     throw new Error("MONGO_CONN_STRING is required");
@@ -15,5 +16,5 @@ function constructor(config) {
   const redacted = conn.replace(/:[^:@]+@/, ":****@");
   console.log("MongoDB connection string:", redacted);
 
-  return db;
+  return wrapDatabase(db);
 }

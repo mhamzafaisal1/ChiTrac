@@ -17,28 +17,52 @@ async function ensureAnalyticsIndexes(db, config, logger) {
   await Promise.all([
     createIndex(
       totalsDaily,
-      { entityType: 1, date: 1, machineSerial: 1 },
-      { name: "machine_dashboard_daily_lookup" },
+      { type: 1, "timestamps.create": 1, "machine.id": 1 },
+      { name: "machine_dashboard_daily_lookup_v2" },
       logger
     ),
     createIndex(
       totalsHourly,
-      { entityType: 1, date: 1, machineSerial: 1, hour: 1 },
-      { name: "machine_dashboard_hourly_lookup" },
+      { type: 1, "timestamps.create": 1, "machine.id": 1 },
+      { name: "machine_dashboard_hourly_lookup_v2" },
       logger
     ),
     createIndex(
       totalsShift,
-      { shiftId: 1, entityType: 1, date: 1, machineSerial: 1 },
-      { name: "dashboard_shift_machine_lookup" },
+      { "shift.id": 1, type: 1, "timestamps.create": 1, "machine.id": 1 },
+      { name: "dashboard_shift_machine_lookup_v2" },
       logger
     ),
     createIndex(
       totalsShift,
-      { shiftId: 1, entityType: 1, date: 1, operatorId: 1 },
-      { name: "dashboard_shift_operator_lookup" },
+      { "shift._id": 1, type: 1, "timestamps.create": 1, "operator.id": 1 },
+      { name: "dashboard_shift_operator_lookup_v2" },
       logger
     ),
+    ...[totalsDaily, totalsHourly, totalsShift].flatMap((collection) => [
+      createIndex(
+        collection,
+        { type: 1, "timestamps.create": 1, "operator.id": 1 },
+        { name: "totals_operator_lookup" },
+        logger
+      ),
+      createIndex(
+        collection,
+        { type: 1, "timestamps.create": 1, "item.id": 1 },
+        { name: "totals_item_lookup" },
+        logger
+      ),
+      createIndex(
+        collection,
+        { id: 1 },
+        {
+          name: "totals_deterministic_id",
+          unique: true,
+          partialFilterExpression: { id: { $type: "string" } },
+        },
+        logger
+      ),
+    ]),
     createIndex(
       tickerState,
       { "machine.serial": 1 },
