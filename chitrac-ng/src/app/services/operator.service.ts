@@ -1,14 +1,17 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { DateTimeService } from './date-time.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class OperatorService {
     private apiUrl = '/api/operator';
-    private alphaUrl = '/api/alpha';
-  constructor(private http: HttpClient) { }
+  constructor(
+    private http: HttpClient,
+    private dateTimeService: DateTimeService
+  ) { }
 
   getOperatorSummary(startTime: string, endTime: string, shiftId?: string | null): Observable<any> {
     let params = new HttpParams()
@@ -40,20 +43,15 @@ export class OperatorService {
   
 
   getOperatorSummaryWithTimeframe(timeframe: string, shiftId?: string | null): Observable<any> {
-    let params = new HttpParams()
-      .set('timeframe', timeframe);
-    if (shiftId) params = params.set('shiftId', shiftId);
-
-    return this.http.get(`${this.alphaUrl}/analytics/operator-summary-timeframe`, { params });
+    return this.getOperatorSummary(
+      this.dateTimeService.getStartTime(),
+      this.dateTimeService.getEndTime(),
+      shiftId
+    );
   }
 
   
   getOperatorDetailsWithTimeFrame(start: string, end: string, operatorId: number): Observable<any> {
-    const params = new HttpParams()
-      .set('start', start)
-      .set('end', end)
-      .set('operatorId', operatorId.toString());
-  
-    return this.http.get(`${this.alphaUrl}/analytics/operator-dashboard`, { params });
+    return this.getOperatorDetails(start, end, operatorId);
   }
 }
