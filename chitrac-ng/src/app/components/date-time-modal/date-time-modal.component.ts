@@ -16,7 +16,6 @@ import { MatInputModule } from '@angular/material/input';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatTimepickerModule } from '@angular/material/timepicker';
 import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
-import { MatRadioModule } from '@angular/material/radio';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
@@ -38,7 +37,6 @@ import { ShiftListItem, ShiftService } from '../../services/shift.service';
     MatDatepickerModule,
     MatTimepickerModule,
     MatNativeDateModule,
-    MatRadioModule,
     MatButtonModule,
     MatIconModule,
     MatSelectModule,
@@ -58,6 +56,7 @@ export class DateTimeModalComponent implements OnInit {
   endDateTime: Date = new Date();
   mode: string = 'live';
   selectedTimeframe: string = '';
+  selectedOption: string = 'today';
   shifts: ShiftListItem[] = [];
   selectedShiftId: string | null = null;
   shiftsLoadError: string | null = null;
@@ -67,10 +66,17 @@ export class DateTimeModalComponent implements OnInit {
     this.mode = this.dateTimeService.getLiveMode() ? 'live' : 'manual';
     const existing = this.dateTimeService.getShiftId();
     this.selectedShiftId = existing || null;
+    const existingTimeframe = this.dateTimeService.getTimeframe();
+    this.selectedTimeframe = existingTimeframe || '';
+    this.selectedOption = existing
+      ? `shift:${existing}`
+      : existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
 
     this.shiftService.getActiveShifts().subscribe({
       next: (res) => {
-        this.shifts = res.shifts || [];
+        this.shifts = [...(res.shifts || [])].sort(
+          (a, b) => this.shiftStartMinutes(a) - this.shiftStartMinutes(b)
+        );
         this.shiftsLoadError = null;
         this.cdr.markForCheck();
       },
@@ -83,7 +89,7 @@ export class DateTimeModalComponent implements OnInit {
   }
 
   isDisabled(): boolean {
-    return this.mode === 'live';
+    return this.selectedOption !== 'custom';
   }
 
   onModeChange(newMode: string): void {
@@ -104,19 +110,33 @@ export class DateTimeModalComponent implements OnInit {
   }
 
   selectShift(shiftId: string): void {
+    this.selectedOption = `shift:${shiftId}`;
     this.selectedShiftId = shiftId;
+    this.selectedTimeframe = '';
+    this.mode = 'manual';
+    this.dateTimeService.setLiveMode(false);
+    this.dateTimeService.setTimeframe('');
     this.cdr.markForCheck();
   }
 
-  clearShiftFilter(): void {
+  selectCustom(): void {
+    this.selectedOption = 'custom';
     this.selectedShiftId = null;
+    this.selectedTimeframe = '';
+    this.mode = 'manual';
+    this.dateTimeService.setLiveMode(false);
+    this.dateTimeService.setShiftId('');
+    this.dateTimeService.setTimeframe('');
     this.cdr.markForCheck();
   }
 
   onTimeframeSelect(timeframe: string): void {
+    this.selectedOption = timeframe;
     this.selectedTimeframe = timeframe;
+    this.selectedShiftId = null;
     this.mode = 'manual'; // Switch to manual mode when timeframe is selected
     this.dateTimeService.setLiveMode(false);
+    this.dateTimeService.setShiftId('');
     
     // Store the timeframe in the service instead of calculating dates
     this.dateTimeService.setTimeframe(timeframe);
@@ -160,6 +180,11 @@ export class DateTimeModalComponent implements OnInit {
     this.startDateTime = start;
     this.endDateTime = end;
   }
+
+  selectToday(): void {
+    this.selectedOption = 'today';
+    this.onModeChange('live');
+  }
   
 
   private setLiveModeDefaults(): void {
@@ -192,6 +217,7 @@ export class DateTimeModalComponent implements OnInit {
       this.endDateTime = selection.end;
       this.selectedShiftId = selection.shiftId || null;
       this.mode = selection.mode === 'current' ? 'live' : 'manual';
+      this.selectedOption = selection.shiftId ? `shift:${selection.shiftId}` : 'today';
       this.dateTimeService.setLiveMode(selection.mode === 'current');
       this.cdr.markForCheck();
     });
@@ -200,11 +226,16 @@ export class DateTimeModalComponent implements OnInit {
   confirm(): void {
     this.dateTimeService.setStartTime(this.startDateTime.toISOString());
     this.dateTimeService.setEndTime(this.endDateTime.toISOString());
-    this.dateTimeService.setLiveMode(false);
+    this.dateTimeService.setLiveMode(this.selectedOption === 'today');
     this.dateTimeService.setShiftId(this.selectedShiftId || '');
     this.dateTimeService.setTimeframe(this.selectedTimeframe || '');
     this.dateTimeService.setConfirmed(true);
     this.dateTimeService.triggerConfirm();
     this.closeModal.emit();
+  }
+
+  private shiftStartMinutes(shift: ShiftListItem): number {
+    if (!shift.startTime) return Number.MAX_SAFE_INTEGER;
+    return (Number(shift.startTime.hour) * 60) + Number(shift.startTime.minute);
   }
 }
