@@ -87,7 +87,12 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
           }
           return 0;
         }
-        return data[sortHeaderId];
+        const value = data[sortHeaderId];
+        if (typeof value === 'string' && value.trim().endsWith('%')) {
+          const percentage = Number.parseFloat(value.replace('%', ''));
+          return Number.isFinite(percentage) ? percentage : Number.NEGATIVE_INFINITY;
+        }
+        return value;
       };
     }
   }
@@ -124,7 +129,9 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   }
 
   getCellClassForColumn(value: any, column: string): string {
-    return this.getCellClass ? this.getCellClass(value, column) : '';
+    const customClass = this.getCellClass ? this.getCellClass(value, column) : '';
+    if (customClass) return customClass;
+    return column === 'Efficiency' ? this.getEfficiencyClass(value) : '';
   }
 
   getTooltipForColumn(column: string): string {
