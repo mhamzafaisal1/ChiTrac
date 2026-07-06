@@ -140,6 +140,11 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
         this.lastParams = { startTime: this.startTime, endTime: this.endTime, serial: this.serial };
         this.fetchData(); // use them to fetch data
       });
+
+    // Initial input changes happen before ngOnInit, so the fetchTrigger$ event
+    // emitted by ngOnChanges has no subscriber yet. Re-check the initialized
+    // inputs now so historical modal views perform their first fetch.
+    this.fetchTrigger$.next();
   }
   
   ngOnChanges(changes: SimpleChanges): void {
