@@ -68,7 +68,7 @@ const utils = {
    */
   initOperator: (id, name, groups = null) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     // Build the operator object with required properties
@@ -126,7 +126,7 @@ const utils = {
    * @returns {object} Operator schema validated operatorObject
    */
   setName: (operatorObject, name) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...operatorObject,
@@ -149,7 +149,7 @@ const utils = {
    * @returns {object} Operator schema validated operatorObject after inactivation
    */
   setInactive: (operatorObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...operatorObject,
@@ -175,7 +175,7 @@ const utils = {
    * @returns {object} Operator schema validated operatorObject after activation
    */
   setActive: (operatorObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...operatorObject,
@@ -203,7 +203,7 @@ const utils = {
    * @returns {object} Schema validated operator object with updated property
    */
   setProperty: (object, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...object,

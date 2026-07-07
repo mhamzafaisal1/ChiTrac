@@ -38,13 +38,11 @@ const schema = {
       properties: {
         ...timestampsSchema.schema.properties,
         start: {
-          type: 'string',
-          format: 'date-time',
+          ...timestampsSchema.schema.properties.start,
           description: 'Timestamp of when the session started'
         },
         end: {
-          type: 'string',
-          format: 'date-time',
+          ...timestampsSchema.schema.properties.end,
           description: 'Timestamp of when the session ended'
         }
       },
@@ -235,7 +233,7 @@ const utils = {
    * @returns {object} Session schema validated object with updated property
    */
   setProperty: (sessionObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedSession = {
       ...sessionObject,
@@ -259,7 +257,7 @@ const utils = {
    * @returns {object} Session schema validated sessionObject with added count
    */
   pushCount: (sessionObject, countToPush) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     // Update timestamps.update to the timestamps.update in the countToPush
     const updatedTimestamps = timestampsSchema.utils.stampUpdate(
@@ -311,7 +309,7 @@ const utils = {
    * @returns {object} Session schema validated sessionObject with added misfeed
    */
   pushMisfeed: (sessionObject, misfeedToPush) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     // Update timestamps.update to the timestamps.update in the misfeedToPush
     const updatedTimestamps = timestampsSchema.utils.stampUpdate(
@@ -364,7 +362,7 @@ const utils = {
    * @returns {object} Session schema validated sessionObject with added state
    */
   pushState: (sessionObject, stateToPush, isEndState = false) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     // Update timestamps.update to the timestamps.update in the stateToPush
     const updatedTimestamps = timestampsSchema.utils.stampUpdate(

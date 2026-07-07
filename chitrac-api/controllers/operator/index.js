@@ -48,7 +48,7 @@ function constructor(server) {
   }
 
   function stampOperatorCreate(body) {
-    const now = new Date().toISOString();
+    const now = new Date();
     return {
       ...body,
       active: body.active ?? true,
@@ -58,7 +58,7 @@ function constructor(server) {
   }
 
   function stampOperatorUpdate(existing, updates) {
-    const now = new Date().toISOString();
+    const now = new Date();
     let timestamps = existing.timestamps
       ? timestampsSchema.utils.stampUpdate(existing.timestamps, now)
       : timestampsSchema.utils.stampInit(now);

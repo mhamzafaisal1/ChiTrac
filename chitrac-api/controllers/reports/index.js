@@ -13,6 +13,7 @@ const {
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const { addDerivedShiftTimeComponents } = require("../../utils/shiftTimeComponents");
 const config = require("../../modules/config");
 
 function isValidMachineReportRecipientEmail(s) {
@@ -54,10 +55,10 @@ module.exports = function (server) {
         .collection(config.shiftCollectionName)
         .find({ active: true })
         .sort({ name: 1 })
-        .project({ name: 1, startTime: 1, endTime: 1, activeDays: 1, active: 1 })
+        .project({ name: 1, timestamps: 1, activeDays: 1, active: 1 })
         .toArray();
       res.json({
-        shifts: shifts.map((s) => ({ ...s, _id: String(s._id) })),
+        shifts: shifts.map((s) => ({ ...addDerivedShiftTimeComponents(s), _id: String(s._id) })),
       });
     } catch (err) {
       logger.error("[shifts] list failed", err);

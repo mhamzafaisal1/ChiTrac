@@ -165,7 +165,7 @@ const utils = {
    * @returns {object} State schema validated object with updated property
    */
   setProperty: (stateObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedState = {
       ...stateObject,
@@ -188,7 +188,7 @@ const utils = {
    * @returns {object} State schema validated stateObject after inactivation
    */
   setInactive: (stateObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedState = {
       ...stateObject,
@@ -213,7 +213,7 @@ const utils = {
    * @returns {object} State schema validated stateObject after activation
    */
   setActive: (stateObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedState = {
       ...stateObject,
@@ -239,7 +239,7 @@ const utils = {
    * @returns {object} State schema validated stateObject with added operator
    */
   addOperator: (stateObject, operatorObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedState = {
       ...stateObject,
@@ -263,7 +263,7 @@ const utils = {
    * @returns {object} State schema validated stateObject with removed operator
    */
   removeOperator: (stateObject, operatorIndex) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     if (operatorIndex < 0 || operatorIndex >= stateObject.operators.length) {
       throw new Error('Operator index is out of range.');
@@ -294,7 +294,7 @@ const utils = {
    * @returns {object} State schema validated stateObject with updated timestamps
    */
   updateTimestamps: (stateObject, newTimestamps) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedState = {
       ...stateObject,

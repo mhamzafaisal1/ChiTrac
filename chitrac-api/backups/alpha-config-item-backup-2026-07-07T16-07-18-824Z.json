@@ -1,0 +1,141 @@
+{
+  "database": "chitrac",
+  "collection": "config-item",
+  "exportedAt": "2026-07-07T16:07:18.826Z",
+  "count": 13,
+  "withTimestamps": 0,
+  "missingTimestamps": 13,
+  "missingUpdate": 13,
+  "documents": [
+    {
+      "_id": "6911f8fb25af9a7ac009a95e",
+      "active": true,
+      "area": 0,
+      "department": "sheets",
+      "name": "Sheets",
+      "number": 1,
+      "standard": 350,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a95f",
+      "active": true,
+      "area": 0,
+      "department": "towels",
+      "name": "Bath Towels",
+      "number": 2,
+      "standard": 900,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a960",
+      "active": true,
+      "area": 0,
+      "department": "blankets",
+      "name": "Baby Blankets",
+      "number": 3,
+      "standard": 800,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a961",
+      "active": true,
+      "area": 0,
+      "department": "misc",
+      "name": "IV Gowns",
+      "number": 4,
+      "standard": 475,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a962",
+      "active": true,
+      "area": 0,
+      "department": "sheets",
+      "name": "Fitted Sheets",
+      "number": 5,
+      "standard": 350,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a963",
+      "active": true,
+      "area": 0,
+      "department": "misc",
+      "name": "IC Pads",
+      "number": 6,
+      "standard": 550,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a964",
+      "active": true,
+      "area": 0,
+      "department": "blankets",
+      "name": "Bath Blankets",
+      "number": 7,
+      "standard": 450,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a965",
+      "active": true,
+      "area": 0,
+      "department": "misc",
+      "name": "Pillowcases",
+      "number": 8,
+      "standard": 700,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a966",
+      "active": true,
+      "area": 0,
+      "department": "towels",
+      "name": "OR Towels",
+      "number": 9,
+      "standard": 700,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a967",
+      "active": true,
+      "area": 0,
+      "department": "towels",
+      "name": "Wash Cloth- Hand Fold",
+      "number": 10,
+      "standard": 1500,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a968",
+      "active": true,
+      "area": 0,
+      "department": "misc",
+      "name": "OR Pants",
+      "number": 11,
+      "standard": 275,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a969",
+      "active": true,
+      "area": 0,
+      "department": "misc",
+      "name": "OR Shirts",
+      "number": 12,
+      "standard": 350,
+      "weight": null
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a96a",
+      "active": true,
+      "area": 0,
+      "department": "towels",
+      "name": "Hand Towel",
+      "number": 13,
+      "standard": 800,
+      "weight": null
+    }
+  ]
+}

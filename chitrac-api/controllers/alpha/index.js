@@ -17,8 +17,13 @@ const {
   getHourlyIntervals,
   getStateCollectionName,
   getCountCollectionName,
+  SYSTEM_TIMEZONE,
 } = require("../../utils/time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const {
+  getShiftTimeComponents,
+  addDerivedShiftTimeComponents,
+} = require("../../utils/shiftTimeComponents");
 const {
   fetchStatesForMachine,
   fetchStatesForOperator,
@@ -3821,6 +3826,60 @@ function constructor(server) {
     return t.hour * 60 + t.minute;
   }
 
+  function getShiftLikeTimeComponents(shift) {
+    return getShiftTimeComponents(shift) || {
+      startTime: normalizeTimePart(shift?.startTime),
+      endTime: normalizeTimePart(shift?.endTime),
+    };
+  }
+
+  function shiftLikeTimeToMinutes(shift, which) {
+    const components = getShiftLikeTimeComponents(shift);
+    return shiftTimeToMinutes(components?.[which]);
+  }
+
+  function normalizeTimestampInput(input, fallbackDay, fallbackTimePart) {
+    if (input) {
+      const dt = DateTime.fromJSDate(new Date(input), { zone: SYSTEM_TIMEZONE });
+      if (dt.isValid) return dt.toISO();
+    }
+
+    if (!fallbackTimePart) return null;
+    return fallbackDay.set({
+      hour: fallbackTimePart.hour,
+      minute: fallbackTimePart.minute,
+      second: 0,
+      millisecond: 0,
+    }).toISO();
+  }
+
+  function normalizeShiftLikeTimestamps(body, existing = null, now = new Date().toISOString()) {
+    const existingTimestamps = existing?.timestamps || {};
+    const inputTimestamps = body.timestamps || {};
+    const fallbackDay = DateTime.now().setZone(SYSTEM_TIMEZONE).startOf("day");
+    const startTimePart = body.startTime ? normalizeTimePart(body.startTime) : null;
+    const endTimePart = body.endTime ? normalizeTimePart(body.endTime) : null;
+    const start = normalizeTimestampInput(
+      inputTimestamps.start ?? existingTimestamps.start,
+      fallbackDay,
+      startTimePart
+    );
+    const end = normalizeTimestampInput(
+      inputTimestamps.end ?? existingTimestamps.end,
+      fallbackDay,
+      endTimePart
+    );
+
+    return {
+      create: existingTimestamps.create || inputTimestamps.create || now,
+      active: existingTimestamps.active || inputTimestamps.active || now,
+      update: now,
+      ...(start ? { start } : {}),
+      ...(end ? { end } : {}),
+      ...(existingTimestamps.inactive ? { inactive: existingTimestamps.inactive } : {}),
+    };
+  }
+
   function halfOpenIntervalsOverlap(s1, e1, s2, e2) {
     return s1 < e2 && s2 < e1;
   }
@@ -3856,10 +3915,11 @@ function constructor(server) {
 
   function validateShiftBody(body) {
     const errs = [];
-    const sm = shiftTimeToMinutes(body.startTime);
-    const em = shiftTimeToMinutes(body.endTime);
+    const candidate = { ...body, timestamps: normalizeShiftLikeTimestamps(body) };
+    const sm = shiftLikeTimeToMinutes(candidate, "startTime");
+    const em = shiftLikeTimeToMinutes(candidate, "endTime");
     if (sm == null || em == null) {
-      errs.push("Invalid shift startTime or endTime");
+      errs.push("Invalid shift timestamps.start or timestamps.end");
     } else if (sm >= em) {
       errs.push("Shift start must be before shift end");
     }
@@ -3885,10 +3945,11 @@ function constructor(server) {
 
   function validateMaintenanceShiftBody(body) {
     const errs = [];
-    const sm = shiftTimeToMinutes(body.startTime);
-    const em = shiftTimeToMinutes(body.endTime);
+    const candidate = { ...body, timestamps: normalizeShiftLikeTimestamps(body) };
+    const sm = shiftLikeTimeToMinutes(candidate, "startTime");
+    const em = shiftLikeTimeToMinutes(candidate, "endTime");
     if (sm == null || em == null) {
-      errs.push("Invalid maintenance shift startTime or endTime");
+      errs.push("Invalid maintenance shift timestamps.start or timestamps.end");
     } else if (sm >= em) {
       errs.push("Maintenance shift start must be before maintenance shift end");
     }
@@ -3912,10 +3973,10 @@ function constructor(server) {
     if (shared.length === 0) {
       return false;
     }
-    const sa = shiftTimeToMinutes(a.startTime);
-    const ea = shiftTimeToMinutes(a.endTime);
-    const sb = shiftTimeToMinutes(b.startTime);
-    const eb = shiftTimeToMinutes(b.endTime);
+    const sa = shiftLikeTimeToMinutes(a, "startTime");
+    const ea = shiftLikeTimeToMinutes(a, "endTime");
+    const sb = shiftLikeTimeToMinutes(b, "startTime");
+    const eb = shiftLikeTimeToMinutes(b, "endTime");
     if (sa == null || ea == null || sb == null || eb == null) {
       return false;
     }
@@ -4014,11 +4075,12 @@ function constructor(server) {
    * so rows always render (avoids EJSON / type quirks from mixed drivers).
    */
   function normalizeShiftForClient(s) {
+    const derived = addDerivedShiftTimeComponents(s);
     const out = {
       ...s,
       _id: normalizeShiftIdForApi(s._id),
-      startTime: normalizeTimePart(s.startTime),
-      endTime: normalizeTimePart(s.endTime),
+      startTime: normalizeTimePart(derived.startTime),
+      endTime: normalizeTimePart(derived.endTime),
     };
     if (Array.isArray(s.activeDays)) {
       out.activeDays = s.activeDays
@@ -4042,8 +4104,10 @@ function constructor(server) {
   }
 
   function buildShiftLikeDocument(body, id, now, includeBreaks = true) {
-    const sm = shiftTimeToMinutes(body.startTime);
-    const em = shiftTimeToMinutes(body.endTime);
+    const timestamps = normalizeShiftLikeTimestamps(body, null, now);
+    const candidate = { ...body, timestamps };
+    const sm = shiftLikeTimeToMinutes(candidate, "startTime");
+    const em = shiftLikeTimeToMinutes(candidate, "endTime");
     const shiftTimeMs = (em - sm) * 60 * 1000;
     return {
       id,
@@ -4051,42 +4115,19 @@ function constructor(server) {
       ...(body.name != null && String(body.name).trim() !== ""
         ? { name: String(body.name).trim() }
         : {}),
-      timestamps: body.timestamps && body.timestamps.create
-        ? { ...body.timestamps, update: now }
-        : {
-            create: now,
-            active: now,
-            update: now,
-            ...(body.timestamps && body.timestamps.start
-              ? { start: body.timestamps.start }
-              : {}),
-            ...(body.timestamps && body.timestamps.end
-              ? { end: body.timestamps.end }
-              : {}),
-          },
+      timestamps,
       shiftTime: shiftTimeMs,
       ...(includeBreaks ? { breaks: Array.isArray(body.breaks) ? body.breaks : [] } : {}),
-      startTime: body.startTime,
-      endTime: body.endTime,
       activeDays: [...body.activeDays].sort((a, b) => a - b),
     };
   }
 
   function mergeShiftLikeUpdate(existing, body, now, includeBreaks = true) {
-    const sm = shiftTimeToMinutes(body.startTime);
-    const em = shiftTimeToMinutes(body.endTime);
+    const mergedTimestamps = normalizeShiftLikeTimestamps(body, existing, now);
+    const candidate = { ...existing, ...body, timestamps: mergedTimestamps };
+    const sm = shiftLikeTimeToMinutes(candidate, "startTime");
+    const em = shiftLikeTimeToMinutes(candidate, "endTime");
     const shiftTimeMs = (em - sm) * 60 * 1000;
-    const timestampsIn = body.timestamps || {};
-    const mergedTimestamps = {
-      create: existing.timestamps?.create || now,
-      active: existing.timestamps?.active || now,
-      update: now,
-      ...(timestampsIn.start != null ? { start: timestampsIn.start } : {}),
-      ...(timestampsIn.end != null ? { end: timestampsIn.end } : {}),
-      ...(existing.timestamps?.inactive
-        ? { inactive: existing.timestamps.inactive }
-        : {}),
-    };
 
     const doc = {
       ...existing,
@@ -4094,10 +4135,10 @@ function constructor(server) {
       name: body.name !== undefined ? body.name : existing.name,
       timestamps: mergedTimestamps,
       shiftTime: shiftTimeMs,
-      startTime: body.startTime,
-      endTime: body.endTime,
       activeDays: [...body.activeDays].sort((a, b) => a - b),
     };
+    delete doc.startTime;
+    delete doc.endTime;
     if (includeBreaks) {
       doc.breaks = Array.isArray(body.breaks) ? body.breaks : [];
     } else {
@@ -4109,10 +4150,8 @@ function constructor(server) {
   async function listShiftLikeDocs(db, collectionName) {
     const shifts = await db.collection(collectionName).find({}).toArray();
     shifts.sort((a, b) => {
-      const am =
-        (a.startTime?.hour ?? 0) * 60 + (a.startTime?.minute ?? 0);
-      const bm =
-        (b.startTime?.hour ?? 0) * 60 + (b.startTime?.minute ?? 0);
+      const am = shiftLikeTimeToMinutes(a, "startTime") ?? 0;
+      const bm = shiftLikeTimeToMinutes(b, "startTime") ?? 0;
       return am - bm;
     });
     return shifts.map((s) => normalizeShiftForClient(s));

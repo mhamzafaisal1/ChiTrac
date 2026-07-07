@@ -114,7 +114,7 @@ const utils = {
    */
   initProgram: (id, mode, speed, itemOrItems, account, batch, name = null, stations = null, pace = null, configuration = null) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     // Build the program object with required properties
@@ -169,7 +169,7 @@ const utils = {
    * @returns {object} Program schema validated object with updated property
    */
   setProperty: (programObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedProgram = {
       ...programObject,
@@ -192,7 +192,7 @@ const utils = {
    * @returns {object} Program schema validated programObject after inactivation
    */
   setInactive: (programObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedProgram = {
       ...programObject,
@@ -218,7 +218,7 @@ const utils = {
    * @returns {object} Program schema validated programObject after activation
    */
   setActive: (programObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedProgram = {
       ...programObject,

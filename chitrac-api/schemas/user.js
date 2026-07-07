@@ -131,7 +131,7 @@ const utils = {
    */
   initUser: (id, name, username, password, groups = [], permissionLevel = 3) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     utils.validatePlainTextPassword(password);
@@ -173,7 +173,7 @@ const utils = {
    * @returns {object} User schema validated object with updated property
    */
   setProperty: (userObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedUser = {
       ...userObject,
@@ -196,7 +196,7 @@ const utils = {
    * @returns {object} User schema validated userObject after inactivation
    */
   setInactive: (userObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedUser = {
       ...userObject,
@@ -222,7 +222,7 @@ const utils = {
    * @returns {object} User schema validated userObject after activation
    */
   setActive: (userObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedUser = {
       ...userObject,
@@ -263,7 +263,7 @@ const utils = {
    * @returns {object} User schema validated userObject with updated password
    */
   updatePassword: (userObject, newPassword) => {
-    const now = new Date().toISOString();
+    const now = new Date();
 
     utils.validatePlainTextPassword(newPassword);
     

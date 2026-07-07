@@ -1,0 +1,1504 @@
+{
+  "createdAt": "2026-07-07T16:49:29.557Z",
+  "collections": {
+    "config-operator": [
+      {
+        "_id": "6911f8fb25af9a7ac009a9f6",
+        "active": true,
+        "code": 0,
+        "name": {
+          "first": "none",
+          "surname": "entered"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9f7",
+        "active": true,
+        "code": 117811,
+        "name": {
+          "first": "Shaun",
+          "surname": "White"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9f8",
+        "active": true,
+        "code": 118347,
+        "name": {
+          "first": "Hannah",
+          "surname": "Teter"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9f9",
+        "active": true,
+        "code": 119277,
+        "name": {
+          "first": "Torah",
+          "surname": "Bright"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9fa",
+        "active": true,
+        "code": 159375,
+        "name": {
+          "first": "Jeremy",
+          "surname": "Jones"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9fb",
+        "active": true,
+        "code": 159331,
+        "name": {
+          "first": "Jeremy",
+          "surname": "Jones"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9fc",
+        "active": true,
+        "code": 166017,
+        "name": {
+          "first": "Torstein",
+          "surname": "Horgmo"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9fd",
+        "active": true,
+        "code": 170623,
+        "name": {
+          "first": "Gretchen",
+          "surname": "Bleiler"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9fe",
+        "active": true,
+        "code": 169101,
+        "name": {
+          "first": "Travis",
+          "surname": "Rice"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a9ff",
+        "active": true,
+        "code": 107999,
+        "name": {
+          "first": "Linn",
+          "surname": "Haug"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa00",
+        "active": true,
+        "code": 172035,
+        "name": {
+          "first": "Bryan",
+          "surname": "Iguchi"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa01",
+        "active": true,
+        "code": 175052,
+        "name": {
+          "first": "Alena",
+          "surname": "Zavarzina"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa02",
+        "active": true,
+        "code": 167120,
+        "name": {
+          "first": "Mark",
+          "surname": "McMorris"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa03",
+        "active": true,
+        "code": 173237,
+        "name": {
+          "first": "Silje",
+          "surname": "Norendal"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa04",
+        "active": true,
+        "code": 118702,
+        "name": {
+          "first": "Ina",
+          "surname": "Meschik"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa05",
+        "active": true,
+        "code": 175808,
+        "name": {
+          "first": "Ross",
+          "surname": "Rebagliati"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa06",
+        "active": true,
+        "code": 167129,
+        "name": {
+          "first": "Kaitlyn",
+          "surname": "Farrington"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa07",
+        "active": true,
+        "code": 171042,
+        "name": {
+          "first": "Sophie",
+          "surname": "Rodriguez"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa08",
+        "active": true,
+        "code": 174905,
+        "name": {
+          "first": "Scotty",
+          "surname": "James"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa09",
+        "active": true,
+        "code": 175948,
+        "name": {
+          "first": "Brad",
+          "surname": "Martin"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa0a",
+        "active": true,
+        "code": 175361,
+        "name": {
+          "first": "Yekaterina",
+          "surname": "Tudegesheva"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa0b",
+        "active": true,
+        "code": 170657,
+        "name": {
+          "first": "Yuri",
+          "surname": "Podladchikov"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa0c",
+        "active": true,
+        "code": 105682,
+        "name": {
+          "first": "Dominique",
+          "surname": "Vallee"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa0d",
+        "active": true,
+        "code": 173323,
+        "name": {
+          "first": "Greg",
+          "surname": "Bretz"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa0e",
+        "active": true,
+        "code": 173431,
+        "name": {
+          "first": "Elena",
+          "surname": "Hight"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa0f",
+        "active": true,
+        "code": 173878,
+        "name": {
+          "first": "Seppe",
+          "surname": "Smits"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa10",
+        "active": true,
+        "code": 179338,
+        "name": {
+          "first": "Patrizia",
+          "surname": "Kummer"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa11",
+        "active": true,
+        "code": 177187,
+        "name": {
+          "first": "Sarah",
+          "surname": "Conrad"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa12",
+        "active": true,
+        "code": 176809,
+        "name": {
+          "first": "Mike",
+          "surname": "Robertson"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa13",
+        "active": true,
+        "code": 176805,
+        "name": {
+          "first": "Fränzi",
+          "surname": "Mägert-Kohli"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa14",
+        "active": true,
+        "code": 100029,
+        "name": {
+          "first": "Sandra",
+          "surname": "Frei"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa15",
+        "active": true,
+        "code": 176950,
+        "name": {
+          "first": "Isabella",
+          "surname": "Laböck"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa16",
+        "active": true,
+        "code": 181325,
+        "name": {
+          "first": "Ben",
+          "surname": "Kilner"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa17",
+        "active": true,
+        "code": 183448,
+        "name": {
+          "first": "Marion",
+          "surname": "Kreiner"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa18",
+        "active": true,
+        "code": 182702,
+        "name": {
+          "first": "Chris",
+          "surname": "Klug"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa19",
+        "active": true,
+        "code": 183462,
+        "name": {
+          "first": "Holly",
+          "surname": "Crawford"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa1a",
+        "active": true,
+        "code": 182704,
+        "name": {
+          "first": "Kimiko",
+          "surname": "Zakreski"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa1b",
+        "active": true,
+        "code": 183416,
+        "name": {
+          "first": "Kjersti",
+          "surname": "Buaas"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa1c",
+        "active": true,
+        "code": 180355,
+        "name": {
+          "first": "Tyler",
+          "surname": "Jewell"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa1d",
+        "active": true,
+        "code": 198200,
+        "name": {
+          "first": "Justin",
+          "surname": "Lamoureux"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa1e",
+        "active": true,
+        "code": 190496,
+        "name": {
+          "first": "Steve",
+          "surname": "Fisher"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa1f",
+        "active": true,
+        "code": 194012,
+        "name": {
+          "first": "Alexandra",
+          "surname": "Jekova"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa20",
+        "active": true,
+        "code": 190492,
+        "name": {
+          "first": "Jamie",
+          "surname": "Anderson"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa21",
+        "active": true,
+        "code": 183346,
+        "name": {
+          "first": "Jonathan",
+          "surname": "Cheever"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa22",
+        "active": true,
+        "code": 181138,
+        "name": {
+          "first": "Alex",
+          "surname": "Deibold"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa23",
+        "active": true,
+        "code": 183306,
+        "name": {
+          "first": "Kelly",
+          "surname": "Clark"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa24",
+        "active": true,
+        "code": 189186,
+        "name": {
+          "first": "Nick",
+          "surname": "Baumgartner"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa25",
+        "active": true,
+        "code": 191798,
+        "name": {
+          "first": "Nadja",
+          "surname": "Purtschert"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa26",
+        "active": true,
+        "code": 177094,
+        "name": {
+          "first": "Janne",
+          "surname": "Korpi"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa27",
+        "active": true,
+        "code": 990001,
+        "name": {
+          "first": "SPF1",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa28",
+        "active": true,
+        "code": 990002,
+        "name": {
+          "first": "SPF2",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa29",
+        "active": true,
+        "code": 990003,
+        "name": {
+          "first": "SPF3",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa2a",
+        "active": true,
+        "code": 990004,
+        "name": {
+          "first": "SPF4",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa2b",
+        "active": true,
+        "code": 990005,
+        "name": {
+          "first": "SPF5",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa2c",
+        "active": true,
+        "code": 990006,
+        "name": {
+          "first": "SPF6",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa2d",
+        "active": true,
+        "code": 990007,
+        "name": {
+          "first": "LPL1",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa2e",
+        "active": true,
+        "code": 990008,
+        "name": {
+          "first": "LPL2",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa2f",
+        "active": true,
+        "code": 990009,
+        "name": {
+          "first": "Blanket1",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa30",
+        "active": true,
+        "code": 990010,
+        "name": {
+          "first": "Blanket2",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa31",
+        "active": true,
+        "code": 990011,
+        "name": {
+          "first": "SPL1",
+          "surname": "Untracked"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009aa32",
+        "active": true,
+        "code": 654321,
+        "name": {
+          "first": "Chicago",
+          "surname": "Test"
+        },
+        "timestamps": {
+          "create": "2026-07-07T14:33:56.227Z",
+          "active": "2026-07-07T14:33:56.227Z",
+          "update": "2026-07-07T14:33:56.227Z"
+        }
+      }
+    ],
+    "config-item": [
+      {
+        "_id": "6911f8fb25af9a7ac009a95e",
+        "active": true,
+        "area": 0,
+        "department": "sheets",
+        "name": "Sheets",
+        "number": 1,
+        "standard": 350,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a95f",
+        "active": true,
+        "area": 0,
+        "department": "towels",
+        "name": "Bath Towels",
+        "number": 2,
+        "standard": 900,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a960",
+        "active": true,
+        "area": 0,
+        "department": "blankets",
+        "name": "Baby Blankets",
+        "number": 3,
+        "standard": 800,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a961",
+        "active": true,
+        "area": 0,
+        "department": "misc",
+        "name": "IV Gowns",
+        "number": 4,
+        "standard": 475,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a962",
+        "active": true,
+        "area": 0,
+        "department": "sheets",
+        "name": "Fitted Sheets",
+        "number": 5,
+        "standard": 350,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a963",
+        "active": true,
+        "area": 0,
+        "department": "misc",
+        "name": "IC Pads",
+        "number": 6,
+        "standard": 550,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a964",
+        "active": true,
+        "area": 0,
+        "department": "blankets",
+        "name": "Bath Blankets",
+        "number": 7,
+        "standard": 450,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a965",
+        "active": true,
+        "area": 0,
+        "department": "misc",
+        "name": "Pillowcases",
+        "number": 8,
+        "standard": 700,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a966",
+        "active": true,
+        "area": 0,
+        "department": "towels",
+        "name": "OR Towels",
+        "number": 9,
+        "standard": 700,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a967",
+        "active": true,
+        "area": 0,
+        "department": "towels",
+        "name": "Wash Cloth- Hand Fold",
+        "number": 10,
+        "standard": 1500,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a968",
+        "active": true,
+        "area": 0,
+        "department": "misc",
+        "name": "OR Pants",
+        "number": 11,
+        "standard": 275,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a969",
+        "active": true,
+        "area": 0,
+        "department": "misc",
+        "name": "OR Shirts",
+        "number": 12,
+        "standard": 350,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      },
+      {
+        "_id": "6911f8fb25af9a7ac009a96a",
+        "active": true,
+        "area": 0,
+        "department": "towels",
+        "name": "Hand Towel",
+        "number": 13,
+        "standard": 800,
+        "weight": null,
+        "timestamps": {
+          "create": "2026-07-07T16:07:33.897Z",
+          "active": "2026-07-07T16:07:33.897Z",
+          "update": "2026-07-07T16:07:33.897Z"
+        }
+      }
+    ],
+    "config-shift": [
+      {
+        "_id": "69d96d3837589267884f6067",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T11:30:00.000Z",
+              "end": "2026-04-10T11:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 6:30–6:40"
+          }
+        ],
+        "name": "Alpha hourly test 6:00–7:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T11:00:00.000Z",
+          "end": "2026-04-10T12:00:00.000Z"
+        },
+        "id": 1
+      },
+      {
+        "_id": "69d96d3837589267884f6068",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T12:30:00.000Z",
+              "end": "2026-04-10T12:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 7:30–7:40"
+          }
+        ],
+        "name": "Alpha hourly test 7:00–8:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T12:00:00.000Z",
+          "end": "2026-04-10T13:00:00.000Z"
+        },
+        "id": 2
+      },
+      {
+        "_id": "69d96d3837589267884f6069",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T13:30:00.000Z",
+              "end": "2026-04-10T13:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 8:30–8:40"
+          }
+        ],
+        "name": "Alpha hourly test 8:00–9:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T13:00:00.000Z",
+          "end": "2026-04-10T14:00:00.000Z"
+        },
+        "id": 3
+      },
+      {
+        "_id": "69d96d3837589267884f606a",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T14:30:00.000Z",
+              "end": "2026-04-10T14:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 9:30–9:40"
+          }
+        ],
+        "name": "Alpha hourly test 9:00–10:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T14:00:00.000Z",
+          "end": "2026-04-10T15:00:00.000Z"
+        },
+        "id": 4
+      },
+      {
+        "_id": "69d96d3837589267884f606b",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T15:30:00.000Z",
+              "end": "2026-04-10T15:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 10:30–10:40"
+          }
+        ],
+        "name": "Alpha hourly test 10:00–11:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T15:00:00.000Z",
+          "end": "2026-04-10T16:00:00.000Z"
+        },
+        "id": 5
+      },
+      {
+        "_id": "69d96d3837589267884f606c",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T16:30:00.000Z",
+              "end": "2026-04-10T16:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 11:30–11:40"
+          }
+        ],
+        "name": "Alpha hourly test 11:00–12:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T16:00:00.000Z",
+          "end": "2026-04-10T17:00:00.000Z"
+        },
+        "id": 6
+      },
+      {
+        "_id": "69d96d3837589267884f606d",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T17:30:00.000Z",
+              "end": "2026-04-10T17:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 12:30–12:40"
+          }
+        ],
+        "name": "Alpha hourly test 12:00–13:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T17:00:00.000Z",
+          "end": "2026-04-10T18:00:00.000Z"
+        },
+        "id": 7
+      },
+      {
+        "_id": "69d96d3837589267884f606e",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T18:30:00.000Z",
+              "end": "2026-04-10T18:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 13:30–13:40"
+          }
+        ],
+        "name": "Alpha hourly test 13:00–14:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T18:00:00.000Z",
+          "end": "2026-04-10T19:00:00.000Z"
+        },
+        "id": 8
+      },
+      {
+        "_id": "69d96d3837589267884f606f",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T19:30:00.000Z",
+              "end": "2026-04-10T19:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 14:30–14:40"
+          }
+        ],
+        "name": "Alpha hourly test 14:00–15:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T19:00:00.000Z",
+          "end": "2026-04-10T20:00:00.000Z"
+        },
+        "id": 9
+      },
+      {
+        "_id": "69d96d3837589267884f6070",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T20:30:00.000Z",
+              "end": "2026-04-10T20:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 15:30–15:40"
+          }
+        ],
+        "name": "Alpha hourly test 15:00–16:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T20:00:00.000Z",
+          "end": "2026-04-10T21:00:00.000Z"
+        },
+        "id": 10
+      },
+      {
+        "_id": "69d96d3837589267884f6071",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T21:30:00.000Z",
+              "end": "2026-04-10T21:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 16:30–16:40"
+          }
+        ],
+        "name": "Alpha hourly test 16:00–17:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T21:00:00.000Z",
+          "end": "2026-04-10T22:00:00.000Z"
+        },
+        "id": 11
+      },
+      {
+        "_id": "69d96d3837589267884f6072",
+        "active": true,
+        "activeDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "breaks": [
+          {
+            "active": true,
+            "timestamps": {
+              "create": "2026-04-10T21:35:52.404Z",
+              "active": "2026-04-10T21:35:52.404Z",
+              "update": "2026-04-10T21:35:52.404Z",
+              "start": "2026-04-10T22:30:00.000Z",
+              "end": "2026-04-10T22:40:00.000Z"
+            },
+            "breakTime": 600000,
+            "name": "Break 17:30–17:40"
+          }
+        ],
+        "name": "Alpha hourly test 17:00–18:00 CT",
+        "shiftTime": 3600000,
+        "timestamps": {
+          "create": "2026-04-10T21:35:52.404Z",
+          "active": "2026-04-10T21:35:52.404Z",
+          "update": "2026-04-10T21:35:52.404Z",
+          "start": "2026-04-10T22:00:00.000Z",
+          "end": "2026-04-10T23:00:00.000Z"
+        },
+        "id": 12
+      }
+    ]
+  }
+}
