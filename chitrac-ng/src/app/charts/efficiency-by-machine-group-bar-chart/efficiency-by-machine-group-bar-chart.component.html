@@ -15,7 +15,10 @@
     <div class="loading-spinner dummy-chart">⏳</div>
   </div>
 
-  <div class="empty-debug-message" *ngIf="!hasInitialData && !dummyMode && !isLoading && emptyDebugMessage">
-    <span class="empty-debug-text">{{ emptyDebugMessage }}</span>
+  <div class="chart-no-data" *ngIf="!hasInitialData && !dummyMode && !isLoading">
+    <div class="chart-no-data-content">
+      <div class="chart-no-data-icon">&#128202;</div>
+      <div class="chart-no-data-text">No chart data available</div>
+    </div>
   </div>
 </div>
