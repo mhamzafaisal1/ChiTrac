@@ -3,6 +3,7 @@ const { DateTime } = require("luxon");
 
 const config = require("../../modules/config");
 const { formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
+const { formatHumanName } = require("../../utils/humanNames");
 const { computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   buildLatestTickerMap,
@@ -178,10 +179,7 @@ function constructor(server) {
   }
 
   function formatName(name, fallback = "Unknown") {
-    if (typeof name === "object" && name !== null) {
-      return `${name.first || ""} ${name.surname || ""}`.trim() || fallback;
-    }
-    return name || fallback;
+    return formatHumanName(name, fallback);
   }
 
   async function loadActiveOperatorIds(operatorId) {

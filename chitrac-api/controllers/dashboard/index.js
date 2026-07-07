@@ -10,6 +10,7 @@ const { ObjectId } = require("mongodb");
 const { DateTime } = require("luxon");
 const { parseAndValidateQueryParams, formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
 const config = require("../../modules/config");
+const { formatHumanName } = require("../../utils/humanNames");
 const {
   getSessionDataForPartialDays,
   getOperatorSessionDataForPartialDays,
@@ -869,10 +870,7 @@ module.exports = function (server) {
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
-            const operatorName =
-              op.name?.first && op.name?.surname
-                ? `${op.name.first} ${op.name.surname}`
-                : op.name || "Unknown";
+            const operatorName = formatHumanName(op.name);
             return {
               status: statusCode,
               fault: ticker.status?.name ?? "Unknown",
@@ -1021,10 +1019,7 @@ module.exports = function (server) {
           };
 
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
-          const operatorName =
-            op.name?.first && op.name?.surname
-              ? `${op.name.first} ${op.name.surname}`
-              : op.name || "Unknown";
+          const operatorName = formatHumanName(op.name);
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
 
           return {
@@ -1105,10 +1100,7 @@ module.exports = function (server) {
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
-            const operatorName =
-              op.name?.first && op.name?.surname
-                ? `${op.name.first} ${op.name.surname}`
-                : op.name || "Unknown";
+            const operatorName = formatHumanName(op.name);
             return {
               status: statusCode,
               fault: ticker.status?.name ?? "Unknown",
@@ -1257,10 +1249,7 @@ module.exports = function (server) {
           };
 
           const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
-          const operatorName =
-            op.name?.first && op.name?.surname
-              ? `${op.name.first} ${op.name.surname}`
-              : op.name || "Unknown";
+          const operatorName = formatHumanName(op.name);
           const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
 
           return {
@@ -1399,10 +1388,7 @@ module.exports = function (server) {
 
       if (statusCode !== 1) {
         const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
-        const operatorName =
-          operator.name?.first && operator.name?.surname
-            ? `${operator.name.first} ${operator.name.surname}`
-            : operator.name || "Unknown";
+        const operatorName = formatHumanName(operator.name);
         return res.json({
           status: statusCode,
           fault: ticker.status?.name ?? "Unknown",
@@ -1536,10 +1522,7 @@ module.exports = function (server) {
       };
 
       const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
-      const operatorName =
-        operator.name?.first && operator.name?.surname
-          ? `${operator.name.first} ${operator.name.surname}`
-          : operator.name || "Unknown";
+      const operatorName = formatHumanName(operator.name);
       const statusCodeForResponse = ticker.status?.id ?? ticker.status?.code ?? 0;
 
       return res.json({

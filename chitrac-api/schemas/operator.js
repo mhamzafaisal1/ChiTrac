@@ -107,6 +107,19 @@ const utils = {
   },
 
   /**
+   * Get both supported display-name formats for an operator.
+   * @param {object} operatorObject - Operator schema object
+   * @returns {{fullName: string, fullNameShort: string}} Formatted names
+   */
+  getFormattedNames: (operatorObject) => {
+    if (!operatorObject.name) {
+      throw new Error('Operator object does not have a name.');
+    }
+
+    return humanNamesSchema.utils.getFormattedNames(operatorObject.name);
+  },
+
+  /**
    * Set the name of an operator
    * @param {object} operatorObject - Required Operator schema valid operatorObject
    * @param {object} name - Required Name schema valid object for this operator's name

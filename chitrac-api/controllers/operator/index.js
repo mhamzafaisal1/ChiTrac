@@ -5,7 +5,8 @@ const { ObjectId } = require("mongodb");
 const { DateTime } = require("luxon");
 const config = require('../../modules/config');
 const humanNamesSchema = require('../../schemas/human-names');
-const operatorSchema = require('../../schemas/operator');
+const timestampsSchema = require('../../schemas/timestampsSchema');
+const { formatHumanName } = require('../../utils/humanNames');
 
 const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
@@ -38,39 +39,38 @@ function constructor(server) {
   // Ensure unique index once at startup
   collection.createIndex({ code: 1 }, { unique: true }).catch(() => {});
 
-  // Name validation helper
-  function validateOperatorName(name) {
-    // Allow simple string names for backward compatibility
-    if (typeof name === 'string') {
-      if (name.trim().length === 0) {
-        throw new Error('Operator name cannot be empty');
-      }
-      return true;
+  function normalizeOperatorName(name) {
+    try {
+      return humanNamesSchema.utils.setName({}, name);
+    } catch (error) {
+      throw new Error(`Invalid name structure: ${error.message}`);
     }
-    
-    // Validate complex name object using human-names schema
-    if (typeof name === 'object' && name !== null) {
-      const Ajv = require('ajv');
-      const ajv = new Ajv();
-      const validate = ajv.compile(humanNamesSchema.schema);
-      
-      const valid = validate(name);
-      if (!valid && validate.errors) {
-        const errorMessages = validate.errors.map(e => 
-          `${e.instancePath || 'root'} ${e.message}`
-        ).join(', ');
-        throw new Error(`Invalid name structure: ${errorMessages}`);
-      }
-      
-      // Check required fields
-      if (!name.first || !name.surname) {
-        throw new Error('First name and surname are required');
-      }
-      
-      return true;
+  }
+
+  function stampOperatorCreate(body) {
+    const now = new Date().toISOString();
+    return {
+      ...body,
+      active: body.active ?? true,
+      name: normalizeOperatorName(body.name),
+      timestamps: timestampsSchema.utils.stampInit(now)
+    };
+  }
+
+  function stampOperatorUpdate(existing, updates) {
+    const now = new Date().toISOString();
+    let timestamps = existing.timestamps
+      ? timestampsSchema.utils.stampUpdate(existing.timestamps, now)
+      : timestampsSchema.utils.stampInit(now);
+
+    if (updates.active === true && existing.active !== true) {
+      timestamps = timestampsSchema.utils.stampActive(timestamps, now);
+      delete timestamps.inactive;
+    } else if (updates.active === false && existing.active !== false) {
+      timestamps = timestampsSchema.utils.stampInactive(timestamps, now);
     }
-    
-    throw new Error('Operator name must be a string or a valid name object');
+
+    return timestamps;
   }
 
   // JWT verification middleware
@@ -115,9 +115,11 @@ function constructor(server) {
   async function getOperatorXML(req, res, next) {
     try {
       res.set('Content-Type', 'text/xml');
-      const ops = await configService.getConfiguration(
-        collection, {}, { code: '$code', name: '$name.full', _id: 0 }
-      );
+      const operators = await configService.getConfiguration(collection, {}, { code: 1, name: 1, _id: 0 });
+      const ops = operators.map(operator => ({
+        code: operator.code,
+        name: formatHumanName(operator.name)
+      }));
       res.send(await xmlParser.xmlArrayBuilder('operator', ops, false));
     } catch (e) { next(e); }
   }
@@ -141,13 +143,11 @@ function constructor(server) {
       const body = { ...req.body };
       if (body._id) delete body._id;           // new doc
       
-      // Validate operator name
-      if (body.name) {
-        validateOperatorName(body.name);
-      }
+      if (!body.name) throw new Error('Operator name is required');
+      const normalizedBody = stampOperatorCreate(body);
       
       // unique by 'code'
-      const out = await configService.upsertConfiguration(collection, body, true, 'code');
+      const out = await configService.upsertConfiguration(collection, normalizedBody, true, 'code');
       res.status(201).json(out);
     } catch (e) { 
       // Handle validation errors
@@ -165,10 +165,10 @@ function constructor(server) {
       const updates = { ...req.body };
       if (updates._id) delete updates._id;
 
-      // Validate operator name if it's being updated
-      if (updates.name) {
-        validateOperatorName(updates.name);
-      }
+      const existing = id ? await collection.findOne({ _id: new ObjectId(id) }) : null;
+      if (id && !existing) return res.status(404).json({ message: 'Operator not found' });
+      if (updates.name) updates.name = normalizeOperatorName(updates.name);
+      updates.timestamps = stampOperatorUpdate(existing || updates, updates);
 
       // Pass {_id:id,...updates} so configService can do:
       // findOne({ code: updates.code, _id: { $ne: id } }) → 409 if exists
@@ -306,10 +306,7 @@ function constructor(server) {
       if (!opId || opId === -1) continue;
 
       if (!operatorMap.has(opId)) {
-        const operatorNameStr =
-          typeof record.operatorName === "object" && record.operatorName !== null
-            ? `${record.operatorName.first || ""} ${record.operatorName.surname || ""}`.trim() || "Unknown"
-            : record.operatorName || "Unknown";
+        const operatorNameStr = formatHumanName(record.operatorName);
 
         operatorMap.set(opId, {
           operator: { id: opId, name: operatorNameStr },
@@ -553,10 +550,7 @@ function constructor(server) {
       ]);
 
       const rawName = nameDoc?.operatorName;
-      const operatorName =
-        typeof rawName === "object" && rawName !== null
-          ? `${rawName.first || ""} ${rawName.surname || ""}`.trim() || `Operator ${opId}`
-          : rawName || `Operator ${opId}`;
+      const operatorName = formatHumanName(rawName, `Operator ${opId}`);
       if (dailyEfficiency?.operator) dailyEfficiency.operator.name = operatorName;
 
       const transformedItemSummary = itemSummary.sessions.flatMap((session) => {

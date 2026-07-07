@@ -31,6 +31,7 @@ const schema = {
     },
     middleInitial: {
       type: 'string',
+      maxLength: 1,
       description: "String of the person's middle initial"
     },
     additionalSurnames: {
@@ -54,6 +55,62 @@ const validate = ajv.compile(schema);
 // Names Utility Functions
 const utils = {
   /**
+   * Normalize a name object before validation and persistence.
+   * A supplied middle name is authoritative for middleInitial.
+   * @param {object} nameObject - Human-names schema object
+   * @returns {object} Normalized name object
+   */
+  normalize: (nameObject) => {
+    if (!nameObject || typeof nameObject !== 'object' || Array.isArray(nameObject)) {
+      throw new Error('Name must be a human-names schema object');
+    }
+
+    const normalizedName = { ...nameObject };
+    if (typeof normalizedName.middle === 'string' && normalizedName.middle.trim()) {
+      normalizedName.middleInitial = normalizedName.middle.trim().charAt(0);
+    }
+
+    return normalizedName;
+  },
+
+  /**
+   * Return the long and short display forms of a human-names schema object.
+   * @param {object} nameObject - Human-names schema object
+   * @returns {{fullName: string, fullNameShort: string}} Formatted names
+   */
+  getFormattedNames: (nameObject) => {
+    const normalizedName = utils.normalize(nameObject);
+    const valid = validate(normalizedName);
+    if (!valid) {
+      throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
+    }
+
+    const firstNames = [
+      normalizedName.first,
+      normalizedName.middle || normalizedName.middleInitial
+    ].filter(Boolean);
+    const surnames = [
+      normalizedName.surname,
+      ...(normalizedName.additionalSurnames || [])
+    ].filter(Boolean);
+    const orderedNames = normalizedName.lastFirst
+      ? [...surnames, ...firstNames]
+      : [...firstNames, ...surnames];
+    const shortNames = normalizedName.lastFirst
+      ? [normalizedName.surname, normalizedName.first]
+      : [normalizedName.first, normalizedName.surname];
+
+    return {
+      fullName: [
+        normalizedName.prefix,
+        ...orderedNames,
+        normalizedName.suffix
+      ].filter(Boolean).join(' ').trim().replace(/\s+/g, ' '),
+      fullNameShort: shortNames.filter(Boolean).join(' ').trim().replace(/\s+/g, ' ')
+    };
+  },
+
+  /**
    * Set or update name properties on a name object
    * @param {object} nameObjectToEdit - If initing a name, provide an empty object. Otherwise, provide the existing name object.
    * @param {object} nameObject - Object containing the properties to set/overwrite. If a null is provided for a property, that property will be removed.
@@ -73,13 +130,15 @@ const utils = {
       }
     }
 
+    const normalizedName = utils.normalize(updatedName);
+
     // Validate against schema before returning
-    const valid = validate(updatedName);
+    const valid = validate(normalizedName);
     if (!valid) {
       throw new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
     }
 
-    return updatedName;
+    return normalizedName;
   },
 
   /**
@@ -93,71 +152,7 @@ const utils = {
       throw new Error(`Unsupported name format: ${nameFormat}. Only 'standard' is currently supported.`);
     }
 
-    const parts = [];
-    
-    // Add prefix if exists
-    if (nameObject.prefix) {
-      parts.push(nameObject.prefix);
-    }
-
-    // Determine if we're using lastFirst format
-    if (nameObject.lastFirst) {
-      // Format: prefix surname middle/middleInitial additionalSurnames first suffix
-      
-      // Add surname
-      if (nameObject.surname) {
-        parts.push(nameObject.surname);
-      }
-
-      // Add middle or middleInitial
-      if (nameObject.middle) {
-        parts.push(nameObject.middle);
-      } else if (nameObject.middleInitial) {
-        parts.push(nameObject.middleInitial);
-      }
-
-      // Add additionalSurnames
-      if (nameObject.additionalSurnames && nameObject.additionalSurnames.length > 0) {
-        parts.push(...nameObject.additionalSurnames);
-      }
-
-      // Add first name
-      if (nameObject.first) {
-        parts.push(nameObject.first);
-      }
-    } else {
-      // Format: prefix first middle/middleInitial additionalSurnames surname suffix
-      
-      // Add first name
-      if (nameObject.first) {
-        parts.push(nameObject.first);
-      }
-
-      // Add middle or middleInitial
-      if (nameObject.middle) {
-        parts.push(nameObject.middle);
-      } else if (nameObject.middleInitial) {
-        parts.push(nameObject.middleInitial);
-      }
-
-      // Add additionalSurnames
-      if (nameObject.additionalSurnames && nameObject.additionalSurnames.length > 0) {
-        parts.push(...nameObject.additionalSurnames);
-      }
-
-      // Add surname
-      if (nameObject.surname) {
-        parts.push(nameObject.surname);
-      }
-    }
-
-    // Add suffix if exists
-    if (nameObject.suffix) {
-      parts.push(nameObject.suffix);
-    }
-
-    // Trim and normalize spacing to avoid double spaces if some values are empty
-    return parts.join(' ').trim().replace(/\s+/g, ' ');
+    return utils.getFormattedNames(nameObject).fullName;
   },
 
   /**
@@ -168,10 +163,10 @@ const utils = {
    * @returns {object} Schema validated name object with updated property
    */
   setProperty: (object, propertyToSet, valueToSet) => {
-    const updatedName = {
+    const updatedName = utils.normalize({
       ...object,
       [propertyToSet]: valueToSet
-    };
+    });
 
     // Validate against schema before returning
     const valid = validate(updatedName);

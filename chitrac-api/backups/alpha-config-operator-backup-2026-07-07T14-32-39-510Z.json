@@ -1,0 +1,374 @@
+{
+  "database": "chitrac",
+  "collection": "config-operator",
+  "exportedAt": "2026-07-07T14:32:39.511Z",
+  "count": 61,
+  "documents": [
+    {
+      "_id": "6911f8fb25af9a7ac009a9f6",
+      "active": true,
+      "code": 0,
+      "name": "none entered"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa14",
+      "active": true,
+      "code": 100029,
+      "name": "Sandra Frei"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa0c",
+      "active": true,
+      "code": 105682,
+      "name": "Dominique Vallee"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9ff",
+      "active": true,
+      "code": 107999,
+      "name": "Linn Haug"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9f7",
+      "active": true,
+      "code": 117811,
+      "name": "Shaun White"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9f8",
+      "active": true,
+      "code": 118347,
+      "name": "Hannah Teter"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa04",
+      "active": true,
+      "code": 118702,
+      "name": "Ina Meschik"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9f9",
+      "active": true,
+      "code": 119277,
+      "name": "Torah Bright"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9fb",
+      "active": true,
+      "code": 159331,
+      "name": "Jeremy Jones"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9fa",
+      "active": true,
+      "code": 159375,
+      "name": "Jeremy Jones"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9fc",
+      "active": true,
+      "code": 166017,
+      "name": "Torstein Horgmo"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa02",
+      "active": true,
+      "code": 167120,
+      "name": "Mark McMorris"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa06",
+      "active": true,
+      "code": 167129,
+      "name": "Kaitlyn Farrington"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9fe",
+      "active": true,
+      "code": 169101,
+      "name": "Travis Rice"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009a9fd",
+      "active": true,
+      "code": 170623,
+      "name": "Gretchen Bleiler"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa0b",
+      "active": true,
+      "code": 170657,
+      "name": "Yuri Podladchikov"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa07",
+      "active": true,
+      "code": 171042,
+      "name": "Sophie Rodriguez"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa00",
+      "active": true,
+      "code": 172035,
+      "name": "Bryan Iguchi"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa03",
+      "active": true,
+      "code": 173237,
+      "name": "Silje Norendal"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa0d",
+      "active": true,
+      "code": 173323,
+      "name": "Greg Bretz"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa0e",
+      "active": true,
+      "code": 173431,
+      "name": "Elena Hight"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa0f",
+      "active": true,
+      "code": 173878,
+      "name": "Seppe Smits"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa08",
+      "active": true,
+      "code": 174905,
+      "name": "Scotty James"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa01",
+      "active": true,
+      "code": 175052,
+      "name": "Alena Zavarzina"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa0a",
+      "active": true,
+      "code": 175361,
+      "name": "Yekaterina Tudegesheva"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa05",
+      "active": true,
+      "code": 175808,
+      "name": "Ross Rebagliati"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa09",
+      "active": true,
+      "code": 175948,
+      "name": "Brad Martin"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa13",
+      "active": true,
+      "code": 176805,
+      "name": "Fränzi Mägert-Kohli"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa12",
+      "active": true,
+      "code": 176809,
+      "name": "Mike Robertson"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa15",
+      "active": true,
+      "code": 176950,
+      "name": "Isabella Laböck"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa26",
+      "active": true,
+      "code": 177094,
+      "name": "Janne Korpi"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa11",
+      "active": true,
+      "code": 177187,
+      "name": "Sarah Conrad"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa10",
+      "active": true,
+      "code": 179338,
+      "name": "Patrizia Kummer"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa1c",
+      "active": true,
+      "code": 180355,
+      "name": "Tyler Jewell"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa22",
+      "active": true,
+      "code": 181138,
+      "name": "Alex Deibold"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa16",
+      "active": true,
+      "code": 181325,
+      "name": "Ben Kilner"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa18",
+      "active": true,
+      "code": 182702,
+      "name": "Chris Klug"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa1a",
+      "active": true,
+      "code": 182704,
+      "name": "Kimiko Zakreski"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa23",
+      "active": true,
+      "code": 183306,
+      "name": "Kelly Clark"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa21",
+      "active": true,
+      "code": 183346,
+      "name": "Jonathan Cheever"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa1b",
+      "active": true,
+      "code": 183416,
+      "name": "Kjersti Buaas"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa17",
+      "active": true,
+      "code": 183448,
+      "name": "Marion Kreiner"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa19",
+      "active": true,
+      "code": 183462,
+      "name": "Holly Crawford"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa24",
+      "active": true,
+      "code": 189186,
+      "name": "Nick Baumgartner"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa20",
+      "active": true,
+      "code": 190492,
+      "name": "Jamie Anderson"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa1e",
+      "active": true,
+      "code": 190496,
+      "name": "Steve Fisher"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa25",
+      "active": true,
+      "code": 191798,
+      "name": "Nadja Purtschert"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa1f",
+      "active": true,
+      "code": 194012,
+      "name": "Alexandra Jekova"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa1d",
+      "active": true,
+      "code": 198200,
+      "name": "Justin Lamoureux"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa32",
+      "active": true,
+      "code": 654321,
+      "name": "Chicago Test"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa27",
+      "active": true,
+      "code": 990001,
+      "name": "SPF1 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa28",
+      "active": true,
+      "code": 990002,
+      "name": "SPF2 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa29",
+      "active": true,
+      "code": 990003,
+      "name": "SPF3 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa2a",
+      "active": true,
+      "code": 990004,
+      "name": "SPF4 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa2b",
+      "active": true,
+      "code": 990005,
+      "name": "SPF5 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa2c",
+      "active": true,
+      "code": 990006,
+      "name": "SPF6 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa2d",
+      "active": true,
+      "code": 990007,
+      "name": "LPL1 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa2e",
+      "active": true,
+      "code": 990008,
+      "name": "LPL2 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa2f",
+      "active": true,
+      "code": 990009,
+      "name": "Blanket1 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa30",
+      "active": true,
+      "code": 990010,
+      "name": "Blanket2 Untracked"
+    },
+    {
+      "_id": "6911f8fb25af9a7ac009aa31",
+      "active": true,
+      "code": 990011,
+      "name": "SPL1 Untracked"
+    }
+  ]
+}

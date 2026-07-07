@@ -9,6 +9,7 @@
   } = require("./time");
   const { DateTime, Interval } = require("luxon");
   const config = require("../modules/config");
+  const { formatHumanName } = require('./humanNames');
   const {
     calculateDowntime,
     calculateAvailability,
@@ -1021,9 +1022,7 @@ async function getActiveMachineSerials(db, start, end) {
 
       const operatorId = safeNumber(record.operatorId);
       // Format operator name from object (first + surname) or use string if already formatted
-      const operatorName = typeof record.operatorName === 'object' && record.operatorName !== null
-        ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
-        : record.operatorName || "Unknown";
+      const operatorName = formatHumanName(record.operatorName);
 
       if (!hourMap.has(hour)) {
         hourMap.set(hour, {
@@ -1950,15 +1949,8 @@ async function getActiveMachineSerials(db, start, end) {
             const stats = processCountStatistics(group.counts);
             const efficiency = calculateEfficiency(totalRuntime, stats.total, group.validCounts);
 
-            let operatorName = "Unknown";
             const opName = group.counts[0]?.operator?.name;
-            if (opName) {
-              if (typeof opName === 'string') {
-                operatorName = opName;
-              } else if (opName.first || opName.surname) {
-                operatorName = `${opName.first || ''} ${opName.surname || ''}`.trim() || "Unknown";
-              }
-            }
+            const operatorName = formatHumanName(opName);
 
             operatorMetrics[operatorId] = {
               name: operatorName,
@@ -2068,17 +2060,9 @@ async function getActiveMachineSerials(db, start, end) {
       let operatorName = "Unknown";
       const tickerOp = operators.find(o => o && o.id === opId);
       if (tickerOp?.name) {
-        if (typeof tickerOp.name === 'string') {
-          operatorName = tickerOp.name;
-        } else if (tickerOp.name.first || tickerOp.name.surname) {
-          operatorName = `${tickerOp.name.first || ''} ${tickerOp.name.surname || ''}`.trim() || "Unknown";
-        }
+        operatorName = formatHumanName(tickerOp.name);
       } else if (doc.operator?.name) {
-        if (typeof doc.operator.name === 'string') {
-          operatorName = doc.operator.name;
-        } else if (doc.operator.name.first || doc.operator.name.surname) {
-          operatorName = `${doc.operator.name.first || ''} ${doc.operator.name.surname || ''}`.trim() || "Unknown";
-        }
+        operatorName = formatHumanName(doc.operator.name);
       }
 
       return {
