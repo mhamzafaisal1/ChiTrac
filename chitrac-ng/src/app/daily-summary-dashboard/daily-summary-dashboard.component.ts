@@ -21,6 +21,7 @@ import { ModalWrapperComponent } from '../components/modal-wrapper-component/mod
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
 import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-fault-history.component';
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
+import { MachineItemStackedBarChartComponent } from '../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component';
 import { BaseTableComponent } from "../components/base-table/base-table.component";
 import { MachineService } from '../services/machine.service';
 import { OperatorCountbyitemChartComponent } from "../operator-countbyitem-chart/operator-countbyitem-chart.component";
@@ -373,8 +374,25 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
           const operatorEfficiency = machineData?.operatorEfficiency ?? fullMachineData.operatorEfficiency ?? [];
           const faultSummaries = machineData?.faultData?.faultSummaries ?? fullMachineData.faultData?.faultSummaries ?? [];
           const faultCycles = machineData?.faultData?.faultCycles ?? fullMachineData.faultData?.faultCycles ?? [];
+          const itemHourlyStack = machineData?.itemHourlyStack ?? fullMachineData.itemHourlyStack;
           
           const carouselTabs = [
+            {
+              label: 'Item Stacked Chart',
+              component: MachineItemStackedBarChartComponent,
+              componentInputs: {
+                startTime: this.startTime,
+                endTime: this.endTime,
+                machineSerial: serial,
+                chartWidth: this.chartWidth,
+                chartHeight: this.chartHeight,
+                isModal: this.isModal,
+                mode: 'dashboard',
+                preloadedData: itemHourlyStack,
+                showLegend: true,
+                legendPosition: 'right'
+              }
+            },
             {
               label: 'Fault Summaries',
               component: MachineFaultHistoryComponent,
@@ -457,6 +475,22 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
           const faultCycles = fullMachineData.faultData?.faultCycles || [];
           
           const carouselTabs = [
+            {
+              label: 'Item Stacked Chart',
+              component: MachineItemStackedBarChartComponent,
+              componentInputs: {
+                startTime: this.startTime,
+                endTime: this.endTime,
+                machineSerial: serial,
+                chartWidth: this.chartWidth,
+                chartHeight: this.chartHeight,
+                isModal: this.isModal,
+                mode: 'dashboard',
+                preloadedData: fullMachineData.itemHourlyStack,
+                showLegend: true,
+                legendPosition: 'right'
+              }
+            },
             {
               label: 'Fault Summaries',
               component: MachineFaultHistoryComponent,

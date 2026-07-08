@@ -967,49 +967,16 @@ function constructor(server) {
       
       logger.info(`Upserting ${dailyTotals.length} records to ${collectionName}...`);
       
-      const ops = dailyTotals.map(total => {
-        if (total.entityType === 'item') {
-          return {
-            updateOne: {
-              filter: { _id: total._id },
-              update: { 
-                $inc: {
-                  runtimeMs: total.runtimeMs || 0,
-                  workedTimeMs: total.workedTimeMs || 0,
-                  totalTimeCreditMs: total.totalTimeCreditMs || 0,
-                  totalCounts: total.totalCounts || 0,
-                  totalMisfeeds: total.totalMisfeeds || 0
-                },
-                $set: {
-                  entityType: total.entityType,
-                  itemId: total.itemId,
-                  itemName: total.itemName,
-                  date: total.date,
-                  dateObj: total.dateObj,
-                  itemStandard: total.itemStandard,
-                  source: total.source,
-                  lastUpdated: total.lastUpdated,
-                  timeRange: total.timeRange,
-                  version: total.version
-                },
-                $addToSet: {
-                  contributingMachines: total.contributingMachine
-                }
-              },
-              upsert: true
-            }
-          };
-        } else {
-          return {
-            updateOne: {
-              filter: { _id: total._id },
-              update: { 
-                $set: total
-              },
-              upsert: true
-            }
-          };
-        }
+      const { toNewTotalsDocument } = require("../../utils/totalsSchema");
+      const ops = dailyTotals.map((total) => {
+        const normalized = toNewTotalsDocument(total);
+        return {
+          updateOne: {
+            filter: { id: normalized.id },
+            update: { $set: normalized },
+            upsert: true,
+          },
+        };
       });
 
       const result = await cacheCollection.bulkWrite(ops, { ordered: false });

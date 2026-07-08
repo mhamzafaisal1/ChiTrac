@@ -7,6 +7,7 @@ const {
   getPlantDateStr,
   getTodayRange,
 } = require("./machineDashboardCache");
+const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
 
 async function buildOperatorTickerMap(db, config) {
   const stateTickerData = await db.collection(config.stateTickerCollectionName).find({}).toArray();
@@ -86,6 +87,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
         timeRange: record.buildRange || record.timeRange || { start: requestStart, end: requestEnd },
         machines: [],
         efficiencyData: [],
+        breakTimeMs: 0,
       });
     }
 
@@ -99,6 +101,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
     operatorData.currentMachine = tickerContext?.machine || null;
     operatorData.currentStatus = tickerContext?.status || null;
     operatorData.metrics.runtime.total += record.runtimeMs || 0;
+    operatorData.breakTimeMs += record.breakTimeMs || 0;
     operatorData.metrics.output.totalCount += record.totalCounts || 0;
     operatorData.metrics.output.misfeedCount += record.totalMisfeeds || 0;
 
@@ -125,8 +128,10 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
     }
 
     const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
-    downtime.total = Math.max(shiftElapsedMs - runtime.total, 0);
-    const availability = shiftElapsedMs > 0 ? runtime.total / shiftElapsedMs : 0;
+    const productiveElapsedMs = Math.max(0, shiftElapsedMs - operatorData.breakTimeMs);
+    downtime.total = Math.max(productiveElapsedMs - runtime.total, 0);
+    const availability =
+      productiveElapsedMs > 0 ? runtime.total / productiveElapsedMs : 0;
     const throughput =
       output.totalCount + output.misfeedCount > 0
         ? output.totalCount / (output.totalCount + output.misfeedCount)
@@ -166,6 +171,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
 
     delete operatorData.machines;
     delete operatorData.efficiencyData;
+    delete operatorData.breakTimeMs;
     return operatorData;
   });
 
@@ -214,14 +220,15 @@ async function buildOperatorSummaryFromDailyCache(db, logger, config, options = 
     : getTodayRange(now);
 
   const filter = {
-    entityType: "operator-machine",
-    date: dateStr,
+    type: "operator-machine",
+    "timestamps.create": calendarRange(dateStr),
   };
   if (options.operatorId) {
-    filter.operatorId = parseInt(options.operatorId, 10);
+    filter["operator.id"] = parseInt(options.operatorId, 10);
   }
 
-  const records = await db.collection(config.totalsDailyCollectionName).find(filter).toArray();
+  const records = (await db.collection(config.totalsDailyCollectionName).find(filter).toArray())
+    .map(normalizeTotalsDocument);
   if (!records.length) {
     return {
       data: [],
@@ -254,15 +261,19 @@ async function buildOperatorSummaryFromShiftCache(db, logger, config, options) {
   const { shiftOid, shiftDoc, start, end } = options;
   const dateStr = options.dateStr || getPlantDateStr(start);
   const filter = {
-    entityType: "operator-machine",
-    date: dateStr,
-    shiftId: String(shiftOid),
+    type: "operator-machine",
+    "timestamps.create": calendarRange(dateStr),
+    $or: [
+      { "shift.id": String(shiftOid) },
+      { "shift._id": shiftOid },
+    ],
   };
   if (options.operatorId) {
-    filter.operatorId = parseInt(options.operatorId, 10);
+    filter["operator.id"] = parseInt(options.operatorId, 10);
   }
 
-  const records = await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray();
+  const records = (await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray())
+    .map(normalizeTotalsDocument);
   if (records.length > 0) {
     return {
       data: await buildOperatorSummaryRows(db, config, records, [shiftDoc], start, end),

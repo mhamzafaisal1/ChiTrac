@@ -23,6 +23,8 @@ const {
   buildItemSummaryFromRecords,
   buildItemHourlyStackFromRecords,
   buildOperatorEfficiencyFromRecords,
+  buildFaultData,
+  getBookendedStatesAndTimeRange,
   buildCurrentOperatorsFromTicker: buildCurrentOperators,
 } = require("../../utils/machineFunctions");
 
@@ -738,6 +740,17 @@ function constructor(server) {
             cacheDateForCharts
           );
           const currentOperators = await buildCurrentOperators(db, serial);
+          const faultStateWindow = await getBookendedStatesAndTimeRange(
+            db,
+            serial,
+            sessionStart,
+            sessionEnd
+          );
+          const faultData = buildFaultData(
+            faultStateWindow?.states || [],
+            sessionStart,
+            sessionEnd
+          );
 
           const latestTicker = tickerMap.get(serial);
 
@@ -753,10 +766,7 @@ function constructor(server) {
             performance,
             itemSummary,
             itemHourlyStack,
-            faultData: {
-              faultSummaries: [],
-              faultCycles: [],
-            },
+            faultData,
             operatorEfficiency,
             currentOperators,
             timestamp: record.lastUpdated || wallClockNow,
