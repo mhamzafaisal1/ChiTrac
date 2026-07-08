@@ -36,8 +36,6 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   isLoading = false;
   hasInitialData = false;
   dummyMode = true;
-  /** When API returns empty array with debug info, this explains why (for display in template) */
-  emptyDebugMessage: string | null = null;
 
   startTime = '';
   endTime = '';
@@ -170,9 +168,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     (_: 'once' | 'poll') =>
     (res: any) => {
       let rows: GroupRow[] = [];
-      // API may return array directly, or { data: [], debug: { message, reason, details } } when empty
       const arr = Array.isArray(res) ? res : (res?.data ?? res?.groups ?? []);
-      this.emptyDebugMessage = res?.debug?.message ?? null;
       for (let i = 0; i < arr.length; i++) {
         const item = arr[i];
         const name = item?.machine?.name ?? item?.name ?? `Group ${i}`;
@@ -263,7 +259,6 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
-    this.emptyDebugMessage = null;
     this.cdr.markForCheck();
   }
 

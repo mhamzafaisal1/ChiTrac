@@ -306,6 +306,37 @@ body.cdk-global-scrollblock {
   backdrop-filter: blur(4px);
 }
 
+.chart-no-data {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #666;
+  text-align: center;
+  z-index: 1;
+}
+
+.chart-no-data-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chart-no-data-icon {
+  font-size: 2rem;
+  opacity: 0.5;
+}
+
+.chart-no-data-text {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.dark-theme .chart-no-data {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 
 /* DEBUG: Outline all modal and fault history containers */
 // .modal-wrapper,

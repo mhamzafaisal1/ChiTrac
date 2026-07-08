@@ -10,9 +10,16 @@
     <cartesian-chart [config]="chartConfig"></cartesian-chart>
   </div>
 
-  <ng-template #dummy>
+  <ng-container>
     <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
       <div class="loading-spinner dummy-chart">⏳</div>
     </div>
-  </ng-template>
+  </ng-container>
+
+  <div class="chart-no-data" *ngIf="!hasInitialData && !dummyMode && !isLoading">
+    <div class="chart-no-data-content">
+      <div class="chart-no-data-icon">&#128202;</div>
+      <div class="chart-no-data-text">No chart data available</div>
+    </div>
+  </div>
 </div>
