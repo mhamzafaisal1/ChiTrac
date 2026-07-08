@@ -1,5 +1,6 @@
 const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
+const { getShiftTimeComponents } = require("./shiftTimeComponents");
 
 // In-memory cache for active shifts to reduce MongoDB load per request.
 // Keyed by collection name because legacy/default callers and config-shift
@@ -13,10 +14,11 @@ function toDateTime(input, zone = SYSTEM_TIMEZONE) {
 }
 
 function normalizeShift(shift) {
-  const startHour = shift?.startTime?.hour;
-  const startMinute = shift?.startTime?.minute;
-  const endHour = shift?.endTime?.hour;
-  const endMinute = shift?.endTime?.minute;
+  const components = getShiftTimeComponents(shift);
+  const startHour = components?.startTime?.hour;
+  const startMinute = components?.startTime?.minute;
+  const endHour = components?.endTime?.hour;
+  const endMinute = components?.endTime?.minute;
   const activeDays = Array.isArray(shift?.activeDays) ? shift.activeDays : [];
 
   if (

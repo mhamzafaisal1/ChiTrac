@@ -4,6 +4,7 @@ const {
     fetchStatesForOperator,
     getCompletedCyclesForOperator
   } = require("./state");
+const { formatHumanName } = require('./humanNames');
 const { getStateCollectionName, getCountCollectionName, formatDuration, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require("./time");
 const {
     calculateDowntime,
@@ -454,9 +455,7 @@ function combineOperatorsSummaryData(dailyRecords, sessionData) {
 
     if (!combinedMap.has(operatorId)) {
       // Format operator name from object (first + surname) or use string if already formatted
-      const operatorNameStr = typeof record.operatorName === 'object' && record.operatorName !== null
-        ? `${record.operatorName.first || ''} ${record.operatorName.surname || ''}`.trim() || "Unknown"
-        : record.operatorName || "Unknown";
+      const operatorNameStr = formatHumanName(record.operatorName);
 
       combinedMap.set(operatorId, {
         operatorId,

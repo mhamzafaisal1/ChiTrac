@@ -15,6 +15,10 @@ const {
   buildShiftDailyAnalyticsCache,
 } = require("../utils/dailyAnalyticsDashboardCache");
 const { SYSTEM_TIMEZONE } = require("../utils/time");
+const {
+  addDerivedShiftTimeComponents,
+  getShiftTimeComponents,
+} = require("../utils/shiftTimeComponents");
 
 const CACHE_POLL_INTERVAL_MS = 6_000;
 const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
@@ -51,14 +55,15 @@ function ensureCache(server) {
 
 function serializableShift(shiftDoc) {
   if (!shiftDoc) return null;
+  const components = addDerivedShiftTimeComponents(shiftDoc);
   return {
     _id: String(shiftDoc._id),
     id: shiftDoc.id,
     name: shiftDoc.name,
     active: shiftDoc.active,
     activeDays: shiftDoc.activeDays,
-    startTime: shiftDoc.startTime,
-    endTime: shiftDoc.endTime,
+    startTime: components.startTime,
+    endTime: components.endTime,
   };
 }
 
@@ -309,16 +314,7 @@ function upsertShift(envelopes, shiftEnvelope) {
 }
 
 function isValidShift(shift) {
-  return (
-    shift &&
-    shift._id &&
-    shift.startTime &&
-    shift.endTime &&
-    typeof shift.startTime.hour === "number" &&
-    typeof shift.startTime.minute === "number" &&
-    typeof shift.endTime.hour === "number" &&
-    typeof shift.endTime.minute === "number"
-  );
+  return Boolean(shift && shift._id && getShiftTimeComponents(shift));
 }
 
 function toShiftDateTime(day, time) {
@@ -348,8 +344,9 @@ async function resolveTodayShiftContexts(db, config, nowInput = new Date()) {
       return activeDays.length === 0 || activeDays.includes(today);
     })
     .map((shift) => {
-      const start = toShiftDateTime(day, shift.startTime);
-      const end = toShiftDateTime(day, shift.endTime);
+      const components = getShiftTimeComponents(shift);
+      const start = toShiftDateTime(day, components.startTime);
+      const end = toShiftDateTime(day, components.endTime);
       if (now < start) return null;
 
       const isCurrent = now >= start && now < end;
@@ -444,8 +441,9 @@ function isShiftActiveOnDay(shift, weekday) {
 }
 
 function resolveShiftContextForDay(shift, day) {
-  const start = toShiftDateTime(day, shift.startTime);
-  let end = toShiftDateTime(day, shift.endTime);
+  const components = getShiftTimeComponents(shift);
+  const start = toShiftDateTime(day, components.startTime);
+  let end = toShiftDateTime(day, components.endTime);
   if (end <= start) {
     end = end.plus({ days: 1 });
   }
@@ -610,8 +608,9 @@ async function resolveShiftContextsForDay(db, config, dayInput) {
       return activeDays.length === 0 || activeDays.includes(weekday);
     })
     .map((shift) => {
-      const start = toShiftDateTime(day, shift.startTime);
-      const end = toShiftDateTime(day, shift.endTime);
+      const components = getShiftTimeComponents(shift);
+      const start = toShiftDateTime(day, components.startTime);
+      const end = toShiftDateTime(day, components.endTime);
       return {
         shiftDoc: shift,
         shiftOid: new ObjectId(String(shift._id)),

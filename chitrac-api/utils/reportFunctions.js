@@ -8,6 +8,7 @@
  */
 
 const { ObjectId } = require("mongodb");
+const { formatHumanName } = require('./humanNames');
 const config = require("../modules/config");
 const { SYSTEM_TIMEZONE } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
@@ -860,15 +861,7 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
 
   // Helper to normalize operator name from either string or {first, surname} format
   const normalizeOperatorName = (name, opId) => {
-    if (!name) return `Operator ${opId}`;
-    if (typeof name === 'string') return name;
-    if (typeof name === 'object' && name.first && name.surname) {
-      return `${name.first} ${name.surname}`;
-    }
-    if (typeof name === 'object' && name.first) {
-      return name.first;
-    }
-    return `Operator ${opId}`;
+    return formatHumanName(name, `Operator ${opId}`);
   };
 
   for (const partialDay of partialDays) {

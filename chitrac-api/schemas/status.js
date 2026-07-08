@@ -66,7 +66,7 @@ const utils = {
    */
   initStatus: (id, name, jam, softrolColor = null) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     // Build the status object with required properties
@@ -100,7 +100,7 @@ const utils = {
    * @returns {object} Status schema validated object with updated property
    */
   setProperty: (statusObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedStatus = {
       ...statusObject,
@@ -123,7 +123,7 @@ const utils = {
    * @returns {object} Status schema validated statusObject after inactivation
    */
   setInactive: (statusObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedStatus = {
       ...statusObject,
@@ -149,7 +149,7 @@ const utils = {
    * @returns {object} Status schema validated statusObject after activation
    */
   setActive: (statusObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedStatus = {
       ...statusObject,

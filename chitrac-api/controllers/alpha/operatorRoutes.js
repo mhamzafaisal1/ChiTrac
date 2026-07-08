@@ -2,6 +2,7 @@
 const express = require("express");
 const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const config = require("../../modules/config");
+const { formatHumanName } = require("../../utils/humanNames");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getOperatorsSummaryRealTime,
@@ -117,10 +118,7 @@ module.exports = function (server) {
         const opId = record.operatorId;
 
         if (!operatorMap.has(opId)) {
-          const operatorNameStr =
-            typeof record.operatorName === "object" && record.operatorName !== null
-              ? `${record.operatorName.first || ""} ${record.operatorName.surname || ""}`.trim() || "Unknown"
-              : record.operatorName || "Unknown";
+          const operatorNameStr = formatHumanName(record.operatorName);
 
           operatorMap.set(opId, {
             operator: { id: record.operatorId, name: operatorNameStr },
@@ -315,10 +313,7 @@ module.exports = function (server) {
       ]);
 
       const rawName = nameDoc?.operatorName;
-      const operatorName =
-        typeof rawName === "object" && rawName !== null
-          ? `${rawName.first || ""} ${rawName.surname || ""}`.trim() || `Operator ${opId}`
-          : rawName || `Operator ${opId}`;
+      const operatorName = formatHumanName(rawName, `Operator ${opId}`);
       if (dailyEfficiency?.operator) dailyEfficiency.operator.name = operatorName;
 
       const transformedItemSummary = itemSummary.sessions.flatMap((session) => {

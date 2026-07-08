@@ -107,7 +107,7 @@ const utils = {
    */
   initItem: (id, name, standard, machineTypes = null, groups = null, weight = null) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     // Build the item object with required properties
@@ -149,7 +149,7 @@ const utils = {
    * @returns {object} Item schema validated object with updated property
    */
   setProperty: (itemObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedItem = {
       ...itemObject,
@@ -172,7 +172,7 @@ const utils = {
    * @returns {object} Item schema validated itemObject after inactivation
    */
   setInactive: (itemObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedItem = {
       ...itemObject,
@@ -198,7 +198,7 @@ const utils = {
    * @returns {object} Item schema validated itemObject after activation
    */
   setActive: (itemObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedItem = {
       ...itemObject,

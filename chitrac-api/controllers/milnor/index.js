@@ -3,7 +3,9 @@ const { DateTime } = require("luxon");
 
 const config = require("../../modules/config");
 const { formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
+const { formatHumanName } = require("../../utils/humanNames");
 const { computeShiftElapsedMs } = require("../../utils/shiftElapsed");
+const { getShiftTimeComponents } = require("../../utils/shiftTimeComponents");
 const {
   buildLatestTickerMap,
   groupRecordsBySerial,
@@ -83,10 +85,11 @@ function constructor(server) {
       return null;
     }
 
-    const startHour = shiftDoc.startTime?.hour;
-    const startMinute = shiftDoc.startTime?.minute;
-    const endHour = shiftDoc.endTime?.hour;
-    const endMinute = shiftDoc.endTime?.minute;
+    const components = getShiftTimeComponents(shiftDoc);
+    const startHour = components?.startTime?.hour;
+    const startMinute = components?.startTime?.minute;
+    const endHour = components?.endTime?.hour;
+    const endMinute = components?.endTime?.minute;
 
     if (
       typeof startHour !== "number" ||
@@ -94,7 +97,7 @@ function constructor(server) {
       typeof endHour !== "number" ||
       typeof endMinute !== "number"
     ) {
-      throw new Error("Shift is missing startTime or endTime");
+      throw new Error("Shift is missing timestamps.start or timestamps.end");
     }
 
     const start = now.startOf("day").set({
@@ -178,10 +181,7 @@ function constructor(server) {
   }
 
   function formatName(name, fallback = "Unknown") {
-    if (typeof name === "object" && name !== null) {
-      return `${name.first || ""} ${name.surname || ""}`.trim() || fallback;
-    }
-    return name || fallback;
+    return formatHumanName(name, fallback);
   }
 
   async function loadActiveOperatorIds(operatorId) {

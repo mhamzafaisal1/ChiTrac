@@ -110,7 +110,7 @@ const utils = {
    */
   initMachine: (id, name, ipAddress, lanes, type, polled, location = null, groups = null, stations = null) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     // Build the machine object with required properties
@@ -167,7 +167,7 @@ const utils = {
    * @returns {object} Machine schema validated machineObject with updated IP address
    */
   setIPAddress: (machineObject, newIPAddress) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMachine = {
       ...machineObject,
@@ -190,7 +190,7 @@ const utils = {
    * @returns {object} Machine schema validated machineObject after inactivation
    */
   setInactive: (machineObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMachine = {
       ...machineObject,
@@ -216,7 +216,7 @@ const utils = {
    * @returns {object} Machine schema validated machineObject after activation
    */
   setActive: (machineObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMachine = {
       ...machineObject,
@@ -244,7 +244,7 @@ const utils = {
    * @returns {object} Schema validated machine object with updated property
    */
   setProperty: (object, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMachine = {
       ...object,

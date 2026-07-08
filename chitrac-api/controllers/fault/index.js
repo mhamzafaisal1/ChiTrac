@@ -2,6 +2,7 @@
 const express = require("express");
 const config = require("../../modules/config");
 const { parseAndValidateQueryParams } = require("../../utils/time");
+const { formatHumanName } = require("../../utils/humanNames");
 
 module.exports = function faultHistoryRoute(server) {
   const router = express.Router();
@@ -160,12 +161,7 @@ module.exports = function faultHistoryRoute(server) {
         for (const r of raw) {
           const op = (r.operators || []).find(o => o.id === operatorId);
           if (op?.name) {
-            // Handle operator name as string or object with first/surname
-            if (typeof op.name === 'string') {
-              operatorName = op.name;
-            } else if (op.name.first || op.name.surname) {
-              operatorName = `${op.name.first || ''} ${op.name.surname || ''}`.trim();
-            }
+            operatorName = formatHumanName(op.name, '');
             if (operatorName) break;
           }
         }
@@ -200,13 +196,7 @@ module.exports = function faultHistoryRoute(server) {
               operators: ops.map(o => {
                 // Handle operator name as string or object with first/surname
                 let operatorName = "Unknown";
-                if (o.name) {
-                  if (typeof o.name === 'string') {
-                    operatorName = o.name;
-                  } else if (o.name.first || o.name.surname) {
-                    operatorName = `${o.name.first || ''} ${o.name.surname || ''}`.trim() || "Unknown";
-                  }
-                }
+                operatorName = formatHumanName(o.name);
                 return { id: o.id, name: operatorName, station: o.station };
               }),
               items: r.items || [],
