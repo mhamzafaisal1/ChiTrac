@@ -13,8 +13,7 @@ const schema = {
     'id',
     'active',
     'timestamps',
-    'name',
-    'jam'
+    'name'
   ],
   properties: {
     _id: {
@@ -43,9 +42,9 @@ const schema = {
       type: 'number',
       description: 'Number value of jam for this status (unsure what this truly means, need to clarify with Marty)'
     },
-    softrolColor: {
+    color: {
       type: 'string',
-      description: 'String value of the color we want Softrol to display for this status. Needs rework, but needs to exist as an option for now.'
+      description: 'Optional display color for this status.'
     }
   },
   additionalProperties: false
@@ -60,11 +59,11 @@ const utils = {
    * Initialize a status object
    * @param {number} id - Required number value of the status id
    * @param {string} name - Required string of the status name
-   * @param {number} jam - Required number value of jam for this status
-   * @param {string} [softrolColor] - Optional string value of the color for Softrol
+   * @param {number} [jam] - Optional number value of jam for this status
+   * @param {string} [color] - Optional string value of the status display color
    * @returns {object} Validated status object
    */
-  initStatus: (id, name, jam, softrolColor = null) => {
+  initStatus: (id, name, jam = null, color = null) => {
     // Initialize timestamps using timestamps utils
     const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
@@ -74,13 +73,16 @@ const utils = {
       id,
       active: true,
       timestamps,
-      name,
-      jam
+      name
     };
 
     // Add optional properties if provided
-    if (softrolColor !== null) {
-      statusObject.softrolColor = softrolColor;
+    if (jam !== null) {
+      statusObject.jam = jam;
+    }
+
+    if (color !== null) {
+      statusObject.color = color;
     }
 
     // Validate against schema before returning

@@ -136,7 +136,7 @@ module.exports = function (server) {
           statusMap.set(id, {
             code: ticker.status?.code ?? ticker.status?.id ?? 0,
             name: ticker.status?.name || "Unknown",
-            color: ticker.status?.softrolColor || "None",
+            color: ticker.status?.color || ticker.status?.softrolColor || "None",
           });
         }
         const machineResults = (sessionData.machines || []).map((record) => {
@@ -1545,3 +1545,4 @@ module.exports = function (server) {
 
   return router;
 };
+

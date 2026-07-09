@@ -658,7 +658,7 @@ async function getCachedMachineResults(db, completeDays, serial) {
     statusMap.set(id, {
       code: ticker.status?.code || 0,
       name: ticker.status?.name || "Unknown",
-      color: ticker.status?.softrolColor || "None"
+      color: ticker.status?.color || ticker.status?.softrolColor || "None"
     });
   }
   for (const [s, machine] of machineMap) {
@@ -2159,9 +2159,10 @@ async function getMostRecentStateForMachine(db, serial, dateStr) {
       'machine.serial': 1,
       'machine.name': 1,
       'program': 1,
+      'status.id': 1,
       'status.code': 1,
       'status.name': 1,
-      'status.softrolColor': 1,
+      'status.color': 1,
       'operators': 1,
       'program': 1,
       'items': 1
@@ -2278,3 +2279,4 @@ module.exports = {
   computeEfficiencyForWindow,
   filterByTimeWindow,
 };
+
