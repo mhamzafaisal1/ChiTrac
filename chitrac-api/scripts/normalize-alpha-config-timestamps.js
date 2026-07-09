@@ -22,10 +22,14 @@ const collections = [
   {
     name: config.itemCollectionName,
     schema: itemSchema,
-    normalizeForValidation: (doc) => ({
-      ...doc,
-      _id: String(doc._id)
-    })
+    normalizeForValidation: (doc) => {
+      const { number, ...rest } = doc;
+      return {
+        ...rest,
+        _id: String(doc._id),
+        id: doc.id ?? number
+      };
+    }
   },
   {
     name: config.shiftCollectionName,

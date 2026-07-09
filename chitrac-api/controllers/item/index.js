@@ -104,7 +104,7 @@ function constructor(server) {
 			collection,
 			id ? { _id: id, ...updates } : updates,
 			true,
-			'number'
+			'id'
 		);
 	}
 
@@ -142,7 +142,11 @@ function constructor(server) {
 
 		delete normalized.timestamps;
 
-		if (normalized.number !== undefined) normalized.number = Number(normalized.number);
+		if (normalized.id !== undefined) normalized.id = Number(normalized.id);
+		if (normalized.number !== undefined && normalized.id === undefined) {
+			normalized.id = Number(normalized.number);
+		}
+		delete normalized.number;
 		if (normalized.active !== undefined) normalized.active = normalized.active === true || normalized.active === 'true';
 		if (normalized.weight === '' || normalized.weight === undefined) {
 			normalized.weight = null;
@@ -168,10 +172,10 @@ function constructor(server) {
 		if (!req.file) return next();
 
 		try {
-			const itemNumber = safeFileNamePart(req.body.number);
+			const itemId = safeFileNamePart(req.body.id ?? req.body.number);
 			const itemName = safeFileNamePart(req.body.name);
 			const ext = path.extname(req.file.originalname).toLowerCase() === '.png' ? '.png' : '.jpg';
-			const fileName = `${itemNumber}-${itemName}${ext}`;
+			const fileName = `${itemId}-${itemName}${ext}`;
 			const filePath = path.join(imageUploadDir, fileName);
 
 			req.body.photo = filePath;
@@ -203,7 +207,7 @@ function constructor(server) {
 				if (onlineMachine) {
 					logger.info('[delayedItemApply] Machines still online; scheduling next attempt.', {
 						id,
-						number: itemPayload.number,
+						id: itemPayload.id,
 						originalRequestTimestamp,
 						attempt,
 						nextAttempt: attempt + 1
@@ -220,14 +224,14 @@ function constructor(server) {
 				await applyItemConfigChange(id, itemPayload);
 				logger.info('[delayedItemApply] Item config change applied.', {
 					id,
-					number: itemPayload.number,
+					id: itemPayload.id,
 					originalRequestTimestamp,
 					attempt
 				});
 			} catch (error) {
 				logger.error('[delayedItemApply] Apply attempt failed.', {
 					id,
-					number: itemPayload.number,
+					id: itemPayload.id,
 					originalRequestTimestamp,
 					attempt,
 					error: error.message,
@@ -244,7 +248,7 @@ function constructor(server) {
 		logger.info('[delayedItemApply] Scheduled item config change.', {
 			jobKey,
 			id,
-			number: itemPayload.number,
+			id: itemPayload.id,
 			originalRequestTimestamp,
 			attempt,
 			runAt: runAt.toISOString()
@@ -325,7 +329,7 @@ function constructor(server) {
 
 			logger.info('[upsertItem] Item updated successfully:', {
 				id: id,
-				number: updates.number,
+				id: updates.id,
 				name: updates.name,
 				timestamp: new Date().toISOString()
 			});
@@ -372,17 +376,17 @@ function constructor(server) {
 	// Get next available item ID
 	async function getNewItemId(req, res, next) {
 		try {
-			// Find the highest number value
+			// Find the highest id value
 			const result = await collection
 				.find({})
-				.sort({ number: -1 })
+				.sort({ id: -1 })
 				.limit(1)
 				.toArray();
 			
 			// If no items exist, start from 1, otherwise add 1 to the highest
-			const nextId = result.length > 0 ? result[0].number + 1 : 1;
+			const nextId = result.length > 0 ? result[0].id + 1 : 1;
 			
-			res.json({ number: nextId });
+			res.json({ id: nextId });
 		} catch (e) { 
 			logger.error('[getNewItemId] Error:', {
 				error: e.message,

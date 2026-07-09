@@ -1,5 +1,5 @@
-// Normalized/internal machine schema used as a building block by event and
-// analytics schemas. The current Machine CRUD request schema is machineCrudSchema.js.
+// Normalized machine schema used for config-machine records and as a building
+// block by event and analytics schemas.
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const ajv = new Ajv({ strictSchema: false });
@@ -45,9 +45,12 @@ const schema = {
       description: "IP Address schema validated ip address object for this machine's ip address."
     },
     lanes: {
-      type: 'integer',
-      minimum: 1,
-      description: 'Number of lanes on machine. If a feeder, this is equal to stations'
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'integer'
+      },
+      description: 'Array of lane addresses installed on the machine.'
     },
     type: {
       type: 'string',
@@ -57,14 +60,21 @@ const schema = {
       type: 'boolean',
       description: 'Boolean setting for if machine should be polled by the DataFeed. If true, this is a polled DataFeed machine, like CT machines are. If false, this is a self-reporting machine, like an AC 360.'
     },
+    simulated: {
+      type: 'boolean',
+      description: 'Boolean setting for if machine should be simulated.'
+    },
     model: {
       type: 'object',
       description: 'Freeform object right now which will be utilized to house model/family information for machines in the future'
     },
     stations: {
-      type: 'integer',
-      minimum: 1,
-      description: 'Number of feeder input stations installed on the machine, only used if machine is a feeder'
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'integer'
+      },
+      description: 'Array of feeder input station addresses installed on the machine, only used if machine is a feeder'
     },
     location: {
       type: 'string',
@@ -100,15 +110,16 @@ const utils = {
    * @param {number} id - Required number of the serial number for the machine
    * @param {string} name - Required string of the human readable name for the machine
    * @param {object} ipAddress - Required IP Address schema validated object for this machine's ipAddress
-   * @param {number} lanes - Required number of lanes on machine
+   * @param {number[]} lanes - Required lane addresses on machine
    * @param {string} type - Required string representing the type of machine
    * @param {boolean} polled - Required boolean for whether a machine is polled by the DataFeed
+   * @param {boolean} [simulated] - Optional boolean for whether a machine should be simulated
    * @param {string} [location] - Optional string location of machine in laundry
    * @param {object} [groups] - Optional parent object to the potential children Strings of 'area', 'category', or 'department'
-   * @param {number} [stations] - Optional number of stations on machine if a feeder/directly fed machine
+   * @param {number[]} [stations] - Optional station addresses on machine if a feeder/directly fed machine
    * @returns {object} Validated machine object
    */
-  initMachine: (id, name, ipAddress, lanes, type, polled, location = null, groups = null, stations = null) => {
+  initMachine: (id, name, ipAddress, lanes, type, polled, simulated = null, location = null, groups = null, stations = null) => {
     // Initialize timestamps using timestamps utils
     const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
@@ -126,6 +137,10 @@ const utils = {
     };
 
     // Add optional properties if provided
+    if (simulated !== null) {
+      machineObject.simulated = simulated;
+    }
+
     if (location !== null) {
       machineObject.location = location;
     }

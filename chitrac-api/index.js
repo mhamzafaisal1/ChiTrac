@@ -137,8 +137,8 @@ app.use(morganMiddleware);
 /**** Initial Collection Setup */
 async function initializeCollections() {
     logger.debug('Initializing machine collection...');
-    await cm.createCollection('config-machine').then(() => {
-        const collection = db.collection('machine');
+    await cm.createCollection(config.machineCollectionName).then(() => {
+        const collection = db.collection(config.machineCollectionName);
         collection.insertMany(server.defaults.machine);
         logger.debug('Machine collection initialized!');
     }).catch(async (error) => {
@@ -150,8 +150,8 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing item collection...');
-    await cm.createCollection('config-item').then(() => {
-        const collection = db.collection('item');
+    await cm.createCollection(config.itemCollectionName).then(() => {
+        const collection = db.collection(config.itemCollectionName);
         collection.insertMany(server.defaults.item);
         logger.debug('Item collection initialized!');
     }).catch((error) => {
@@ -163,8 +163,8 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing fault collection...');
-    await cm.createCollection('config-fault').then(() => {
-        const collection = db.collection('fault');
+    await cm.createCollection(config.faultCollectionName).then(() => {
+        const collection = db.collection(config.faultCollectionName);
         collection.insertMany(server.defaults.fault);
         logger.debug('Fault collection initialized!');
     }).catch((error) => {
@@ -176,8 +176,8 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing status collection...');
-    await cm.createCollection('config-status').then(() => {
-        const collection = db.collection('status');
+    await cm.createCollection(config.statusCollectionName).then(() => {
+        const collection = db.collection(config.statusCollectionName);
         collection.insertMany(server.defaults.status);
         logger.debug('Status collection initialized!');
     }).catch((error) => {

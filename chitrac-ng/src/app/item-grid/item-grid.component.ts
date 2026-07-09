@@ -46,14 +46,14 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   selectionModel = new SelectionModel<ItemConfig>(false, []);
   page: number = 1;
   paginationSize: number = 10;
-  displayedColumns: string[] = ['photo', 'number', 'name', 'standard', 'active'];
+  displayedColumns: string[] = ['photo', 'id', 'name', 'standard', 'active'];
   dataSource: MatTableDataSource<ItemConfig>;
 
   sub: Subscription;
   items: ItemConfig[];
   error: string | null = null;
   emptyItem: ItemConfig = new ItemConfig().deserialize({ 
-    number: null, 
+    id: null, 
     name: null, 
     active: true, 
     weight: null,
@@ -70,14 +70,14 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   readonly dialog = inject(MatDialog);
 
   private isItemPayload(value: unknown): value is ItemConfig {
-    return !!value && typeof value === 'object' && ('number' in value || '_id' in value);
+    return !!value && typeof value === 'object' && ('id' in value || '_id' in value);
   }
 
   private sanitize(item: any): ItemConfig {
-    const { _id, number, name, active, weight, standard, area, department, photo, photoFile } = item ?? {};
+    const { _id, id, name, active, weight, standard, area, department, photo, photoFile } = item ?? {};
     return new ItemConfig().deserialize({
       _id,
-      number: typeof number === 'string' ? Number(number) : number,
+      id: typeof id === 'string' ? Number(id) : id,
       name: typeof name === 'string' ? name.trim() : name,
       active: !!active,
       weight: weight === '' || weight === undefined ? null : Number(weight),
@@ -162,7 +162,7 @@ export class ItemGridComponent implements OnInit, OnDestroy {
       // Creating new item - get next available ID
       this.configurationService.getNewItemId().subscribe({
         next: (response) => {
-          const newItem = { ...this.emptyItem, number: response.number };
+          const newItem = { ...this.emptyItem, id: response.id };
           const dialogRef = this.dialog.open(ItemDialogCuComponent, { data: newItem, disableClose: true });
           this.setupDialogHandlers(dialogRef);
         },

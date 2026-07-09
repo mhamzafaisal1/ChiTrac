@@ -1154,7 +1154,7 @@ async function getActiveMachineSerials(db, start, end) {
       const activeSerials = new Set(
         await db
           .collection(config.machineCollectionName)
-          .distinct("serial", { active: true })
+          .distinct("id", { active: true })
       );
 
       logger.info(
@@ -1428,7 +1428,7 @@ async function getActiveMachineSerials(db, start, end) {
     const activeSerials = new Set(
       await db
         .collection(config.machineCollectionName)
-        .distinct("serial", { active: true })
+        .distinct("id", { active: true })
     );
 
     const tickers = await db
@@ -2112,8 +2112,8 @@ async function getActiveMachineSerials(db, start, end) {
 
         const activeSerials = new Set(
           await db
-            .collection(config.machineCollectionName)
-            .distinct("serial", { active: true })
+          .collection(config.machineCollectionName)
+          .distinct("id", { active: true })
         );
 
         logger.info(

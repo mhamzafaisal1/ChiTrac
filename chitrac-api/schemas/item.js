@@ -1,5 +1,5 @@
 // Normalized/internal item schema used as a building block by event and
-// analytics schemas. The current Item CRUD request schema is itemCrudSchema.js.
+// analytics schemas. Config-item CRUD requests use itemCrudSchema.js (same id field).
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const ajv = new Ajv();

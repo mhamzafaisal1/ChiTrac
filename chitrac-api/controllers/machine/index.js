@@ -27,6 +27,7 @@ const {
   getBookendedStatesAndTimeRange,
   buildCurrentOperatorsFromTicker: buildCurrentOperators,
 } = require("../../utils/machineFunctions");
+const ipAddressSchema = require("../../schemas/ipAddress");
 
 module.exports = function(server) {
 	return constructor(server);
@@ -68,7 +69,7 @@ function constructor(server) {
         statusBySerial.set(tickerSerial, {
           code: ticker.status?.id ?? ticker.status?.code ?? 0,
           name: ticker.status?.name || "Unknown",
-          color: ticker.status?.softrolColor || "None",
+          color: ticker.status?.color || ticker.status?.softrolColor || "None",
         });
       }
     });
@@ -115,15 +116,41 @@ function constructor(server) {
 		return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	}
 
+	function machineId(machine) {
+		return Number(machine.id ?? machine.serial);
+	}
+
+	function ipAddressString(value) {
+		if (!value) return '';
+		if (typeof value === 'string') return value.trim();
+		return ipAddressSchema.utils.getIPAddressString(value);
+	}
+
+	function ipAddressFilter(ipAddress) {
+		return {
+			'ipAddress.firstOctet': ipAddress.firstOctet,
+			'ipAddress.secondOctet': ipAddress.secondOctet,
+			'ipAddress.thirdOctet': ipAddress.thirdOctet,
+			'ipAddress.fourthOctet': ipAddress.fourthOctet
+		};
+	}
+
+	function normalizeAddressArray(values) {
+		return [...new Set(values.map(Number))]
+			.filter(Number.isInteger)
+			.sort((a, b) => a - b);
+	}
+
 	async function getMachineUniquenessErrors(machine, excludedId = null) {
-		const serial = Number(machine.serial);
+		const id = machineId(machine);
 		const name = String(machine.name || '').trim();
-		const ipAddress = String(machine.ipAddress || '').trim();
+		const ipAddress = machine.ipAddress || {};
+		const ipAddressText = ipAddressString(ipAddress);
 		const query = {
 			$or: [
-				{ serial },
+				{ id },
 				{ name: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } },
-				{ ipAddress }
+				ipAddressFilter(ipAddress)
 			]
 		};
 
@@ -133,17 +160,17 @@ function constructor(server) {
 
 		const matches = await collection
 			.find(query)
-			.project({ serial: 1, name: 1, ipAddress: 1 })
+			.project({ id: 1, serial: 1, name: 1, ipAddress: 1 })
 			.toArray();
 		const fieldErrors = {};
 
-		if (matches.some(existing => Number(existing.serial) === serial)) {
-			fieldErrors.serial = 'Serial is already in use.';
+		if (matches.some(existing => machineId(existing) === id)) {
+			fieldErrors.id = 'Machine id is already in use.';
 		}
 		if (matches.some(existing => String(existing.name || '').trim().toLowerCase() === name.toLowerCase())) {
 			fieldErrors.name = 'Name is already in use.';
 		}
-		if (matches.some(existing => String(existing.ipAddress || '').trim() === ipAddress)) {
+		if (matches.some(existing => ipAddressString(existing.ipAddress) === ipAddressText)) {
 			fieldErrors.ipAddress = 'IP address is already in use.';
 		}
 
@@ -235,10 +262,13 @@ function constructor(server) {
 					$or: [{ name: { $regex: /^SPF/i } }, { type: "SPF" }],
 					active: { $ne: false },
 				})
-				.project({ serial: 1, name: 1, active: 1 })
+				.project({ id: 1, serial: 1, name: 1, active: 1 })
 				.sort({ name: 1 })
 				.toArray();
-			res.json(machines);
+			res.json(machines.map(machine => ({
+				...machine,
+				serial: machineId(machine)
+			})));
 		} catch (error) {
 			next(error);
 		}
@@ -275,7 +305,6 @@ function constructor(server) {
   try {
     const machine = { ...req.body }; // clone for safety
     machine.name = String(machine.name).trim();
-    machine.ipAddress = String(machine.ipAddress).trim();
 
     const fieldErrors = await getMachineUniquenessErrors(machine);
     if (Object.keys(fieldErrors).length) {
@@ -295,9 +324,15 @@ function constructor(server) {
     }
 
     // ✅ Sort and deduplicate stations if present
+    if (Array.isArray(machine.lanes)) {
+      const original = [...machine.lanes];
+      machine.lanes = normalizeAddressArray(machine.lanes);
+      logger.debug(`[createMachine] Normalized lanes from [${original}] to [${machine.lanes}]`);
+    }
+
     if (Array.isArray(machine.stations)) {
       const original = [...machine.stations];
-      machine.stations = [...new Set(machine.stations)].sort((a, b) => a - b);
+      machine.stations = normalizeAddressArray(machine.stations);
       logger.debug(`[createMachine] Normalized stations from [${original}] to [${machine.stations}]`);
     }
 
@@ -307,10 +342,10 @@ function constructor(server) {
       timestamp: new Date().toISOString()
     });
 
-    const results = await configService.upsertConfiguration(collection, machine, true, 'serial');
+    const results = await configService.upsertConfiguration(collection, machine, true, 'id');
 
     logger.info('[createMachine] Machine created successfully:', {
-      serial: machine.serial,
+      id: machine.id,
       name: machine.name,
       timestamp: new Date().toISOString()
     });
@@ -333,7 +368,6 @@ function constructor(server) {
 			const id = req.params.id;
 			let updates = { ...req.body };
 			updates.name = String(updates.name).trim();
-			updates.ipAddress = String(updates.ipAddress).trim();
 
 			const fieldErrors = await getMachineUniquenessErrors(updates, id);
 			if (Object.keys(fieldErrors).length) {
@@ -351,9 +385,15 @@ function constructor(server) {
 			}
 	
 			// ✅ Sort & dedupe stations
+			if (Array.isArray(updates.lanes)) {
+				const original = [...updates.lanes];
+				updates.lanes = normalizeAddressArray(updates.lanes);
+				logger.debug(`[upsertMachine] Normalized lanes from [${original}] to [${updates.lanes}]`);
+			}
+
 			if (Array.isArray(updates.stations)) {
 				const original = [...updates.stations];
-				updates.stations = [...new Set(updates.stations)].sort((a, b) => a - b);
+				updates.stations = normalizeAddressArray(updates.stations);
 				logger.debug(`[upsertMachine] Normalized stations from [${original}] to [${updates.stations}]`);
 			}
 	
@@ -361,12 +401,12 @@ function constructor(server) {
 				collection,
 				id ? { _id: id, ...updates } : updates,
 				true,
-				'serial'
+				'id'
 			);
 
 			logger.info('[upsertMachine] Machine updated successfully:', {
 				id: id,
-				serial: updates.serial,
+				machineId: updates.id,
 				name: updates.name,
 				timestamp: new Date().toISOString()
 			});
@@ -800,3 +840,4 @@ function constructor(server) {
 
 	return router;
 }
+

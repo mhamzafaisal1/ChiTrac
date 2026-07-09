@@ -615,7 +615,7 @@ function constructor(server) {
       const status = ticker.status || {};
       const statusCode = status.id ?? status.code ?? 0;
       const statusName = status.name || "Unknown";
-      const statusColor = status.softrolColor || "Gray";
+      const statusColor = status.color || status.softrolColor || "Gray";
 
       let fault;
       if (openFaultSessionDoc) {
@@ -3643,7 +3643,7 @@ function constructor(server) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
 
-      const machineSerials = await db.collection(config.machineCollectionName).distinct("serial");
+      const machineSerials = await db.collection(config.machineCollectionName).distinct("id");
 
       const resultsMap = new Map();
 
@@ -4396,3 +4396,4 @@ function constructor(server) {
 
   return router;
 }
+

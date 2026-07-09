@@ -108,7 +108,7 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
 
   const activeSerials = await db
     .collection(config.machineCollectionName || "machine")
-    .distinct("serial", { active: true });
+    .distinct("id", { active: true });
 
   logger.info(`[getItemsSessionDataForPartialDays] Found ${activeSerials.length} active machines`);
 
