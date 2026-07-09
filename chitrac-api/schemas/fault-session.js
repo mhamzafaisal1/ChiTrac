@@ -35,8 +35,7 @@ const schema = {
       properties: {
         ...timestampsSchema.schema.properties,
         start: {
-          type: 'string',
-          format: 'date-time',
+          ...timestampsSchema.schema.properties.start,
           description: 'Timestamp of when the fault session started'
         }
       },
@@ -203,7 +202,7 @@ const utils = {
    * @returns {object} Fault Session schema validated object with updated property
    */
   setProperty: (faultSessionObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedFaultSession = {
       ...faultSessionObject,
@@ -228,7 +227,7 @@ const utils = {
    * @returns {object} Fault Session schema validated faultSessionObject with added state
    */
   pushState: (faultSessionObject, stateToPush, isEndState = false) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     // Update timestamps.update to the timestamps.update in the stateToPush
     const updatedTimestamps = timestampsSchema.utils.stampUpdate(

@@ -68,7 +68,7 @@ const utils = {
    */
   initOperator: (id, name, groups = null) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     // Build the operator object with required properties
@@ -107,13 +107,26 @@ const utils = {
   },
 
   /**
+   * Get both supported display-name formats for an operator.
+   * @param {object} operatorObject - Operator schema object
+   * @returns {{fullName: string, fullNameShort: string}} Formatted names
+   */
+  getFormattedNames: (operatorObject) => {
+    if (!operatorObject.name) {
+      throw new Error('Operator object does not have a name.');
+    }
+
+    return humanNamesSchema.utils.getFormattedNames(operatorObject.name);
+  },
+
+  /**
    * Set the name of an operator
    * @param {object} operatorObject - Required Operator schema valid operatorObject
    * @param {object} name - Required Name schema valid object for this operator's name
    * @returns {object} Operator schema validated operatorObject
    */
   setName: (operatorObject, name) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...operatorObject,
@@ -136,7 +149,7 @@ const utils = {
    * @returns {object} Operator schema validated operatorObject after inactivation
    */
   setInactive: (operatorObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...operatorObject,
@@ -162,7 +175,7 @@ const utils = {
    * @returns {object} Operator schema validated operatorObject after activation
    */
   setActive: (operatorObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...operatorObject,
@@ -190,7 +203,7 @@ const utils = {
    * @returns {object} Schema validated operator object with updated property
    */
   setProperty: (object, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedOperator = {
       ...object,

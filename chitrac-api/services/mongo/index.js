@@ -11,6 +11,22 @@ async function getConfiguration(collection, query, projection) {
 	}
 }
 
+async function stampTimestampedUpdate(collection, filter, updateObject) {
+	const now = new Date();
+	if (updateObject.timestamps && typeof updateObject.timestamps === 'object') {
+		updateObject.timestamps = {
+			...updateObject.timestamps,
+			update: now
+		};
+		return;
+	}
+
+	const existing = await collection.findOne(filter, { projection: { timestamps: 1 } });
+	if (existing?.timestamps) {
+		updateObject['timestamps.update'] = now;
+	}
+}
+
 // async function upsertConfiguration(collection, updateObject, upsert) {
 // 	try {
 // 		let results, id;
@@ -88,6 +104,7 @@ async function upsertConfiguration(collection, updateObject, upsert, uniqueKey =
 					throw { message: `${uniqueKey} Already exists` };
 				}
 			}
+			await stampTimestampedUpdate(collection, { '_id': id }, updateObject);
 			results = await collection.updateOne({ '_id': id }, { '$set': updateObject });
 		} else {
 			// Create new document - check for any conflicts

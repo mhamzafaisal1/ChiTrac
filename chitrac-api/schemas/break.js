@@ -92,7 +92,7 @@ const utils = {
    * @returns {object} Break schema validated object with updated property
    */
   setProperty: (breakObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedBreak = {
       ...breakObject,
@@ -122,7 +122,7 @@ const utils = {
    * @returns {object} Break schema validated breakObject after inactivation
    */
   setInactive: (breakObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedBreak = {
       ...breakObject,
@@ -148,7 +148,7 @@ const utils = {
    * @returns {object} Break schema validated breakObject after activation
    */
   setActive: (breakObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedBreak = {
       ...breakObject,
@@ -175,7 +175,7 @@ const utils = {
    * @returns {object} Break schema validated breakObject with updated timestamps and breakTime
    */
   updateTimestamps: (breakObject, newTimestamps) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     // Validate that new timestamps has both start and end
     if (!newTimestamps.start || !newTimestamps.end) {

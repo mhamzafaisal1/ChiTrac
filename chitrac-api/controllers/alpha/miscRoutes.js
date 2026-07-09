@@ -1,4 +1,5 @@
 const express = require("express");
+const { formatHumanName } = require("../../utils/humanNames");
 
 const {
   parseAndValidateQueryParams,
@@ -1358,17 +1359,7 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
   // Helper functions
   const validId = id => Number.isInteger(id) && id >= 0;
   const canonicalName = (name, id) => {
-    if (!name) return `Operator ${id}`;
-    // Handle object format { first, surname }
-    if (typeof name === 'object' && name !== null) {
-      const fullName = `${name.first || ''} ${name.surname || ''}`.trim();
-      return fullName || `Operator ${id}`;
-    }
-    // Handle string format
-    if (typeof name === 'string') {
-      return name.trim() || `Operator ${id}`;
-    }
-    return `Operator ${id}`;
+    return formatHumanName(name, `Operator ${id}`);
   };
 
   for (const s of opSessions) {
@@ -2493,17 +2484,7 @@ router.get("/analytics/operator-item-sessions-summary-optimized", async (req, re
     // Helper functions for validation
     const validId = id => Number.isInteger(id) && id >= 0;
     const canonicalName = (name, id) => {
-      if (!name) return `Operator ${id}`;
-      // Handle object format { first, surname }
-      if (typeof name === 'object' && name !== null) {
-        const fullName = `${name.first || ''} ${name.surname || ''}`.trim();
-        return fullName || `Operator ${id}`;
-      }
-      // Handle string format
-      if (typeof name === 'string') {
-        return name.trim() || `Operator ${id}`;
-      }
-      return `Operator ${id}`;
+      return formatHumanName(name, `Operator ${id}`);
     };
 
     try {

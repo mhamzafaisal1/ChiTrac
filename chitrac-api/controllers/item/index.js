@@ -7,8 +7,10 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { ObjectId } = require('mongodb');
 const schedule = require('node-schedule');
 const config = require('../../modules/config');
+const timestampsSchema = require('../../schemas/timestampsSchema');
 const { parseAndValidateQueryParams, formatDuration } = require("../../utils/time");
 const {
   splitTimeRangeForHybridItems,
@@ -96,6 +98,7 @@ function constructor(server) {
 		const updates = { ...itemPayload };
 		if (updates._id) delete updates._id;
 		if (updates.weight === undefined) updates.weight = null;
+		updates.timestamps = await stampItemWrite(id, updates);
 
 		return configService.upsertConfiguration(
 			collection,
@@ -105,8 +108,39 @@ function constructor(server) {
 		);
 	}
 
+	async function getExistingItem(id) {
+		if (!id) return null;
+		return collection.findOne({ _id: new ObjectId(id) });
+	}
+
+	async function stampItemWrite(id, updates) {
+		const now = new Date();
+		const existing = await getExistingItem(id);
+
+		if (id && !existing) {
+			const error = new Error('Item not found');
+			error.status = 404;
+			throw error;
+		}
+
+		let timestamps = existing?.timestamps
+			? timestampsSchema.utils.stampUpdate(existing.timestamps, now)
+			: timestampsSchema.utils.stampInit(now);
+
+		if (updates.active === true && existing?.active !== true) {
+			timestamps = timestampsSchema.utils.stampActive(timestamps, now);
+			delete timestamps.inactive;
+		} else if (updates.active === false && existing?.active !== false) {
+			timestamps = timestampsSchema.utils.stampInactive(timestamps, now);
+		}
+
+		return timestamps;
+	}
+
 	function sanitizeUploadedImageFields(req, res, next) {
 		const normalized = { ...req.body };
+
+		delete normalized.timestamps;
 
 		if (normalized.number !== undefined) normalized.number = Number(normalized.number);
 		if (normalized.active !== undefined) normalized.active = normalized.active === true || normalized.active === 'true';

@@ -4,6 +4,7 @@ const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("./shiftElapsed");
 const { getSessionDataForPartialDays } = require("./reportFunctions");
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
+const { getShiftTimeComponents, getShiftStartMinutes } = require("./shiftTimeComponents");
 
 const TOTALS_SHIFT_COLLECTION = "totals-shift";
 
@@ -29,31 +30,24 @@ function getTodayRange(now = plantNow()) {
 }
 
 function isValidShift(shift) {
-  return (
-    shift &&
-    shift._id &&
-    shift.startTime &&
-    shift.endTime &&
-    typeof shift.startTime.hour === "number" &&
-    typeof shift.startTime.minute === "number" &&
-    typeof shift.endTime.hour === "number" &&
-    typeof shift.endTime.minute === "number"
-  );
+  return Boolean(shift && shift._id && getShiftTimeComponents(shift));
 }
 
 function shiftStart(shift, day) {
+  const components = getShiftTimeComponents(shift);
   return day.set({
-    hour: Number(shift.startTime.hour),
-    minute: Number(shift.startTime.minute),
+    hour: Number(components.startTime.hour),
+    minute: Number(components.startTime.minute),
     second: 0,
     millisecond: 0,
   });
 }
 
 function shiftEnd(shift, day) {
+  const components = getShiftTimeComponents(shift);
   return day.set({
-    hour: Number(shift.endTime.hour),
-    minute: Number(shift.endTime.minute),
+    hour: Number(components.endTime.hour),
+    minute: Number(components.endTime.minute),
     second: 0,
     millisecond: 0,
   });
@@ -76,8 +70,8 @@ async function resolveCurrentShiftContext(db, config, nowInput = new Date()) {
       return activeDays.length === 0 || activeDays.includes(today);
     })
     .sort((a, b) => {
-      const aMin = (a.startTime.hour * 60) + a.startTime.minute;
-      const bMin = (b.startTime.hour * 60) + b.startTime.minute;
+      const aMin = getShiftStartMinutes(a);
+      const bMin = getShiftStartMinutes(b);
       return aMin - bMin;
     });
 

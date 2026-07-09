@@ -123,7 +123,7 @@ const utils = {
    * @returns {object} Count schema validated object with updated property
    */
   setProperty: (countObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedCount = {
       ...countObject,
@@ -146,7 +146,7 @@ const utils = {
    * @returns {object} Count schema validated countObject after inactivation
    */
   setInactive: (countObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedCount = {
       ...countObject,
@@ -171,7 +171,7 @@ const utils = {
    * @returns {object} Count schema validated countObject after activation
    */
   setActive: (countObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedCount = {
       ...countObject,
@@ -197,7 +197,7 @@ const utils = {
    * @returns {object} Count schema validated countObject with updated timestamps
    */
   updateTimestamps: (countObject, newTimestamps) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedCount = {
       ...countObject,

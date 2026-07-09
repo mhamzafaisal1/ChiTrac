@@ -10,5 +10,12 @@
     <cartesian-chart [config]="chartConfig"></cartesian-chart>
   </div>
 
+  <div class="no-data" *ngIf="!loading && !chartConfig && !error">
+    <div class="no-data-content">
+      <div class="no-data-icon">&#128202;</div>
+      <div class="no-data-text">No chart data available</div>
+    </div>
+  </div>
+
   <div class="error" *ngIf="error">{{ error }}</div>
 </div>

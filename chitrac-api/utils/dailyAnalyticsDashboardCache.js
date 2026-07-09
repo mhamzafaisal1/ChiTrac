@@ -2,6 +2,7 @@ const { DateTime } = require("luxon");
 const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
 const { computeShiftElapsedMs } = require("./shiftElapsed");
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
+const { addDerivedShiftTimeComponents } = require("./shiftTimeComponents");
 const {
   buildMachineStatusFromDailyTotals,
   buildMachineOEEFromDailyTotals,
@@ -21,14 +22,15 @@ function toDateStr(date) {
 
 function serializableShift(shiftDoc) {
   if (!shiftDoc) return null;
+  const components = addDerivedShiftTimeComponents(shiftDoc);
   return {
     _id: String(shiftDoc._id),
     id: shiftDoc.id,
     name: shiftDoc.name,
     active: shiftDoc.active,
     activeDays: shiftDoc.activeDays,
-    startTime: shiftDoc.startTime,
-    endTime: shiftDoc.endTime,
+    startTime: components.startTime,
+    endTime: components.endTime,
   };
 }
 

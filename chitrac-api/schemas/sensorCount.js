@@ -240,7 +240,7 @@ const utils = {
    * @returns {object} Sensor Count schema validated object with updated property
    */
   setProperty: (sensorCountObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedSensorCount = {
       ...sensorCountObject,

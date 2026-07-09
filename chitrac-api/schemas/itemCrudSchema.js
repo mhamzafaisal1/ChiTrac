@@ -1,5 +1,7 @@
-// CRUD API schema for the current item collection shape.
+// CRUD API schema for the current config-item collection shape.
 // The normalized/internal item schema and utilities live in item.js.
+const timestampsSchema = require('./timestampsSchema');
+
 module.exports = {
     type: 'object',
     required: [
@@ -20,6 +22,10 @@ module.exports = {
       },
       active: {
         type: 'boolean'
+      },
+      timestamps: {
+        ...timestampsSchema.schema,
+        description: 'Server-managed timestamps for this item config record.'
       },
       weight: {
         type: ['number', 'null']

@@ -1,4 +1,5 @@
 const { formatDuration } = require("./time");
+const { formatHumanName } = require("./humanNames");
 const { loadActiveShifts, computeShiftElapsedMs } = require("./shiftElapsed");
 const { getOperatorSessionDataForPartialDays } = require("./reportFunctions");
 const {
@@ -56,11 +57,7 @@ async function buildOperatorTickerMap(db, config) {
 }
 
 function operatorNameFromRecord(record) {
-  if (typeof record.operatorName === "object" && record.operatorName !== null) {
-    return `${record.operatorName.first || ""} ${record.operatorName.surname || ""}`.trim() || "Unknown";
-  }
-
-  return record.operatorName || "Unknown";
+  return formatHumanName(record.operatorName);
 }
 
 async function buildOperatorSummaryRows(db, config, records, activeShifts, requestStart, requestEnd) {

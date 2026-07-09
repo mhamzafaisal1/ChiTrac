@@ -121,7 +121,7 @@ const utils = {
    * @returns {object} Validated report subscription object
    */
   initReportSubscription: (name, report, email, schedule, lastAttempt = null, log = null) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     const doc = {
@@ -156,7 +156,7 @@ const utils = {
    * @returns {object} Updated validated object
    */
   setProperty: (subscriptionObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
 
     const updated = {
       ...subscriptionObject,
@@ -178,7 +178,7 @@ const utils = {
    * @returns {object} Updated object
    */
   setEnabled: (subscriptionObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
 
     const updated = {
       ...subscriptionObject,
@@ -200,7 +200,7 @@ const utils = {
    * @returns {object} Updated object
    */
   setDisabled: (subscriptionObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
 
     const updated = {
       ...subscriptionObject,

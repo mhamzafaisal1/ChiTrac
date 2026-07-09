@@ -124,7 +124,7 @@ const utils = {
    * @returns {object} Misfeed schema validated object with updated property
    */
   setProperty: (misfeedObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMisfeed = {
       ...misfeedObject,
@@ -147,7 +147,7 @@ const utils = {
    * @returns {object} Misfeed schema validated misfeedObject after inactivation
    */
   setInactive: (misfeedObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMisfeed = {
       ...misfeedObject,
@@ -172,7 +172,7 @@ const utils = {
    * @returns {object} Misfeed schema validated misfeedObject after activation
    */
   setActive: (misfeedObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMisfeed = {
       ...misfeedObject,
@@ -198,7 +198,7 @@ const utils = {
    * @returns {object} Misfeed schema validated misfeedObject with updated timestamps
    */
   updateTimestamps: (misfeedObject, newTimestamps) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedMisfeed = {
       ...misfeedObject,

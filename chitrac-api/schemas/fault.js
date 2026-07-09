@@ -61,7 +61,7 @@ const utils = {
    */
   initFault: (id, name, jam, softrolColor = null) => {
     // Initialize timestamps using timestamps utils
-    const now = new Date().toISOString();
+    const now = new Date();
     const timestamps = timestampsSchema.utils.stampInit(now);
 
     // Build the fault object with required properties
@@ -95,7 +95,7 @@ const utils = {
    * @returns {object} Fault schema validated object with updated property
    */
   setProperty: (faultObject, propertyToSet, valueToSet) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedFault = {
       ...faultObject,
@@ -118,7 +118,7 @@ const utils = {
    * @returns {object} Fault schema validated faultObject after inactivation
    */
   setInactive: (faultObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedFault = {
       ...faultObject,
@@ -144,7 +144,7 @@ const utils = {
    * @returns {object} Fault schema validated faultObject after activation
    */
   setActive: (faultObject) => {
-    const now = new Date().toISOString();
+    const now = new Date();
     
     const updatedFault = {
       ...faultObject,
