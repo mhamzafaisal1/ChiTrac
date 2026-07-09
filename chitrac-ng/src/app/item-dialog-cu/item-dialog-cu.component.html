@@ -4,13 +4,13 @@
   <h2 *ngIf="!item.name" mat-dialog-title>Create New Item</h2>
   <mat-dialog-content id="ItemConfigDialog">
     <mat-form-field>
-      <mat-label>Number</mat-label>
-      <input matInput type="number" formControlName="number" />
-      <mat-error *ngIf="itemFormGroup.get('number')?.hasError('required')">
-        Number is required
+      <mat-label>ID</mat-label>
+      <input matInput type="number" formControlName="id" />
+      <mat-error *ngIf="itemFormGroup.get('id')?.hasError('required')">
+        ID is required
       </mat-error>
-      <mat-error *ngIf="itemFormGroup.get('number')?.hasError('min')">
-        Number must be at least 1
+      <mat-error *ngIf="itemFormGroup.get('id')?.hasError('min')">
+        ID must be at least 1
       </mat-error>
     </mat-form-field>
     <br />

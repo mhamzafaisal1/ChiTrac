@@ -150,8 +150,8 @@ async function initializeCollections() {
     });
 
     logger.debug('Initializing item collection...');
-    await cm.createCollection('config-item').then(() => {
-        const collection = db.collection('item');
+    await cm.createCollection(config.itemCollectionName).then(() => {
+        const collection = db.collection(config.itemCollectionName);
         collection.insertMany(server.defaults.item);
         logger.debug('Item collection initialized!');
     }).catch((error) => {
