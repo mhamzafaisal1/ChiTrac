@@ -58,8 +58,8 @@ export class ConfigurationService {
     return this.http.get<ItemConfig[]>('/api/item/config');
   }
 
-  public getNewItemId(): Observable<{number: number}> {
-    return this.http.get<{number: number}>('/api/item/new-id');
+  public getNewItemId(): Observable<{id: number}> {
+    return this.http.get<{id: number}>('/api/item/new-id');
   }
 
   private buildItemPayload(item: ItemConfig): ItemConfig | FormData {

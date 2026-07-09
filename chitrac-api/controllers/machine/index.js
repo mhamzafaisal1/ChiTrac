@@ -69,7 +69,7 @@ function constructor(server) {
         statusBySerial.set(tickerSerial, {
           code: ticker.status?.id ?? ticker.status?.code ?? 0,
           name: ticker.status?.name || "Unknown",
-          color: ticker.status?.softrolColor || "None",
+          color: ticker.status?.color || ticker.status?.softrolColor || "None",
         });
       }
     });
@@ -840,3 +840,4 @@ function constructor(server) {
 
 	return router;
 }
+

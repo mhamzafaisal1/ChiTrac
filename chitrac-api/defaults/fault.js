@@ -1,5 +1,6 @@
-module.exports = {
-	fault: [
+const statusSchema = require('../schemas/status');
+
+const rawFault = [
 		{ "code": 3, "name": "Estop/Door", "jam": 2 },
 		{ "code": 5, "name": "Estop/Door", "jam": 2 },
 		{ "code": 6, "name": "Estop/Door", "jam": 2 },
@@ -57,5 +58,14 @@ module.exports = {
 		{ "code": 125, "name": "Inverter Fault Feeder", "jam": 1 },
 		{ "code": 155, "name": "Feeder Left Transverse Sensor Fault", "jam": 1 },
 		{ "code": 165, "name": "Feeder Right Transverse Sensor Fault", "jam": 1 }
-		]
-}
+];
+
+module.exports = {
+	fault: rawFault.map((fault) => statusSchema.utils.initStatus(
+		fault.code,
+		fault.name,
+		fault.jam,
+		fault.color ?? null
+	))
+};
+

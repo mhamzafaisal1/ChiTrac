@@ -615,7 +615,7 @@ function constructor(server) {
       const status = ticker.status || {};
       const statusCode = status.id ?? status.code ?? 0;
       const statusName = status.name || "Unknown";
-      const statusColor = status.softrolColor || "Gray";
+      const statusColor = status.color || status.softrolColor || "Gray";
 
       let fault;
       if (openFaultSessionDoc) {
@@ -4396,3 +4396,4 @@ function constructor(server) {
 
   return router;
 }
+

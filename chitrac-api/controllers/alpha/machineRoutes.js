@@ -132,7 +132,7 @@ module.exports = function (server) {
           statusMap.set(id, {
             code: statusId,
             name: ticker.status?.name || "Unknown",
-            color: ticker.status?.softrolColor || "None",
+            color: ticker.status?.color || ticker.status?.softrolColor || "None",
           });
         }
         const data = (sessionData.machines || []).map((record) => {
@@ -246,7 +246,7 @@ module.exports = function (server) {
         statusMap.set(id, {
           code: statusId,
           name: ticker.status?.name || "Unknown",
-          color: ticker.status?.softrolColor || "None",
+          color: ticker.status?.color || ticker.status?.softrolColor || "None",
         });
       }
 
@@ -700,7 +700,7 @@ module.exports = function (server) {
           statusMap.set(id, {
             code: statusId,
             name: ticker.status?.name || "Unknown",
-            color: ticker.status?.softrolColor || "None",
+            color: ticker.status?.color || ticker.status?.softrolColor || "None",
           });
         }
         const data = (sessionData.machines || []).map((record) => {
@@ -896,3 +896,4 @@ module.exports = function (server) {
 
   return router;
 };
+

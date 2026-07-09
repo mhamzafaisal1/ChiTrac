@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "migrate:config-status-fault": "node scripts/migrate-config-status-fault-schema.js",
+    "migrate:config-item": "node scripts/migrate-config-item-schema.js",
     "dev": "nodemon index.js"
   },
   "author": "Robert T Ivaniszyn II",

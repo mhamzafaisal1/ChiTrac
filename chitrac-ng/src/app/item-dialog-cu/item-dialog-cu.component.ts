@@ -62,7 +62,7 @@ export class ItemDialogCuComponent implements OnInit {
     this.itemName = this.item.name + '';
     this.codeControl = new FormControl();
     this.itemFormGroup = new FormGroup({
-      number: new FormControl(this.item.number, [Validators.required, Validators.min(1)]),
+      id: new FormControl(this.item.id, [Validators.required, Validators.min(1)]),
       name: new FormControl(this.item.name, [Validators.required, Validators.minLength(4)]),
       standard: new FormControl(this.item.standard ?? 0, [Validators.required, Validators.min(0)]),
       active: new FormControl(this.item.active, [Validators.required]),
@@ -76,7 +76,7 @@ export class ItemDialogCuComponent implements OnInit {
       debounceTime(100),
       distinctUntilChanged()
     ).subscribe(res => {
-      this.item.number = res.number;
+      this.item.id = res.id;
       this.item.name = res.name;
       this.item.standard = res.standard;
       this.item.active = res.active;
@@ -128,7 +128,7 @@ export class ItemDialogCuComponent implements OnInit {
     const formValue = this.itemFormGroup.getRawValue();
     this.dialogRef.close({
       ...this.item,
-      number: formValue.number,
+      id: formValue.id,
       name: formValue.name,
       standard: formValue.standard,
       active: formValue.active,

@@ -139,7 +139,7 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
     statusMap.set(id, {
       code: statusId,
       name: ticker.status?.name || "Unknown",
-      color: ticker.status?.softrolColor || "None",
+      color: ticker.status?.color || ticker.status?.softrolColor || "None",
     });
   }
 
@@ -364,3 +364,4 @@ module.exports = {
   buildMachineSummaryFromDailyCache,
   buildMachineSummaryFromShiftCache,
 };
+
