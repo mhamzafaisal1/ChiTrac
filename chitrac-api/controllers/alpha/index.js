@@ -771,7 +771,7 @@ function constructor(server) {
             startState: state,
             machine: machine
           }
-          const insertNewSession = await db.collection(config.machineSessionCollectionName).insertOne(newSession);
+          const insertNewSession = await db.collection(config.machineSessionCollectionName).insertOne({ operators: newSession.operators });
         } else {
           //Open session for this machine exists and is open, append
           const standard = program.pace * 60;
@@ -819,7 +819,7 @@ function constructor(server) {
           startState: state,
           machine: machine
         }
-        const insertNewSession = await db.collection(config.machineSessionCollectionName).insertOne(newSession);
+        const insertNewSession = await db.collection(config.machineSessionCollectionName).insertOne({ operators: newSession.operators });
       }
 
 
@@ -874,7 +874,7 @@ function constructor(server) {
             startState: state,
             machine: machine
           }
-          const insertNewSession = await db.collection(config.operatorSessionCollectionName).insertOne(newSession);
+          const insertNewSession = await db.collection(config.operatorSessionCollectionName).insertOne({ operators: [newSession.operator] });
         } else {
           const now = new Date();
           const standard = program.pace * 60;
@@ -924,7 +924,7 @@ function constructor(server) {
           startState: state,
           machine: machine
         }
-        const insertNewSession = await db.collection(config.operatorSessionCollectionName).insertOne(newSession);
+        const insertNewSession = await db.collection(config.operatorSessionCollectionName).insertOne({ operators: [newSession.operator] });
       }
     } else if (storeJSON.item) {
       collection = db.collection("ac360-count");
