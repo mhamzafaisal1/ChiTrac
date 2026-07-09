@@ -738,6 +738,7 @@ function constructor(server) {
           const update = {
             '$set': {
               'timestamps.end': now,
+              'timestamps.update': now,
               'endState': state,
               'program': program,
               'runtime': runtime,
@@ -757,6 +758,7 @@ function constructor(server) {
           const newSession = {
             timestamps: {
               create: now,
+              active: now,
               update: now,
               start: now
             },
@@ -783,6 +785,7 @@ function constructor(server) {
 
           const update = {
             '$set': {
+              'timestamps.update': now,
               'program': program,
               'items': items,
               'runtime': runtime,
@@ -803,6 +806,7 @@ function constructor(server) {
         const newSession = {
           timestamps: {
             create: now,
+            active: now,
             update: now,
             start: now
           },
@@ -838,6 +842,7 @@ function constructor(server) {
           const update = {
             '$set': {
               'timestamps.end': now,
+              'timestamps.update': now,
               'endState': state,
               'program': program,
               'runtime': runtime,
@@ -856,6 +861,7 @@ function constructor(server) {
           const newSession = {
             timestamps: {
               create: now,
+              active: now,
               update: now,
               start: now
             },
@@ -882,6 +888,7 @@ function constructor(server) {
           //Open session for this operator exists and is open, append
           const update = {
             '$set': {
+              'timestamps.update': now,
               'program': program,
               'items': items,
               'program': program,
@@ -900,11 +907,13 @@ function constructor(server) {
         }
       } else {
         //Session doesn't exist, start one
+        const now = new Date();
         const newSession = {
           timestamps: {
-            create: new Date(),
-            update: new Date(),
-            start: new Date()
+            create: now,
+            active: now,
+            update: now,
+            start: now
           },
           counts: [],
           misfeeds: [],
@@ -1000,6 +1009,7 @@ function constructor(server) {
 
           const update = {
             '$set': {
+              'timestamps.update': now,
               'runtime': runtime,
               'workTime': workTime,
               'totalCount': totalCount,
@@ -1031,6 +1041,7 @@ function constructor(server) {
           //Open session for this operator exists and is open, append
           const update = {
             '$set': {
+              'timestamps.update': now,
               'runtime': runtime,
               'workTime': workTime,
               'totalCount': totalCount,
@@ -1056,6 +1067,7 @@ function constructor(server) {
 
           const update = {
             '$set': {
+              'timestamps.update': now,
               'runtime': runtime,
               'workTime': workTime,
               'misfeedCount': misfeedCount
@@ -1079,6 +1091,7 @@ function constructor(server) {
           //Open session for this operator exists and is open, append
           const update = {
             '$set': {
+              'timestamps.update': now,
               'runtime': runtime,
               'workTime': workTime,
               'misfeedCount': misfeedCount

@@ -447,6 +447,7 @@ module.exports = function(server) {
       const token = crypto.randomBytes(32).toString('base64url');
       tokenHash = hashResetToken(token);
       const expiresAt = new Date(Date.now() + config.passwordResetExpirationMs);
+      const now = new Date();
       const requestedBy = req.authUser?._id || null;
 
       await userCollection.updateOne(
@@ -456,9 +457,10 @@ module.exports = function(server) {
             passwordReset: {
               tokenHash,
               expiresAt,
-              requestedAt: new Date(),
+              requestedAt: now,
               requestedBy
-            }
+            },
+            'timestamps.update': now
           }
         }
       );
@@ -475,9 +477,13 @@ module.exports = function(server) {
       return res.json({ success: true, message: 'Password reset email sent' });
     } catch (error) {
       if (userId && tokenHash) {
+        const now = new Date();
         await userCollection.updateOne(
           { _id: userId, 'passwordReset.tokenHash': tokenHash },
-          { $unset: { passwordReset: '' } }
+          {
+            $set: { 'timestamps.update': now },
+            $unset: { passwordReset: '' }
+          }
         ).catch(cleanupError => logger?.error?.('Failed to clean up password reset token:', cleanupError));
       }
       logger?.error?.('Error sending password reset email:', error);

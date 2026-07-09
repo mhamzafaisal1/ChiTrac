@@ -83,7 +83,7 @@ function constructor(server) {
             const sessionID = session['_id'];
             if (stateType == 'status' && state.status.code != 1) {
                 //Open session needs to close
-                const now = new Date.now();
+                const now = new Date();
                 const standard = 240;
 
                 const runtime = now - session.timestamps.start;
@@ -96,6 +96,7 @@ function constructor(server) {
                 const update = {
                     '$set': {
                         'timestamps.end': now,
+                        'timestamps.update': now,
                         'endState': state,
                         'program': program,
                         'runtime': runtime,
@@ -112,7 +113,7 @@ function constructor(server) {
                 const updatedSession = await db.collection('machine-session').updateOne({ '_id': sessionID }, update);
             } else {
                 //Open session for this machine exists and is open, append
-                const now = new Date.now();
+                const now = new Date();
                 const standard = 240;
 
                 const runtime = now - session.timestamps.start;
@@ -124,6 +125,7 @@ function constructor(server) {
 
                 const update = {
                     '$set': {
+                        'timestamps.update': now,
                         'program': program,
                         'items': items,
                         'runtime': runtime,
@@ -141,9 +143,13 @@ function constructor(server) {
             }
         } else {
             //Session doesn't exist, start one
+            const now = new Date();
             const newSession = {
                 timestamps: {
-                    start: new Date.now()
+                    create: now,
+                    active: now,
+                    update: now,
+                    start: now
                 },
                 counts: [],
                 misfeeds: [],
@@ -164,7 +170,7 @@ function constructor(server) {
                 const sessionID = session['_id'];
                 if (stateType == 'status' && state.status.code != 1) {
                     //Open session needs to close
-                    const now = new Date.now();
+                    const now = new Date();
                     const itemDefinition = getItemDefinition(item.id);
                     const standard = itemDefinition ? itemDefinition.standard : 180;
 
@@ -176,7 +182,8 @@ function constructor(server) {
                     const timeCreditByItem = [totalTimeCredit];
                     const update = {
                         '$set': {
-                            'timestamps.end': new Date.now(),
+                            'timestamps.end': now,
+                            'timestamps.update': now,
                             'endState': state,
                             'program': program,
                             'runtime': runtime,
@@ -192,7 +199,7 @@ function constructor(server) {
                     }
                     const updatedSession = await db.collection('operator-session').updateOne({ '_id': sessionID }, update);
                 } else {
-                    const now = new Date.now();
+                    const now = new Date();
                     const itemDefinition = getItemDefinition(item.id);
                     const standard = itemDefinition ? itemDefinition.standard : 180;
 
@@ -205,6 +212,7 @@ function constructor(server) {
                     //Open session for this operator exists and is open, append
                     const update = {
                         '$set': {
+                            'timestamps.update': now,
                             'program': program,
                             'items': items,
                             'program': program,
@@ -223,9 +231,13 @@ function constructor(server) {
                 }
             } else {
                 //Session doesn't exist, start one
+                const now = new Date();
                 const newSession = {
                     timestamps: {
-                        start: new Date.now()
+                        create: now,
+                        active: now,
+                        update: now,
+                        start: now
                     },
                     counts: [],
                     misfeeds: [],
