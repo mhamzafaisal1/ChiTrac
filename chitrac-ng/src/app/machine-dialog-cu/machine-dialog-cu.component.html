@@ -4,16 +4,16 @@
 
   <mat-dialog-content>
     <mat-form-field>
-      <mat-label>Serial</mat-label>
-      <input matInput type="number" formControlName="serial" required />
-      <mat-error *ngIf="machineFormGroup.get('serial')?.hasError('required')">
-        Serial is required
+      <mat-label>ID</mat-label>
+      <input matInput type="number" formControlName="id" required />
+      <mat-error *ngIf="machineFormGroup.get('id')?.hasError('required')">
+        ID is required
       </mat-error>
-      <mat-error *ngIf="machineFormGroup.get('serial')?.hasError('min')">
-        Serial must be at least 1
+      <mat-error *ngIf="machineFormGroup.get('id')?.hasError('min')">
+        ID must be at least 1
       </mat-error>
-      <mat-error *ngIf="machineFormGroup.get('serial')?.hasError('duplicate')">
-        {{ getDuplicateError("serial") }}
+      <mat-error *ngIf="machineFormGroup.get('id')?.hasError('duplicate')">
+        {{ getDuplicateError("id") }}
       </mat-error>
     </mat-form-field>
 
@@ -46,15 +46,42 @@
     </mat-form-field>
 
     <mat-form-field>
-      <mat-label>Lanes</mat-label>
-      <input matInput type="number" formControlName="lanes" required />
+      <mat-label>Lane Addresses</mat-label>
+      <input matInput formControlName="lanes" required />
       <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('required')">
-        Lanes are required
+        Lane addresses are required
       </mat-error>
-      <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('min')">
-        Lanes must be at least 1
+      <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('pattern')">
+        Enter comma-separated numbers
       </mat-error>
     </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Station Addresses</mat-label>
+      <input matInput formControlName="stations" required />
+      <mat-error *ngIf="machineFormGroup.get('stations')?.hasError('required')">
+        Station addresses are required
+      </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('stations')?.hasError('pattern')">
+        Enter comma-separated numbers
+      </mat-error>
+    </mat-form-field>
+
+    <mat-form-field>
+      <mat-label>Type</mat-label>
+      <input matInput formControlName="type" required />
+      <mat-error *ngIf="machineFormGroup.get('type')?.hasError('required')">
+        Type is required
+      </mat-error>
+    </mat-form-field>
+
+    <mat-slide-toggle formControlName="polled" labelPosition="before">
+      Polled
+    </mat-slide-toggle>
+
+    <mat-slide-toggle formControlName="simulated" labelPosition="before">
+      Simulated
+    </mat-slide-toggle>
 
     <mat-slide-toggle formControlName="active" labelPosition="before">
       Active

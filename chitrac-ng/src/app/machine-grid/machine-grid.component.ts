@@ -41,18 +41,20 @@ export class MachineGridComponent implements OnInit, OnDestroy {
   sub: Subscription;
   page = 1;
   paginationSize = 10;
-  displayedColumns: string[] = ['serial', 'name', 'ipAddress', 'lanes', 'active'];
+  displayedColumns: string[] = ['id', 'name', 'ipAddress', 'lanes', 'stations', 'type', 'polled', 'simulated', 'active'];
 
   error: string | null = null;
 
   emptyMachine: MachineConfig = new MachineConfig().deserialize({
-    serial: null,
+    id: null,
     name: null,
     active: true,
-    ipAddress: '',
-    lanes: 1,
+    ipAddress: null,
+    lanes: [1],
     stations: [1],
-    groups: []
+    type: '',
+    polled: false,
+    simulated: false
   });
   
 
@@ -124,6 +126,16 @@ export class MachineGridComponent implements OnInit, OnDestroy {
       disableClose: true
     });
     this.setupDialogHandlers(dialogRef);
+  }
+
+  formatIpAddress(machine: MachineConfig): string {
+    const ip = machine?.ipAddress;
+    if (!ip) return '';
+    return [ip.firstOctet, ip.secondOctet, ip.thirdOctet, ip.fourthOctet].join('.');
+  }
+
+  formatAddresses(values: number[] | null | undefined): string {
+    return Array.isArray(values) ? values.join(', ') : '';
   }
 
   private setupDialogHandlers(dialogRef: any): void {

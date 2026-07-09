@@ -43,6 +43,39 @@ export class MachineDialogCuComponent implements OnInit {
   error: { message?: string; fieldErrors?: Record<string, string> } | null = null;
   machineFormGroup: FormGroup;
 
+  private formatIpAddress(ipAddress: any): string {
+    if (!ipAddress) return '';
+    if (typeof ipAddress === 'string') return ipAddress;
+    return [
+      ipAddress.firstOctet,
+      ipAddress.secondOctet,
+      ipAddress.thirdOctet,
+      ipAddress.fourthOctet
+    ].join('.');
+  }
+
+  private formatAddresses(values: number[] | number | null | undefined): string {
+    if (Array.isArray(values)) return values.join(', ');
+    if (Number.isFinite(Number(values)) && Number(values) > 0) {
+      return Array.from({ length: Number(values) }, (_, index) => index + 1).join(', ');
+    }
+    return '';
+  }
+
+  private parseIpAddress(value: string) {
+    const [firstOctet, secondOctet, thirdOctet, fourthOctet] = value.split('.').map(Number);
+    return { firstOctet, secondOctet, thirdOctet, fourthOctet };
+  }
+
+  private parseAddresses(value: string): number[] {
+    return [...new Set(
+      String(value)
+        .split(',')
+        .map(part => Number(part.trim()))
+        .filter(part => Number.isInteger(part) && part > 0)
+    )].sort((a, b) => a - b);
+  }
+
   ngOnInit(): void {
     if (this.dialogData.error) {
       this.error = { ...this.dialogData.error };
@@ -52,7 +85,7 @@ export class MachineDialogCuComponent implements OnInit {
     this.machine = { ...this.dialogData };
     this.machineName = this.machine.name || '';
     this.machineFormGroup = new FormGroup({
-      serial: new FormControl(this.machine.serial, [
+      id: new FormControl(this.machine.id, [
         Validators.required,
         Validators.min(1)
       ]),
@@ -60,16 +93,25 @@ export class MachineDialogCuComponent implements OnInit {
         Validators.required,
         Validators.minLength(2)
       ]),
-      ipAddress: new FormControl(this.machine.ipAddress, [
+      ipAddress: new FormControl(this.formatIpAddress(this.machine.ipAddress), [
         Validators.required,
         Validators.pattern(
           /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/
         )
       ]),
-      lanes: new FormControl(this.machine.lanes, [
+      lanes: new FormControl(this.formatAddresses(this.machine.lanes), [
         Validators.required,
-        Validators.min(1)
+        Validators.pattern(/^\s*\d+\s*(,\s*\d+\s*)*$/)
       ]),
+      stations: new FormControl(this.formatAddresses(this.machine.stations), [
+        Validators.required,
+        Validators.pattern(/^\s*\d+\s*(,\s*\d+\s*)*$/)
+      ]),
+      type: new FormControl(this.machine.type, [
+        Validators.required
+      ]),
+      polled: new FormControl(!!this.machine.polled, [Validators.required]),
+      simulated: new FormControl(!!this.machine.simulated),
       active: new FormControl(this.machine.active, [Validators.required])
     });
 
@@ -92,15 +134,17 @@ export class MachineDialogCuComponent implements OnInit {
     if (this.machineFormGroup.invalid) return;
 
     const values = this.machineFormGroup.getRawValue();
-    const lanes = Number(values.lanes);
     this.dialogRef.close({
       ...this.machine,
-      serial: Number(values.serial),
+      id: Number(values.id),
       name: String(values.name).trim(),
-      ipAddress: String(values.ipAddress).trim(),
-      lanes,
+      ipAddress: this.parseIpAddress(String(values.ipAddress).trim()),
+      lanes: this.parseAddresses(values.lanes),
+      stations: this.parseAddresses(values.stations),
+      type: String(values.type).trim(),
+      polled: !!values.polled,
+      simulated: !!values.simulated,
       active: !!values.active,
-      stations: Array.from({ length: lanes }, (_, index) => index + 1)
     });
   }
 }

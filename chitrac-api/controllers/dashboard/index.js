@@ -837,7 +837,7 @@ module.exports = function (server) {
 
       if (!ticker) {
         const machineConfig = await db.collection(config.machineCollectionName).findOne(
-          { serial: serialNum },
+          { $or: [{ id: serialNum }, { serial: serialNum }] },
           { projection: { name: 1 } }
         );
         const machineName = machineConfig?.name || `Serial ${serialNum}`;
@@ -1067,7 +1067,7 @@ module.exports = function (server) {
 
       if (!ticker) {
         const machineConfig = await db.collection(config.machineCollectionName).findOne(
-          { serial: serialNum },
+          { $or: [{ id: serialNum }, { serial: serialNum }] },
           { projection: { name: 1 } }
         );
         const machineName = machineConfig?.name || `Serial ${serialNum}`;
@@ -1297,7 +1297,7 @@ module.exports = function (server) {
 
       if (!ticker) {
         const machineConfig = await db.collection(config.machineCollectionName).findOne(
-          { serial: serialNum },
+          { $or: [{ id: serialNum }, { serial: serialNum }] },
           { projection: { name: 1 } }
         );
         const machineName = machineConfig?.name || `Serial ${serialNum}`;

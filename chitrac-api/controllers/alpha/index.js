@@ -3643,7 +3643,7 @@ function constructor(server) {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
 
-      const machineSerials = await db.collection(config.machineCollectionName).distinct("serial");
+      const machineSerials = await db.collection(config.machineCollectionName).distinct("id");
 
       const resultsMap = new Map();
 

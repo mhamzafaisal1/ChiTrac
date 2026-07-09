@@ -338,10 +338,10 @@ export class ComparisonDashboardComponent implements OnInit {
     }).subscribe({
       next: ({ machines, operators }) => {
         this.machines = machines
-          .filter(machine => machine.active !== false && machine.serial !== null && machine.serial !== undefined)
+          .filter(machine => machine.active !== false && machine.id !== null && machine.id !== undefined)
           .map(machine => ({
-            id: Number(machine.serial),
-            label: `${machine.name || 'Machine'} (${machine.serial})`,
+            id: Number(machine.id),
+            label: `${machine.name || 'Machine'} (${machine.id})`,
             raw: machine
           }))
           .sort((a, b) => a.label.localeCompare(b.label));
