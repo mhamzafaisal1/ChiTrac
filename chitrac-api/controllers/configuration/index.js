@@ -6,6 +6,22 @@
 const express = require('express');
 const router = express.Router();
 
+async function stampTimestampedUpdate(collection, filter, updateObject) {
+	const now = new Date();
+	if (updateObject.timestamps && typeof updateObject.timestamps === 'object') {
+		updateObject.timestamps = {
+			...updateObject.timestamps,
+			update: now
+		};
+		return;
+	}
+
+	const existing = await collection.findOne(filter, { projection: { timestamps: 1 } });
+	if (existing?.timestamps) {
+		updateObject['timestamps.update'] = now;
+	}
+}
+
 
 
 /** Configuration FUDs */
@@ -29,6 +45,7 @@ async function upsertItemConfiguration(id, updateObject, callback) {
 		if (id) {
 			idObject = { '_id': id }
 		}
+		await stampTimestampedUpdate(collection, idObject, updateObject);
 		items = await collection.updateOne(idObject, { '$set': updateObject }, { 'upsert': true });
 		callback(null, items);
 	} catch (error) {
@@ -125,6 +142,7 @@ async function upsertMachineConfiguration(id, updateObject, callback) {
 	let collection, machines;
 	collection = db.collection('machines');
 	try {
+		await stampTimestampedUpdate(collection, { '_id': id }, updateObject);
 		machines = await collection.updateOne({ '_id': id }, { '$set': updateObject }, { 'upsert': true });
 		callback(null, machines);
 	} catch (error) {
@@ -227,6 +245,7 @@ async function upsertOperatorConfiguration(id, updateObject, callback) {
 	let collection, operators;
 	collection = db.collection('operators');
 	try {
+		await stampTimestampedUpdate(collection, { '_id': id }, updateObject);
 		operators = await collection.updateOne({ '_id': id }, { '$set': updateObject }, { 'upsert': true });
 		callback(null, operators);
 	} catch (error) {
@@ -320,6 +339,7 @@ async function upsertFaultConfiguration(id, updateObject, callback) {
 	let collection, faults;
 	collection = db.collection('faults');
 	try {
+		await stampTimestampedUpdate(collection, { '_id': id }, updateObject);
 		faults = await collection.updateOne({ '_id': id }, { '$set': updateObject }, { 'upsert': true });
 		callback(null, faults);
 	} catch (error) {
