@@ -137,8 +137,8 @@ app.use(morganMiddleware);
 /**** Initial Collection Setup */
 async function initializeCollections() {
     logger.debug('Initializing machine collection...');
-    await cm.createCollection('config-machine').then(() => {
-        const collection = db.collection('machine');
+    await cm.createCollection(config.machineCollectionName).then(() => {
+        const collection = db.collection(config.machineCollectionName);
         collection.insertMany(server.defaults.machine);
         logger.debug('Machine collection initialized!');
     }).catch(async (error) => {

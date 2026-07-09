@@ -1821,7 +1821,7 @@ try {
   const itemSessColl = db.collection(config.itemSessionCollectionName || "item-session");
   const activeSerials = await db
     .collection(config.machineCollectionName || "machine")
-    .distinct("serial", { active: true });
+    .distinct("id", { active: true });
 
   const resultsMap = new Map();
   const normalizePPH = (std) => {

@@ -38,7 +38,15 @@ function getConfiguredStationCount(machine) {
     return legacyStationCount;
   }
 
-  // Existing config-machine records use lanes as the installed station count.
+  if (Array.isArray(machine?.lanes)) {
+    const validLanes = new Set(
+      machine.lanes.filter((lane) => Number.isInteger(Number(lane)) && Number(lane) > 0)
+        .map(Number)
+    );
+    return Math.max(1, validLanes.size);
+  }
+
+  // Legacy config-machine records used lanes as the installed station count.
   const laneCount = Number(machine?.lanes);
   return Number.isInteger(laneCount) && laneCount > 0 ? laneCount : 1;
 }

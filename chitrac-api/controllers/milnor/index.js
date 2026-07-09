@@ -158,17 +158,20 @@ function constructor(server) {
 
   async function loadActiveMachines(serial) {
     const filter = { active: { $ne: false } };
-    if (serial !== null) filter.serial = serial;
+    if (serial !== null) filter.id = serial;
 
     const machines = await db
       .collection(config.machineCollectionName)
       .find(filter)
-      .project({ _id: 0, serial: 1, name: 1 })
+      .project({ _id: 0, id: 1, serial: 1, name: 1 })
       .toArray();
 
     return new Map(
       machines
-        .map((machine) => [Number(machine.serial), machine])
+        .map((machine) => {
+          const machineSerial = Number(machine.id ?? machine.serial);
+          return [machineSerial, { ...machine, serial: machineSerial }];
+        })
         .filter(([machineSerial]) => Number.isFinite(machineSerial))
     );
   }
