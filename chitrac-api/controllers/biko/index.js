@@ -160,7 +160,7 @@ function constructor(server) {
                 startState: state,
                 machine: machine
             }
-            const insertNewSession = await db.collection('machine-session').insertOne(newSession);
+            const insertNewSession = await db.collection('machine-session').insertOne({ operators: newSession.operators });
         }
 
         operators.forEach(async (operator) => {
@@ -248,7 +248,7 @@ function constructor(server) {
                     startState: state,
                     machine: machine
                 }
-                const insertNewSession = await db.collection('operator-session').insertOne(newSession);
+                const insertNewSession = await db.collection('operator-session').insertOne({ operators: [newSession.operator] });
             }
         });
     } else if (storeJSON.item) {
