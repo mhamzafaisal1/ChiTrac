@@ -85,6 +85,9 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   menuHistory: string[] = new Array();
 
+  /** Prevents the opening click from immediately closing the menu via document:click. */
+  private ignoreDocumentClick = false;
+
   private readonly routeMenuMap = [
     {
       menu: 'dashboards',
@@ -198,12 +201,18 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   toggleMenu() {
+    this.ignoreDocumentClick = true;
+
     if (this.shownMenu === '') {
       this.openMenuForCurrentRoute();
-      return;
+    } else {
+      this.closeMenu();
     }
 
-    this.closeMenu();
+    // Allow the current click to finish bubbling before outside-click handling resumes.
+    setTimeout(() => {
+      this.ignoreDocumentClick = false;
+    });
   }
 
   closeMenu() {
@@ -265,7 +274,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
-    if (this.shownMenu === '') {
+    if (this.ignoreDocumentClick || this.shownMenu === '') {
       return;
     }
 
@@ -275,7 +284,11 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     }
 
     // Keep the menu open when interacting with the drawer or the apps toggle.
-    if (target.closest('mat-sidenav.sidenav') || target.closest('.menu-button')) {
+    if (
+      target.closest('mat-sidenav') ||
+      target.closest('.mat-drawer') ||
+      target.closest('.menu-button')
+    ) {
       return;
     }
 

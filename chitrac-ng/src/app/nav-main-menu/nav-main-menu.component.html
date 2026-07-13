@@ -1,7 +1,7 @@
 <mat-sidenav-container class="sidenav-container" style="overflow: hidden !important;">
   <mat-sidenav #drawer class="sidenav" fixedInViewport [attr.role]="(isHandset$ | async) ? 'dialog' : 'navigation'"
     [mode]="(isHandset$ | async) ? 'over' : 'side'"
-    [opened]="shownMenu != ''" (closedStart)="closeMenu()">
+    [opened]="shownMenu != ''" (closedStart)="closeMenu()" (click)="$event.stopPropagation()">
     <mat-toolbar style="background-color: var(--theme-color-primary); color:white">
       <span>
         <button *ngIf="(isHandset$ | async) == true" (click)="toggleMenu()" mat-icon-button>
@@ -189,7 +189,7 @@
     <mat-toolbar>
       <!-- Left: menu toggle and title -->
       <div class="menu-button" [ngClass]="{'menu-shown' : shownMenu != ''}" style="height: 100%; width:64px;">
-        <button style="margin: 12px;" (click)="toggleMenu()" mat-icon-button>
+        <button style="margin: 12px;" (click)="toggleMenu(); $event.stopPropagation()" mat-icon-button>
           <mat-icon *ngIf="shownMenu == ''">apps</mat-icon>
           <mat-icon *ngIf="shownMenu != ''">chevron_left</mat-icon>
         </button>
