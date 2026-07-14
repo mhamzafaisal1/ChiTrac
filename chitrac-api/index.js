@@ -215,17 +215,9 @@ async function initializeCollections() {
 
     logger.debug('Initializing system-preferences collection...');
     const systemPreferences = require('./modules/systemPreferences');
-    await cm.createCollection(config.systemPreferencesCollectionName).then(async () => {
-        await systemPreferences.ensureSystemPreferences(db, config);
-        logger.debug('System preferences collection initialized!');
-    }).catch(async (error) => {
-        if (error.codeName === 'NamespaceExists') {
-            await systemPreferences.ensureSystemPreferences(db, config);
-            logger.debug('System preferences collection already initialized!');
-        } else {
-            logger.error(error.toString());
-        }
-    });
+    await ensureCollection(config.systemPreferencesCollectionName);
+    await systemPreferences.ensureSystemPreferences(db, config);
+    logger.debug('System preferences collection initialized!');
 }
 
 async function startServer() {
