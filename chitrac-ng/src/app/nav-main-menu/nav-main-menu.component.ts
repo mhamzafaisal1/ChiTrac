@@ -1,4 +1,4 @@
-import { Component, inject, Output, Input, EventEmitter, ViewChild, HostListener } from '@angular/core';
+import { Component, inject, Output, Input, EventEmitter, ViewChild, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 
@@ -12,10 +12,11 @@ import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatDialog } from '@angular/material/dialog';
 
-import { trigger, state, style, animate, transition, query, group } from '@angular/animations';
+import { trigger, style, animate, transition, query, group } from '@angular/animations';
 
-import { Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import { map, shareReplay } from 'rxjs/operators';
 
 import { PermissionLevels, UserService } from '../user.service';
@@ -68,7 +69,7 @@ const right = [
         ])
     ]
 })
-export class NavMainMenuComponent {
+export class NavMainMenuComponent implements OnInit, OnDestroy {
   @Output() darkModeToggleEvent = new EventEmitter();
   @Input() isDarkMode: boolean;
   @ViewChild('dateMenuTrigger') dateMenu: MatMenuTrigger;
@@ -84,20 +85,74 @@ export class NavMainMenuComponent {
 
   menuHistory: string[] = new Array();
 
+  /** Prevents the opening click from immediately closing the menu via document:click. */
+  private ignoreDocumentClick = false;
+
+  private readonly routeMenuMap = [
+    {
+      menu: 'dashboards',
+      routes: [
+        '/ng/machineAnalytics',
+        '/ng/operatorAnalytics',
+        '/ng/itemAnalytics',
+        '/ng/daily-summary',
+        '/ng/daily-analytics-split',
+        '/ng/comparison-dashboard',
+        '/ng/analytics/machine-dashboard'
+      ]
+    },
+    {
+      menu: 'productionScreens',
+      routes: [
+        '/ng/blanket-blaster-one',
+        '/ng/blanket-blaster-two',
+        '/ng/spl-efficiency-screen',
+        '/ng/lpl-efficiency-screen',
+        '/ng/machine-efficiency-lane',
+        '/ng/spl-col-efficiency-screen',
+        '/ng/spf-col-efficiency-screen',
+        '/ng/lpls-efficiency-screen',
+        '/ng/spfs-efficiency-screen',
+        '/ng/blanket-blasters-efficiency-screen',
+        '/ng/eight-station-demo'
+      ]
+    },
+    {
+      menu: 'reports',
+      routes: [
+        '/ng/reports/machine-report',
+        '/ng/reports/shift-machine-report',
+        '/ng/reports/shift-comparison-report',
+        '/ng/reports/operator-report',
+        '/ng/reports/item-report',
+        '/ng/reports/fault-report',
+        '/ng/reports/report-subscriptions'
+      ]
+    },
+    {
+      menu: 'settings',
+      routes: [
+        '/ng/settings'
+      ]
+    }
+  ];
+
   isHandset$: Observable<boolean> = this.breakpointObserver.observe(Breakpoints.Handset)
     .pipe(
       map(result => result.matches),
       shareReplay()
     );
 
-  sub: any;
+  private userSub?: Subscription;
+  private settingsSub?: Subscription;
+  private dialogCloseSub?: Subscription;
 
   user: any;
   
   systemName: string = 'ChiTrac';
 
   subscribeToUser(): void {
-    this.sub = this.userService.user.subscribe(x => {
+    this.userSub = this.userService.user.subscribe(x => {
       if (x.username) {
         this.user = x;
       } else {
@@ -114,18 +169,26 @@ export class NavMainMenuComponent {
 
   readonly permissionLevels = PermissionLevels;
 
-  constructor(private userService: UserService, private router: Router, private settingsService: SettingsService) {}
+  constructor(private userService: UserService, private router: Router, private settingsService: SettingsService, private dialog: MatDialog) {}
 
   ngOnInit() {
     this.userService.getCurrentUser().subscribe(x => x);
     this.subscribeToUser();
     
     // Load system name from settings
-    this.settingsService.settings$.subscribe(settings => {
+    this.settingsSub = this.settingsService.settings$.subscribe(settings => {
       if (settings && settings.systemName) {
         this.systemName = settings.systemName;
       }
     });
+
+    this.dialogCloseSub = this.dialog.afterOpened.subscribe(() => this.closeMenu());
+  }
+
+  ngOnDestroy() {
+    this.userSub?.unsubscribe();
+    this.settingsSub?.unsubscribe();
+    this.dialogCloseSub?.unsubscribe();
   }
 
   logout() {
@@ -138,7 +201,18 @@ export class NavMainMenuComponent {
   }
 
   toggleMenu() {
-    this.shownMenu = this.shownMenu === '' ? 'main' : '';
+    this.ignoreDocumentClick = true;
+
+    if (this.shownMenu === '') {
+      this.openMenuForCurrentRoute();
+    } else {
+      this.closeMenu();
+    }
+
+    // Allow the current click to finish bubbling before outside-click handling resumes.
+    setTimeout(() => {
+      this.ignoreDocumentClick = false;
+    });
   }
 
   closeMenu() {
@@ -158,11 +232,34 @@ export class NavMainMenuComponent {
     this.menuIndex--;
   }
 
+  private openMenuForCurrentRoute(): void {
+    const currentMenu = this.getCurrentRouteMenu();
+
+    if (currentMenu && currentMenu !== 'main') {
+      this.shownMenu = currentMenu;
+      this.menuIndex = 1;
+      this.menuHistory = ['main'];
+      return;
+    }
+
+    this.shownMenu = 'main';
+    this.menuIndex = 0;
+    this.menuHistory = new Array();
+  }
+
+  private getCurrentRouteMenu(): string {
+    const currentPath = this.router.url.split('?')[0].split('#')[0];
+    const routeMatch = this.routeMenuMap.find(group =>
+      group.routes.some(route => currentPath === route || currentPath.startsWith(`${route}/`))
+    );
+
+    return routeMatch?.menu || 'main';
+  }
+
   onDateTimeModalClose(): void {
     setTimeout(() => {
       if (this.dateMenu) {
         this.dateMenu.closeMenu();
-        console.log('confirm button clicked');
       }
     });
   }
@@ -171,9 +268,31 @@ export class NavMainMenuComponent {
     setTimeout(() => {
       if (this.loginMenu) {
         this.loginMenu.closeMenu();
-        console.log('login modal closed');
       }
     });
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (this.ignoreDocumentClick || this.shownMenu === '') {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (!target) {
+      return;
+    }
+
+    // Keep the menu open when interacting with the drawer or the apps toggle.
+    if (
+      target.closest('mat-sidenav') ||
+      target.closest('.mat-drawer') ||
+      target.closest('.menu-button')
+    ) {
+      return;
+    }
+
+    this.closeMenu();
   }
 
   @HostListener('keydown', ['$event'])
@@ -184,6 +303,4 @@ export class NavMainMenuComponent {
       // Let the default Tab behavior continue for focus management
     }
   }
-  
-  
 }
