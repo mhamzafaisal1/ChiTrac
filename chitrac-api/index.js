@@ -50,18 +50,17 @@ server.defaults = {
     item: require('./defaults/item').item,
     operator: require('./defaults/operator').operator,
     status: require('./defaults/status').status,
-    fault: require('./defaults/fault').fault
+    fault: require('./defaults/fault').fault,
+    shift: require('./defaults/shift').shift,
+    user: require('./defaults/user').user
 }
+const { cloneDefaultDocuments } = require('./defaults/utils');
 
 const xmlParser = require('./modules/xmlParser');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 
 server.xmlParser = xmlParser;
-
-/** Load ChiTrac modules */
-const collectionManager = require('./modules/collection-manager');
-const cm = new collectionManager(db, logger);
 
 /** Load Express and prep it for use */
 const express = require('express');
@@ -135,79 +134,84 @@ const morganMiddleware = morgan(':method :url :status :res[content-length] - :re
 app.use(morganMiddleware);
 
 /**** Initial Collection Setup */
+async function collectionExists(collectionName) {
+    return db.listCollections({ name: collectionName }).hasNext();
+}
+
+async function ensureCollection(collectionName) {
+    if (await collectionExists(collectionName)) {
+        logger.debug(`${collectionName} collection already exists.`);
+        return db.collection(collectionName);
+    }
+
+    try {
+        await db.createCollection(collectionName);
+        logger.debug(`${collectionName} collection initialized.`);
+    } catch (error) {
+        if (error.codeName !== 'NamespaceExists') {
+            throw error;
+        }
+        logger.debug(`${collectionName} collection already exists.`);
+    }
+
+    return db.collection(collectionName);
+}
+
+async function ensureDefaultCollection(collectionName, defaults) {
+    logger.debug(`Initializing ${collectionName} collection...`);
+    const collection = await ensureCollection(collectionName);
+    const documentCount = await collection.estimatedDocumentCount();
+
+    if (documentCount > 0) {
+        logger.debug(`${collectionName} collection already populated.`);
+        return;
+    }
+
+    const documents = cloneDefaultDocuments(defaults);
+    if (!documents.length) {
+        logger.debug(`${collectionName} collection has no defaults to insert.`);
+        return;
+    }
+
+    await collection.insertMany(documents);
+    logger.debug(`${collectionName} collection populated with ${documents.length} default documents.`);
+}
+
 async function initializeCollections() {
-    logger.debug('Initializing machine collection...');
-    await cm.createCollection(config.machineCollectionName).then(() => {
-        const collection = db.collection(config.machineCollectionName);
-        collection.insertMany(server.defaults.machine);
-        logger.debug('Machine collection initialized!');
-    }).catch(async (error) => {
-        if (error.codeName === 'NamespaceExists') {
-            logger.debug('Machine collection already initialized!');
-        } else {
-            logger.error(error.toString());
-        }
-    });
+    const defaultCollections = [
+        { collectionName: config.machineCollectionName, defaults: server.defaults.machine },
+        { collectionName: config.itemCollectionName, defaults: server.defaults.item },
+        { collectionName: config.faultCollectionName, defaults: server.defaults.fault },
+        { collectionName: config.statusCollectionName, defaults: server.defaults.status },
+        { collectionName: config.operatorCollectionName, defaults: server.defaults.operator },
+        { collectionName: config.shiftCollectionName, defaults: server.defaults.shift },
+        { collectionName: config.userCollectionName, defaults: server.defaults.user },
+    ];
 
-    logger.debug('Initializing item collection...');
-    await cm.createCollection(config.itemCollectionName).then(() => {
-        const collection = db.collection(config.itemCollectionName);
-        collection.insertMany(server.defaults.item);
-        logger.debug('Item collection initialized!');
-    }).catch((error) => {
-        if (error.codeName === 'NamespaceExists') {
-            logger.debug('Item collection already initialized!');
-        } else {
-            logger.error(error.toString());
+    for (const { collectionName, defaults } of defaultCollections) {
+        try {
+            await ensureDefaultCollection(collectionName, defaults);
+        } catch (error) {
+            logger.error(`Failed to initialize ${collectionName}: ${error.toString()}`);
         }
-    });
+    }
 
-    logger.debug('Initializing fault collection...');
-    await cm.createCollection(config.faultCollectionName).then(() => {
-        const collection = db.collection(config.faultCollectionName);
-        collection.insertMany(server.defaults.fault);
-        logger.debug('Fault collection initialized!');
-    }).catch((error) => {
-        if (error.codeName === 'NamespaceExists') {
-            logger.debug('Fault collection already initialized!');
-        } else {
-            logger.error(error.toString());
-        }
-    });
+    const runtimeCollections = [
+        config.itemSessionCollectionName,
+        config.operatorSessionCollectionName,
+        config.machineSessionCollectionName,
+        config.countCollectionName,
+        config.machineStateCollectionName,
+        config.operatorStateCollectionName,
+    ];
 
-    logger.debug('Initializing status collection...');
-    await cm.createCollection(config.statusCollectionName).then(() => {
-        const collection = db.collection(config.statusCollectionName);
-        collection.insertMany(server.defaults.status);
-        logger.debug('Status collection initialized!');
-    }).catch((error) => {
-        if (error.codeName === 'NamespaceExists') {
-            logger.debug('Status collection already initialized!');
-        } else {
-            logger.error(error.toString());
+    for (const collectionName of runtimeCollections) {
+        try {
+            await ensureCollection(collectionName);
+        } catch (error) {
+            logger.error(`Failed to initialize ${collectionName}: ${error.toString()}`);
         }
-    });
-
-    logger.debug('Initializing operator collection...');
-    await cm.createCollection('config-operator').then(() => {
-        const collection = db.collection('operator');
-        collection.insertMany(server.defaults.operator);
-        logger.debug('Operators collection initialized!');
-    }).catch(async (error) => {
-        if (error.codeName === 'NamespaceExists') {
-            const cursor = db.collection('operator').find({});
-            const found = await cursor.toArray();
-            if (found.length) {
-                logger.debug('Operator collection already initialized!');
-            } else {
-                logger.debug('Operator collection exists but is empty!');
-                db.collection('operator').insertMany(server.defaults.operator);
-                logger.debug('Operator collection populated!');
-            }
-        } else {
-            logger.error(error.toString());
-        }
-    });
+    }
 
     logger.debug('Initializing system-preferences collection...');
     const systemPreferences = require('./modules/systemPreferences');

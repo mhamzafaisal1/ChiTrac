@@ -12,7 +12,7 @@ module.exports = function(server) {
   const router = express.Router();
   const db = server.db;
   const logger = server.logger;
-  const userCollection = db.collection('user');
+  const userCollection = db.collection(config.userCollectionName);
   const PASSWORD_MIN_LENGTH = 6;
   const PASSWORD_MAX_LENGTH = 64;
 

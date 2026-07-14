@@ -60,7 +60,7 @@ function constructor(server) {
                 const tokenUserId = getTokenUserId(payload);
                 if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 
-                const user = await db.collection('user').findOne({ _id: new ObjectId(tokenUserId) });
+                const user = await db.collection(config.userCollectionName).findOne({ _id: new ObjectId(tokenUserId) });
                 assertPermissionLevel(user, requiredLevel);
                 req.authUser = user;
                 return next();
@@ -226,7 +226,7 @@ function constructor(server) {
 
     router.post('/user/register', requirePermissionLevel(2), async (req, res) => {
         try {
-            const userCollection = db.collection('user');
+            const userCollection = db.collection(config.userCollectionName);
             const user = req.body;
             const permissionLevel = normalizePermissionLevel(req.body.permissions?.level ?? req.body.permissionLevel);
             if (!canManagePermissionLevel(req.authUser, permissionLevel)) {

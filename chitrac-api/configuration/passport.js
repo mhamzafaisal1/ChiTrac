@@ -14,7 +14,7 @@ const { getEmailValidationError } = require('../utils/emailValidation');
 // expose this function to our app using module.exports
 module.exports = function(passport, server) {
     const db = server.db;
-    const userCollection = db.collection('user');
+    const userCollection = db.collection(server.config.userCollectionName);
 
     function normalizePermissionLevel(value, defaultLevel = 3) {
         const parsed = Number(value);
