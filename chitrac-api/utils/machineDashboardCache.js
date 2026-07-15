@@ -241,6 +241,109 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
   });
 }
 
+function machineSerialFromConfig(machine) {
+  const serial = Number(machine?.id ?? machine?.serial);
+  return Number.isFinite(serial) ? serial : null;
+}
+
+async function loadConfiguredMachines(db, config, serial = null) {
+  const filter = { active: { $ne: false } };
+  const serialNum = Number(serial);
+  if (Number.isFinite(serialNum)) {
+    filter.$or = [
+      { id: serialNum },
+      { serial: serialNum },
+      { id: String(serialNum) },
+      { serial: String(serialNum) },
+    ];
+  }
+
+  return db
+    .collection(config.machineCollectionName)
+    .find(filter)
+    .project({ _id: 0, id: 1, serial: 1, name: 1, active: 1 })
+    .sort({ name: 1, id: 1, serial: 1 })
+    .toArray();
+}
+
+function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd) {
+  const serial = machineSerialFromConfig(machine);
+  if (serial === null) return null;
+
+  return {
+    machine: {
+      serial,
+      name: machine.name || `Serial ${serial}`,
+    },
+    currentStatus: {
+      code: null,
+      name: "Offline",
+      color: "None",
+    },
+    metrics: {
+      runtime: {
+        total: 0,
+        formatted: formatDuration(0),
+      },
+      downtime: {
+        total: 0,
+        formatted: formatDuration(0),
+      },
+      output: {
+        totalCount: 0,
+        misfeedCount: 0,
+      },
+      performance: {
+        availability: {
+          value: 0,
+          percentage: "0.00",
+        },
+        throughput: {
+          value: 0,
+          percentage: "0.00",
+        },
+        piecesPerHour: {
+          value: 0,
+          formatted: "0",
+        },
+        pph: 0,
+        efficiency: {
+          value: 0,
+          percentage: "0.00",
+        },
+        oee: {
+          value: 0,
+          percentage: "0.00",
+        },
+      },
+    },
+    timeRange: {
+      start: requestStart,
+      end: requestEnd,
+    },
+  };
+}
+
+async function appendConfiguredOfflineMachineRows(db, config, rows, requestStart, requestEnd, serial = null) {
+  const configuredMachines = await loadConfiguredMachines(db, config, serial);
+  if (!configuredMachines.length) return rows;
+
+  const existingSerials = new Set(
+    rows
+      .map((row) => Number(row?.machine?.serial))
+      .filter(Number.isFinite)
+  );
+  const missingRows = configuredMachines
+    .filter((machine) => {
+      const machineSerial = machineSerialFromConfig(machine);
+      return machineSerial !== null && !existingSerials.has(machineSerial);
+    })
+    .map((machine) => buildOfflineMachineSummaryRow(machine, requestStart, requestEnd))
+    .filter(Boolean);
+
+  return rows.concat(missingRows);
+}
+
 async function buildMachineSummaryFromSessions(db, logger, config, start, end, serial, shiftOid, shiftDoc) {
   const sessionData = await getSessionDataForPartialDays(
     db,
@@ -260,7 +363,8 @@ async function buildMachineSummaryFromSessions(db, logger, config, start, end, s
     timeRange: { start, end },
   }));
 
-  return buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end);
+  const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end);
+  return appendConfiguredOfflineMachineRows(db, config, rows, start, end, serial);
 }
 
 async function buildMachineSummaryFromDailyCache(db, logger, config, options = {}) {
@@ -283,26 +387,18 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
 
   const records = (await db.collection(config.totalsDailyCollectionName).find(filter).toArray())
     .map(normalizeTotalsDocument);
-  if (!records.length) {
-    return {
-      data: [],
-      source: "totals-daily",
-      found: false,
-      dateStr,
-      start,
-      end,
-      recordCount: 0,
-    };
-  }
-
   const activeShifts = await loadActiveShifts(db, {
     collectionName: config.shiftCollectionName,
   }).catch(() => []);
+  const rows = records.length
+    ? await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end)
+    : [];
+  const data = await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial);
 
   return {
-    data: await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end),
-    source: "totals-daily",
-    found: true,
+    data,
+    source: records.length ? "totals-daily" : "config-machine",
+    found: data.length > 0,
     dateStr,
     start,
     end,
@@ -328,8 +424,9 @@ async function buildMachineSummaryFromShiftCache(db, logger, config, options) {
   const records = (await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray())
     .map(normalizeTotalsDocument);
   if (records.length > 0) {
+    const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end);
     return {
-      data: await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end),
+      data: await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial),
       source: TOTALS_SHIFT_COLLECTION,
       found: true,
       dateStr,
@@ -341,10 +438,11 @@ async function buildMachineSummaryFromShiftCache(db, logger, config, options) {
     };
   }
 
+  const data = await buildMachineSummaryFromSessions(db, logger, config, start, end, options.serial, shiftOid, shiftDoc);
   return {
-    data: await buildMachineSummaryFromSessions(db, logger, config, start, end, options.serial, shiftOid, shiftDoc),
+    data,
     source: "session-machine",
-    found: false,
+    found: data.length > 0,
     dateStr,
     start,
     end,
@@ -360,6 +458,9 @@ module.exports = {
   getTodayRange,
   resolveCurrentShiftContext,
   buildMachineSummaryRows,
+  loadConfiguredMachines,
+  buildOfflineMachineSummaryRow,
+  appendConfiguredOfflineMachineRows,
   buildMachineSummaryFromSessions,
   buildMachineSummaryFromDailyCache,
   buildMachineSummaryFromShiftCache,
