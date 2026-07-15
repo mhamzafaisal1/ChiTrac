@@ -17,7 +17,7 @@ function constructor(server) {
   const db = server.db;
   const logger = server.logger;
   const collection = systemPreferences.getCollection(db, config);
-  const userCollection = db.collection('user');
+  const userCollection = db.collection(config.userCollectionName);
 
   collection.createIndex({ _id: 1 }, { unique: true }).catch(() => {});
 

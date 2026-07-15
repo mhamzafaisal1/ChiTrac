@@ -550,7 +550,7 @@ function constructor(server) {
   // Helper function to get operator name from database
   async function getOperatorName(db, operatorId) {
     try {
-      const operator = await db.collection('operator').findOne({ code: operatorId });
+      const operator = await db.collection(config.operatorCollectionName).findOne({ code: operatorId });
       return operator?.name || `Operator ${operatorId}`;
     } catch (error) {
       return `Operator ${operatorId}`;
@@ -560,7 +560,7 @@ function constructor(server) {
   // Helper function to get item details from database
   async function getItemDetails(db, itemId) {
     try {
-      const item = await db.collection('item').findOne({ number: itemId });
+      const item = await db.collection(config.itemCollectionName).findOne({ id: itemId });
       return {
         id: itemId,
         name: item?.name || `Item ${itemId}`,

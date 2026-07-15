@@ -2,19 +2,54 @@ async function createIndex(collection, keys, options, logger) {
   try {
     await collection.createIndex(keys, { background: true, ...options });
   } catch (error) {
-    logger.warn(`Failed to create analytics index ${options.name}: ${error.message}`);
+    logger?.warn?.(`Failed to create analytics index ${options.name}: ${error.message}`);
   }
+}
+
+async function ensureTimestampIndexes(collection, logger) {
+  await Promise.all([
+    createIndex(
+      collection,
+      { "timestamps.create": 1 },
+      { name: "timestamps_create" },
+      logger
+    ),
+    createIndex(
+      collection,
+      { "timestamps.update": 1 },
+      { name: "timestamps_update" },
+      logger
+    ),
+  ]);
+}
+
+async function ensureRuntimeCollectionIndexes(db, config, logger) {
+  const runtimeCollectionNames = [
+    config.itemSessionCollectionName,
+    config.operatorSessionCollectionName,
+    config.machineSessionCollectionName,
+    config.countCollectionName,
+    config.machineStateCollectionName,
+    config.operatorStateCollectionName,
+  ];
+
+  await Promise.all(
+    runtimeCollectionNames.map((collectionName) =>
+      ensureTimestampIndexes(db.collection(collectionName), logger)
+    )
+  );
 }
 
 async function ensureAnalyticsIndexes(db, config, logger) {
   const totalsDaily = db.collection(config.totalsDailyCollectionName);
   const totalsHourly = db.collection(config.totalsHourlyCollectionName);
-  const totalsShift = db.collection("totals-shift");
+  const totalsShift = db.collection(config.totalsShiftCollectionName);
   const tickerState = db.collection(config.stateTickerCollectionName);
   const machineSessions = db.collection(config.machineSessionCollectionName);
   const operatorSessions = db.collection(config.operatorSessionCollectionName);
 
   await Promise.all([
+    ensureRuntimeCollectionIndexes(db, config, logger),
     createIndex(
       totalsDaily,
       { type: 1, "timestamps.create": 1, "machine.id": 1 },
@@ -25,6 +60,30 @@ async function ensureAnalyticsIndexes(db, config, logger) {
       totalsHourly,
       { type: 1, "timestamps.create": 1, "machine.id": 1 },
       { name: "machine_dashboard_hourly_lookup_v2" },
+      logger
+    ),
+    createIndex(
+      totalsDaily,
+      { entityType: 1, date: 1, machineSerial: 1 },
+      { name: "machine_dashboard_daily_lookup" },
+      logger
+    ),
+    createIndex(
+      totalsHourly,
+      { entityType: 1, date: 1, machineSerial: 1, hour: 1 },
+      { name: "machine_dashboard_hourly_lookup" },
+      logger
+    ),
+    createIndex(
+      totalsShift,
+      { shiftId: 1, entityType: 1, date: 1, machineSerial: 1 },
+      { name: "dashboard_shift_machine_lookup" },
+      logger
+    ),
+    createIndex(
+      totalsShift,
+      { shiftId: 1, entityType: 1, date: 1, operatorId: 1 },
+      { name: "dashboard_shift_operator_lookup" },
       logger
     ),
     createIndex(

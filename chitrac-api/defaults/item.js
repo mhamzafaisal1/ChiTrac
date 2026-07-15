@@ -1,59 +1,264 @@
 module.exports = {
-	item: [
-		{ "id": 1, "name": "Sheets", "standard": 350, "area": 0, "department": "sheets", "weight": null, "active": true },
-		{ "id": 2, "name": "Bath Towels", "standard": 900, "area": 0, "department": "towels", "weight": null, "active": true },
-		{ "id": 3, "name": "Baby Blankets", "standard": 800, "area": 0, "department": "blankets", "weight": null, "active": true },
-		{ "id": 4, "name": "IV Gowns", "standard": 475, "area": 0, "department": "misc", "weight": null, "active": true },
-		{ "id": 5, "name": "Fitted Sheets", "standard": 350, "area": 0, "department": "sheets", "weight": null, "active": true },
-		{ "id": 6, "name": "IC Pads", "standard": 550, "area": 0, "department": "misc", "weight": null, "active": true },
-		{ "id": 7, "name": "Bath Blankets", "standard": 450, "area": 0, "department": "blankets", "weight": null, "active": true },
-		{ "id": 8, "name": "Pillowcases", "standard": 700, "area": 0, "department": "misc", "weight": null, "active": true },
-		{ "id": 9, "name": "OR Towels", "standard": 700, "area": 0, "department": "towels", "weight": null, "active": true },
-		{ "id": 10, "name": "Wash Cloth- Hand Fold", "standard": 1500, "area": 0, "department": "towels", "weight": null, "active": true },
-		{ "id": 11, "name": "OR Pants", "standard": 275, "area": 0, "department": "misc", "weight": null, "active": true },
-		{ "id": 12, "name": "OR Shirts", "standard": 350, "area": 0, "department": "misc", "weight": null, "active": true },
-		{ "id": 13, "name": "Hand Towel", "standard": 800, "area": 0, "department": "towels", "weight": null, "active": true },
-		]
-    /*item: [
-        { "id": 1, "name": "Incontinent Pad", "standard": 720, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 2, "name": "Bath Mat", "standard": 720, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 3, "name": "Patient Gown", "standard": 400, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 4, "name": "Pool Towel", "standard": 625, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 5, "name": "Bath Towel", "standard": 625, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 6, "name": "Hand Towel", "standard": 625, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 7, "name": "Bath Towel (1Primary", "standard": 625, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 8, "name": "Hand Towel (1Primary", "standard": 625, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 9, "name": "Bib White (Sideway", "standard": 625, "area": 1, "department": "Hand Work", "weight": null, "active": true },
-        { "id": 10, "name": "Bib color (Longway", "standard": 625, "area": 1, "department": "Hand Work", "weight": null, "active": true },
-        { "id": 11, "name": "Bib color (Small", "standard": 600, "area": 15, "department": "Hand Work", "weight": null, "active": true },
-        { "id": 12, "name": "Patient Gown XL Grand", "standard": 360, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 13, "name": "Thermal Blanket", "standard": 480, "area": 1, "department": "Blankets", "weight": null, "active": true },
-        { "id": 14, "name": "Bath Sheet", "standard": 600, "area": 1, "department": "Sheets", "weight": null, "active": true },
-        { "id": 15, "name": "Bath Blanket", "standard": 480, "area": 1, "department": "Blankets", "weight": null, "active": true },
-        { "id": 16, "name": "Towel (1Primary", "standard": 625, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 17, "name": "Blankets", "standard": 480, "area": 1, "department": "Blankets", "weight": null, "active": true },
-        { "id": 18, "name": "Pads", "standard": 720, "area": 1, "department": "Hand Work", "weight": null, "active": true },
-        { "id": 19, "name": "Fitted Sheets", "standard": 360, "area": 2, "department": "Sheets", "weight": null, "active": true },
-        { "id": 21, "name": "Quilted Blanket", "standard": 300, "area": 1, "department": "Blankets", "weight": null, "active": true },
-        { "id": 20, "name": "Fitted Sheets Large", "standard": 300, "area": 1, "department": "Sheets", "weight": null, "active": true },
-        { "id": 22, "name": "Knitted Fitted (offset L", "standard": 330, "area": 1, "department": "Sheets", "weight": null, "active": true },
-        { "id": 23, "name": "WashCloth", "standard": 1425, "area": 1, "department": "Hand Work", "weight": null, "active": true },
-        { "id": 24, "name": "BarMop", "standard": 1380, "area": 1, "department": "Misc", "weight": null, "active": true },
-        { "id": 25, "name": "Knitted Fitted", "standard": 330, "area": 1, "department": "Sheets", "weight": null, "active": true },
-        { "id": 26, "name": "HospitalSheet", "standard": 375, "area": 2, "department": "Sheets", "weight": null, "active": true },
-        { "id": 27, "name": "Table Linen", "standard": 300, "area": 2, "department": "Table Tops", "weight": null, "active": true },
-        { "id": 28, "name": "Wash Cloth", "standard": 1380, "area": 1, "department": "Hand Work", "weight": null, "active": true },
-        { "id": 29, "name": "Hotel Sheet", "standard": 420, "area": 2, "department": "Sheets", "weight": null, "active": true },
-        { "id": 30, "name": "Large Thermal Blanket", "standard": 480, "area": 2, "department": "Blankets", "weight": null, "active": true },
-        { "id": 31, "name": "Large Blanket", "standard": 480, "area": 2, "department": "Blankets", "weight": null, "active": true },
-        { "id": 0, "name": "Needs To Be Added ", "standard": 750, "area": 1, "department": "Misc", "weight": null, "active": true },
-        { "id": 32, "name": "Pillowcase", "standard": 400, "area": 2, "department": "SP Iron", "weight": null, "active": true },
-        { "id": 33, "name": "Mixed Towels", "standard": 680, "area": 1, "department": "Towels", "weight": 1, "active": true },
-		{ "id": 36, "name": "Scrub Top", "standard": 225, "area": 2, "department": "SP Iron", "weight": 1, "active": true },
-		{ "id": 37, "name": "Scrub Pants", "standard": 225, "area": 2, "department": "SP Iron", "weight": 1, "active": true },
-        { "id": 38, "name": "Baby Blanket", "standard": 600, "area": 1, "department": "Baby Items", "weight": null, "active": true },
-        { "id": 39, "name": "Bath Towel (one size", "standard": 680, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 40, "name": "MIX-2 French", "standard": 680, "area": 1, "department": "Towels", "weight": null, "active": true },
-        { "id": 41, "name": "Yell/Mist Gowns", "standard": 360, "area": 1, "department": "Towels", "weight": null, "active": true }
-    ]*/
-}
+  item: [
+  {
+    "id": 1,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:37.655Z"
+      }
+    },
+    "name": "Sheets",
+    "standard": 350,
+    "area": 0,
+    "department": "sheets",
+    "weight": null
+  },
+  {
+    "id": 2,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:37.713Z"
+      }
+    },
+    "name": "Bath Towels",
+    "standard": 900,
+    "area": 0,
+    "department": "towels",
+    "weight": null
+  },
+  {
+    "id": 3,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:37.767Z"
+      }
+    },
+    "name": "Baby Blankets",
+    "standard": 800,
+    "area": 0,
+    "department": "blankets",
+    "weight": null
+  },
+  {
+    "id": 4,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:37.821Z"
+      }
+    },
+    "name": "IV Gowns",
+    "standard": 475,
+    "area": 0,
+    "department": "misc",
+    "weight": null
+  },
+  {
+    "id": 5,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:37.874Z"
+      }
+    },
+    "name": "Fitted Sheets",
+    "standard": 350,
+    "area": 0,
+    "department": "sheets",
+    "weight": null
+  },
+  {
+    "id": 6,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:37.930Z"
+      }
+    },
+    "name": "IC Pads",
+    "standard": 550,
+    "area": 0,
+    "department": "misc",
+    "weight": null
+  },
+  {
+    "id": 7,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:38.169Z"
+      }
+    },
+    "name": "Bath Blankets",
+    "standard": 450,
+    "area": 0,
+    "department": "blankets",
+    "weight": null
+  },
+  {
+    "id": 8,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:38.243Z"
+      }
+    },
+    "name": "Pillowcases",
+    "standard": 700,
+    "area": 0,
+    "department": "misc",
+    "weight": null
+  },
+  {
+    "id": 9,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:38.297Z"
+      }
+    },
+    "name": "OR Towels",
+    "standard": 700,
+    "area": 0,
+    "department": "towels",
+    "weight": null
+  },
+  {
+    "id": 10,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:38.353Z"
+      }
+    },
+    "name": "Wash Cloth- Hand Fold",
+    "standard": 1500,
+    "area": 0,
+    "department": "towels",
+    "weight": null
+  },
+  {
+    "id": 11,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:38.387Z"
+      }
+    },
+    "name": "OR Pants",
+    "standard": 275,
+    "area": 0,
+    "department": "misc",
+    "weight": null
+  },
+  {
+    "id": 12,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:38.443Z"
+      }
+    },
+    "name": "OR Shirts",
+    "standard": 350,
+    "area": 0,
+    "department": "misc",
+    "weight": null
+  },
+  {
+    "id": 13,
+    "active": true,
+    "timestamps": {
+      "create": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "active": {
+        "$date": "2026-07-07T16:07:33.897Z"
+      },
+      "update": {
+        "$date": "2026-07-09T18:26:38.482Z"
+      }
+    },
+    "name": "Hand Towel",
+    "standard": 800,
+    "area": 0,
+    "department": "towels",
+    "weight": null
+  }
+]
+};

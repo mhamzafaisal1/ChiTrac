@@ -151,21 +151,6 @@ function toDate(value, fallback = new Date()) {
   return fallback;
 }
 
-function serializeDatesForValidation(value) {
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(serializeDatesForValidation);
-  }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, serializeDatesForValidation(entry)])
-    );
-  }
-  return value;
-}
-
 function buildDefaultPreferences(config = {}) {
   const now = new Date();
   return {
@@ -310,7 +295,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}, options = 
     preferences.operatorPaceHandicap = operatorPaceHandicap;
   }
 
-  const valid = validate(serializeDatesForValidation(preferences));
+  const valid = validate(preferences);
   if (!valid) {
     const error = new Error(`Schema validation failed: ${ajv.errorsText(validate.errors)}`);
     error.status = 400;

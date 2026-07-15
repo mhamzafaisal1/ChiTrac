@@ -111,7 +111,7 @@ module.exports = function (server) {
         const userId = normalizeTokenUserId(req.tokenPayload?.userId || req.tokenPayload?.createdBy);
         if (!userId) return res.status(401).json({ error: "Invalid token payload" });
 
-        const user = await server.db.collection('user').findOne({ _id: new ObjectId(userId) });
+        const user = await server.db.collection(config.userCollectionName).findOne({ _id: new ObjectId(userId) });
         assertPermissionLevel(user, requiredLevel);
         req.authUser = user;
         return next();
