@@ -14,6 +14,7 @@ const {
   buildMachineSummaryFromDailyCache,
   buildMachineSummaryFromShiftCache,
   getPlantDateStr,
+  loadConfiguredMachines,
 } = require("../../utils/machineDashboardCache");
 const {
   getMachinesSummaryRealTime,
@@ -233,6 +234,69 @@ function constructor(server) {
     const minHour = Math.max(a.minHour, b.minHour);
     const maxHour = Math.min(a.maxHour, b.maxHour);
     return maxHour >= minHour ? { minHour, maxHour } : null;
+  }
+
+  function machineSerialFromConfig(machine) {
+    const serial = Number(machine?.id ?? machine?.serial);
+    return Number.isFinite(serial) ? serial : null;
+  }
+
+  function configuredMachineTotal(machine, requestStart, requestEnd, timestamp) {
+    const serial = machineSerialFromConfig(machine);
+    if (serial === null) return null;
+
+    return {
+      machineSerial: serial,
+      machineName: machine.name || `Serial ${serial}`,
+      runtimeMs: 0,
+      pausedTimeMs: 0,
+      faultTimeMs: 0,
+      workedTimeMs: 0,
+      totalTimeCreditMs: 0,
+      totalCounts: 0,
+      totalMisfeeds: 0,
+      timeRange: {
+        start: requestStart,
+        end: requestEnd,
+      },
+      lastUpdated: timestamp,
+      configOnlyOffline: true,
+    };
+  }
+
+  function zeroMachineDashboardPerformance() {
+    return {
+      runtime: {
+        total: 0,
+        formatted: formatDuration(0),
+      },
+      downtime: {
+        total: 0,
+        formatted: formatDuration(0),
+      },
+      output: {
+        totalCount: 0,
+        misfeedCount: 0,
+      },
+      performance: {
+        availability: {
+          value: 0,
+          percentage: "0.00%",
+        },
+        throughput: {
+          value: 0,
+          percentage: "0.00%",
+        },
+        efficiency: {
+          value: 0,
+          percentage: "0.00%",
+        },
+        oee: {
+          value: 0,
+          percentage: "0.00%",
+        },
+      },
+    };
   }
 
 	async function getMachineXML(req, res, next) {
@@ -619,6 +683,21 @@ function constructor(server) {
         machineTotals = await cacheCollection.find(dailyMachineFilter).toArray();
       }
 
+      const configuredMachines = await loadConfiguredMachines(db, config, machineSerialFilter);
+      const machineTotalsSerials = new Set(
+        machineTotals
+          .map((record) => Number(record.machineSerial))
+          .filter(Number.isFinite)
+      );
+      const configuredOfflineTotals = configuredMachines
+        .filter((machine) => {
+          const serial = machineSerialFromConfig(machine);
+          return serial !== null && !machineTotalsSerials.has(serial);
+        })
+        .map((machine) => configuredMachineTotal(machine, requestStart, requestEnd, wallClockNow))
+        .filter(Boolean);
+      machineTotals = machineTotals.concat(configuredOfflineTotals);
+
       if (machineTotals.length === 0) {
         logger.warn(
           `[machineSessions] No machine totals found in totals-daily for ${dateStr}`
@@ -755,10 +834,12 @@ function constructor(server) {
             : computeShiftElapsedMs(activeShiftsDashboard, sessionStart, sessionEnd);
           shiftElapsedCacheDashboard.set(dashShiftKey, shiftElapsedMsDash);
 
-          const performance = buildPerformanceFromMachineRecord(
-            record,
-            shiftElapsedMsDash
-          );
+          const performance = record.configOnlyOffline
+            ? zeroMachineDashboardPerformance()
+            : buildPerformanceFromMachineRecord(
+                record,
+                shiftElapsedMsDash
+              );
           const machineItems = machineItemsBySerial.get(serial) || [];
           const itemSummary = buildItemSummaryFromRecords(
             machineItems,
@@ -779,18 +860,24 @@ function constructor(server) {
             chartHourEnvelope,
             cacheDateForCharts
           );
-          const currentOperators = await buildCurrentOperators(db, serial);
-          const faultStateWindow = await getBookendedStatesAndTimeRange(
-            db,
-            serial,
-            sessionStart,
-            sessionEnd
-          );
-          const faultData = buildFaultData(
-            faultStateWindow?.states || [],
-            sessionStart,
-            sessionEnd
-          );
+          const currentOperators = record.configOnlyOffline
+            ? []
+            : await buildCurrentOperators(db, serial);
+          const faultStateWindow = record.configOnlyOffline
+            ? null
+            : await getBookendedStatesAndTimeRange(
+                db,
+                serial,
+                sessionStart,
+                sessionEnd
+              );
+          const faultData = record.configOnlyOffline
+            ? { faultCycles: [], faultSummaries: [] }
+            : buildFaultData(
+                faultStateWindow?.states || [],
+                sessionStart,
+                sessionEnd
+              );
 
           const latestTicker = tickerMap.get(serial);
 
@@ -799,10 +886,16 @@ function constructor(server) {
               serial,
               name: record.machineName || `Serial ${serial}`,
             },
-            currentStatus: latestTicker?.status || {
-              code: 0,
-              name: "Unknown",
-            },
+            currentStatus: record.configOnlyOffline
+              ? {
+                  code: null,
+                  name: "Offline",
+                  color: "None",
+                }
+              : latestTicker?.status || {
+                  code: 0,
+                  name: "Unknown",
+                },
             performance,
             itemSummary,
             itemHourlyStack,
