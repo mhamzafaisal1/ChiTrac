@@ -30,6 +30,22 @@ function overlap(sStart, sEnd, wStart, wEnd) {
   return { ovSec, fullSec, factor, ovStart: os, ovEnd: oe };
 }
 
+function normalizeSessionSeconds(value, session) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+
+  const start = session?.timestamps?.start ? new Date(session.timestamps.start) : null;
+  const end = session?.timestamps?.end ? new Date(session.timestamps.end) : null;
+  if (start && end && !Number.isNaN(start) && !Number.isNaN(end) && end > start) {
+    const expectedSeconds = (end - start) / 1000;
+    if (expectedSeconds > 0 && numeric > expectedSeconds * 10) {
+      return numeric / 1000;
+    }
+  }
+
+  return numeric > 86400 ? numeric / 1000 : numeric;
+}
+
 // ===========================================================================
 // Item-daily helpers  (queryItemDailyCache / queryItemSessions / combineItemData)
 // ===========================================================================
@@ -133,7 +149,7 @@ async function queryItemSessions(db, partialDays) {
         const itemProportion = totalSessionCounts > 0 ? sessionCounts / totalSessionCounts : 0;
 
         if (itemProportion > 0) {
-          totalWorkTime += (session.workTime || 0) * factor * itemProportion;
+          totalWorkTime += normalizeSessionSeconds(session.workTime, session) * factor * itemProportion;
           totalTimeCredit += (session.totalTimeCredit || 0) * factor * itemProportion;
         }
       }
@@ -925,8 +941,8 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
 
       // Use the pre-calculated values from the session document
       bucket.totalCounts += session.totalCount || 0;
-      bucket.runtimeMs += (session.runtime || 0) * 1000; // Convert seconds to ms
-      bucket.workedTimeMs += (session.workTime || 0) * 1000; // Convert seconds to ms
+      bucket.runtimeMs += normalizeSessionSeconds(session.runtime, session) * 1000;
+      bucket.workedTimeMs += normalizeSessionSeconds(session.workTime, session) * 1000;
 
       // Track item-level counts - group by itemName (not itemId) to combine items with same name but different standards
       if (Array.isArray(session.counts)) {
@@ -1163,9 +1179,9 @@ async function getItemSessionDataForPartialDays(db, partialDays) {
           : (Array.isArray(s.operators) ? s.operators.filter(o => o && o.id !== -1).length : 0);
 
         const baseWorkSec = typeof s.workTime === "number"
-          ? s.workTime
+          ? normalizeSessionSeconds(s.workTime, s)
           : typeof s.runtime === "number"
-            ? s.runtime * Math.max(1, stations || 0)
+            ? normalizeSessionSeconds(s.runtime, s) * Math.max(1, stations || 0)
             : 0;
 
         const workedSec = baseWorkSec > 0 ? baseWorkSec * (ovSec / sessSec) : 0;
