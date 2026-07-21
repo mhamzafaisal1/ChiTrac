@@ -686,9 +686,11 @@ async function getCachedMachineResults(db, completeDays, serial) {
   return machineResults;
 }
 
-async function getCachedOperatorResults(db, completeDays) {
+async function getCachedOperatorResults(db, completeDays, options = {}) {
   const cacheCollection = db.collection("totals-daily");
   const dateStrings = completeDays.map(day => day.dateStr);
+  const currentOnlyDate = options.currentOnlyDate || null;
+  const excludeUntrackedOperators = options.excludeUntrackedOperators !== false;
   const operatorQuery = {
     entityType: "operator-machine",
     $or: [
@@ -749,10 +751,25 @@ async function getCachedOperatorResults(db, completeDays) {
     totalWindowMs += new Date(day.end) - new Date(day.start);
   }
   for (const record of cacheRecords) {
-    const opId = record.operatorId;
+    const opId = Number(record.operatorId);
+    if (!Number.isFinite(opId) || opId <= 0) {
+      continue;
+    }
+    if (excludeUntrackedOperators && opId >= 990000 && opId < 1000000) {
+      continue;
+    }
+    const recordDate =
+      typeof record.date === "string"
+        ? record.date
+        : record.dateObj instanceof Date
+          ? record.dateObj.toISOString().slice(0, 10)
+          : null;
+    if (currentOnlyDate && recordDate === currentOnlyDate && !operatorTickerMap.has(opId)) {
+      continue;
+    }
     if (!operatorMap.has(opId)) {
       operatorMap.set(opId, {
-        operator: { id: record.operatorId, name: record.operatorName || "Unknown" },
+        operator: { id: opId, name: record.operatorName || "Unknown" },
         currentStatus: null,
         currentMachine: null,
         metrics: {
