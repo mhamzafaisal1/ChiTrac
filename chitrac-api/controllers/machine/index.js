@@ -24,6 +24,7 @@ const {
   buildItemSummaryFromRecords,
   buildItemHourlyStackFromRecords,
   buildOperatorEfficiencyFromRecords,
+  buildCurrentOperatorMetricsFromRecords,
   buildFaultData,
   getBookendedStatesAndTimeRange,
   buildCurrentOperatorsFromTicker: buildCurrentOperators,
@@ -860,9 +861,22 @@ function constructor(server) {
             chartHourEnvelope,
             cacheDateForCharts
           );
+          const currentOperatorMetrics =
+            buildCurrentOperatorMetricsFromRecords(
+              operatorMachineHourly,
+              operatorEfficiency.flatMap((hour) =>
+                (hour.operators || []).map((operator) => operator.id)
+              )
+            );
           const currentOperators = record.configOnlyOffline
             ? []
-            : await buildCurrentOperators(db, serial, sessionStart, sessionEnd);
+            : await buildCurrentOperators(
+                db,
+                serial,
+                sessionStart,
+                sessionEnd,
+                currentOperatorMetrics
+              );
           const faultStateWindow = record.configOnlyOffline
             ? null
             : await getBookendedStatesAndTimeRange(

@@ -1111,6 +1111,32 @@ async function getActiveMachineSerials(db, start, end) {
     return result;
   }
 
+  function buildCurrentOperatorMetricsFromRecords(records, operatorIds) {
+    const idSet = new Set(operatorIds.map((id) => Number(id)));
+    const metrics = new Map();
+
+    for (const record of records || []) {
+      const operatorId = Number(record.operatorId);
+      if (!idSet.has(operatorId)) {
+        continue;
+      }
+
+      const existing = metrics.get(operatorId) || {
+        workedTimeMs: 0,
+        totalTimeCreditMs: 0,
+        validCount: 0,
+        misfeedCount: 0,
+      };
+      existing.workedTimeMs += safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
+      existing.totalTimeCreditMs += safeNumber(record.totalTimeCreditMs);
+      existing.validCount += safeNumber(record.totalCounts);
+      existing.misfeedCount += safeNumber(record.totalMisfeeds);
+      metrics.set(operatorId, existing);
+    }
+
+    return metrics;
+  }
+
   // Helper function to query machines summary daily cache
   async function queryMachinesSummaryDailyCache(db, logger, completeDays) {
     if (completeDays.length === 0) return [];
@@ -1995,7 +2021,13 @@ async function getActiveMachineSerials(db, start, end) {
    * For each current operator, returns metrics for the supplied dashboard window
    * while keeping the current/open session as the real-time identity marker.
    */
-  async function buildCurrentOperatorsFromTicker(db, serial, start = null, end = null) {
+  async function buildCurrentOperatorsFromTicker(
+    db,
+    serial,
+    start = null,
+    end = null,
+    metricsByOperator = null
+  ) {
     const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
     const serialNum = Number(serial);
     const windowStart = start ? new Date(start) : null;
@@ -2073,29 +2105,43 @@ async function getActiveMachineSerials(db, start, end) {
 
       if (!docs.length) return null;
 
-      let workSec = 0;
-      let creditSec = 0;
+      const cachedMetrics = metricsByOperator instanceof Map
+        ? metricsByOperator.get(opId)
+        : null;
+      let workedMs = 0;
+      let creditMs = 0;
       let valid = 0;
       let mis = 0;
-      docs.forEach((doc) => {
-        let factor = 1;
-        if (hasWindow) {
-          const sessionStart = new Date(doc.timestamps?.start || doc.timestamps?.create || windowStart);
-          const sessionEnd = doc.timestamps?.end ? new Date(doc.timestamps.end) : windowEnd;
-          const overlapStart = sessionStart > windowStart ? sessionStart : windowStart;
-          const overlapEnd = sessionEnd < windowEnd ? sessionEnd : windowEnd;
-          const overlapMs = Math.max(0, overlapEnd - overlapStart);
-          const sessionMs = Math.max(0, sessionEnd - sessionStart);
-          factor = sessionMs > 0 ? overlapMs / sessionMs : 0;
-        }
-        workSec += safe(doc.workTime) * factor;
-        creditSec += safe(doc.totalTimeCredit) * factor;
-        valid += safe(doc.totalCount) * factor;
-        mis += safe(doc.misfeedCount) * factor;
-      });
 
-      const eff       = workSec > 0 ? (creditSec / workSec) : 0;
-      const workedMs  = Math.round(workSec * 1000);
+      if (cachedMetrics) {
+        workedMs = Math.round(safe(cachedMetrics.workedTimeMs));
+        creditMs = safe(cachedMetrics.totalTimeCreditMs);
+        valid = safe(cachedMetrics.validCount);
+        mis = safe(cachedMetrics.misfeedCount);
+      } else {
+        let workSec = 0;
+        let creditSec = 0;
+        docs.forEach((doc) => {
+          let factor = 1;
+          if (hasWindow) {
+            const sessionStart = new Date(doc.timestamps?.start || doc.timestamps?.create || windowStart);
+            const sessionEnd = doc.timestamps?.end ? new Date(doc.timestamps.end) : windowEnd;
+            const overlapStart = sessionStart > windowStart ? sessionStart : windowStart;
+            const overlapEnd = sessionEnd < windowEnd ? sessionEnd : windowEnd;
+            const overlapMs = Math.max(0, overlapEnd - overlapStart);
+            const sessionMs = Math.max(0, sessionEnd - sessionStart);
+            factor = sessionMs > 0 ? overlapMs / sessionMs : 0;
+          }
+          workSec += safe(doc.workTime) * factor;
+          creditSec += safe(doc.totalTimeCredit) * factor;
+          valid += safe(doc.totalCount) * factor;
+          mis += safe(doc.misfeedCount) * factor;
+        });
+        workedMs = Math.round(workSec * 1000);
+        creditMs = creditSec * 1000;
+      }
+
+      const eff = workedMs > 0 ? (creditMs / workedMs) : 0;
 
       let operatorName = "Unknown";
       const tickerOp = operators.find(o => o && o.id === opId);
@@ -2817,6 +2863,7 @@ async function getActiveMachineSerials(db, start, end) {
     buildItemSummaryFromRecords,
     buildItemHourlyStackFromRecords,
     buildOperatorEfficiencyFromRecords,
+    buildCurrentOperatorMetricsFromRecords,
     queryMachinesSummaryDailyCache,
     queryMachinesSummarySessions,
     combineMachinesSummaryData,
