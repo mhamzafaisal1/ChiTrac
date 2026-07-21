@@ -90,6 +90,21 @@ function defaultCalcEfficiency(runtimeMs, validCount) {
   return Math.min(1, cph / 600);
 }
 
+function legacyOperatorName(name) {
+  if (!name) return { first: "Unknown", surname: "" };
+  if (typeof name === "object" && !Array.isArray(name)) {
+    return {
+      ...name,
+      first: name.first ?? name.firstName ?? name.given ?? name.fullName ?? "Unknown",
+      surname: name.surname ?? name.last ?? name.lastName ?? name.family ?? ""
+    };
+  }
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { first: "Unknown", surname: "" };
+  if (parts.length === 1) return { first: parts[0], surname: "" };
+  return { first: parts.slice(0, -1).join(" "), surname: parts.at(-1) };
+}
+
 function reshapeItemHourly(itemHourlyStackRaw) {
   const hourSet = new Set();
   const perItem = new Map();
@@ -578,7 +593,7 @@ async function computeOperatorResults(db, start, end) {
       const operatorName = counts.valid[0]?.operator?.name || counts.all[0]?.operator?.name || "Unknown";
       const latest = states.at(-1) || {};
       return {
-        operator: { id: numericOperatorId, name: operatorName },
+        operator: { id: numericOperatorId, name: legacyOperatorName(operatorName) },
         currentStatus: { code: latest.status?.code || 0, name: latest.status?.name || "Unknown" },
         metrics: {
           runtime: { total: performance.runtime.total, formatted: performance.runtime.formatted },
@@ -786,7 +801,7 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
     }
     if (!operatorMap.has(opId)) {
       operatorMap.set(opId, {
-        operator: { id: opId, name: record.operatorName || "Unknown" },
+        operator: { id: opId, name: legacyOperatorName(record.operatorName || "Unknown") },
         currentStatus: null,
         currentMachine: null,
         metrics: {
