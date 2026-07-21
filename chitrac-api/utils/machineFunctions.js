@@ -1992,12 +1992,15 @@ async function getActiveMachineSerials(db, start, end) {
 
   /**
    * Return current operators on a machine using stateTicker (real-time source of truth).
-   * For each current operator, finds their OPEN/ACTIVE operator-session for metrics.
-   * Falls back to most recent session if no open session exists.
+   * For each current operator, returns metrics for the supplied dashboard window
+   * while keeping the current/open session as the real-time identity marker.
    */
-  async function buildCurrentOperatorsFromTicker(db, serial) {
+  async function buildCurrentOperatorsFromTicker(db, serial, start = null, end = null) {
     const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
     const serialNum = Number(serial);
+    const windowStart = start ? new Date(start) : null;
+    const windowEnd = end ? new Date(end) : new Date();
+    const hasWindow = windowStart instanceof Date && !Number.isNaN(windowStart.getTime());
 
     const tickerColl = db.collection(config.stateTickerCollectionName);
     const ticker = await tickerColl.findOne({
@@ -2029,7 +2032,7 @@ async function getActiveMachineSerials(db, start, end) {
     };
 
     const rows = await Promise.all(opIds.map(async (opId) => {
-      let doc = await osColl.findOne({
+      const currentDoc = await osColl.findOne({
         "operator.id": opId,
         $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }],
         "timestamps.end": null,
@@ -2038,22 +2041,59 @@ async function getActiveMachineSerials(db, start, end) {
         sort: { "timestamps.create": -1 },
       });
 
-      if (!doc) {
-        doc = await osColl.findOne({
+      let docs = [];
+      if (hasWindow) {
+        docs = await osColl.find({
+          "operator.id": opId,
+          $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }],
+          "timestamps.start": { $lt: windowEnd },
+          $and: [{
+            $or: [
+              { "timestamps.end": { $gt: windowStart } },
+              { "timestamps.end": { $exists: false } },
+              { "timestamps.end": null },
+            ],
+          }],
+        }, {
+          projection,
+          sort: { "timestamps.start": 1 },
+        }).toArray();
+      }
+
+      if (!docs.length) {
+        const fallbackDoc = currentDoc || await osColl.findOne({
           "operator.id": opId,
           $or: [{ "machine.serial": serialNum }, { "machine.id": serialNum }]
         }, {
           projection,
           sort: { "timestamps.create": -1 },
         });
+        if (fallbackDoc) docs = [fallbackDoc];
       }
 
-      if (!doc) return null;
+      if (!docs.length) return null;
 
-      const workSec   = safe(doc.workTime);
-      const creditSec = safe(doc.totalTimeCredit);
-      const valid     = safe(doc.totalCount);
-      const mis       = safe(doc.misfeedCount);
+      let workSec = 0;
+      let creditSec = 0;
+      let valid = 0;
+      let mis = 0;
+      docs.forEach((doc) => {
+        let factor = 1;
+        if (hasWindow) {
+          const sessionStart = new Date(doc.timestamps?.start || doc.timestamps?.create || windowStart);
+          const sessionEnd = doc.timestamps?.end ? new Date(doc.timestamps.end) : windowEnd;
+          const overlapStart = sessionStart > windowStart ? sessionStart : windowStart;
+          const overlapEnd = sessionEnd < windowEnd ? sessionEnd : windowEnd;
+          const overlapMs = Math.max(0, overlapEnd - overlapStart);
+          const sessionMs = Math.max(0, sessionEnd - sessionStart);
+          factor = sessionMs > 0 ? overlapMs / sessionMs : 0;
+        }
+        workSec += safe(doc.workTime) * factor;
+        creditSec += safe(doc.totalTimeCredit) * factor;
+        valid += safe(doc.totalCount) * factor;
+        mis += safe(doc.misfeedCount) * factor;
+      });
+
       const eff       = workSec > 0 ? (creditSec / workSec) : 0;
       const workedMs  = Math.round(workSec * 1000);
 
@@ -2061,16 +2101,21 @@ async function getActiveMachineSerials(db, start, end) {
       const tickerOp = operators.find(o => o && o.id === opId);
       if (tickerOp?.name) {
         operatorName = formatHumanName(tickerOp.name);
-      } else if (doc.operator?.name) {
-        operatorName = formatHumanName(doc.operator.name);
+      } else if (docs[0].operator?.name) {
+        operatorName = formatHumanName(docs[0].operator.name);
       }
+
+      const sessionDoc = currentDoc || docs[docs.length - 1];
 
       return {
         operatorId: opId,
         operatorName,
         machineSerial,
         machineName,
-        session: { start: doc.timestamps?.start || doc.timestamps?.create || null, end: doc.timestamps?.end || null },
+        session: {
+          start: sessionDoc.timestamps?.start || sessionDoc.timestamps?.create || null,
+          end: sessionDoc.timestamps?.end || null
+        },
         metrics: {
           workedTimeMs: workedMs,
           workedTimeFormatted: formatDuration(workedMs),

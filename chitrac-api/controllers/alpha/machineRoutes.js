@@ -592,7 +592,12 @@ module.exports = function (server) {
             chartHourEnvelope,
             cacheDateForCharts
           );
-          const currentOperators = await buildCurrentOperators(db, serial);
+          const currentOperators = await buildCurrentOperators(
+            db,
+            serial,
+            sessionStart,
+            sessionEnd
+          );
           const faultStateWindow = await getBookendedStatesAndTimeRange(
             db,
             serial,
@@ -871,7 +876,7 @@ module.exports = function (server) {
           itemHourlyStack,
           faultData,
           operatorEfficiency,
-          currentOperators: await buildCurrentOperators(db, serialParam),
+          currentOperators: await buildCurrentOperators(db, serialParam, start, end),
           timestamp: new Date(),
           sessionStart: start,
           sessionEnd: end,

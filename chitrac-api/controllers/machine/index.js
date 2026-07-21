@@ -862,7 +862,7 @@ function constructor(server) {
           );
           const currentOperators = record.configOnlyOffline
             ? []
-            : await buildCurrentOperators(db, serial);
+            : await buildCurrentOperators(db, serial, sessionStart, sessionEnd);
           const faultStateWindow = record.configOnlyOffline
             ? null
             : await getBookendedStatesAndTimeRange(
