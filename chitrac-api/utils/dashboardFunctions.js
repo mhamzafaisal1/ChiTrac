@@ -691,6 +691,24 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
   const dateStrings = completeDays.map(day => day.dateStr);
   const currentOnlyDate = options.currentOnlyDate || null;
   const excludeUntrackedOperators = options.excludeUntrackedOperators !== false;
+  const isCurrentOnlyCacheWindow =
+    currentOnlyDate && dateStrings.length === 1 && dateStrings[0] === currentOnlyDate;
+  const recordDateString = (record) => {
+    const candidates = [record.date, record.dateObj, record.timestamps?.create];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (candidate instanceof Date && !Number.isNaN(candidate.getTime())) {
+        return candidate.toISOString().slice(0, 10);
+      }
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+          return trimmed.slice(0, 10);
+        }
+      }
+    }
+    return null;
+  };
   const operatorQuery = {
     entityType: "operator-machine",
     $or: [
@@ -758,13 +776,12 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
     if (excludeUntrackedOperators && opId >= 990000 && opId < 1000000) {
       continue;
     }
-    const recordDate =
-      typeof record.date === "string"
-        ? record.date
-        : record.dateObj instanceof Date
-          ? record.dateObj.toISOString().slice(0, 10)
-          : null;
-    if (currentOnlyDate && recordDate === currentOnlyDate && !operatorTickerMap.has(opId)) {
+    const recordDate = recordDateString(record);
+    if (
+      currentOnlyDate &&
+      !operatorTickerMap.has(opId) &&
+      (isCurrentOnlyCacheWindow || recordDate === currentOnlyDate)
+    ) {
       continue;
     }
     if (!operatorMap.has(opId)) {
