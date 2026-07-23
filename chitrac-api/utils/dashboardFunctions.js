@@ -90,6 +90,21 @@ function defaultCalcEfficiency(runtimeMs, validCount) {
   return Math.min(1, cph / 600);
 }
 
+function legacyOperatorName(name) {
+  if (!name) return { first: "Unknown", surname: "" };
+  if (typeof name === "object" && !Array.isArray(name)) {
+    return {
+      ...name,
+      first: name.first ?? name.firstName ?? name.given ?? name.fullName ?? "Unknown",
+      surname: name.surname ?? name.last ?? name.lastName ?? name.family ?? ""
+    };
+  }
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { first: "Unknown", surname: "" };
+  if (parts.length === 1) return { first: parts[0], surname: "" };
+  return { first: parts.slice(0, -1).join(" "), surname: parts.at(-1) };
+}
+
 function reshapeItemHourly(itemHourlyStackRaw) {
   const hourSet = new Set();
   const perItem = new Map();
@@ -578,7 +593,7 @@ async function computeOperatorResults(db, start, end) {
       const operatorName = counts.valid[0]?.operator?.name || counts.all[0]?.operator?.name || "Unknown";
       const latest = states.at(-1) || {};
       return {
-        operator: { id: numericOperatorId, name: operatorName },
+        operator: { id: numericOperatorId, name: legacyOperatorName(operatorName) },
         currentStatus: { code: latest.status?.code || 0, name: latest.status?.name || "Unknown" },
         metrics: {
           runtime: { total: performance.runtime.total, formatted: performance.runtime.formatted },
@@ -686,9 +701,29 @@ async function getCachedMachineResults(db, completeDays, serial) {
   return machineResults;
 }
 
-async function getCachedOperatorResults(db, completeDays) {
+async function getCachedOperatorResults(db, completeDays, options = {}) {
   const cacheCollection = db.collection("totals-daily");
   const dateStrings = completeDays.map(day => day.dateStr);
+  const currentOnlyDate = options.currentOnlyDate || null;
+  const excludeUntrackedOperators = options.excludeUntrackedOperators !== false;
+  const isCurrentOnlyCacheWindow =
+    currentOnlyDate && dateStrings.length === 1 && dateStrings[0] === currentOnlyDate;
+  const recordDateString = (record) => {
+    const candidates = [record.date, record.dateObj, record.timestamps?.create];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (candidate instanceof Date && !Number.isNaN(candidate.getTime())) {
+        return candidate.toISOString().slice(0, 10);
+      }
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+          return trimmed.slice(0, 10);
+        }
+      }
+    }
+    return null;
+  };
   const operatorQuery = {
     entityType: "operator-machine",
     $or: [
@@ -749,10 +784,24 @@ async function getCachedOperatorResults(db, completeDays) {
     totalWindowMs += new Date(day.end) - new Date(day.start);
   }
   for (const record of cacheRecords) {
-    const opId = record.operatorId;
+    const opId = Number(record.operatorId);
+    if (!Number.isFinite(opId) || opId <= 0) {
+      continue;
+    }
+    if (excludeUntrackedOperators && opId >= 990000 && opId < 1000000) {
+      continue;
+    }
+    const recordDate = recordDateString(record);
+    if (
+      currentOnlyDate &&
+      !operatorTickerMap.has(opId) &&
+      (isCurrentOnlyCacheWindow || recordDate === currentOnlyDate)
+    ) {
+      continue;
+    }
     if (!operatorMap.has(opId)) {
       operatorMap.set(opId, {
-        operator: { id: record.operatorId, name: record.operatorName || "Unknown" },
+        operator: { id: opId, name: legacyOperatorName(record.operatorName || "Unknown") },
         currentStatus: null,
         currentMachine: null,
         metrics: {

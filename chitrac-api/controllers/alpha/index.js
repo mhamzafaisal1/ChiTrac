@@ -1682,13 +1682,40 @@ function constructor(server) {
   });
 
   router.get("/ticker/all", async (req, res, next) => {
-    const tickerArray = await getTicker();
-    res.json(tickerArray);
+    try {
+      const tickerArray = await db
+        .collection(config.stateTickerCollectionName)
+        .find({})
+        .sort({ timestamp: -1 })
+        .toArray();
+      res.json(tickerArray);
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.get("/ticker/machines/all", async (req, res, next) => {
-    const machineListFromTicker = await getMachineListFromTicker();
-    res.json(machineListFromTicker);
+    try {
+      const tickers = await db
+        .collection(config.stateTickerCollectionName)
+        .find({})
+        .project({ _id: 0, machine: 1, timestamp: 1 })
+        .sort({ timestamp: -1 })
+        .toArray();
+
+      const machinesBySerial = new Map();
+      tickers.forEach((ticker) => {
+        const serial = ticker.machine?.serial ?? ticker.machine?.id;
+        if (serial == null || machinesBySerial.has(String(serial))) {
+          return;
+        }
+        machinesBySerial.set(String(serial), ticker.machine);
+      });
+
+      res.json([...machinesBySerial.values()]);
+    } catch (err) {
+      next(err);
+    }
   });
 
   router.get("/counts/all", async (req, res, next) => {

@@ -4,6 +4,74 @@ const config = require("../../modules/config");
 const { parseAndValidateQueryParams } = require("../../utils/time");
 const { formatHumanName } = require("../../utils/humanNames");
 
+const NON_FAULT_CODES = [0, 1, "0", "1", null];
+
+function nonArrayField(path) {
+  return {
+    $cond: [{ $isArray: path }, null, path],
+  };
+}
+
+function faultCodeExpression() {
+  return {
+    $ifNull: [
+      nonArrayField("$states.start.status.id"),
+      {
+        $ifNull: [
+          nonArrayField("$states.start.status.code"),
+          {
+            $ifNull: [
+              "$startState.status.code",
+              {
+                $ifNull: ["$status.code", "$type"],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function faultNameExpression() {
+  return {
+    $ifNull: [
+      nonArrayField("$states.start.status.name"),
+      {
+        $ifNull: [
+          "$startState.status.name",
+          {
+            $ifNull: ["$status.name", "Fault"],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildFaultSessionMatch(startDate, endDate) {
+  return {
+    $and: [
+      { "timestamps.start": { $lte: endDate } },
+      {
+        $or: [
+          { "timestamps.end": { $exists: false } },
+          { "timestamps.end": { $gte: startDate } },
+        ],
+      },
+      {
+        $or: [
+          { type: { $exists: true, $nin: NON_FAULT_CODES } },
+          { "status.code": { $exists: true, $nin: NON_FAULT_CODES } },
+          { "startState.status.code": { $exists: true, $nin: NON_FAULT_CODES } },
+          { "states.start.status.id": { $exists: true, $nin: NON_FAULT_CODES } },
+          { "states.start.status.code": { $exists: true, $nin: NON_FAULT_CODES } },
+        ],
+      },
+    ],
+  };
+}
+
 module.exports = function faultHistoryRoute(server) {
   const router = express.Router();
   const db = server.db;
@@ -49,29 +117,28 @@ module.exports = function faultHistoryRoute(server) {
       const startDate = new Date(start);
       const endDate = new Date(end);
 
-      // Base match: time overlap
-      // Support both machine.serial and machine.id
-      const match = {
-        type: { $nin: [0, 1] }, // Fault sessions are stored in session-machine with non-run/non-paused types
-        "timestamps.start": { $lte: endDate },
-        $or: [{ "timestamps.end": { $exists: false } }, { "timestamps.end": { $gte: startDate } }],
-      };
+      // Base match: time overlap plus a real fault starting status.
+      // Missing type is not enough; Mongo $nin matches missing fields.
+      const match = buildFaultSessionMatch(startDate, endDate);
 
       // Add machine filter - support both machine.serial and machine.id
       if (hasSerial) {
-        match.$and = [
-          {
-            $or: [
-              { "machine.serial": serial },
-              { "machine.id": serial }
-            ]
-          }
-        ];
+        match.$and.push({
+          $or: [
+            { "machine.serial": serial },
+            { "machine.id": serial }
+          ]
+        });
       }
 
       // Add operator filter
       if (hasOperator) {
-        match["operators.id"] = operatorId;
+        match.$and.push({
+          $or: [
+            { "operators.id": operatorId },
+            { "operator.id": operatorId },
+          ],
+        });
       }
 
       // Pull overlapping fault-sessions and clip to [start,end]
@@ -107,7 +174,7 @@ module.exports = function faultHistoryRoute(server) {
             },
           },
           { $match: { $expr: { $lt: ["$ovStart", "$ovEnd"] } } },
-          // derive code/name from states.start (actual doc shape) or legacy startState
+          // derive code/name from legacy state object, datafeed startState/status, or type.
           {
             $project: {
               _id: 1,
@@ -119,13 +186,14 @@ module.exports = function faultHistoryRoute(server) {
               activeStations: 1,
               ovStart: 1,
               ovEnd: 1,
-              code: { $ifNull: ["$states.start.status.id", "$startState.status.code"] },
-              name: { $ifNull: ["$states.start.status.name", "$startState.status.name"] },
+              code: faultCodeExpression(),
+              name: faultNameExpression(),
               // stored aggregates if present
               storedFaulttime: "$faulttime",
               storedWorkMissed: "$workTimeMissed",
             },
           },
+          { $match: { code: { $nin: NON_FAULT_CODES } } },
         ])
         .toArray();
 
@@ -279,14 +347,7 @@ module.exports = function faultHistoryRoute(server) {
       const startDate = new Date(start);
       const endDate = new Date(end);
 
-      const match = {
-        type: { $nin: [0, 1] }, // Fault sessions are stored in session-machine with non-run/non-paused types
-        "timestamps.start": { $lte: endDate },
-        $or: [
-          { "timestamps.end": { $exists: false } },
-          { "timestamps.end": { $gte: startDate } },
-        ],
-      };
+      const match = buildFaultSessionMatch(startDate, endDate);
 
       const raw = await db
         .collection(config.machineSessionCollectionName)
@@ -332,13 +393,14 @@ module.exports = function faultHistoryRoute(server) {
             $project: {
               _id: 1,
               machine: 1,
-              code: { $ifNull: ["$states.start.status.id", "$startState.status.code"] },
-              name: { $ifNull: ["$states.start.status.name", "$startState.status.name"] },
+              code: faultCodeExpression(),
+              name: faultNameExpression(),
               faultTimestamp: "$timestamps.start",
               ovStart: 1,
               ovEnd: 1,
             },
           },
+          { $match: { code: { $nin: NON_FAULT_CODES } } },
         ])
         .toArray();
 
@@ -420,14 +482,7 @@ module.exports = function faultHistoryRoute(server) {
       const startDate = new Date(start);
       const endDate = new Date(end);
 
-      const match = {
-        type: { $nin: [0, 1] }, // Fault sessions are stored in session-machine with non-run/non-paused types
-        "timestamps.start": { $lte: endDate },
-        $or: [
-          { "timestamps.end": { $exists: false } },
-          { "timestamps.end": { $gte: startDate } },
-        ],
-      };
+      const match = buildFaultSessionMatch(startDate, endDate);
 
       const raw = await db
         .collection(config.machineSessionCollectionName)
@@ -472,12 +527,13 @@ module.exports = function faultHistoryRoute(server) {
           {
             $project: {
               machine: 1,
-              code: { $ifNull: ["$states.start.status.id", "$startState.status.code"] },
-              name: { $ifNull: ["$states.start.status.name", "$startState.status.name"] },
+              code: faultCodeExpression(),
+              name: faultNameExpression(),
               ovStart: 1,
               ovEnd: 1,
             },
           },
+          { $match: { code: { $nin: NON_FAULT_CODES } } },
         ])
         .toArray();
 

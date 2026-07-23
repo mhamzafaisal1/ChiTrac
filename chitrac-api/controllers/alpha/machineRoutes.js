@@ -19,6 +19,7 @@ const {
   buildItemSummaryFromRecords,
   buildItemHourlyStackFromRecords,
   buildOperatorEfficiencyFromRecords,
+  buildCurrentOperatorMetricsFromRecords,
   buildFaultData,
   buildMachineItemSummary,
   buildItemHourlyStack,
@@ -592,7 +593,20 @@ module.exports = function (server) {
             chartHourEnvelope,
             cacheDateForCharts
           );
-          const currentOperators = await buildCurrentOperators(db, serial);
+          const currentOperatorMetrics =
+            buildCurrentOperatorMetricsFromRecords(
+              operatorMachineHourly,
+              operatorEfficiency.flatMap((hour) =>
+                (hour.operators || []).map((operator) => operator.id)
+              )
+            );
+          const currentOperators = await buildCurrentOperators(
+            db,
+            serial,
+            sessionStart,
+            sessionEnd,
+            currentOperatorMetrics
+          );
           const faultStateWindow = await getBookendedStatesAndTimeRange(
             db,
             serial,
@@ -871,7 +885,7 @@ module.exports = function (server) {
           itemHourlyStack,
           faultData,
           operatorEfficiency,
-          currentOperators: await buildCurrentOperators(db, serialParam),
+          currentOperators: await buildCurrentOperators(db, serialParam, start, end),
           timestamp: new Date(),
           sessionStart: start,
           sessionEnd: end,

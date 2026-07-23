@@ -377,7 +377,9 @@ module.exports = function (server) {
         const daysForCache = [...completeDays, ...partialDaysToday];
 
         if (daysForCache.length > 0) {
-          const cacheResults = await getCachedOperatorResults(db, daysForCache);
+          const cacheResults = await getCachedOperatorResults(db, daysForCache, {
+            currentOnlyDate: todayDateStr,
+          });
           operatorResults = cacheResults;
         }
 
@@ -401,7 +403,9 @@ module.exports = function (server) {
           },
         ];
 
-        operatorResults = await getCachedOperatorResults(db, daysForCache);
+        operatorResults = await getCachedOperatorResults(db, daysForCache, {
+          currentOnlyDate: isToday ? todayDateStr : null,
+        });
       }
 
       res.json({
