@@ -87,6 +87,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
         timeRange: record.buildRange || record.timeRange || { start: requestStart, end: requestEnd },
         machines: [],
         efficiencyData: [],
+        workedTimeMs: 0,
         breakTimeMs: 0,
       });
     }
@@ -106,6 +107,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
     operatorData.metrics.output.misfeedCount += record.totalMisfeeds || 0;
 
     const workTimeMs = record.workedTimeMs || 0;
+    operatorData.workedTimeMs += workTimeMs;
     const efficiency = workTimeMs > 0 ? (record.totalTimeCreditMs || 0) / workTimeMs : 0;
     operatorData.efficiencyData.push({
       efficiency,
@@ -146,6 +148,8 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
 
     const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
     const oee = availability * throughput * efficiency;
+    const workedHours = operatorData.workedTimeMs / 3600000;
+    const piecesPerHour = workedHours > 0 ? output.totalCount / workedHours : 0;
 
     operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
     operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
@@ -162,6 +166,11 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
         value: efficiency,
         percentage: (efficiency * 100).toFixed(2),
       },
+      piecesPerHour: {
+        value: piecesPerHour,
+        formatted: Math.round(piecesPerHour).toString(),
+      },
+      pph: piecesPerHour,
       oee: {
         value: oee,
         percentage: (oee * 100).toFixed(2),
@@ -171,6 +180,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
 
     delete operatorData.machines;
     delete operatorData.efficiencyData;
+    delete operatorData.workedTimeMs;
     delete operatorData.breakTimeMs;
     return operatorData;
   });

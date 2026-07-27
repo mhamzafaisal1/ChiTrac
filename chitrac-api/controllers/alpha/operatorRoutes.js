@@ -138,6 +138,7 @@ module.exports = function (server) {
             timeRange: record.buildRange || record.timeRange,
             machines: [],
             efficiencyData: [],
+            workedTimeMs: 0,
           });
         }
 
@@ -162,6 +163,7 @@ module.exports = function (server) {
         operatorData.metrics.output.misfeedCount += record.totalMisfeeds;
 
         const workTimeSec = record.workedTimeMs / 1000;
+        operatorData.workedTimeMs += record.workedTimeMs || 0;
         const timeCreditSec = record.totalTimeCreditMs / 1000;
         const efficiency = workTimeSec > 0 ? timeCreditSec / workTimeSec : 0;
 
@@ -215,6 +217,8 @@ module.exports = function (server) {
 
         const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
         const oee = availability * throughput * efficiency;
+        const workedHours = operatorData.workedTimeMs / 3600000;
+        const piecesPerHour = workedHours > 0 ? output.totalCount / workedHours : 0;
 
         operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
         operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
@@ -232,6 +236,11 @@ module.exports = function (server) {
             value: efficiency,
             percentage: (efficiency * 100).toFixed(2),
           },
+          piecesPerHour: {
+            value: piecesPerHour,
+            formatted: Math.round(piecesPerHour).toString(),
+          },
+          pph: piecesPerHour,
           oee: {
             value: oee,
             percentage: (oee * 100).toFixed(2),
@@ -240,6 +249,7 @@ module.exports = function (server) {
 
         delete operatorData.machines;
         delete operatorData.efficiencyData;
+        delete operatorData.workedTimeMs;
 
         return operatorData;
       });
