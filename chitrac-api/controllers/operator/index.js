@@ -326,6 +326,7 @@ function constructor(server) {
           timeRange: record.buildRange || record.timeRange || { start: requestStart, end: requestEnd },
           machines: [],
           efficiencyData: [],
+          workedTimeMs: 0,
         });
       }
 
@@ -343,6 +344,7 @@ function constructor(server) {
       operatorData.metrics.output.misfeedCount += record.totalMisfeeds || 0;
 
       const workTimeMs = record.workedTimeMs || 0;
+      operatorData.workedTimeMs += workTimeMs;
       const efficiency = workTimeMs > 0 ? (record.totalTimeCreditMs || 0) / workTimeMs : 0;
       operatorData.efficiencyData.push({
         efficiency,
@@ -381,6 +383,8 @@ function constructor(server) {
 
       const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
       const oee = availability * throughput * efficiency;
+      const workedHours = operatorData.workedTimeMs / 3600000;
+      const piecesPerHour = workedHours > 0 ? output.totalCount / workedHours : 0;
 
       operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
       operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
@@ -397,6 +401,11 @@ function constructor(server) {
           value: efficiency,
           percentage: (efficiency * 100).toFixed(2),
         },
+        piecesPerHour: {
+          value: piecesPerHour,
+          formatted: Math.round(piecesPerHour).toString(),
+        },
+        pph: piecesPerHour,
         oee: {
           value: oee,
           percentage: (oee * 100).toFixed(2),
@@ -406,6 +415,7 @@ function constructor(server) {
 
       delete operatorData.machines;
       delete operatorData.efficiencyData;
+      delete operatorData.workedTimeMs;
       return operatorData;
     });
 

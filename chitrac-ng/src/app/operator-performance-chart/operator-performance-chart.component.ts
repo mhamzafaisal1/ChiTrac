@@ -111,9 +111,23 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       return null;
     }
 
+    const seenOperatorNames = new Map<string, Set<string>>();
+
+    hourly.forEach((hourData: any) => {
+      const ops = hourData.operators && Array.isArray(hourData.operators) ? hourData.operators : [];
+
+      ops.forEach((operator: any) => {
+        if (!operator.name) return;
+        const operatorKey = this.getOperatorSeriesKey(operator);
+        const nameSet = seenOperatorNames.get(operator.name) || new Set<string>();
+        nameSet.add(operatorKey);
+        seenOperatorNames.set(operator.name, nameSet);
+      });
+    });
+
     // Group actual points per operator. Missing operator-hour records should not
     // be rendered as carried-forward or average values.
-    const operatorMap = new Map<string, { name: string; data: { x: string; y: number }[] }>();
+    const operatorMap = new Map<string, { id?: number | string; name: string; title: string; data: { x: string; y: number }[] }>();
     hourly.forEach((hourData: any) => {
       const hourLabel = new Date(hourData.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const ops = hourData.operators && Array.isArray(hourData.operators) ? hourData.operators : [];
@@ -122,20 +136,27 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
         if (!operator.name) return;
         const y = Number(operator.efficiency);
         if (!Number.isFinite(y)) return;
-        if (!operatorMap.has(operator.name)) {
-          operatorMap.set(operator.name, { name: operator.name, data: [] });
+        const operatorKey = this.getOperatorSeriesKey(operator);
+        if (!operatorMap.has(operatorKey)) {
+          const duplicateName = (seenOperatorNames.get(operator.name)?.size || 0) > 1;
+          operatorMap.set(operatorKey, {
+            id: operator.id,
+            name: operator.name,
+            title: this.getOperatorSeriesTitle(operator, duplicateName),
+            data: []
+          });
         }
-        operatorMap.get(operator.name)!.data.push({ x: hourLabel, y });
+        operatorMap.get(operatorKey)!.data.push({ x: hourLabel, y });
       });
     });
 
     // Convert map to series array with guaranteed unique colors
     const series: XYSeries[] = [];
     let index = 0;
-    operatorMap.forEach((operatorData, operatorName) => {
+    operatorMap.forEach((operatorData, operatorKey) => {
       series.push({
-        id: operatorName,
-        title: operatorName,
+        id: operatorKey,
+        title: operatorData.title,
         type: 'line',
         data: operatorData.data,
         color: this.getColorForSeries(index),   // distinct color for each
@@ -175,6 +196,26 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       },
       series: series
     };
+  }
+
+  private getOperatorSeriesKey(operator: any): string {
+    const operatorId = operator?.id;
+    if (operatorId !== undefined && operatorId !== null && operatorId !== '') {
+      return `operator-${operatorId}`;
+    }
+
+    return `operator-name-${String(operator?.name || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  }
+
+  private getOperatorSeriesTitle(operator: any, duplicateName: boolean): string {
+    const operatorName = operator?.name || 'Unknown';
+    const operatorId = operator?.id;
+
+    if (!duplicateName || operatorId === undefined || operatorId === null || operatorId === '') {
+      return operatorName;
+    }
+
+    return `${operatorName} (#${operatorId})`;
   }
 
   private getColorForSeries(index: number): string {

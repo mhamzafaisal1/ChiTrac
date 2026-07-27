@@ -3316,6 +3316,7 @@ function getOperatorsSummaryRealTime(db, logger, config) {
             const throughput = (totalCount + misfeedCount) ? (totalCount / (totalCount + misfeedCount)) : 0;
             const efficiency = workTimeSec > 0 ? totalTimeCredit / workTimeSec : 0;
             const oee = availability * throughput * efficiency;
+            const piecesPerHour = workTimeSec > 0 ? totalCount / (workTimeSec / 3600) : 0;
 
             return {
               operator: { id: opId, name: operatorName },
@@ -3349,6 +3350,11 @@ function getOperatorsSummaryRealTime(db, logger, config) {
                     value: efficiency,
                     percentage: (efficiency * 100).toFixed(2)
                   },
+                  piecesPerHour: {
+                    value: piecesPerHour,
+                    formatted: Math.round(piecesPerHour).toString()
+                  },
+                  pph: piecesPerHour,
                   oee: {
                     value: oee,
                     percentage: (oee * 100).toFixed(2)
