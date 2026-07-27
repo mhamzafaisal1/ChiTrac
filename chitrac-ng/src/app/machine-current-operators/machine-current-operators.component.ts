@@ -96,10 +96,12 @@ export class MachineCurrentOperatorsComponent implements OnInit {
       const minutes = Math.floor((workedTimeMs % (1000 * 60 * 60)) / (1000 * 60));
       const workedTime = `${hours}h ${minutes}m`;
       
-      // Calculate efficiency percentage
       const totalCount = o?.metrics?.totalCount || 0;
       const validCount = o?.metrics?.validCount || 0;
-      const efficiencyPct = totalCount > 0 ? Math.round((validCount / totalCount) * 100) : 0;
+      const efficiencyPct = Number(o?.metrics?.efficiencyPct);
+      const efficiency = Number.isFinite(efficiencyPct)
+        ? Math.round(efficiencyPct * 100) / 100
+        : 0;
       
       return {
         'Operator': o?.operatorName || `Operator ${o?.operatorId || ''}`,
@@ -107,7 +109,7 @@ export class MachineCurrentOperatorsComponent implements OnInit {
         'Total Count': totalCount,
         'Valid': validCount,
         'Misfeed': o?.metrics?.misfeedCount || 0,
-        'Efficiency': `${efficiencyPct}%`,
+        'Efficiency': `${efficiency}%`,
         'Session Start': o?.session?.start ? new Date(o.session.start).toLocaleString() : '-',
         'Session End': o?.session?.end ? new Date(o.session.end).toLocaleString() : 'Open'
       };
