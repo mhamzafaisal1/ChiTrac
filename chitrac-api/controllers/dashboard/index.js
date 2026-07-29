@@ -81,6 +81,70 @@ async function resolveShiftIdString(req, db) {
   return String(oid);
 }
 
+function buildMachineGroupDailyFilter(dateStr, serial) {
+  const dayStart = DateTime.fromISO(dateStr, { zone: SYSTEM_TIMEZONE }).startOf("day");
+  const dayEnd = dayStart.plus({ days: 1 });
+  const dailyFilter = {
+    $or: [
+      { entityType: "machine", date: dateStr },
+      {
+        type: "machine",
+        "timestamps.start": { $gte: dayStart.toUTC().toISO(), $lt: dayEnd.toUTC().toISO() },
+      },
+      {
+        type: "machine",
+        "timestamps.start": { $gte: dayStart.toUTC().toJSDate(), $lt: dayEnd.toUTC().toJSDate() },
+      },
+      { type: "machine", id: { $regex: `-${dateStr}$` } },
+    ],
+  };
+
+  if (!serial) return dailyFilter;
+  const serialNumber = parseInt(serial);
+  return {
+    $and: [
+      dailyFilter,
+      {
+        $or: [
+          { machineSerial: serialNumber },
+          { "machine.serial": serialNumber },
+          { "machine.id": serialNumber },
+        ],
+      },
+    ],
+  };
+}
+
+async function buildMachineDepartmentLookup(db) {
+  const machines = await db
+    .collection(config.machineCollectionName)
+    .find({})
+    .project({ id: 1, serial: 1, name: 1, groups: 1 })
+    .toArray();
+  const lookup = new Map();
+  for (const machine of machines) {
+    const department = machine.groups?.department;
+    if (!department) continue;
+    for (const key of [machine.id, machine.serial, machine.name]) {
+      if (key != null) lookup.set(String(key), department);
+    }
+  }
+  return lookup;
+}
+
+function getMachineDepartment(record, departmentLookup) {
+  const embeddedDepartment = record.machine?.groups?.department;
+  if (embeddedDepartment) return embeddedDepartment;
+  for (const key of [record.machineSerial, record.machine?.serial, record.machine?.id, record.machine?.name]) {
+    if (key != null && departmentLookup.has(String(key))) return departmentLookup.get(String(key));
+  }
+  return null;
+}
+
+function getDailyMachineMetric(record, topLevelKey, totalsKey) {
+  return record[topLevelKey] ?? record.totals?.[totalsKey] ?? 0;
+}
+
 module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
@@ -664,23 +728,22 @@ module.exports = function (server) {
       const dateStr = start.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
       const yesterdayStr = previousDateStr(dateStr);
 
-      const filter = { entityType: "machine", date: dateStr };
-      if (serial) filter.machineSerial = parseInt(serial);
-      const filterYesterday = { entityType: "machine", date: yesterdayStr };
-      if (serial) filterYesterday.machineSerial = parseInt(serial);
+      const filter = buildMachineGroupDailyFilter(dateStr, serial);
+      const filterYesterday = buildMachineGroupDailyFilter(yesterdayStr, serial);
 
-      const [cacheRecords, yesterdayRecords] = await Promise.all([
+      const [cacheRecords, yesterdayRecords, departmentLookup] = await Promise.all([
         db.collection(config.totalsDailyCollectionName).find(filter).toArray(),
         db.collection(config.totalsDailyCollectionName).find(filterYesterday).toArray(),
+        buildMachineDepartmentLookup(db),
       ]);
 
       if (cacheRecords.length === 0) {
-        const anyByDate = await db.collection(config.totalsDailyCollectionName).countDocuments({ date: dateStr });
+        const anyByDate = await db.collection(config.totalsDailyCollectionName).countDocuments(filter);
         const sampleDocs = await db
           .collection(config.totalsDailyCollectionName)
           .find({})
           .limit(3)
-          .project({ date: 1, entityType: 1, machineSerial: 1, "machine.groups.department": 1 })
+          .project({ date: 1, entityType: 1, type: 1, machineSerial: 1, "machine.serial": 1, "machine.groups.department": 1, timestamps: 1 })
           .toArray();
         const debug = {
           reason: "no_cached_data_for_date",
@@ -700,7 +763,7 @@ module.exports = function (server) {
       let skippedNoDept = 0;
       let skippedUnknownDept = 0;
       for (const record of cacheRecords) {
-        const dept = record.machine?.groups?.department;
+        const dept = getMachineDepartment(record, departmentLookup);
         if (!dept) {
           skippedNoDept++;
           continue;
@@ -715,7 +778,7 @@ module.exports = function (server) {
       const byDeptYesterday = new Map();
       for (const name of MACHINE_GROUP_DEPARTMENTS) byDeptYesterday.set(name, []);
       for (const record of yesterdayRecords) {
-        const dept = record.machine?.groups?.department;
+        const dept = getMachineDepartment(record, departmentLookup);
         if (!dept || !byDeptYesterday.has(dept)) continue;
         byDeptYesterday.get(dept).push(record);
       }
@@ -731,12 +794,14 @@ module.exports = function (server) {
         let sumTotalTimeCreditMs = 0;
         let sumWorkedTimeMs = 0;
         for (const record of records) {
-          sumRuntimeMs += record.runtimeMs || 0;
-          sumTotalCounts += record.totalCounts || 0;
-          sumTotalMisfeeds += record.totalMisfeeds || 0;
-          sumTotalTimeCreditMs += record.totalTimeCreditMs || 0;
-          let workMs = record.workedTimeMs || 0;
-          if (workMs === 0 && (record.totalTimeCreditMs || 0) > 0 && (record.runtimeMs || 0) > 0) workMs = record.runtimeMs;
+          const runtimeMs = getDailyMachineMetric(record, "runtimeMs", "runtimeMs");
+          const totalTimeCreditMs = getDailyMachineMetric(record, "totalTimeCreditMs", "timeCreditMs");
+          sumRuntimeMs += runtimeMs;
+          sumTotalCounts += getDailyMachineMetric(record, "totalCounts", "count");
+          sumTotalMisfeeds += getDailyMachineMetric(record, "totalMisfeeds", "misfeeds");
+          sumTotalTimeCreditMs += totalTimeCreditMs;
+          let workMs = getDailyMachineMetric(record, "workedTimeMs", "workedTimeMs");
+          if (workMs === 0 && totalTimeCreditMs > 0 && runtimeMs > 0) workMs = runtimeMs;
           sumWorkedTimeMs += workMs;
         }
 
@@ -758,9 +823,11 @@ module.exports = function (server) {
           let sumWorkedMsY = 0;
           let sumTimeCreditMsY = 0;
           for (const rec of recordsYesterday) {
-            sumTimeCreditMsY += rec.totalTimeCreditMs || 0;
-            let w = rec.workedTimeMs || 0;
-            if (w === 0 && (rec.totalTimeCreditMs || 0) > 0 && (rec.runtimeMs || 0) > 0) w = rec.runtimeMs;
+            const runtimeMs = getDailyMachineMetric(rec, "runtimeMs", "runtimeMs");
+            const totalTimeCreditMs = getDailyMachineMetric(rec, "totalTimeCreditMs", "timeCreditMs");
+            sumTimeCreditMsY += totalTimeCreditMs;
+            let w = getDailyMachineMetric(rec, "workedTimeMs", "workedTimeMs");
+            if (w === 0 && totalTimeCreditMs > 0 && runtimeMs > 0) w = runtimeMs;
             sumWorkedMsY += w;
           }
           const workTimeSecY = sumWorkedMsY / 1000;
