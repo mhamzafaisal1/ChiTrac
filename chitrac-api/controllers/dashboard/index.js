@@ -373,6 +373,10 @@ module.exports = function (server) {
               total: bucket.runtimeMs,
               formatted: formatDuration(bucket.runtimeMs),
             },
+            workedTime: {
+              total: bucket.workedTimeMs,
+              formatted: formatDuration(bucket.workedTimeMs),
+            },
             performance: {
               efficiency: { value: 0, percentage: "0.00" },
             },
@@ -511,16 +515,40 @@ module.exports = function (server) {
         const byName = new Map();
         for (const mi of sessionData.machineItems || []) {
           const name = mi.itemName || "Unknown";
-          byName.set(name, (byName.get(name) || 0) + (mi.totalCounts || 0));
+          const existing = byName.get(name) || {
+            itemName: name,
+            count: 0,
+            workedTimeMs: 0,
+            standardWeightedSum: 0,
+            totalCountsForStandard: 0,
+          };
+          const count = mi.totalCounts || 0;
+          const standard = mi.itemStandard || 0;
+          existing.count += count;
+          existing.workedTimeMs += mi.workedTimeMs || 0;
+          if (count > 0 && standard > 0) {
+            existing.standardWeightedSum += count * standard;
+            existing.totalCountsForStandard += count;
+          }
+          byName.set(name, existing);
         }
-        const items = Array.from(byName.entries()).map(([itemName, count]) => ({
-          itemName,
-          count,
-          pph: 0,
-          standard: 0,
-          efficiency: 0,
-          workedTimeFormatted: formatDuration(0),
-        }));
+        const items = Array.from(byName.values()).map((item) => {
+          const totalHours = item.workedTimeMs / 3600000;
+          const pph = totalHours > 0 ? item.count / totalHours : 0;
+          const standard =
+            item.totalCountsForStandard > 0
+              ? item.standardWeightedSum / item.totalCountsForStandard
+              : 0;
+          const efficiency = standard > 0 ? (pph / standard) * 100 : 0;
+          return {
+            itemName: item.itemName,
+            count: item.count,
+            pph: Math.round(pph * 100) / 100,
+            standard: Math.round(standard * 100) / 100,
+            efficiency: Math.round(efficiency * 100) / 100,
+            workedTimeFormatted: formatDuration(item.workedTimeMs),
+          };
+        });
         return res.json({
           timeRange: { start, end, total: formatDuration(Date.now() - started) },
           items,
