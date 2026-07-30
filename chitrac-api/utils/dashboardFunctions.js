@@ -301,7 +301,14 @@ function combineOperatorResults(cachedResults, sessionResults, formatDurationFn)
     if (operatorMap.has(operatorId)) {
       const existing = operatorMap.get(operatorId);
       existing.metrics.runtime.total += operator.metrics?.runtime?.total || 0;
+      existing.metrics.workedTime = existing.metrics.workedTime || {
+        total: 0,
+        formatted: { hours: 0, minutes: 0 }
+      };
+      existing.metrics.workedTime.total +=
+        operator.metrics?.workedTime?.total ?? operator.metrics?.runtime?.total ?? 0;
       existing.metrics.runtime.formatted = formatDur(existing.metrics.runtime.total);
+      existing.metrics.workedTime.formatted = formatDur(existing.metrics.workedTime.total);
       if (operator.currentStatus) existing.currentStatus = operator.currentStatus;
       if (operator.countByItem && Array.isArray(operator.countByItem)) {
         existing.countByItem = existing.countByItem || [];
@@ -806,6 +813,7 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
         currentMachine: null,
         metrics: {
           runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+          workedTime: { total: 0, formatted: { hours: 0, minutes: 0 } },
           downtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
           output: { totalCount: 0, misfeedCount: 0 },
           performance: {
@@ -825,6 +833,7 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
     operatorData.currentStatus = tickerContext?.status ?? null;
     const downtimeMs = record.pausedTimeMs + record.faultTimeMs;
     operatorData.metrics.runtime.total += record.runtimeMs || 0;
+    operatorData.metrics.workedTime.total += record.workedTimeMs || 0;
     operatorData.metrics.downtime.total += downtimeMs;
     operatorData.metrics.output.totalCount += record.totalCounts || 0;
     operatorData.metrics.output.misfeedCount += record.totalMisfeeds || 0;
@@ -834,7 +843,7 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
     operatorData.efficiencyData.push({ efficiency, weight: record.workedTimeMs || 0 });
   }
   return Array.from(operatorMap.values()).map(operatorData => {
-    const { runtime, downtime, output } = operatorData.metrics;
+    const { runtime, workedTime, downtime, output } = operatorData.metrics;
     const windowMs = operatorData.totalWindowMs || (runtime.total + downtime.total);
     const availability = windowMs > 0 ? runtime.total / windowMs : 0;
     const throughput =
@@ -850,6 +859,7 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
     const efficiency = totalWeight > 0 ? totalWeightedEfficiency / totalWeight : 0;
     const oee = availability * throughput * efficiency;
     operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
+    operatorData.metrics.workedTime.formatted = formatDuration(workedTime.total);
     operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
     operatorData.metrics.performance = {
       availability: { value: availability, percentage: parseFloat((availability * 100).toFixed(2)) },

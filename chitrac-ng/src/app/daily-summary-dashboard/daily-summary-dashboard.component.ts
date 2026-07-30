@@ -53,11 +53,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   endTime: string = "";
   isDarkTheme: boolean = false;
   private observer!: MutationObserver;
-  machineColumns: string[] = ["Status", "Machine Name", "OEE", "Total Count"];
+  machineColumns: string[] = ["Status", "Machine Name", "Total Count", "OEE"];
   machineRows: any[] = [];
   selectedMachine: any = null;
   selectedRow: any | null = null;
-  itemColumns: string[] = ['Item Name', 'Total Count'];
+  itemColumns: string[] = ['Item Name', 'Total Count', 'Efficiency'];
   itemRows: any[] = [];  
   operatorColumns: string[] = ['Status', 'Operator Name', 'Worked Time', 'Efficiency'];
   operatorRows: any[] = [];
@@ -260,7 +260,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.operatorRows = arr.map((o:any)=>({
       Status: getStatusDot(o.currentStatus),
       'Operator Name': o.operator?.name ? `${o.operator.name.first ?? ''} ${o.operator.name.surname ?? ''}`.trim() : 'Unknown',
-      'Worked Time': `${o.metrics?.runtime?.formatted?.hours ?? 0}h ${o.metrics?.runtime?.formatted?.minutes ?? 0}m`,
+      'Worked Time': this.formatDurationForTable(o.metrics?.workedTime?.formatted ?? o.metrics?.runtime?.formatted),
       'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
       operatorId: o.operator?.id
     }));
@@ -270,7 +270,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const arr = Array.isArray(data) ? data : (data?.items ?? []);
     this.rawItemData = arr;
     this.itemRows = arr.filter((x:any)=>(x.count ?? 0)>0)
-      .map((x:any)=>({'Item Name': x.itemName, 'Total Count': x.count}));
+      .map((x:any)=>({
+        'Item Name': x.itemName,
+        'Total Count': x.count,
+        'Efficiency': this.formatPercentage(x.efficiency ?? 0)
+      }));
   }
 
   fetchData(): Observable<any> {
@@ -318,6 +322,10 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const num = typeof value === 'number' ? value : parseFloat(value);
     if (isNaN(num)) return '0%';
     return `${(num * 100).toFixed(2)}%`;
+  }
+
+  private formatDurationForTable(duration: any): string {
+    return `${duration?.hours ?? 0}h ${duration?.minutes ?? 0}m`;
   }
 
   private formatPercentage(value: any): string {
