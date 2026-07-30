@@ -27,7 +27,7 @@
 
   .table-wrapper {
     position: relative;
-    flex: 1;
+    flex: 0 0 auto;
     overflow: auto;
   }
 
@@ -72,20 +72,21 @@
   }
 
   .table-container {
-    flex: 1;
     overflow: auto;
     background-color: var(--surface-color, #ffffff);
     border-radius: 4px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     position: relative;
-    min-height: 400px; // Ensure minimum height for overlay visibility
+
+    &.loading {
+      min-height: 400px;
+    }
   }
 
   .empty-state {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
     min-height: 400px;
   }
 

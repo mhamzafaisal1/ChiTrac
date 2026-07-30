@@ -259,7 +259,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.rawOperatorData = arr;
     this.operatorRows = arr.map((o:any)=>({
       Status: getStatusDot(o.currentStatus),
-      'Operator Name': o.operator?.name ? `${o.operator.name.first ?? ''} ${o.operator.name.surname ?? ''}`.trim() : 'Unknown',
+      'Operator Name': this.formatOperatorName(o.operator?.name),
       'Worked Time': this.formatDurationForTable(o.metrics?.workedTime?.formatted ?? o.metrics?.runtime?.formatted),
       'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
       operatorId: o.operator?.id
@@ -328,6 +328,15 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     return `${duration?.hours ?? 0}h ${duration?.minutes ?? 0}m`;
   }
 
+  private formatOperatorName(name: any): string {
+    if (typeof name === 'string' && name.trim()) return name.trim();
+    if (name && typeof name === 'object') {
+      const formatted = `${name.first ?? ''} ${name.surname ?? ''}`.trim();
+      if (formatted) return formatted;
+    }
+    return 'Unknown';
+  }
+
   private formatPercentage(value: any): string {
     // Handle both number and string inputs
     // Backend returns percentage as a number (0-100) or string with '%'
@@ -343,9 +352,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     
     if (isNaN(num)) return '0%';
     
-    // Backend already returns 0-100 range, so use as is
-    // Ensure it's clamped to valid percentage range
-    const percentage = Math.max(0, Math.min(100, num));
+    const percentage = Math.max(0, num);
     return `${percentage.toFixed(2)}%`;
   }
   
@@ -797,30 +804,35 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },

@@ -11,6 +11,7 @@ import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { displayInteger } from '../shared/utils/display-number';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 
 @Component({
     selector: 'app-item-analytics-dashboard',
@@ -57,7 +58,8 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private pollingService: PollingService,
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private percentBreakpointService: PercentBreakpointService
   ) {}
 
   ngOnInit(): void {
@@ -192,11 +194,18 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Count': row.count,
         'PPH': displayInteger(row.pph),
         'Standard': displayInteger(row.standard),
-        'Efficiency (%)': row.efficiency
+        'Efficiency (%)': `${row.efficiency ?? 0}%`
       };
     });        
     this.columns = Object.keys(this.rows[0]);
   }
+
+  getEfficiencyClass = (value: any, column: string): string => {
+    if (column === 'Efficiency (%)' && typeof value === 'string' && value.includes('%')) {
+      return this.percentBreakpointService.getColorClass(value);
+    }
+    return '';
+  };
 
   fetchItemAnalytics(): Observable<any> {
     if (!this.startTime || !this.endTime) {
