@@ -1177,6 +1177,7 @@ import {
       series.forEach(s => {
         const color = s.color || this.colorForSeries(s.id);
         const line = d3.line<XYPoint>()
+          .defined(d => Number.isFinite(d.y))
           .x(d => isHorizontal ? (yScaleH as d3.ScaleLinear<number, number>)(d.y) : xAcc(d))
           .y(d => isHorizontal
             ? (xScale as d3.ScaleBand<string>)(String(d.x))! + ((xScale.bandwidth?.() ?? 0) / 2)
@@ -1190,7 +1191,7 @@ import {
   
         if (s.options?.showDots) {
           g.selectAll(`.cc-dot-${s.id}`)
-            .data(s.data)
+            .data(s.data.filter(d => Number.isFinite(d.y)))
             .enter()
             .append('circle')
             .attr('r', s.options?.radius ?? 3)

@@ -111,9 +111,14 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       return null;
     }
 
+    const hourlyRows = [...hourly]
+      .map((hourData: any) => ({ ...hourData, hourDate: new Date(hourData.hour) }))
+      .filter((hourData: any) => !Number.isNaN(hourData.hourDate.getTime()))
+      .sort((a: any, b: any) => a.hourDate.getTime() - b.hourDate.getTime());
+
     const seenOperatorNames = new Map<string, Set<string>>();
 
-    hourly.forEach((hourData: any) => {
+    hourlyRows.forEach((hourData: any) => {
       const ops = hourData.operators && Array.isArray(hourData.operators) ? hourData.operators : [];
 
       ops.forEach((operator: any) => {
@@ -125,11 +130,12 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       });
     });
 
-    // Group actual points per operator. Missing operator-hour records should not
-    // be rendered as carried-forward or average values.
-    const operatorMap = new Map<string, { id?: number | string; name: string; title: string; data: { x: string; y: number }[] }>();
-    hourly.forEach((hourData: any) => {
-      const hourLabel = new Date(hourData.hour).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Group points per operator. Missing operator-hour records stay in the
+    // series as NaN so the line chart breaks instead of connecting across gaps.
+    const operatorMap = new Map<string, { id?: number | string; name: string; title: string; data: { x: Date; y: number }[] }>();
+    const operatorKeys = new Set<string>();
+
+    hourlyRows.forEach((hourData: any) => {
       const ops = hourData.operators && Array.isArray(hourData.operators) ? hourData.operators : [];
 
       ops.forEach((operator: any) => {
@@ -137,6 +143,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
         const y = Number(operator.efficiency);
         if (!Number.isFinite(y)) return;
         const operatorKey = this.getOperatorSeriesKey(operator);
+        operatorKeys.add(operatorKey);
         if (!operatorMap.has(operatorKey)) {
           const duplicateName = (seenOperatorNames.get(operator.name)?.size || 0) > 1;
           operatorMap.set(operatorKey, {
@@ -146,7 +153,25 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
             data: []
           });
         }
-        operatorMap.get(operatorKey)!.data.push({ x: hourLabel, y });
+      });
+    });
+
+    hourlyRows.forEach((hourData: any) => {
+      const ops = hourData.operators && Array.isArray(hourData.operators) ? hourData.operators : [];
+      const efficienciesByOperator = new Map<string, number>();
+
+      ops.forEach((operator: any) => {
+        if (!operator.name) return;
+        const y = Number(operator.efficiency);
+        if (!Number.isFinite(y)) return;
+        efficienciesByOperator.set(this.getOperatorSeriesKey(operator), y);
+      });
+
+      operatorKeys.forEach(operatorKey => {
+        operatorMap.get(operatorKey)!.data.push({
+          x: hourData.hourDate,
+          y: efficienciesByOperator.get(operatorKey) ?? Number.NaN
+        });
       });
     });
 
@@ -170,7 +195,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
 
     const values = series.flatMap(operatorSeries =>
       operatorSeries.data.map(point => point.y)
-    );
+    ).filter(Number.isFinite);
     const yMin = values.length
       ? Math.floor((Math.min(...values) - 5) / 10) * 10
       : 0;
@@ -180,10 +205,11 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       width: this.chartWidth || 600,
       height: this.chartHeight || 400,
       orientation: 'vertical',
-      xType: 'category',
+      xType: 'time',
       xLabel: 'Hour',
       yLabel: 'Efficiency (%)',
       yMin,
+      xTickFormat: (value: any) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       margin: {
         top: this.marginTop,
         right: this.marginRight,
