@@ -13,8 +13,13 @@ const config = require("../../modules/config");
 const { formatHumanName } = require("../../utils/humanNames");
 const {
   getSessionDataForPartialDays,
-  getOperatorSessionDataForPartialDays,
 } = require("../../utils/reportFunctions");
+const {
+  splitTimeRangeForHybridItems,
+  getItemsCachedDataForDays,
+  getItemsSessionDataForPartialDays,
+  combineItemsHybridData,
+} = require("../../utils/itemFunctions");
 const {
   splitTimeRangeForHybrid,
   computeMachineResults,
@@ -22,13 +27,6 @@ const {
   computeMachineResultsForPartialDays,
   combineMachineResults,
   computeOperatorResults,
-  getCachedOperatorResults,
-  computeOperatorResultsForPartialDays,
-  combineOperatorResults,
-  computeItemSummaries,
-  getCachedItemResults,
-  computeItemResultsForPartialDays,
-  combineItemResults,
   buildMachineStatusFromDailyTotals,
   buildMachineOEEFromDailyTotals,
   buildItemTotalsFromCache,
@@ -60,6 +58,10 @@ const {
   getPercentBreakpointColor,
   getOePercentBreakpointColor
 } = require("../../utils/percentBreakpoints");
+const {
+  buildOperatorSummaryFromDailyCache,
+  buildOperatorSummaryFromShiftCache,
+} = require("../../utils/operatorDashboardCache");
 
 async function resolveShiftIdString(req, db) {
   const raw = req.query.shiftId;
@@ -79,6 +81,26 @@ async function resolveShiftIdString(req, db) {
     throw err;
   }
   return String(oid);
+}
+
+async function resolveShift(req, db) {
+  const raw = req.query.shiftId;
+  if (!raw) return null;
+  let shiftOid;
+  try {
+    shiftOid = new ObjectId(String(raw));
+  } catch (e) {
+    const err = new Error("Invalid shiftId");
+    err.statusCode = 400;
+    throw err;
+  }
+  const shiftDoc = await db.collection(config.shiftCollectionName).findOne({ _id: shiftOid });
+  if (!shiftDoc) {
+    const err = new Error("Shift not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  return { shiftOid, shiftDoc };
 }
 
 function buildMachineGroupDailyFilter(dateStr, serial) {
@@ -143,6 +165,49 @@ function getMachineDepartment(record, departmentLookup) {
 
 function getDailyMachineMetric(record, topLevelKey, totalsKey) {
   return record[topLevelKey] ?? record.totals?.[totalsKey] ?? 0;
+}
+
+function buildDailySummaryItemRows(itemTotals) {
+  const normalizePPH = (std) => {
+    const n = Number(std) || 0;
+    return n > 0 && n < 60 ? n * 60 : n;
+  };
+
+  const resultsMap = new Map();
+  for (const itemTotal of itemTotals) {
+    const itemId = String(itemTotal.itemId);
+    if (!resultsMap.has(itemId)) {
+      resultsMap.set(itemId, {
+        itemId: itemTotal.itemId,
+        itemName: itemTotal.itemName || "Unknown",
+        standardRaw: itemTotal.itemStandard ?? 0,
+        count: 0,
+        workedSec: 0,
+      });
+    }
+
+    const acc = resultsMap.get(itemId);
+    acc.count += itemTotal.totalCounts || 0;
+    acc.workedSec += (itemTotal.workedTimeMs || 0) / 1000;
+  }
+
+  return Array.from(resultsMap.values()).map((entry) => {
+    const workedMs = Math.round(entry.workedSec * 1000);
+    const hours = workedMs / 3600000;
+    const pph = hours > 0 ? entry.count / hours : 0;
+    const stdPPH = normalizePPH(entry.standardRaw);
+    const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
+
+    return {
+      itemId: entry.itemId,
+      itemName: entry.itemName,
+      workedTimeFormatted: formatDuration(workedMs),
+      count: entry.count,
+      pph: Math.round(pph * 100) / 100,
+      standard: entry.standardRaw ?? 0,
+      efficiency: Math.round(efficiencyPct * 100) / 100,
+    };
+  });
 }
 
 module.exports = function (server) {
@@ -345,132 +410,34 @@ module.exports = function (server) {
     try {
       const started = Date.now();
       const { start, end } = parseAndValidateQueryParams(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
 
       if (req.query.shiftId) {
-        let shiftIdStr;
+        let resolvedShift;
         try {
-          shiftIdStr = await resolveShiftIdString(req, db);
+          resolvedShift = await resolveShift(req, db);
         } catch (e) {
           const code = e.statusCode || 400;
           return res.status(code).json({ error: e.message });
         }
-        const sessionData = await getOperatorSessionDataForPartialDays(
+        const result = await buildOperatorSummaryFromShiftCache(
           db,
-          [{ start, end }],
-          undefined,
-          { shiftId: shiftIdStr }
+          logger,
+          config,
+          { ...resolvedShift, start, end }
         );
-        const operatorResults = (sessionData.operators || []).map((bucket) => ({
-          operator: {
-            id: bucket.operatorId,
-            name: { first: bucket.operatorName, surname: "" },
-          },
-          currentStatus: { code: 0, name: "Unknown" },
-          metrics: {
-            runtime: {
-              total: bucket.runtimeMs,
-              formatted: formatDuration(bucket.runtimeMs),
-            },
-            performance: {
-              efficiency: { value: 0, percentage: "0.00" },
-            },
-          },
-          countByItem: {},
-        }));
         return res.json({
           timeRange: { start, end, total: formatDuration(Date.now() - started) },
-          operatorResults,
+          operatorResults: result.data,
         });
       }
 
-      const today = new Date();
-      const todayDateStr = today.toISOString().split("T")[0];
-      const startDateStr = exactStart.toISOString().split("T")[0];
-      const endDateStr = exactEnd.toISOString().split("T")[0];
-      const isToday = startDateStr === todayDateStr || endDateStr === todayDateStr;
-
-      const startOfDayStart = new Date(exactStart);
-      startOfDayStart.setHours(0, 0, 0, 0);
-      const endOfDayEnd = new Date(exactEnd);
-      endOfDayEnd.setHours(23, 59, 59, 999);
-      const isStartOfDay = exactStart.getTime() === startOfDayStart.getTime();
-      const isEndOfDay = exactEnd.getTime() >= endOfDayEnd.getTime();
-      const isSameDay = startDateStr === endDateStr;
-      const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
-
-      if (isPartialDay && !isToday) {
-        const operatorResults = await computeOperatorResults(db, start, end);
-        return res.json({
-          timeRange: { start, end, total: formatDuration(Date.now() - started) },
-          operatorResults,
-        });
-      }
-
-      const HYBRID_THRESHOLD_HOURS = 24;
-      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
-
-      let operatorResults = [];
-
-      if (useHybrid) {
-        const { completeDays, partialDays } = splitTimeRangeForHybrid(
-          exactStart,
-          exactEnd
-        );
-
-        const partialDaysToday = [];
-        const partialDaysNotToday = [];
-
-        for (const partialDay of partialDays) {
-          const partialDayDateStr = new Date(
-            partialDay.start
-          ).toISOString().split("T")[0];
-          if (partialDayDateStr === todayDateStr) {
-            partialDaysToday.push({
-              dateStr: partialDayDateStr,
-              start: new Date(partialDayDateStr + "T00:00:00.000Z"),
-              end: new Date(partialDayDateStr + "T23:59:59.999Z"),
-            });
-          } else {
-            partialDaysNotToday.push(partialDay);
-          }
-        }
-
-        const daysForCache = [...completeDays, ...partialDaysToday];
-
-        if (daysForCache.length > 0) {
-          const cacheResults = await getCachedOperatorResults(db, daysForCache, {
-            currentOnlyDate: todayDateStr,
-          });
-          operatorResults = cacheResults;
-        }
-
-        if (partialDaysNotToday.length > 0) {
-          const sessionResults = await computeOperatorResultsForPartialDays(
-            db,
-            partialDaysNotToday
-          );
-          operatorResults = combineOperatorResults(
-            operatorResults,
-            sessionResults
-          );
-        }
-      } else {
-        const startDate = exactStart.toISOString().split("T")[0];
-        const daysForCache = [
-          {
-            dateStr: startDate,
-            start: startOfDayStart,
-            end: endOfDayEnd,
-          },
-        ];
-
-        operatorResults = await getCachedOperatorResults(db, daysForCache, {
-          currentOnlyDate: isToday ? todayDateStr : null,
-        });
-      }
+      const result = await buildOperatorSummaryFromDailyCache(db, logger, config, {
+        start,
+        end,
+      });
+      const operatorResults = result.found
+        ? result.data
+        : await computeOperatorResults(db, start, end);
 
       res.json({
         timeRange: { start, end, total: formatDuration(Date.now() - started) },
@@ -494,39 +461,6 @@ module.exports = function (server) {
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
-      if (req.query.shiftId) {
-        let shiftIdStr;
-        try {
-          shiftIdStr = await resolveShiftIdString(req, db);
-        } catch (e) {
-          const code = e.statusCode || 400;
-          return res.status(code).json({ error: e.message });
-        }
-        const sessionData = await getSessionDataForPartialDays(
-          db,
-          [{ start, end }],
-          serial ? parseInt(serial, 10) : undefined,
-          { shiftId: shiftIdStr }
-        );
-        const byName = new Map();
-        for (const mi of sessionData.machineItems || []) {
-          const name = mi.itemName || "Unknown";
-          byName.set(name, (byName.get(name) || 0) + (mi.totalCounts || 0));
-        }
-        const items = Array.from(byName.entries()).map(([itemName, count]) => ({
-          itemName,
-          count,
-          pph: 0,
-          standard: 0,
-          efficiency: 0,
-          workedTimeFormatted: formatDuration(0),
-        }));
-        return res.json({
-          timeRange: { start, end, total: formatDuration(Date.now() - started) },
-          items,
-        });
-      }
-
       const today = new Date();
       const todayDateStr = today.toISOString().split("T")[0];
       const startDateStr = exactStart.toISOString().split("T")[0];
@@ -543,12 +477,12 @@ module.exports = function (server) {
       const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
 
       if (isPartialDay && !isToday) {
-        const items = await computeItemSummaries(
+        const sessionData = await getItemsSessionDataForPartialDays(
+          [{ start: exactStart, end: exactEnd }],
           db,
-          start,
-          end,
-          serial ? parseInt(serial) : undefined
+          logger
         );
+        const items = buildDailySummaryItemRows(sessionData);
         return res.json({
           timeRange: { start, end, total: formatDuration(Date.now() - started) },
           items,
@@ -562,7 +496,7 @@ module.exports = function (server) {
       let items = [];
 
       if (useHybrid) {
-        const { completeDays, partialDays } = splitTimeRangeForHybrid(
+        const { completeDays, partialDays } = splitTimeRangeForHybridItems(
           exactStart,
           exactEnd
         );
@@ -588,21 +522,16 @@ module.exports = function (server) {
         const daysForCache = [...completeDays, ...partialDaysToday];
 
         if (daysForCache.length > 0) {
-          const cacheResults = await getCachedItemResults(
-            db,
-            daysForCache,
-            serial ? parseInt(serial) : undefined
-          );
-          items = cacheResults;
+          items = await getItemsCachedDataForDays(daysForCache, db);
         }
 
         if (partialDaysNotToday.length > 0) {
-          const sessionResults = await computeItemResultsForPartialDays(
-            db,
+          const sessionResults = await getItemsSessionDataForPartialDays(
             partialDaysNotToday,
-            serial ? parseInt(serial) : undefined
+            db,
+            logger
           );
-          items = combineItemResults(items, sessionResults);
+          items = combineItemsHybridData(items, sessionResults, logger);
         }
       } else {
         const startDate = exactStart.toISOString().split("T")[0];
@@ -614,16 +543,20 @@ module.exports = function (server) {
           },
         ];
 
-        items = await getCachedItemResults(
-          db,
-          daysForCache,
-          serial ? parseInt(serial) : undefined
-        );
+        items = await getItemsCachedDataForDays(daysForCache, db);
+      }
+
+      if (serial) {
+        const targetSerial = parseInt(serial, 10);
+        items = items.filter((item) => {
+          const machineSerial = item.machineSerial ?? item.machine?.serial ?? item.machine?.id;
+          return machineSerial == null || Number(machineSerial) === targetSerial;
+        });
       }
 
       res.json({
         timeRange: { start, end, total: formatDuration(Date.now() - started) },
-        items,
+        items: buildDailySummaryItemRows(items),
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
