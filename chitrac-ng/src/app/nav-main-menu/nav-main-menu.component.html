@@ -4,7 +4,7 @@
     [opened]="shownMenu != ''" (closedStart)="closeMenu()" (click)="$event.stopPropagation()">
     <mat-toolbar style="background-color: var(--theme-color-primary); color:white">
       <span>
-        <button *ngIf="(isHandset$ | async) == true" (click)="toggleMenu()" mat-icon-button>
+        <button *ngIf="(isHandset$ | async) == true" (click)="toggleMenu()" mat-icon-button aria-label="Back to menu">
           <mat-icon>chevron_left</mat-icon>
         </button>
         <span>Main Menu</span>
@@ -58,10 +58,6 @@
         <mat-icon style="margin-right: 0.5em;">compare</mat-icon><span>Comparison</span>
       </a>
 
-      <!-- ➕ Efficiency Screens top link -->
-      <!--<a mat-list-item routerLink="/ng/efficiency-screens" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Efficiency Screens</span>
-      </a>-->
     </mat-nav-list>
 
     <!-- Efficiency Screens Submenu -->
@@ -164,23 +160,11 @@
       <a mat-list-item *ngIf="user?.username === 'root'" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
         <mat-icon>build_circle</mat-icon><span>Utilities</span>
       </a>
-      <a mat-list-item *ngIf="false" routerLink="/ng/settings/items" (click)="closeMenu()">
-        <mat-icon>dry_cleaning</mat-icon><span>Items</span>
-      </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/shifts" (click)="closeMenu()">
         <mat-icon>punch_clock</mat-icon><span>Shifts</span>
       </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/maintenance-shifts" (click)="closeMenu()">
         <mat-icon>engineering</mat-icon><span>Maintenance Shifts</span>
-      </a>
-      <a mat-list-item *ngIf="false" href="#">
-        <mat-icon>storefront</mat-icon><span>Accounts</span>
-      </a>
-      <a mat-list-item *ngIf="false" href="#">
-        <mat-icon>my_location</mat-icon><span>Locations / Lines</span>
-      </a>
-      <a mat-list-item *ngIf="false" href="#">
-        <mat-icon>notifications_active</mat-icon><span>Faults / Statuses</span>
       </a>
     </mat-nav-list>
   </mat-sidenav>
@@ -189,7 +173,7 @@
     <mat-toolbar>
       <!-- Left: menu toggle and title -->
       <div class="menu-button" [ngClass]="{'menu-shown' : shownMenu != ''}" style="height: 100%; width:64px;">
-        <button style="margin: 12px;" (click)="toggleMenu(); $event.stopPropagation()" mat-icon-button>
+        <button style="margin: 12px;" (click)="toggleMenu(); $event.stopPropagation()" mat-icon-button [attr.aria-label]="shownMenu == '' ? 'Open main menu' : 'Close main menu'">
           <mat-icon *ngIf="shownMenu == ''">apps</mat-icon>
           <mat-icon *ngIf="shownMenu != ''">chevron_left</mat-icon>
         </button>
@@ -203,7 +187,7 @@
 
       <!-- Right: calendar + dark mode controls + login -->
       <span class="toolbar-actions">
-        <button #dateMenuTrigger="matMenuTrigger" mat-icon-button class="calendar-btn" [matMenuTriggerFor]="dateMenu"
+        <button #dateMenuTrigger="matMenuTrigger" mat-icon-button class="calendar-btn" aria-label="Open date range picker" [matMenuTriggerFor]="dateMenu"
           (menuOpened)="closeMenu()">
           <mat-icon class="calendar-icon">calendar_today</mat-icon>
         </button>
@@ -216,17 +200,17 @@
         </mat-menu>
 
         <mat-icon class="light-icon">light_mode</mat-icon>
-        <mat-slide-toggle class="dark-toggle" (click)="darkModeToggle()" [checked]="isDarkMode"></mat-slide-toggle>
+        <mat-slide-toggle class="dark-toggle" aria-label="Toggle dark mode" (change)="darkModeToggle()" [checked]="isDarkMode"></mat-slide-toggle>
         <mat-icon class="dark-icon">dark_mode</mat-icon>
 
 
         <!-- Login Icon and Popup -->
-        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn" [matMenuTriggerFor]="loginMenu"
+        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn" aria-label="Open login menu" [matMenuTriggerFor]="loginMenu"
           *ngIf="!user?.username" (menuOpened)="closeMenu()">
           <mat-icon>login</mat-icon>
         </button>
 
-        <button mat-icon-button class="logout-btn" *ngIf="user?.username" (click)="logout()">
+        <button mat-icon-button class="logout-btn" aria-label="Log out" *ngIf="user?.username" (click)="logout()">
           <mat-icon>logout</mat-icon>
         </button>
 

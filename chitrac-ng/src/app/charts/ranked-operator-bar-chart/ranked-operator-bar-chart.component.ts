@@ -30,6 +30,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
+  @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -80,6 +81,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.endTime = this.formatDateForInput(now);
 
     this.enterDummy();
+    if (this.useExternalTitle) return;
 
     // Consolidated initial fetch logic - only one fetch call
     this.performInitialFetch(isLive, wasConfirmed);
@@ -231,7 +233,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     }];
 
     return {
-      title: 'Top Operators by Efficiency',
+      title: this.useExternalTitle ? '' : 'Top Operators by Efficiency',
       showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
@@ -242,7 +244,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         return data.find(d => String(d.id) === key)?.label ?? key;
       },
       margin: {
-        top: Math.max(this.marginTop || 50, 60),
+        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, 120)

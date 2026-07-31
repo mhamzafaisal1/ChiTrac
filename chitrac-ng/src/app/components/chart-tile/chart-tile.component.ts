@@ -15,4 +15,6 @@ export class ChartTileComponent {
   @Input() icon?: string; // optional Material icon name
   @Input() chartWidth: number = 600;
   @Input() chartHeight: number = 400;
+  @Input() subtitle?: string | null;
+  @Input() updatedAt?: string | null;
 }

@@ -94,6 +94,8 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
         }
         return value;
       };
+    } else if (this.disableSorting) {
+      this.dataSource.sort = null;
     }
   }
 
@@ -149,6 +151,21 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
 
   hasTooltipForCell(row: any, column: string): boolean {
     return !!this.getTooltipForCell(row, column);
+  }
+
+  getStatusAriaLabel(status: string): string {
+    switch (status) {
+      case 'Running Dot':
+        return 'Machine running';
+      case 'Paused Dot':
+        return 'Machine paused';
+      case 'Faulted Dot':
+        return 'Machine faulted';
+      case 'Offline Dot':
+        return 'Machine offline';
+      default:
+        return 'Machine status';
+    }
   }
 
   trackByIndex(index: number): number {

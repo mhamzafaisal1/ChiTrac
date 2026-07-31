@@ -1,10 +1,11 @@
-import { Component, OnInit, Renderer2 } from '@angular/core';
+import { Component, OnDestroy, OnInit, Renderer2 } from '@angular/core';
 import { NavMainMenuComponent } from './nav-main-menu/nav-main-menu.component';
 import { RouterOutlet } from '@angular/router';
 import { SettingsService } from './services/settings.service';
 import { ErrorQueueService } from './services/error-queue.service';
 import { UserService } from './user.service';
 import { WebsocketService } from './services/websocket.service';
+import { Subject, filter, take, takeUntil } from 'rxjs';
 
 @Component({
     selector: 'ct-root',
@@ -12,12 +13,13 @@ import { WebsocketService } from './services/websocket.service';
     templateUrl: './app.component.html',
     styleUrl: './app.component.scss'
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   title = 'chitrac-ng';
 
   /*@HostBinding('class')*/
   currentTheme: 'light-theme' | 'dark-theme' = 'light-theme';
   isDarkMode: boolean = false;
+  private readonly destroy$ = new Subject<void>();
 
   constructor(
     private renderer: Renderer2,
@@ -35,7 +37,7 @@ export class AppComponent implements OnInit {
     this.loadSettings();
     
     // Watch for user login/logout and load theme accordingly
-    this.userService.user.subscribe(user => {
+    this.userService.user.pipe(takeUntil(this.destroy$)).subscribe(user => {
       if (user && user.username) {
         // User is logged in, load their theme preference
         this.loadTheme();
@@ -47,14 +49,17 @@ export class AppComponent implements OnInit {
     });
   }
 
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
   /**
    * Load application settings from server
    */
   private loadSettings(): void {
     this.settingsService.loadSettings().subscribe({
       next: (settings) => {
-        console.log('[AppComponent] Settings loaded:', settings);
-        
         // Configure error modal behavior
         this.errorQueueService.setShowErrorModals(settings.showErrorModals);
       },
@@ -72,16 +77,16 @@ export class AppComponent implements OnInit {
   private loadDefaultTheme(): void {
     const settings = this.settingsService.getSettings();
     if (settings && settings.defaultTheme) {
-      console.log('[AppComponent] Using default theme:', settings.defaultTheme);
       this.applyTheme(settings.defaultTheme);
     } else {
       // If settings haven't loaded yet, wait for them
-      this.settingsService.settings$.subscribe(s => {
-        if (s && s.defaultTheme) {
-          console.log('[AppComponent] Using default theme:', s.defaultTheme);
-          this.applyTheme(s.defaultTheme);
-        }
-      });
+      this.settingsService.settings$
+        .pipe(
+          filter((s): s is NonNullable<typeof s> => !!s && !!s.defaultTheme),
+          take(1),
+          takeUntil(this.destroy$)
+        )
+        .subscribe(s => this.applyTheme(s.defaultTheme));
     }
   }
 
@@ -91,7 +96,6 @@ export class AppComponent implements OnInit {
   private loadTheme(): void {
     this.settingsService.getUserTheme().subscribe({
       next: (response) => {
-        console.log('[AppComponent] User theme loaded:', response);
         this.applyTheme(response.theme);
       },
       error: (err) => {
@@ -119,7 +123,7 @@ export class AppComponent implements OnInit {
     const user = this.userService.getToken();
     if (user) {
       this.settingsService.saveUserTheme(newTheme).subscribe({
-        next: () => console.log('[AppComponent] Theme preference saved'),
+        next: () => {},
         error: (err) => {
           console.error('[AppComponent] Failed to save theme preference', err);
           if (err?.status === 401) {
@@ -127,8 +131,6 @@ export class AppComponent implements OnInit {
           }
         }
       });
-    } else {
-      console.log('[AppComponent] Theme changed locally (not saved - user not logged in)');
     }
   }
 

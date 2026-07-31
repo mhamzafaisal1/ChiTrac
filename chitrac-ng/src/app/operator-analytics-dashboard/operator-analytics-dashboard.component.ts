@@ -72,6 +72,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
   private websocketStatus: WebsocketConnectionStatus = 'disconnected';
+  private readonly handleResize = this.updateChartDimensions.bind(this);
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
 
   // Chart dimensions
@@ -105,7 +106,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.updateChartDimensions();
-    window.addEventListener("resize", this.updateChartDimensions.bind(this));
+    window.addEventListener("resize", this.handleResize);
 
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
@@ -210,7 +211,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
-    window.removeEventListener("resize", this.updateChartDimensions.bind(this));
+    window.removeEventListener("resize", this.handleResize);
   }
 
   detectTheme(): void {

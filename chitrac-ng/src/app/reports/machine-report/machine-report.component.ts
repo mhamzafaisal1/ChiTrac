@@ -6,6 +6,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -13,6 +15,7 @@ import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { displayInteger } from '../../shared/utils/display-number';
+import { MachineReportEmailModalComponent } from './machine-report-email-modal.component';
 
 interface MachineReportGroup {
   key: string;
@@ -30,6 +33,8 @@ interface MachineReportGroup {
         MatButtonModule,
         MatIconModule,
         MatTooltipModule,
+        MatDialogModule,
+        MatSnackBarModule,
         DateTimePickerComponent
     ],
     templateUrl: './machine-report.component.html',
@@ -73,7 +78,9 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     private reportsService: ReportsService,
     private renderer: Renderer2,
     private elRef: ElementRef,
-    private percentBreakpointService: PercentBreakpointService
+    private percentBreakpointService: PercentBreakpointService,
+    private dialog: MatDialog,
+    private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
@@ -291,16 +298,14 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     if (!this.startTime || !this.endTime) return;
 
     this.isDownloading = true;
-    console.log('Starting PDF export...');
 
     try {
       const doc = this.buildMachineReportPdf();
 
-      console.log('Saving PDF...');
       doc.save(`machine_report_${this.startTime}_${this.endTime}.pdf`);
-      console.log('PDF export completed successfully');
     } catch (e) {
       console.error('PDF export failed:', e);
+      this.showMessage('Failed to download machine report PDF.');
     } finally {
       this.isDownloading = false;
     }
@@ -309,9 +314,23 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   openEmailReportDialog(): void {
     if (!this.rows.length || !this.startTime || !this.endTime) return;
 
-    const to = window.prompt('Enter recipient email address:');
-    if (!to) return;
+    const dialogRef = this.dialog.open(MachineReportEmailModalComponent, {
+      width: '420px',
+      maxWidth: '92vw',
+      data: {
+        startTime: this.startTime,
+        endTime: this.endTime,
+        summaryOnly: this.showSummaryOnly
+      }
+    });
 
+    dialogRef.afterClosed().subscribe((to) => {
+      if (!to) return;
+      this.emailMachineReport(to);
+    });
+  }
+
+  private emailMachineReport(to: string): void {
     this.isEmailing = true;
 
     try {
@@ -320,25 +339,25 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       const pdfBase64 = dataUri.split(',')[1] ?? '';
 
       this.reportsService.emailMachineReport({
-        to: to.trim(),
+        to,
         pdfBase64,
         start: new Date(this.startTime).toISOString(),
         end: new Date(this.endTime).toISOString(),
         summaryOnly: this.showSummaryOnly
       }).subscribe({
         next: () => {
-          window.alert('Machine report email sent successfully.');
+          this.showMessage('Machine report email sent successfully.');
           this.isEmailing = false;
         },
         error: (error) => {
           console.error('Error emailing machine report:', error);
-          window.alert('Failed to send machine report email.');
+          this.showMessage('Failed to send machine report email.');
           this.isEmailing = false;
         }
       });
     } catch (error) {
       console.error('Failed to generate PDF for email:', error);
-      window.alert('Failed to prepare machine report email.');
+      this.showMessage('Failed to prepare machine report email.');
       this.isEmailing = false;
     }
   }
@@ -420,7 +439,6 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       row['Efficiency'],
     ]);
 
-    console.log(`Adding table with ${body.length} rows`);
     autoTable(doc, {
       head,
       body,
@@ -433,5 +451,9 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     });
 
     return doc;
+  }
+
+  private showMessage(message: string): void {
+    this.snackBar.open(message, 'Dismiss', { duration: 4500 });
   }
 }

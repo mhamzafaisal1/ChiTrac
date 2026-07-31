@@ -93,6 +93,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
   private websocketStatus: WebsocketConnectionStatus = "disconnected";
+  private readonly handleResize = this.updateChartDimensions.bind(this);
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -130,7 +131,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const wasConfirmed = this.dateTimeService.getConfirmed();
 
     this.updateChartDimensions();
-    window.addEventListener("resize", this.updateChartDimensions.bind(this));
+    window.addEventListener("resize", this.handleResize);
 
     // Prime from the websocket cache when it is already available, otherwise
     // keep the existing placeholder while the REST fallback catches up.
@@ -226,7 +227,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.stopPolling();
     this.destroy$.next();
     this.destroy$.complete();
-    window.removeEventListener("resize", this.updateChartDimensions.bind(this));
+    window.removeEventListener("resize", this.handleResize);
   }
 
   detectTheme(): void {

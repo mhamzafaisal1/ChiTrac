@@ -28,6 +28,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
   @Input() preloadedData?: any | null;
+  @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -89,6 +90,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     this.endTime = this.formatDateForInput(now);
 
     this.enterDummy();
+    if (this.useExternalTitle) return;
 
     this.performInitialFetch(isLive, wasConfirmed);
 
@@ -178,7 +180,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
-      let items: Array<{ itemName: string; totalCount: number }> = [];
+      let items: Array<{ itemName: string; totalCount: number; machineGroups?: string[] }> = [];
 
       if (res && res.itemTotals && res.itemTotals.items && Array.isArray(res.itemTotals.items)) {
         items = res.itemTotals.items;
@@ -194,7 +196,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       this.cdr.markForCheck();
     };
 
-  private formatChartData(data: Array<{ itemName: string; totalCount: number }>): CartesianChartConfig {
+  private formatChartData(data: Array<{ itemName: string; totalCount: number; machineGroups?: string[] }>): CartesianChartConfig {
     const maxTotal = Math.max(0, ...data.map(item => Number(item.totalCount) || 0));
     const scaleMax = d3.scaleLinear().domain([0, maxTotal]).nice().domain()[1] ?? 0;
     const shouldAbbreviateXAxis = scaleMax > 10000;
@@ -208,7 +210,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     }));
 
     return {
-      title: 'Item Totals by Type',
+      title: this.useExternalTitle ? '' : 'Item Totals by Type',
       showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
@@ -218,7 +220,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
         ? (v: any) => this.formatCountTickAsThousands(v)
         : (v: any) => this.formatCountTick(v),
       margin: {
-        top: Math.max(this.marginTop || 50, 60),
+        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft ?? 0, 150) 
@@ -227,13 +229,30 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       tooltip: {
         show: true,
         delayMs: 750,
-        formatter: ({ xLabel, value }) => [
-          `Item Type: ${xLabel}`,
-          `Total Count: ${this.formatCount(value)}`
-        ]
+        formatter: ({ xLabel, value }) => this.formatTooltip(data, xLabel, value)
       },
       series: series
     };
+  }
+
+  private formatTooltip(data: Array<{ itemName: string; totalCount: number; machineGroups?: string[] }>, xLabel: string, value: number): string[] {
+    const row = data.find(item => item.itemName === xLabel);
+    const machineGroups = this.getMachineGroups(row);
+    const lines = [
+      `Item Type: ${xLabel}`,
+      `Total Count: ${this.formatCount(value)}`
+    ];
+    if (machineGroups.length) {
+      lines.push(`Machine Groups: ${machineGroups.join(', ')}`);
+    }
+    return lines;
+  }
+
+  private getMachineGroups(row: any): string[] {
+    const raw = row?.machineGroups ?? row?.machineGroupNames ?? row?.departments ?? row?.machineDepartments;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map(value => String(value)).filter(Boolean);
+    return [String(raw)].filter(Boolean);
   }
 
   private formatCountTick(v: any): string {
