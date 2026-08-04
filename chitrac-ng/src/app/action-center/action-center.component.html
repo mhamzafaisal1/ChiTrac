@@ -1,0 +1,81 @@
+<div class="action-center">
+  <header class="page-header">
+    <div>
+      <h1>Action Center</h1>
+      <p>Live operational signals, bottlenecks, and issues that need attention.</p>
+    </div>
+    <button mat-stroked-button type="button" (click)="refresh()">
+      <mat-icon>refresh</mat-icon>
+      Refresh
+    </button>
+  </header>
+
+  <section class="insight-grid">
+    <article class="insight-card" *ngFor="let card of insightCards" [ngClass]="card.tone">
+      <mat-icon>{{ card.icon }}</mat-icon>
+      <div>
+        <span>{{ card.label }}</span>
+        <strong>{{ card.value }}</strong>
+        <small>{{ card.detail }}</small>
+      </div>
+    </article>
+  </section>
+
+  <section class="content-grid">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Active Issues</h2>
+          <p>{{ updatedAt ? ('Cache updated ' + (updatedAt | date:'shortTime')) : 'Waiting for live cache' }}</p>
+        </div>
+        <span class="status-pill" [ngClass]="websocketStatus">{{ websocketStatus | titlecase }}</span>
+      </div>
+
+      <div class="alert-list" *ngIf="alerts.length; else noAlerts">
+        <div class="alert-row" *ngFor="let alert of alerts" [ngClass]="alert.severity">
+          <mat-icon>{{ alert.icon }}</mat-icon>
+          <div>
+            <strong>{{ alert.title }}</strong>
+            <span>{{ alert.detail }}</span>
+            <small>{{ alert.meta }}</small>
+          </div>
+        </div>
+      </div>
+
+      <ng-template #noAlerts>
+        <div class="empty-state">
+          <mat-icon>check_circle</mat-icon>
+          <strong>No active issues detected</strong>
+          <span>Live cache does not show faulted/offline machines right now.</span>
+        </div>
+      </ng-template>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Top Fault Losses</h2>
+          <p>Ranked by downtime today</p>
+        </div>
+      </div>
+
+      <div class="fault-list" *ngIf="topFaults.length; else noFaults">
+        <div class="fault-row" *ngFor="let fault of topFaults">
+          <div>
+            <strong>{{ fault.name || 'Fault' }}</strong>
+            <span>{{ fault.count || 0 }} occurrences</span>
+          </div>
+          <b>{{ formatDuration(fault.totalDurationSeconds) }}</b>
+        </div>
+      </div>
+
+      <ng-template #noFaults>
+        <div class="empty-state">
+          <mat-icon>query_stats</mat-icon>
+          <strong>No fault summary available</strong>
+          <span>Fault data will appear here once today has recorded events.</span>
+        </div>
+      </ng-template>
+    </article>
+  </section>
+</div>

@@ -52,6 +52,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   machineData: any[] = [];
   columns: string[] = [];
   rows: any[] = [];
+  summaryCards: Array<{ label: string; value: string | number; icon: string; tone: string }> = [];
   columnTooltips: { [column: string]: string } = {
     Runtime: "Amount of time machine has been running",
     Downtime: "Amount of time machine has been paused, faulted, or offline.",
@@ -412,6 +413,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     );
 
     this.machineData = validResponses;
+    this.updateSummaryCards(validResponses);
 
     if (validResponses.length === 0) {
       this.rows = [];
@@ -445,6 +447,56 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     this.columns = Object.keys(formattedData[0]).filter((col) => col !== "");
     this.rows = formattedData;
+  }
+
+  private updateSummaryCards(responses: any[]): void {
+    const totalMachines = responses.length;
+    const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Running Dot").length;
+    const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Faulted Dot").length;
+    const offline = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Offline Dot").length;
+    const totalCount = responses.reduce((sum, r) => {
+      const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
+      return sum + Number(value || 0);
+    }, 0);
+    const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage ?? r.performance?.oee?.percentage));
+    const elapsedHours = this.getElapsedHours();
+    const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
+    const projectedCount = this.getProjectedCount(totalCount, elapsedHours);
+
+    this.summaryCards = [
+      { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
+      { label: "Running", value: running, icon: "play_circle", tone: "good" },
+      { label: "Faulted", value: faulted, icon: "warning", tone: faulted > 0 ? "bad" : "neutral" },
+      { label: "Offline", value: offline, icon: "cloud_off", tone: offline > 0 ? "warn" : "neutral" },
+      { label: "Total Count", value: totalCount.toLocaleString(), icon: "tag", tone: "neutral" },
+      { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
+      { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
+      { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
+    ];
+  }
+
+  private averagePercent(values: any[]): number {
+    const numbers = values.map(Number).filter((v) => Number.isFinite(v));
+    if (!numbers.length) return 0;
+    return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
+  }
+
+  private getElapsedHours(): number {
+    const start = new Date(this.startTime).getTime();
+    const end = new Date(this.endTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+    return (end - start) / 36e5;
+  }
+
+  private getProjectedCount(totalCount: number, elapsedHours: number): number {
+    if (elapsedHours <= 0) return totalCount;
+    const start = new Date(this.startTime);
+    const end = new Date(this.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return totalCount;
+    const projectionEnd = new Date(end);
+    projectionEnd.setHours(23, 59, 59, 999);
+    const totalWindowHours = Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
+    return Math.round((totalCount / elapsedHours) * totalWindowHours);
   }
 
   /**
@@ -777,6 +829,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.machineData = validResponses;
+    this.updateSummaryCards(validResponses);
     const formattedData = validResponses.map((response) => {
       const totalCount = response.metrics?.output?.totalCount ??
         response.itemSummary?.machineSummary?.totalCount ?? 0;
@@ -809,6 +862,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private addDummyLoadingRow(): void {
+    this.summaryCards = [];
     // Add a dummy row with loading state
     this.rows = [
       {

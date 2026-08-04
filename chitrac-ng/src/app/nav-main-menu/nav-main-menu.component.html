@@ -42,6 +42,15 @@
       <a mat-list-item routerLink="/ng/daily-analytics-split" (click)="closeMenu()">
         <mat-icon style="margin-right: 0.5em;">slow_motion_video</mat-icon><span>Daily</span>
       </a>
+      <a mat-list-item routerLink="/ng/action-center" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">crisis_alert</mat-icon><span>Action Center</span>
+      </a>
+      <a mat-list-item routerLink="/ng/downtime-pareto" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">waterfall_chart</mat-icon><span>Downtime Pareto</span>
+      </a>
+      <a mat-list-item routerLink="/ng/shift-handoff" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">assignment</mat-icon><span>Shift Handoff</span>
+      </a>
       <a mat-list-item routerLink="/ng/analytics/machine-dashboard" (click)="closeMenu()">
         <mat-icon style="margin-right: 0.5em;">local_laundry_service</mat-icon><span>Machine</span>
       </a>
@@ -91,9 +100,6 @@
       </a>
       <a mat-list-item routerLink="/ng/blanket-blasters-efficiency-screen" (click)="closeMenu()">
         <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Blanket Blasters Efficiency</span>
-      </a>
-      <a mat-list-item routerLink="/ng/eight-station-demo" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>8 Station Demo</span>
       </a>
     </mat-nav-list>
 
@@ -187,6 +193,15 @@
 
       <!-- Right: calendar + dark mode controls + login -->
       <span class="toolbar-actions">
+        <span
+          [class]="getLiveChipClass()"
+          [matTooltip]="getLiveChipTooltip()"
+          matTooltipShowDelay="500">
+          <mat-icon>{{ getLiveChipIcon() }}</mat-icon>
+          <span>{{ getLiveChipLabel() }}</span>
+          <small *ngIf="dashboardUpdatedAt">{{ dashboardUpdatedAt | date:'shortTime' }}</small>
+        </span>
+
         <button #dateMenuTrigger="matMenuTrigger" mat-icon-button class="calendar-btn" aria-label="Open date range picker" [matMenuTriggerFor]="dateMenu"
           (menuOpened)="closeMenu()">
           <mat-icon class="calendar-icon">calendar_today</mat-icon>

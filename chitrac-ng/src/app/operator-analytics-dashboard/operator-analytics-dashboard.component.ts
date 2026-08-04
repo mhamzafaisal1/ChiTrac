@@ -52,6 +52,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   operatorId?: number;
   columns: string[] = [];
   rows: any[] = [];
+  summaryCards: Array<{ label: string; value: string | number; icon: string; tone: string }> = [];
   columnTooltips: { [column: string]: string } = {
     Runtime: 'Amount of time operator has been running across all machines',
     Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
@@ -284,6 +285,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   private updateDashboardData(data: any): void {
     const responses = Array.isArray(data) ? data : [data];
     this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
+    this.updateSummaryCards(this.operatorData);
 
     if (this.operatorData.length === 0) {
       this.rows = [];
@@ -313,6 +315,30 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const columnsToHide = ['Operator ID', 'Time Range'];
     this.columns = allColumns.filter(col => !columnsToHide.includes(col));
     this.cdr.markForCheck();
+  }
+
+  private updateSummaryCards(responses: any[]): void {
+    const totalOperators = responses.length;
+    const active = responses.filter((r) => !!r.currentMachine?.name).length;
+    const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Running Dot').length;
+    const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Faulted Dot').length;
+    const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
+    const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
+
+    this.summaryCards = [
+      { label: 'Operators', value: totalOperators, icon: 'groups', tone: 'neutral' },
+      { label: 'Assigned', value: active, icon: 'assignment_ind', tone: 'neutral' },
+      { label: 'Running', value: running, icon: 'play_circle', tone: 'good' },
+      { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
+      { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
+      { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
+    ];
+  }
+
+  private averagePercent(values: any[]): number {
+    const numbers = values.map(Number).filter((value) => Number.isFinite(value));
+    if (!numbers.length) return 0;
+    return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
   }
 
   async fetchAnalyticsData(): Promise<void> {
@@ -706,6 +732,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private addDummyLoadingRow(): void {
+    this.summaryCards = [];
     // Add a dummy row with loading state
     this.rows = [
       {

@@ -10,16 +10,30 @@ import {
   AfterViewInit,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatButtonModule } from '@angular/material/button';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 @Component({
   selector: 'base-table',
   standalone: true,
-  imports: [CommonModule, MatTableModule, MatSortModule, MatIconModule, MatTooltipModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatTableModule,
+    MatSortModule,
+    MatIconModule,
+    MatTooltipModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatButtonModule
+  ],
   templateUrl: './base-table.component.html',
   styleUrls: ['./base-table.component.scss'],
 })
@@ -32,12 +46,15 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   @Input() responsiveHiddenColumns: { [breakpoint: number]: string[] } = {};
   @Input() columnTooltips: { [column: string]: string } = {};
   @Input() getCellTooltip: ((row: any, column: string) => string) | null = null;
+  @Input() enableToolbar: boolean = true;
+  @Input() exportFileName: string = 'chitrac-table-export.csv';
 
   @Output() rowClicked = new EventEmitter<any>();
 
   @ViewChild(MatSort) sort!: MatSort;
   dataSource = new MatTableDataSource<any>();
   visibleColumns: string[] = [];
+  searchTerm = '';
 
   private readonly handleResize = this.updateVisibleColumns.bind(this);
 
@@ -64,7 +81,16 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   }
 
   private updateData() {
-    this.dataSource.data = this.rows;
+    this.dataSource.data = this.rows || [];
+    this.dataSource.filterPredicate = (row: any, filter: string) => {
+      if (row?.isDummy) return true;
+      const haystack = this.columns
+        .map((column) => this.getCellExportValue(row[column]))
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(filter);
+    };
+    this.applyFilter();
   }
 
   private setupSorting() {
@@ -99,6 +125,44 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
     }
   }
 
+  applyFilter(): void {
+    this.dataSource.filter = this.searchTerm.trim().toLowerCase();
+  }
+
+  clearFilter(): void {
+    this.searchTerm = '';
+    this.applyFilter();
+  }
+
+  exportCsv(): void {
+    const rowsToExport = this.dataSource.filteredData.filter((row) => !row?.isDummy);
+    if (!rowsToExport.length) return;
+
+    const header = this.visibleColumns.map((column) => this.escapeCsvValue(column)).join(',');
+    const body = rowsToExport
+      .map((row) =>
+        this.visibleColumns
+          .map((column) => this.escapeCsvValue(this.getCellExportValue(row[column])))
+          .join(',')
+      )
+      .join('\r\n');
+
+    const blob = new Blob([`${header}\r\n${body}`], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = this.exportFileName;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  getFilteredRowCount(): number {
+    return this.dataSource.filteredData.filter((row) => !row?.isDummy).length;
+  }
+
+  getRealRowCount(): number {
+    return (this.rows || []).filter((row) => !row?.isDummy).length;
+  }
+
   private updateVisibleColumns(): void {
     const screenWidth = window.innerWidth;
     const hidden = new Set<string>();
@@ -114,6 +178,7 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   }
 
   onRowClick(row: any) {
+    if (row?.isDummy) return;
     if (this.selectedRow !== row) {
       this.rowClicked.emit(row);
     } else {
@@ -170,5 +235,16 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
 
   trackByIndex(index: number): number {
     return index;
+  }
+
+  private getCellExportValue(value: any): string {
+    if (typeof value !== 'string') return value == null ? '' : String(value);
+    return value.replace(/<[^>]*>/g, '').trim();
+  }
+
+  private escapeCsvValue(value: any): string {
+    const text = this.getCellExportValue(value);
+    if (!/[",\r\n]/.test(text)) return text;
+    return `"${text.replace(/"/g, '""')}"`;
   }
 }

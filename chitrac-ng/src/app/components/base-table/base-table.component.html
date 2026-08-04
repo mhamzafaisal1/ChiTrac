@@ -1,3 +1,32 @@
+<div class="table-toolbar" *ngIf="enableToolbar && getRealRowCount() > 0">
+  <mat-form-field appearance="outline" class="table-search">
+    <mat-label>Search table</mat-label>
+    <mat-icon matPrefix>search</mat-icon>
+    <input matInput [(ngModel)]="searchTerm" (ngModelChange)="applyFilter()" />
+    <button
+      *ngIf="searchTerm"
+      mat-icon-button
+      matSuffix
+      type="button"
+      aria-label="Clear search"
+      (click)="clearFilter()">
+      <mat-icon>close</mat-icon>
+    </button>
+  </mat-form-field>
+
+  <span class="row-count">{{ getFilteredRowCount() }} / {{ getRealRowCount() }} rows</span>
+
+  <button
+    mat-stroked-button
+    type="button"
+    class="export-button"
+    [disabled]="getFilteredRowCount() === 0"
+    (click)="exportCsv()">
+    <mat-icon>download</mat-icon>
+    Export CSV
+  </button>
+</div>
+
 <table mat-table [dataSource]="dataSource" matSort [matSortDisableClear]="true" [matSortDisabled]="disableSorting" [trackBy]="trackByIndex">
   <ng-container *ngFor="let column of visibleColumns" [matColumnDef]="column">
     <th

@@ -1,0 +1,90 @@
+<div class="handoff-page" [class.dark-mode]="isDarkTheme">
+  <header class="page-header">
+    <div>
+      <h1>Shift Handoff</h1>
+      <p>Snapshot of production, losses, and notes for the next team.</p>
+    </div>
+    <div class="header-actions">
+      <button mat-stroked-button type="button" (click)="fetchData()" [disabled]="isLoading">
+        <mat-icon>refresh</mat-icon>
+        {{ isLoading ? 'Loading...' : 'Refresh' }}
+      </button>
+      <button mat-flat-button color="primary" type="button" (click)="print()">
+        <mat-icon>print</mat-icon>
+        Print
+      </button>
+    </div>
+  </header>
+
+  <section class="controls">
+    <app-date-time-picker label="Start Time" [(value)]="startTime"></app-date-time-picker>
+    <app-date-time-picker label="End Time" [(value)]="endTime"></app-date-time-picker>
+  </section>
+
+  <section class="metric-grid">
+    <article *ngFor="let metric of metrics">
+      <mat-icon>{{ metric.icon }}</mat-icon>
+      <span>{{ metric.label }}</span>
+      <strong>{{ metric.value }}</strong>
+    </article>
+  </section>
+
+  <section class="load-error" *ngIf="loadError">
+    <mat-icon>info</mat-icon>
+    <span>{{ loadError }}</span>
+  </section>
+
+  <section class="handoff-grid">
+    <article class="panel">
+      <h2>Machines Needing Attention</h2>
+      <div class="compact-row" *ngFor="let machine of machineRows">
+        <span>{{ machine.machine?.name || 'Machine' }}</span>
+        <strong>{{ machineOee(machine) }}</strong>
+        <small>{{ machineCount(machine) | number }} pieces</small>
+      </div>
+      <div class="empty-panel" *ngIf="!machineRows.length && !isLoading">No machine data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <h2>Top Operators</h2>
+      <div class="compact-row" *ngFor="let operator of operatorRows">
+        <span>{{ operatorName(operator) }}</span>
+        <strong>{{ operatorEfficiency(operator) }}</strong>
+        <small>{{ operator.metrics?.output?.totalCount || 0 | number }} pieces</small>
+      </div>
+      <div class="empty-panel" *ngIf="!operatorRows.length && !isLoading">No operator data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <h2>Top Items</h2>
+      <div class="compact-row" *ngFor="let item of itemRows">
+        <span>{{ itemName(item) }}</span>
+        <strong>{{ itemCount(item) | number }}</strong>
+        <small>pieces</small>
+      </div>
+      <div class="empty-panel" *ngIf="!itemRows.length && !isLoading">No item data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <h2>Top Faults</h2>
+      <div class="compact-row" *ngFor="let fault of faultRows">
+        <span>{{ fault.name || 'Fault' }}</span>
+        <strong>{{ formatDuration(fault.totalDurationSeconds) }}</strong>
+        <small>{{ fault.count || 0 }} occurrences</small>
+      </div>
+      <div class="empty-panel" *ngIf="!faultRows.length && !isLoading">No faults for this window.</div>
+    </article>
+  </section>
+
+  <section class="notes-panel">
+    <h2>Handoff Notes</h2>
+    <textarea
+      [(ngModel)]="notes"
+      (blur)="saveNotes()"
+      placeholder="Add unresolved issues, maintenance notes, staffing context, or anything the next shift should know."></textarea>
+    <button mat-stroked-button type="button" (click)="saveNotes()">
+      <mat-icon>save</mat-icon>
+      Save Notes
+    </button>
+  </section>
+</div>
