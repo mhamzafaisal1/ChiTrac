@@ -13,6 +13,7 @@ import { MatInputModule } from "@angular/material/input";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { MatDialog } from "@angular/material/dialog";
+import { CdkDragDrop, DragDropModule, moveItemInArray } from "@angular/cdk/drag-drop";
 import { Subject, takeUntil, tap } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
@@ -31,6 +32,13 @@ import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
 
+interface SummaryCard {
+  label: string;
+  value: string | number;
+  icon: string;
+  tone: string;
+}
+
 @Component({
   selector: "app-machine-dashboard",
   imports: [
@@ -41,6 +49,7 @@ import { OperatorPerformanceChartComponent } from "../operator-performance-chart
     MatInputModule,
     MatButtonModule,
     MatIconModule,
+    DragDropModule,
     BaseTableComponent
   ],
   templateUrl: "./machine-dashboard.component.html",
@@ -52,7 +61,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   machineData: any[] = [];
   columns: string[] = [];
   rows: any[] = [];
-  summaryCards: Array<{ label: string; value: string | number; icon: string; tone: string }> = [];
+  summaryCards: SummaryCard[] = [];
   columnTooltips: { [column: string]: string } = {
     Runtime: "Amount of time machine has been running",
     Downtime: "Amount of time machine has been paused, faulted, or offline.",
@@ -95,6 +104,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private websocketStatus: WebsocketConnectionStatus = "disconnected";
   private readonly handleResize = this.updateChartDimensions.bind(this);
+  private readonly summaryCardOrderKey = "chitrac-machine-dashboard-summary-card-order";
+  private summaryCardOrder: string[] = [];
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -131,6 +142,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
 
+    this.summaryCardOrder = this.loadSummaryCardOrder();
     this.updateChartDimensions();
     window.addEventListener("resize", this.handleResize);
 
@@ -221,6 +233,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
         this.fetchAnalyticsData(); // use them to fetch data
       });
+  }
+
+  onSummaryCardDrop(event: CdkDragDrop<SummaryCard[]>): void {
+    if (event.previousIndex === event.currentIndex) return;
+    moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
+    this.summaryCardOrder = this.summaryCards.map((card) => card.label);
+    localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
   }
 
   ngOnDestroy(): void {
@@ -463,7 +482,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
     const projectedCount = this.getProjectedCount(totalCount, elapsedHours);
 
-    this.summaryCards = [
+    this.summaryCards = this.applySummaryCardOrder([
       { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
       { label: "Running", value: running, icon: "play_circle", tone: "good" },
       { label: "Faulted", value: faulted, icon: "warning", tone: faulted > 0 ? "bad" : "neutral" },
@@ -472,7 +491,28 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
-    ];
+    ]);
+  }
+
+  private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
+    if (!this.summaryCardOrder.length) return cards;
+
+    const byLabel = new Map(cards.map((card) => [card.label, card]));
+    const ordered = this.summaryCardOrder
+      .map((label) => byLabel.get(label))
+      .filter((card): card is SummaryCard => Boolean(card));
+    const additions = cards.filter((card) => !this.summaryCardOrder.includes(card.label));
+
+    return [...ordered, ...additions];
+  }
+
+  private loadSummaryCardOrder(): string[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(this.summaryCardOrderKey) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((label) => typeof label === "string") : [];
+    } catch {
+      return [];
+    }
   }
 
   private averagePercent(values: any[]): number {

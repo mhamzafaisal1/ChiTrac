@@ -44,6 +44,7 @@ import { PasswordResetComponent } from './password-reset/password-reset.componen
 import { ActionCenterComponent } from './action-center/action-center.component';
 import { DowntimeParetoComponent } from './downtime-pareto/downtime-pareto.component';
 import { ShiftHandoffComponent } from './shift-handoff/shift-handoff.component';
+import { VisualOpsDashboardComponent } from './visual-ops-dashboard/visual-ops-dashboard.component';
 
 export const routes: Routes = [
 	// Settings pages
@@ -75,6 +76,7 @@ export const routes: Routes = [
 	{ path: 'ng/action-center', component: ActionCenterComponent },
 	{ path: 'ng/downtime-pareto', component: DowntimeParetoComponent },
 	{ path: 'ng/shift-handoff', component: ShiftHandoffComponent },
+	{ path: 'ng/visual-ops', component: VisualOpsDashboardComponent },
 	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
 	
 	// Reports

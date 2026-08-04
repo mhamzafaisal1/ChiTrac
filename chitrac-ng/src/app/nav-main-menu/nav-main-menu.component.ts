@@ -104,6 +104,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/action-center',
         '/ng/downtime-pareto',
         '/ng/shift-handoff',
+        '/ng/visual-ops',
         '/ng/analytics/machine-dashboard'
       ]
     },

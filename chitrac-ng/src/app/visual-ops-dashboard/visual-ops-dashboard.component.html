@@ -1,0 +1,197 @@
+<div class="visual-ops-page" [class.dark-mode]="isDarkTheme">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">Visual Ops</p>
+      <h1>Live Production Control Room</h1>
+      <p>Fast visual reads for machine health, OEE losses, targets, and fault pressure.</p>
+    </div>
+    <div class="header-actions">
+      <button mat-stroked-button type="button" (click)="fetchData()" [disabled]="isLoading">
+        <mat-icon>refresh</mat-icon>
+        {{ isLoading ? 'Loading...' : 'Refresh' }}
+      </button>
+    </div>
+  </header>
+
+  <section class="controls">
+    <app-date-time-picker label="Start Time" [(value)]="startTime"></app-date-time-picker>
+    <app-date-time-picker label="End Time" [(value)]="endTime"></app-date-time-picker>
+  </section>
+
+  <section class="load-error" *ngIf="loadError">
+    <mat-icon>info</mat-icon>
+    <span>{{ loadError }}</span>
+  </section>
+
+  <section class="status-wall">
+    <article *ngFor="let metric of metrics" class="status-card" [ngClass]="metric.tone">
+      <mat-icon>{{ metric.icon }}</mat-icon>
+      <span>{{ metric.label }}</span>
+      <strong>{{ metric.value }}</strong>
+      <small>{{ metric.detail }}</small>
+    </article>
+  </section>
+
+  <section class="visual-grid">
+    <article class="panel floor-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Shop Floor Map</h2>
+          <p>Status tiles sized for a quick floor walk read.</p>
+        </div>
+      </div>
+      <div class="floor-map" *ngIf="machines.length">
+        <button class="machine-tile" *ngFor="let machine of machines" [ngClass]="machine.tone" type="button">
+          <mat-icon>{{ statusIcon(machine.tone) }}</mat-icon>
+          <strong>{{ machine.name }}</strong>
+          <span>{{ machineSubtitle(machine) }}</span>
+          <small>{{ machine.oee }}% OEE</small>
+        </button>
+      </div>
+      <div class="empty-panel" *ngIf="!machines.length && !isLoading">No machine data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Machine State Timeline</h2>
+          <p>State mix across the selected window.</p>
+        </div>
+      </div>
+      <div class="timeline-list" *ngIf="timelineRows.length">
+        <div class="timeline-row" *ngFor="let machine of timelineRows">
+          <div class="timeline-label">
+            <strong>{{ machine.name }}</strong>
+            <span>{{ machine.oee }}% OEE</span>
+          </div>
+          <div class="timeline-track">
+            <span class="run" [style.width.%]="stateWidth(machine, 'runningMs')"></span>
+            <span class="pause" [style.width.%]="stateWidth(machine, 'pausedMs')"></span>
+            <span class="fault" [style.width.%]="stateWidth(machine, 'faultedMs')"></span>
+            <span class="off" [style.width.%]="stateWidth(machine, 'offlineMs')"></span>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="run"></i>Run</span>
+        <span><i class="pause"></i>Pause</span>
+        <span><i class="fault"></i>Fault</span>
+        <span><i class="off"></i>Offline</span>
+      </div>
+      <div class="empty-panel" *ngIf="!timelineRows.length && !isLoading">No state data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>OEE Bridge</h2>
+          <p>Target gap and the machines pulling plant OEE down.</p>
+        </div>
+      </div>
+      <div class="oee-bridge" *ngIf="machines.length">
+        <div class="bridge-scoreboard">
+          <div>
+            <span>Target</span>
+            <strong>{{ oeeTarget }}%</strong>
+          </div>
+          <div class="gap">
+            <span>Gap</span>
+            <strong>{{ waterfallGap }} pts</strong>
+          </div>
+          <div>
+            <span>Actual</span>
+            <strong>{{ waterfallActual }}%</strong>
+          </div>
+        </div>
+
+        <div class="bridge-track">
+          <i class="actual-fill" [style.width.%]="actualOffset()"></i>
+          <b class="target-marker" [style.left.%]="targetOffset()"></b>
+          <em class="actual-marker" [style.left.%]="actualOffset()"></em>
+        </div>
+        <div class="bridge-scale">
+          <span>0%</span>
+          <span>50%</span>
+          <span>100%</span>
+        </div>
+
+        <div class="bridge-loss-list" *ngIf="waterfallSteps.length">
+          <div class="bridge-loss-row" *ngFor="let step of waterfallSteps" [ngClass]="step.tone">
+            <span>{{ step.label }}</span>
+            <div class="loss-track">
+              <i [style.width.%]="step.width"></i>
+            </div>
+            <strong>-{{ step.value }} pts</strong>
+          </div>
+        </div>
+      </div>
+      <div class="empty-panel" *ngIf="!machines.length && !isLoading">No OEE data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Target vs Actual</h2>
+          <p>Machine OEE against the {{ oeeTarget }}% target line.</p>
+        </div>
+      </div>
+      <div class="bullet-list" *ngIf="bulletRows.length">
+        <div class="bullet-row" *ngFor="let machine of bulletRows">
+          <div class="bullet-label">
+            <strong>{{ machine.name }}</strong>
+            <span>{{ machine.count | number }} pieces</span>
+          </div>
+          <div class="bullet-track">
+            <i [style.width.%]="bulletWidth(machine)" [ngClass]="heatTone(machine.oee)"></i>
+            <b [style.left.%]="targetOffset()"></b>
+          </div>
+          <strong>{{ machine.oee }}%</strong>
+        </div>
+      </div>
+      <div class="empty-panel" *ngIf="!bulletRows.length && !isLoading">No target data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Performance Heatmap</h2>
+          <p>Scan weak machines and the metric behind the weakness.</p>
+        </div>
+      </div>
+      <div class="heatmap" *ngIf="heatmapRows.length">
+        <div class="heat-row heat-header">
+          <span></span>
+          <strong>OEE</strong>
+          <strong>Avail</strong>
+          <strong>Eff</strong>
+          <strong>Run</strong>
+          <strong>Loss</strong>
+        </div>
+        <div class="heat-row" *ngFor="let row of heatmapRows">
+          <span>{{ row.machine }}</span>
+          <b *ngFor="let cell of row.cells" [ngClass]="heatTone(cell.value)">
+            {{ cell.value }}%
+          </b>
+        </div>
+      </div>
+      <div class="empty-panel" *ngIf="!heatmapRows.length && !isLoading">No heatmap data for this window.</div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Top Fault Losses</h2>
+          <p>Highest duration fault pressure.</p>
+        </div>
+      </div>
+      <div class="fault-list" *ngIf="faultRows.length">
+        <div class="fault-row" *ngFor="let fault of faultRows">
+          <span>{{ fault.name || fault.faultName || 'Fault' }}</span>
+          <strong>{{ formatDuration(fault.totalDurationSeconds) }}</strong>
+          <small>{{ fault.count || 0 }} events</small>
+        </div>
+      </div>
+      <div class="empty-panel" *ngIf="!faultRows.length && !isLoading">No faults for this window.</div>
+    </article>
+  </section>
+</div>

@@ -7,8 +7,17 @@
     </div>
   </div>
 
-  <section class="summary-strip" *ngIf="summaryCards.length">
-    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone">
+  <section
+    class="summary-strip"
+    *ngIf="summaryCards.length"
+    cdkDropList
+    cdkDropListOrientation="mixed"
+    (cdkDropListDropped)="onSummaryCardDrop($event)"
+  >
+    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone" cdkDrag>
+      <button class="drag-handle" type="button" cdkDragHandle aria-label="Move summary card">
+        <mat-icon>drag_indicator</mat-icon>
+      </button>
       <mat-icon>{{ card.icon }}</mat-icon>
       <div>
         <span>{{ card.label }}</span>
