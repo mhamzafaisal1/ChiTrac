@@ -42,6 +42,37 @@ function envelope(data, meta) {
   };
 }
 
+async function buildMachineDepartmentLookup(db, config) {
+  const machines = await db
+    .collection(config.machineCollectionName)
+    .find({})
+    .project({ id: 1, serial: 1, name: 1, groups: 1 })
+    .toArray();
+
+  const lookup = new Map();
+  for (const machine of machines) {
+    const department = machine.groups?.department;
+    if (!department) continue;
+    for (const key of [machine.id, machine.serial, machine.name]) {
+      if (key != null) lookup.set(String(key), department);
+    }
+  }
+  return lookup;
+}
+
+function getMachineDepartment(record, departmentLookup) {
+  const embeddedDepartment = record.machine?.groups?.department;
+  if (embeddedDepartment) return embeddedDepartment;
+
+  for (const key of [record.machineSerial, record.machine?.serial, record.machine?.id, record.machine?.name]) {
+    if (key != null && departmentLookup?.has(String(key))) {
+      return departmentLookup.get(String(key));
+    }
+  }
+
+  return null;
+}
+
 function machineStatusFromRecords(records, start, end, shiftDoc) {
   const elapsedMs = computeShiftElapsedMs(shiftDoc ? [shiftDoc] : [], start, end, SYSTEM_TIMEZONE) || (end - start);
   return records
@@ -155,18 +186,18 @@ function topOperatorsFromRecords(records) {
     .slice(0, 10);
 }
 
-function machineGroupEfficiencyFromRecords(records, previousRecords, start, end, shiftDoc) {
+function machineGroupEfficiencyFromRecords(records, previousRecords, start, end, shiftDoc, departmentLookup = new Map()) {
   const elapsedMs = computeShiftElapsedMs(shiftDoc ? [shiftDoc] : [], start, end, SYSTEM_TIMEZONE) || (end - start);
   const byDept = new Map(MACHINE_GROUP_DEPARTMENTS.map((name) => [name, []]));
   const previousByDept = new Map(MACHINE_GROUP_DEPARTMENTS.map((name) => [name, []]));
 
   for (const record of records) {
-    const dept = record.machine?.groups?.department;
+    const dept = getMachineDepartment(record, departmentLookup);
     if (byDept.has(dept)) byDept.get(dept).push(record);
   }
 
   for (const record of previousRecords || []) {
-    const dept = record.machine?.groups?.department;
+    const dept = getMachineDepartment(record, departmentLookup);
     if (previousByDept.has(dept)) previousByDept.get(dept).push(record);
   }
 
@@ -271,7 +302,16 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
   const dateStr = options.dateStr || toDateStr(start);
   const yesterdayStr = previousDateStr(dateStr);
 
-  const [machineStatus, machineOee, itemTotals, dailyCounts, topOperatorsInitial, groupRecords, previousGroupRecords] = await Promise.all([
+  const [
+    machineStatus,
+    machineOee,
+    itemTotals,
+    dailyCounts,
+    topOperatorsInitial,
+    groupRecords,
+    previousGroupRecords,
+    departmentLookup,
+  ] = await Promise.all([
     buildMachineStatusFromDailyTotals(db, start, end, logger),
     buildMachineOEEFromDailyTotals(db, start, end, logger),
     buildItemTotalsFromCache(db, start, end, logger),
@@ -281,6 +321,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
       .find({ type: "machine", "timestamps.create": calendarRange(dateStr) }).toArray(),
     db.collection(config.totalsDailyCollectionName)
       .find({ type: "machine", "timestamps.create": calendarRange(yesterdayStr) }).toArray(),
+    buildMachineDepartmentLookup(db, config),
   ]);
 
   let topOperators = topOperatorsInitial;
@@ -288,11 +329,21 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     topOperators = await buildTopOperatorEfficiencyFromSessions(db, start, end).catch(() => topOperatorsInitial);
   }
 
+  const normalizedGroupRecords = groupRecords.map(normalizeTotalsDocument);
+  const normalizedPreviousGroupRecords = previousGroupRecords.map(normalizeTotalsDocument);
+
   const data = {
     machineStatus,
     machineOee,
     itemTotals,
-    machineGroupEfficiency: machineGroupEfficiencyFromRecords(groupRecords, previousGroupRecords, start, end, null),
+    machineGroupEfficiency: machineGroupEfficiencyFromRecords(
+      normalizedGroupRecords,
+      normalizedPreviousGroupRecords,
+      start,
+      end,
+      null,
+      departmentLookup
+    ),
     topOperators,
     dailyCounts,
   };
@@ -325,7 +376,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
     ],
   };
 
-  const [machineRecords, itemRecords, operatorRecords, dailyPreviousRecords] = await Promise.all([
+  const [machineRecords, itemRecords, operatorRecords, dailyPreviousRecords, departmentLookup] = await Promise.all([
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "machine" }).toArray(),
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "item" }).toArray(),
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "operator-machine" }).toArray(),
@@ -334,6 +385,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
         type: "machine",
         "timestamps.create": calendarRange(previousDateStr(dateStr)),
       }).toArray(),
+    buildMachineDepartmentLookup(db, config),
   ]);
 
   const normalizedMachines = machineRecords.map(normalizeTotalsDocument);
@@ -345,7 +397,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
     machineStatus: machineStatusFromRecords(normalizedMachines, start, end, shiftDoc),
     machineOee: machineOeeFromRecords(normalizedMachines, start, end, shiftDoc),
     itemTotals: itemTotalsFromRecords(normalizedItems),
-    machineGroupEfficiency: machineGroupEfficiencyFromRecords(normalizedMachines, normalizedPrevious, start, end, shiftDoc),
+    machineGroupEfficiency: machineGroupEfficiencyFromRecords(normalizedMachines, normalizedPrevious, start, end, shiftDoc, departmentLookup),
     topOperators: topOperatorsFromRecords(normalizedOperators),
     dailyCounts: await buildDailyCountsForShift(db, config, end, dateStr, normalizedMachines, logger),
   };
