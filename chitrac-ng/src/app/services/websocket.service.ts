@@ -56,6 +56,7 @@ interface DashboardCacheMessage {
 })
 export class WebsocketService {
   private socket: WebSocket | null = null;
+  private connectTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly statusSubject = new BehaviorSubject<WebsocketConnectionStatus>('disconnected');
   private readonly messageSubject = new BehaviorSubject<string>('No websocket messages received.');
   private readonly errorSubject = new BehaviorSubject<string | null>(null);
@@ -89,11 +90,30 @@ export class WebsocketService {
     this.errorSubject.next(null);
     this.statusSubject.next('connecting');
 
-    const socket = new WebSocket(this.getWebsocketUrl());
+    this.connectToCandidate(this.getWebsocketUrls(), 0);
+  }
+
+  private connectToCandidate(urls: string[], index: number): void {
+    if (index >= urls.length) {
+      this.socket = null;
+      this.errorSubject.next('Websocket connection error.');
+      this.statusSubject.next('error');
+      return;
+    }
+
+    const socket = new WebSocket(urls[index]);
     this.socket = socket;
+
+    this.clearConnectTimeout();
+    this.connectTimeout = setTimeout(() => {
+      if (this.socket === socket && socket.readyState === WebSocket.CONNECTING) {
+        this.tryNextCandidate(socket, urls, index, 'Websocket connection timed out.');
+      }
+    }, 5000);
 
     socket.onopen = () => {
       this.zone.run(() => {
+        this.clearConnectTimeout();
         this.statusSubject.next('connected');
         this.send({
           type: 'server-info-request',
@@ -111,16 +131,18 @@ export class WebsocketService {
 
     socket.onerror = () => {
       this.zone.run(() => {
-        this.errorSubject.next('Websocket connection error.');
-        this.statusSubject.next('error');
+        this.tryNextCandidate(socket, urls, index, 'Websocket connection error.');
       });
     };
 
     socket.onclose = () => {
       this.zone.run(() => {
-        if (this.socket === socket) {
-          this.socket = null;
+        if (this.socket !== socket) {
+          return;
         }
+
+        this.clearConnectTimeout();
+        this.socket = null;
 
         if (this.statusSubject.value !== 'error') {
           this.statusSubject.next('disconnected');
@@ -138,6 +160,7 @@ export class WebsocketService {
 
     this.socket.close();
     this.socket = null;
+    this.clearConnectTimeout();
     this.errorSubject.next(null);
     this.statusSubject.next('disconnected');
   }
@@ -181,10 +204,42 @@ export class WebsocketService {
     );
   }
 
-  private getWebsocketUrl(): string {
+  private getWebsocketUrls(): string[] {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const hostname = window.location.hostname || 'localhost';
-    return `${protocol}://${hostname}:50001`;
+    const sameOrigin = `${protocol}://${window.location.host}/ws`;
+    const legacyPort = `${protocol}://${hostname}:50001`;
+    return Array.from(new Set([sameOrigin, legacyPort]));
+  }
+
+  private tryNextCandidate(socket: WebSocket, urls: string[], index: number, message: string): void {
+    if (this.socket !== socket) {
+      return;
+    }
+
+    this.clearConnectTimeout();
+    this.socket = null;
+
+    try {
+      socket.close();
+    } catch {
+      // Ignore close failures while moving to the next candidate URL.
+    }
+
+    if (index + 1 < urls.length) {
+      this.connectToCandidate(urls, index + 1);
+      return;
+    }
+
+    this.errorSubject.next(message);
+    this.statusSubject.next('error');
+  }
+
+  private clearConnectTimeout(): void {
+    if (this.connectTimeout) {
+      clearTimeout(this.connectTimeout);
+      this.connectTimeout = null;
+    }
   }
 
   private handleMessage(data: unknown): void {

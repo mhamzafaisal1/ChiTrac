@@ -242,12 +242,12 @@ async function startServer() {
         await initializeCollections();
         const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
         await ensureAnalyticsIndexes(db, config, logger);
-        const { startWebsocketServer } = require('./modules/websocketServer');
-        server.websocketServer = startWebsocketServer(server);
-
-        app.listen(port, () => {
+        const httpServer = app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
         });
+        const { startWebsocketServer } = require('./modules/websocketServer');
+        server.websocketServer = startWebsocketServer(server, { httpServer, path: '/ws' });
+        server.legacyWebsocketServer = startWebsocketServer(server);
 
         if (server.config.httpsEnabled === true) {
             if (!certificates.certificateFilesExist(server.config)) {
