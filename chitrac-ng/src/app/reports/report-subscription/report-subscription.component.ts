@@ -28,7 +28,7 @@ export class ReportSubscriptionComponent implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
-  displayedColumns = ['report', 'name', 'type', 'enabled', 'emailTo', 'cron'];
+  displayedColumns = ['report', 'name', 'type', 'enabled', 'emailTo', 'schedule', 'lastAttempt', 'lastResult'];
   dataSource = new MatTableDataSource<ReportSubscriptionDto>([]);
   isLoading = false;
   selectedSubscription: ReportSubscriptionDto | null = null;
@@ -149,6 +149,99 @@ export class ReportSubscriptionComponent implements OnInit {
 
   isRowSelected(row: ReportSubscriptionDto): boolean {
     return this.selectedSubscription?._id === row._id;
+  }
+
+  getStatusLabel(row: ReportSubscriptionDto): string {
+    return row.enabled ? 'Enabled' : 'Disabled';
+  }
+
+  getResultLabel(row: ReportSubscriptionDto): string {
+    if (!row.log?.status) return 'No runs yet';
+    return row.log.status === 'success' ? 'Success' : 'Needs attention';
+  }
+
+  getResultDetail(row: ReportSubscriptionDto): string {
+    return row.log?.details || '';
+  }
+
+  formatDate(value: any): string {
+    if (!value) return '-';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+  }
+
+  formatSchedule(row: ReportSubscriptionDto): string {
+    const cron = row.schedule?.cron || '';
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length < 5) return cron || '-';
+
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts.length === 6 ? parts.slice(1) : parts;
+    const time = this.formatCronTime(hour, minute);
+    if (dayOfMonth !== '*' && month === '*' && dayOfWeek === '*') return `Monthly on day ${dayOfMonth} at ${time}`;
+    if (dayOfWeek !== '*' && month === '*') return `Weekly on ${this.weekdayName(dayOfWeek)} at ${time}`;
+    if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') return `Daily at ${time}`;
+    return cron;
+  }
+
+  getNextRun(row: ReportSubscriptionDto): string {
+    if (!row.enabled) return 'Paused';
+    const cron = row.schedule?.cron || '';
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length < 5) return 'Custom schedule';
+    const [minuteRaw, hourRaw, dayOfMonthRaw, monthRaw, dayOfWeekRaw] = parts.length === 6 ? parts.slice(1) : parts;
+    const minute = Number(minuteRaw);
+    const hour = Number(hourRaw);
+    if (!Number.isFinite(minute) || !Number.isFinite(hour) || monthRaw !== '*') return 'Custom schedule';
+
+    const now = new Date();
+    const next = new Date(now);
+    next.setSeconds(0, 0);
+    next.setHours(hour, minute, 0, 0);
+
+    if (dayOfMonthRaw === '*' && dayOfWeekRaw === '*') {
+      if (next <= now) next.setDate(next.getDate() + 1);
+      return next.toLocaleString();
+    }
+
+    if (dayOfWeekRaw !== '*') {
+      const target = Number(dayOfWeekRaw);
+      if (!Number.isFinite(target)) return 'Custom schedule';
+      const today = next.getDay();
+      let delta = (target - today + 7) % 7;
+      if (delta === 0 && next <= now) delta = 7;
+      next.setDate(next.getDate() + delta);
+      return next.toLocaleString();
+    }
+
+    if (dayOfMonthRaw !== '*') {
+      const day = Number(dayOfMonthRaw);
+      if (!Number.isFinite(day)) return 'Custom schedule';
+      next.setDate(Math.min(day, this.daysInMonth(next)));
+      if (next <= now) {
+        next.setMonth(next.getMonth() + 1, 1);
+        next.setDate(Math.min(day, this.daysInMonth(next)));
+      }
+      return next.toLocaleString();
+    }
+
+    return 'Custom schedule';
+  }
+
+  private formatCronTime(hour: string, minute: string): string {
+    const h = Number(hour);
+    const m = Number(minute);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return `${hour}:${minute}`;
+    return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  private weekdayName(value: string): string {
+    const index = Number(value);
+    const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return names[index] || value;
+  }
+
+  private daysInMonth(date: Date): number {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   }
 
   private toPayload(formValue: ReportSubscriptionFormValue): ReportSubscriptionPayload {

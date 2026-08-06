@@ -80,6 +80,46 @@ tr.mat-mdc-row {
   cursor: pointer;
 }
 
+.stacked-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 180px;
+
+  small {
+    color: var(--theme-color-on-surface-variant, #94a3b8);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.status-badge,
+.result-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--theme-color-on-surface-variant, #94a3b8);
+}
+
+.status-badge.enabled,
+.result-badge.success {
+  background: rgba(63, 171, 108, 0.14);
+  color: var(--sg-color-green, #3fab6c);
+}
+
+.result-badge.error {
+  background: rgba(223, 21, 22, 0.12);
+  color: var(--sg-color-red, #df1516);
+}
+
 .loading-state {
   display: flex;
   justify-content: center;

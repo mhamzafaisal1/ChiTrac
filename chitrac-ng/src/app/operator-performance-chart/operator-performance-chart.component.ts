@@ -111,12 +111,12 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       return null;
     }
 
+    const seenOperatorNames = new Map<string, Set<string>>();
+
     const hourlyRows = [...hourly]
       .map((hourData: any) => ({ ...hourData, hourDate: new Date(hourData.hour) }))
       .filter((hourData: any) => !Number.isNaN(hourData.hourDate.getTime()))
       .sort((a: any, b: any) => a.hourDate.getTime() - b.hourDate.getTime());
-
-    const seenOperatorNames = new Map<string, Set<string>>();
 
     hourlyRows.forEach((hourData: any) => {
       const ops = hourData.operators && Array.isArray(hourData.operators) ? hourData.operators : [];

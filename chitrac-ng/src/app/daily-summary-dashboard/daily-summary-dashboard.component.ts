@@ -53,11 +53,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   endTime: string = "";
   isDarkTheme: boolean = false;
   private observer!: MutationObserver;
-  machineColumns: string[] = ["Status", "Machine Name", "OEE", "Total Count"];
+  machineColumns: string[] = ["Status", "Machine Name", "Total Count", "OEE"];
   machineRows: any[] = [];
   selectedMachine: any = null;
   selectedRow: any | null = null;
-  itemColumns: string[] = ['Item Name', 'Total Count'];
+  itemColumns: string[] = ['Item Name', 'Total Count', 'Efficiency'];
   itemRows: any[] = [];  
   operatorColumns: string[] = ['Status', 'Operator Name', 'Worked Time', 'Efficiency'];
   operatorRows: any[] = [];
@@ -259,8 +259,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.rawOperatorData = arr;
     this.operatorRows = arr.map((o:any)=>({
       Status: getStatusDot(o.currentStatus),
-      'Operator Name': o.operator?.name ? `${o.operator.name.first ?? ''} ${o.operator.name.surname ?? ''}`.trim() : 'Unknown',
-      'Worked Time': `${o.metrics?.runtime?.formatted?.hours ?? 0}h ${o.metrics?.runtime?.formatted?.minutes ?? 0}m`,
+      'Operator Name': this.formatOperatorName(o.operator?.name),
+      'Worked Time': this.formatDurationForTable(o.metrics?.workedTime?.formatted ?? o.metrics?.runtime?.formatted),
       'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
       operatorId: o.operator?.id
     }));
@@ -270,7 +270,11 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     const arr = Array.isArray(data) ? data : (data?.items ?? []);
     this.rawItemData = arr;
     this.itemRows = arr.filter((x:any)=>(x.count ?? 0)>0)
-      .map((x:any)=>({'Item Name': x.itemName, 'Total Count': x.count}));
+      .map((x:any)=>({
+        'Item Name': x.itemName,
+        'Total Count': x.count,
+        'Efficiency': this.formatPercentage(x.efficiency ?? 0)
+      }));
   }
 
   fetchData(): Observable<any> {
@@ -320,6 +324,19 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     return `${(num * 100).toFixed(2)}%`;
   }
 
+  private formatDurationForTable(duration: any): string {
+    return `${duration?.hours ?? 0}h ${duration?.minutes ?? 0}m`;
+  }
+
+  private formatOperatorName(name: any): string {
+    if (typeof name === 'string' && name.trim()) return name.trim();
+    if (name && typeof name === 'object') {
+      const formatted = `${name.first ?? ''} ${name.surname ?? ''}`.trim();
+      if (formatted) return formatted;
+    }
+    return 'Unknown';
+  }
+
   private formatPercentage(value: any): string {
     // Handle both number and string inputs
     // Backend returns percentage as a number (0-100) or string with '%'
@@ -335,9 +352,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     
     if (isNaN(num)) return '0%';
     
-    // Backend already returns 0-100 range, so use as is
-    // Ensure it's clamped to valid percentage range
-    const percentage = Math.max(0, Math.min(100, num));
+    const percentage = Math.max(0, num);
     return `${percentage.toFixed(2)}%`;
   }
   
@@ -789,30 +804,35 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },
       {
         'Item Name': '',
         'Total Count': '',
+        'Efficiency': '',
         isDummy: true,
         cssClass: "dummy-row", // CSS class for styling
       },

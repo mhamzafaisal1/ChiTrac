@@ -89,6 +89,54 @@
   gap: 0.75rem; // Adjust spacing between all icons/toggle
 }
 
+.live-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 30px;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--theme-color-header-icon);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+
+  mat-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    line-height: 16px;
+    margin: 0;
+  }
+
+  small {
+    font-size: 0.72rem;
+    font-weight: 500;
+    opacity: 0.76;
+  }
+
+  &.connected {
+    color: var(--sg-color-green);
+    background: rgba(63, 171, 108, 0.14);
+    border-color: rgba(63, 171, 108, 0.35);
+  }
+
+  &.connecting {
+    color: var(--sg-color-yellow);
+    background: rgba(242, 189, 0, 0.14);
+    border-color: rgba(242, 189, 0, 0.35);
+  }
+
+  &.error,
+  &.disconnected {
+    color: var(--sg-color-orange);
+    background: rgba(234, 139, 27, 0.14);
+    border-color: rgba(234, 139, 27, 0.35);
+  }
+}
+
 .calendar-btn {
   margin-right: 0.5rem;
 }
@@ -144,6 +192,12 @@
       --mdc-switch-unselected-track-color: var(--theme-color-surface-variant);
       --mdc-switch-unselected-handle-color: var(--theme-color-outline);
     }
+  }
+}
+
+@media (max-width: 760px) {
+  .live-chip small {
+    display: none;
   }
 }
 

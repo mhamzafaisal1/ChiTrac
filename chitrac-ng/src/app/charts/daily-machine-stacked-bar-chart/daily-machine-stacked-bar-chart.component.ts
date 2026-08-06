@@ -37,6 +37,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   @Input() legendWidthPx!: number;
   @Input() serial?: number; // optional filter
   @Input() preloadedData?: MachineStatus[] | null;
+  @Input() useExternalTitle = false;
 
   ngOnChanges(changes: SimpleChanges): void {
     // console.log('DailyMachineStackedBarChart: Input changes:', changes);
@@ -86,6 +87,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     this.endTime = this.formatDateForInput(now);
 
     this.enterDummy();
+    if (this.useExternalTitle) return;
 
     // Consolidated initial fetch logic - only one fetch call
     this.performInitialFetch(isLive, wasConfirmed);
@@ -265,14 +267,14 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     ];
 
     return {
-      title: 'Daily Machine Status',
+      title: this.useExternalTitle ? '' : 'Daily Machine Status',
       showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'category',
       margin: {
-        top: Math.max(this.marginTop || 50, 60),
+        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
         right: Math.max(this.marginRight || 30, 30),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, leftMargin)

@@ -1,6 +1,15 @@
 <div class="chart-tile-container">
-    <div class="chart-content">
-      <ng-content></ng-content>
+  <div class="chart-tile-header" *ngIf="title || subtitle || updatedAt">
+    <div class="chart-tile-title-group">
+      <mat-icon *ngIf="icon" aria-hidden="true">{{ icon }}</mat-icon>
+      <div class="chart-tile-text">
+        <div class="chart-tile-title" *ngIf="title">{{ title }}</div>
+        <div class="chart-tile-subtitle" *ngIf="subtitle">{{ subtitle }}</div>
+      </div>
     </div>
+    <div class="chart-tile-updated" *ngIf="updatedAt">{{ updatedAt }}</div>
   </div>
-  
+  <div class="chart-content">
+    <ng-content></ng-content>
+  </div>
+</div>

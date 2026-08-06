@@ -1,0 +1,31 @@
+<div class="email-report-modal">
+  <h2 mat-dialog-title class="title">Email Machine Report</h2>
+
+  <mat-dialog-content>
+    <p class="hint">
+      Send the current machine report PDF for {{ data.startTime }} to {{ data.endTime }}.
+    </p>
+
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Recipient email</mat-label>
+      <input
+        matInput
+        type="email"
+        [formControl]="emailControl"
+        cdkFocusInitial
+        autocomplete="email"
+        (keydown.enter)="submit()"
+      />
+      <mat-icon matSuffix>email</mat-icon>
+      <mat-error *ngIf="emailControl.hasError('required')">Email is required</mat-error>
+      <mat-error *ngIf="emailControl.hasError('email')">Enter a valid email address</mat-error>
+    </mat-form-field>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end" class="actions">
+    <button mat-button [mat-dialog-close]="null">Cancel</button>
+    <button mat-flat-button color="primary" (click)="submit()" [disabled]="emailControl.invalid">
+      Send
+    </button>
+  </mat-dialog-actions>
+</div>

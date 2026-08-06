@@ -28,6 +28,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
+  @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -78,6 +79,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     this.endTime = this.formatDateForInput(now);
 
     this.enterDummy();
+    if (this.useExternalTitle) return;
 
     // Consolidated initial fetch logic - only one fetch call
     this.performInitialFetch(isLive, wasConfirmed);
@@ -213,14 +215,14 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     }));
 
     return {
-      title: 'Ranked OEE% by Machine',
+      title: this.useExternalTitle ? '' : 'Ranked OEE% by Machine',
       showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',  // horizontal bars: machines on Y, OEE % on X
       xType: 'linear',  // OEE values are numeric (X-axis = bar length)
       margin: {
-        top: Math.max(this.marginTop || 50, 60),
+        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, 120)  // space for machine names

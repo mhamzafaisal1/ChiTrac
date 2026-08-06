@@ -1,0 +1,64 @@
+<div class="pareto-page" [class.dark-mode]="isDarkTheme">
+  <header class="page-header">
+    <div>
+      <h1>Downtime Pareto</h1>
+      <p>Rank fault causes by lost time so the highest-impact issues surface first.</p>
+    </div>
+  </header>
+
+  <section class="controls">
+    <app-date-time-picker label="Start Time" [(value)]="startTime"></app-date-time-picker>
+    <app-date-time-picker label="End Time" [(value)]="endTime"></app-date-time-picker>
+    <button mat-flat-button color="primary" type="button" (click)="fetchData()" [disabled]="isLoading || !startTime || !endTime">
+      <mat-icon>refresh</mat-icon>
+      {{ isLoading ? 'Loading...' : 'Refresh' }}
+    </button>
+  </section>
+
+  <section class="summary-strip">
+    <article>
+      <span>Total Downtime</span>
+      <strong>{{ formatDuration(totalDuration) }}</strong>
+    </article>
+    <article>
+      <span>Fault Occurrences</span>
+      <strong>{{ totalCount }}</strong>
+    </article>
+    <article>
+      <span>Top Cause Share</span>
+      <strong>{{ rows[0]?.share || 0 }}%</strong>
+    </article>
+  </section>
+
+  <section class="pareto-panel" *ngIf="rows.length; else emptyState">
+    <div class="pareto-row header">
+      <span>Fault</span>
+      <span>Duration</span>
+      <span>Impact</span>
+      <span>Cumulative</span>
+    </div>
+
+    <div class="pareto-row" *ngFor="let row of rows">
+      <div class="fault-name">
+        <strong>{{ row.fault }}</strong>
+        <small>{{ row.count }} {{ row.count === 1 ? 'occurrence' : 'occurrences' }}</small>
+      </div>
+      <span class="duration">{{ row.duration }}</span>
+      <div class="bar-cell">
+        <div class="bar-track">
+          <div class="bar-fill" [style.width.%]="row.share"></div>
+        </div>
+        <small>{{ row.share }}%</small>
+      </div>
+      <span class="cumulative">{{ row.cumulative }}%</span>
+    </div>
+  </section>
+
+  <ng-template #emptyState>
+    <section class="empty-state">
+      <mat-icon>query_stats</mat-icon>
+      <strong>No downtime faults found</strong>
+      <span>Try a wider timeframe or wait for fault sessions to be recorded.</span>
+    </section>
+  </ng-template>
+</div>
