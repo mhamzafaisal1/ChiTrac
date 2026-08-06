@@ -7,6 +7,25 @@
     </div>
   </div>
 
+  <section
+    class="summary-strip"
+    *ngIf="summaryCards.length"
+    cdkDropList
+    cdkDropListOrientation="mixed"
+    (cdkDropListDropped)="onSummaryCardDrop($event)"
+  >
+    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone" cdkDrag>
+      <button class="drag-handle" type="button" cdkDragHandle aria-label="Move summary card">
+        <mat-icon>drag_indicator</mat-icon>
+      </button>
+      <mat-icon>{{ card.icon }}</mat-icon>
+      <div>
+        <span>{{ card.label }}</span>
+        <strong>{{ card.value }}</strong>
+      </div>
+    </article>
+  </section>
+
   <div class="table-wrapper">
     <div class="table-container" [class.loading]="isLoading">
       <base-table
@@ -19,6 +38,11 @@
         [getCellClass]="getEfficiencyClass"
         [responsiveHiddenColumns]="responsiveHiddenColumns"
       ></base-table>
+      <div class="empty-state" *ngIf="!rows.length && !isLoading">
+        <mat-icon>query_stats</mat-icon>
+        <strong>No machine data found</strong>
+        <span>Try a live view, current shift, or a wider timeframe.</span>
+      </div>
     </div>
   </div>
 

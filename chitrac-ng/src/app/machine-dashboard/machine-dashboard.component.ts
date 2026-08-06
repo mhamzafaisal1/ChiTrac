@@ -13,6 +13,7 @@ import { MatInputModule } from "@angular/material/input";
 import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { MatDialog } from "@angular/material/dialog";
+import { CdkDragDrop, DragDropModule, moveItemInArray } from "@angular/cdk/drag-drop";
 import { Subject, takeUntil, tap } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
@@ -31,6 +32,13 @@ import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
 
+interface SummaryCard {
+  label: string;
+  value: string | number;
+  icon: string;
+  tone: string;
+}
+
 @Component({
   selector: "app-machine-dashboard",
   imports: [
@@ -41,6 +49,7 @@ import { OperatorPerformanceChartComponent } from "../operator-performance-chart
     MatInputModule,
     MatButtonModule,
     MatIconModule,
+    DragDropModule,
     BaseTableComponent
   ],
   templateUrl: "./machine-dashboard.component.html",
@@ -52,6 +61,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   machineData: any[] = [];
   columns: string[] = [];
   rows: any[] = [];
+  summaryCards: SummaryCard[] = [];
   columnTooltips: { [column: string]: string } = {
     Runtime: "Amount of time machine has been running",
     Downtime: "Amount of time machine has been paused, faulted, or offline.",
@@ -93,6 +103,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
   private websocketStatus: WebsocketConnectionStatus = "disconnected";
+  private readonly handleResize = this.updateChartDimensions.bind(this);
+  private readonly summaryCardOrderKey = "chitrac-machine-dashboard-summary-card-order";
+  private summaryCardOrder: string[] = [];
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -129,8 +142,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
 
+    this.summaryCardOrder = this.loadSummaryCardOrder();
     this.updateChartDimensions();
-    window.addEventListener("resize", this.updateChartDimensions.bind(this));
+    window.addEventListener("resize", this.handleResize);
 
     // Prime from the websocket cache when it is already available, otherwise
     // keep the existing placeholder while the REST fallback catches up.
@@ -221,12 +235,19 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       });
   }
 
+  onSummaryCardDrop(event: CdkDragDrop<SummaryCard[]>): void {
+    if (event.previousIndex === event.currentIndex) return;
+    moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
+    this.summaryCardOrder = this.summaryCards.map((card) => card.label);
+    localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
+  }
+
   ngOnDestroy(): void {
     if (this.observer) this.observer.disconnect();
     this.stopPolling();
     this.destroy$.next();
     this.destroy$.complete();
-    window.removeEventListener("resize", this.updateChartDimensions.bind(this));
+    window.removeEventListener("resize", this.handleResize);
   }
 
   detectTheme(): void {
@@ -411,6 +432,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     );
 
     this.machineData = validResponses;
+    this.updateSummaryCards(validResponses);
 
     if (validResponses.length === 0) {
       this.rows = [];
@@ -444,6 +466,77 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     this.columns = Object.keys(formattedData[0]).filter((col) => col !== "");
     this.rows = formattedData;
+  }
+
+  private updateSummaryCards(responses: any[]): void {
+    const totalMachines = responses.length;
+    const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Running Dot").length;
+    const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Faulted Dot").length;
+    const offline = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Offline Dot").length;
+    const totalCount = responses.reduce((sum, r) => {
+      const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
+      return sum + Number(value || 0);
+    }, 0);
+    const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage ?? r.performance?.oee?.percentage));
+    const elapsedHours = this.getElapsedHours();
+    const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
+    const projectedCount = this.getProjectedCount(totalCount, elapsedHours);
+
+    this.summaryCards = this.applySummaryCardOrder([
+      { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
+      { label: "Running", value: running, icon: "play_circle", tone: "good" },
+      { label: "Faulted", value: faulted, icon: "warning", tone: faulted > 0 ? "bad" : "neutral" },
+      { label: "Offline", value: offline, icon: "cloud_off", tone: offline > 0 ? "warn" : "neutral" },
+      { label: "Total Count", value: totalCount.toLocaleString(), icon: "tag", tone: "neutral" },
+      { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
+      { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
+      { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
+    ]);
+  }
+
+  private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
+    if (!this.summaryCardOrder.length) return cards;
+
+    const byLabel = new Map(cards.map((card) => [card.label, card]));
+    const ordered = this.summaryCardOrder
+      .map((label) => byLabel.get(label))
+      .filter((card): card is SummaryCard => Boolean(card));
+    const additions = cards.filter((card) => !this.summaryCardOrder.includes(card.label));
+
+    return [...ordered, ...additions];
+  }
+
+  private loadSummaryCardOrder(): string[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(this.summaryCardOrderKey) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((label) => typeof label === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private averagePercent(values: any[]): number {
+    const numbers = values.map(Number).filter((v) => Number.isFinite(v));
+    if (!numbers.length) return 0;
+    return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
+  }
+
+  private getElapsedHours(): number {
+    const start = new Date(this.startTime).getTime();
+    const end = new Date(this.endTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+    return (end - start) / 36e5;
+  }
+
+  private getProjectedCount(totalCount: number, elapsedHours: number): number {
+    if (elapsedHours <= 0) return totalCount;
+    const start = new Date(this.startTime);
+    const end = new Date(this.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return totalCount;
+    const projectionEnd = new Date(end);
+    projectionEnd.setHours(23, 59, 59, 999);
+    const totalWindowHours = Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
+    return Math.round((totalCount / elapsedHours) * totalWindowHours);
   }
 
   /**
@@ -776,6 +869,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.machineData = validResponses;
+    this.updateSummaryCards(validResponses);
     const formattedData = validResponses.map((response) => {
       const totalCount = response.metrics?.output?.totalCount ??
         response.itemSummary?.machineSummary?.totalCount ?? 0;
@@ -808,6 +902,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private addDummyLoadingRow(): void {
+    this.summaryCards = [];
     // Add a dummy row with loading state
     this.rows = [
       {

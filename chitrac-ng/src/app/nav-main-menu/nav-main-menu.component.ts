@@ -13,6 +13,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { trigger, style, animate, transition, query, group } from '@angular/animations';
 
@@ -21,6 +22,7 @@ import { map, shareReplay } from 'rxjs/operators';
 
 import { PermissionLevels, UserService } from '../user.service';
 import { SettingsService } from '../services/settings.service';
+import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
 import { UserLoginComponent } from '../user-login/user-login.component';
 
@@ -55,6 +57,7 @@ const right = [
         MatIconModule,
         MatSlideToggleModule,
         MatMenuModule,
+        MatTooltipModule,
         DateTimeModalComponent,
         UserLoginComponent
     ],
@@ -98,6 +101,10 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/daily-summary',
         '/ng/daily-analytics-split',
         '/ng/comparison-dashboard',
+        '/ng/action-center',
+        '/ng/downtime-pareto',
+        '/ng/shift-handoff',
+        '/ng/visual-ops',
         '/ng/analytics/machine-dashboard'
       ]
     },
@@ -113,8 +120,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/spf-col-efficiency-screen',
         '/ng/lpls-efficiency-screen',
         '/ng/spfs-efficiency-screen',
-        '/ng/blanket-blasters-efficiency-screen',
-        '/ng/eight-station-demo'
+        '/ng/blanket-blasters-efficiency-screen'
       ]
     },
     {
@@ -146,10 +152,14 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   private userSub?: Subscription;
   private settingsSub?: Subscription;
   private dialogCloseSub?: Subscription;
+  private websocketStatusSub?: Subscription;
+  private dashboardCacheSub?: Subscription;
 
   user: any;
   
   systemName: string = 'ChiTrac';
+  websocketStatus: WebsocketConnectionStatus = 'disconnected';
+  dashboardUpdatedAt: Date | null = null;
 
   subscribeToUser(): void {
     this.userSub = this.userService.user.subscribe(x => {
@@ -169,7 +179,13 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   readonly permissionLevels = PermissionLevels;
 
-  constructor(private userService: UserService, private router: Router, private settingsService: SettingsService, private dialog: MatDialog) {}
+  constructor(
+    private userService: UserService,
+    private router: Router,
+    private settingsService: SettingsService,
+    private dialog: MatDialog,
+    private websocketService: WebsocketService
+  ) {}
 
   ngOnInit() {
     this.userService.getCurrentUser().subscribe(x => x);
@@ -183,12 +199,28 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     });
 
     this.dialogCloseSub = this.dialog.afterOpened.subscribe(() => this.closeMenu());
+    this.websocketService.ensureConnected();
+    this.websocketStatusSub = this.websocketService.status$.subscribe((status) => {
+      this.websocketStatus = status;
+    });
+    this.dashboardCacheSub = this.websocketService.dashboardCache$.subscribe((cache) => {
+      const updatedAt =
+        cache.dashboard?.machines?.today?.updatedAt ||
+        cache.dashboard?.operators?.today?.updatedAt ||
+        cache.today?.updatedAt ||
+        cache.currentShift?.updatedAt ||
+        cache.dashboard?.dailyAnalytics?.today?.updatedAt;
+
+      this.dashboardUpdatedAt = updatedAt ? new Date(updatedAt) : null;
+    });
   }
 
   ngOnDestroy() {
     this.userSub?.unsubscribe();
     this.settingsSub?.unsubscribe();
     this.dialogCloseSub?.unsubscribe();
+    this.websocketStatusSub?.unsubscribe();
+    this.dashboardCacheSub?.unsubscribe();
   }
 
   logout() {
@@ -262,6 +294,31 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         this.dateMenu.closeMenu();
       }
     });
+  }
+
+  getLiveChipClass(): string {
+    return `live-chip ${this.websocketStatus}`;
+  }
+
+  getLiveChipIcon(): string {
+    if (this.websocketStatus === 'connected') return 'bolt';
+    if (this.websocketStatus === 'connecting') return 'sync';
+    if (this.websocketStatus === 'error') return 'error';
+    return 'cloud_off';
+  }
+
+  getLiveChipLabel(): string {
+    if (this.websocketStatus === 'connected') return 'Live';
+    if (this.websocketStatus === 'connecting') return 'Connecting';
+    if (this.websocketStatus === 'error') return 'Fallback';
+    return 'Offline';
+  }
+
+  getLiveChipTooltip(): string {
+    const updated = this.dashboardUpdatedAt
+      ? `Last dashboard cache update: ${this.dashboardUpdatedAt.toLocaleString()}`
+      : 'No dashboard cache update received yet';
+    return `${this.getLiveChipLabel()} feed. ${updated}.`;
   }
 
   onLoginModalClose(): void {

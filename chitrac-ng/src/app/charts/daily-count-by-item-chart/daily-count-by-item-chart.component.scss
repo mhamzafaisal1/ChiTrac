@@ -16,3 +16,43 @@
   align-items: center;
   gap: .5rem;
 }
+
+.loading-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(66, 165, 245, 0.22);
+  border-top-color: #42a5f5;
+  border-radius: 50%;
+  animation: chart-spin 0.8s linear infinite;
+}
+
+.dummy-chart-content,
+.chart-no-data {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--theme-color-on-surface-variant, #667085);
+}
+
+.chart-no-data-content {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.chart-no-data-icon {
+  font-size: 24px;
+  opacity: 0.7;
+}
+
+.chart-no-data-text {
+  font-size: 12px;
+}
+
+@keyframes chart-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

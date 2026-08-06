@@ -8,6 +8,15 @@ import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
+type DailyCountPoint = {
+  date: string;
+  count: number;
+  movingAverage: number | null;
+  previousDeltaPct: number | null;
+  averageDeltaPct: number | null;
+  isToday: boolean;
+};
+
 @Component({
   selector: 'app-daily-count-bar-chart',
   standalone: true,
@@ -31,6 +40,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
+  @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -73,6 +83,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     }
 
     this.enterDummy();
+    if (this.useExternalTitle) return;
     
     // Consolidated initial fetch logic - only one fetch call
     this.performInitialFetch(isLive, wasConfirmed);
@@ -205,30 +216,56 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     };
 
   private formatChartData(data: any[]): CartesianChartConfig {
+    const points = this.buildDailyCountPoints(data);
+    const yMax = Math.max(0, ...points.flatMap(point => [
+      point.count,
+      point.movingAverage ?? 0
+    ]));
+    const shouldAbbreviateYAxis = yMax > 10000;
+
     // Convert daily count data to cartesian chart format
     const series: XYSeries[] = [
       {
         id: 'counts',
         title: 'Counts',
         type: 'bar',
-        data: data.map((d: any, i: number) => ({ 
-          x: d.date ?? d.label ?? `Hour ${i}`, 
-          y: d.count ?? d.counts ?? 0 
+        data: points.map(point => ({
+          x: point.date,
+          y: point.count,
+          color: this.getVarianceColor(point)
         })),
         color: '#42a5f5'
+      },
+      {
+        id: 'moving-average',
+        title: '7-Day Avg',
+        type: 'line',
+        data: points
+          .filter(point => point.movingAverage != null)
+          .map(point => ({
+            x: point.date,
+            y: point.movingAverage ?? 0
+          })),
+        color: '#ffca28',
+        options: {
+          showDots: false
+        }
       }
     ];
 
     return {
-      title: 'Daily Count Totals',
+      title: this.useExternalTitle ? '' : 'Daily Count Totals',
       showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'vertical',
       xType: 'category',
       xTickFormat: (v: any) => this.formatXAxisDate(v),
+      yTickFormat: shouldAbbreviateYAxis
+        ? (v: any) => this.formatCountTickAsThousands(v)
+        : (v: any) => this.formatCountTick(v),
       margin: {
-        top: Math.max(this.marginTop || 50, 60),
+        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
         right: Math.max(this.marginRight || 30, 30),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft ?? 0, 60) 
@@ -237,13 +274,69 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       tooltip: {
         show: true,
         delayMs: 750,
-        formatter: ({ xLabel, value }) => [
-          this.formatXAxisDate(xLabel),
-          `Total Count: ${this.formatCount(value)}`
-        ]
+        formatter: ({ series, xLabel, value }) => this.formatTooltip(series.id, xLabel, value, points)
       },
       series: series
     };
+  }
+
+  private buildDailyCountPoints(data: any[]): DailyCountPoint[] {
+    const todayKey = this.toDateKey(new Date());
+    const raw = data.map((d: any, i: number) => ({
+      date: String(d.date ?? d.label ?? `Day ${i + 1}`),
+      count: Number(d.count ?? d.counts ?? 0) || 0
+    }));
+
+    return raw.map((point, index) => {
+      const windowStart = Math.max(0, index - 6);
+      const movingWindow = raw.slice(windowStart, index + 1);
+      const movingAverage = movingWindow.length
+        ? movingWindow.reduce((sum, row) => sum + row.count, 0) / movingWindow.length
+        : null;
+      const previous = index > 0 ? raw[index - 1].count : null;
+      return {
+        ...point,
+        movingAverage,
+        previousDeltaPct: previous && previous > 0
+          ? ((point.count - previous) / previous) * 100
+          : null,
+        averageDeltaPct: movingAverage && movingAverage > 0
+          ? ((point.count - movingAverage) / movingAverage) * 100
+          : null,
+        isToday: this.toDateKey(point.date) === todayKey
+      };
+    });
+  }
+
+  private getVarianceColor(point: DailyCountPoint): string {
+    if (point.isToday) return '#26a69a';
+    const delta = point.averageDeltaPct;
+    if (delta == null) return '#42a5f5';
+    if (delta <= -12) return '#ef5350';
+    if (delta <= -6) return '#ffca28';
+    if (delta >= 10) return '#66bb6a';
+    return '#42a5f5';
+  }
+
+  private formatTooltip(seriesId: string, xLabel: string, value: number, points: DailyCountPoint[]): string[] {
+    const point = points.find(row => String(row.date) === String(xLabel));
+    const lines = [
+      `${this.formatXAxisDate(xLabel)}${point?.isToday ? ' (Today)' : ''}`,
+      seriesId === 'moving-average'
+        ? `7-Day Avg: ${this.formatCount(value)}`
+        : `Total Count: ${this.formatCount(value)}`
+    ];
+
+    if (seriesId !== 'moving-average' && point) {
+      if (point.previousDeltaPct != null) {
+        lines.push(`Vs Previous Day: ${this.formatSignedPercent(point.previousDeltaPct)}`);
+      }
+      if (point.averageDeltaPct != null) {
+        lines.push(`Vs 7-Day Avg: ${this.formatSignedPercent(point.averageDeltaPct)}`);
+      }
+    }
+
+    return lines;
   }
 
   private enterDummy(): void {
@@ -268,6 +361,31 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     return s;
   }
 
+  private toDateKey(value: string | Date): string {
+    if (value instanceof Date) {
+      return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+    }
+    const s = String(value);
+    const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime())) return this.toDateKey(parsed);
+    return s;
+  }
+
+  private formatCountTick(v: any): string {
+    const value = Number(v);
+    return Number.isFinite(value) ? value.toLocaleString('en-US') : String(v);
+  }
+
+  private formatCountTickAsThousands(v: any): string {
+    const value = Number(v);
+    if (!Number.isFinite(value)) return String(v);
+    if (Math.abs(value) < 1000) return this.formatCountTick(value);
+    const thousands = value / 1000;
+    return `${Number.isInteger(thousands) ? thousands.toFixed(0) : thousands.toFixed(1)}k`;
+  }
+
   private formatDateForInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -279,5 +397,13 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
 
   private formatCount(value: number): string {
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+  }
+
+  private formatSignedPercent(value: number): string {
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    }).format(value)}%`;
   }
 }

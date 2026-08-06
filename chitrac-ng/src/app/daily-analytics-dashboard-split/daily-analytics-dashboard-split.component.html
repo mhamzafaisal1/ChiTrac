@@ -5,6 +5,8 @@
       <app-chart-tile
         title="Machine Run/Pause/Fault Time"
         icon="bar_chart"
+        [subtitle]="cacheSubtitle"
+        [updatedAt]="cacheUpdatedAt"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
@@ -12,6 +14,7 @@
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
           [preloadedData]="preloadedData?.machineStatus"
+          [useExternalTitle]="useTileTitles"
         ></app-daily-machine-stacked-bar-chart>
       </app-chart-tile>
 
@@ -19,6 +22,8 @@
       <app-chart-tile
         title="Machine OEE"
         icon="insights"
+        [subtitle]="cacheSubtitle"
+        [updatedAt]="cacheUpdatedAt"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
@@ -26,6 +31,7 @@
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
           [preloadedData]="preloadedData?.machineOee"
+          [useExternalTitle]="useTileTitles"
         ></app-daily-machine-oee-bar-chart>
       </app-chart-tile>
 
@@ -33,6 +39,8 @@
       <app-chart-tile
         title="Item Totals by Type"
         icon="stacked_bar_chart"
+        [subtitle]="cacheSubtitle"
+        [updatedAt]="cacheUpdatedAt"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
@@ -44,6 +52,7 @@
           [marginRight]="30"
           [marginBottom]="50"
           [marginLeft]="120"
+          [useExternalTitle]="useTileTitles"
         ></app-daily-count-by-item-chart>
       </app-chart-tile>
 
@@ -51,6 +60,8 @@
       <app-chart-tile
         title="Efficiency % by Machine Group"
         icon="groups"
+        [subtitle]="cacheSubtitle"
+        [updatedAt]="cacheUpdatedAt"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
@@ -58,6 +69,7 @@
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
           [preloadedData]="preloadedData?.machineGroupEfficiency"
+          [useExternalTitle]="useTileTitles"
         ></app-efficiency-by-machine-group-bar-chart>
       </app-chart-tile>
 
@@ -65,6 +77,8 @@
       <app-chart-tile
         title="Top Operator Efficiency"
         icon="leaderboard"
+        [subtitle]="cacheSubtitle"
+        [updatedAt]="cacheUpdatedAt"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
@@ -72,6 +86,7 @@
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
           [preloadedData]="preloadedData?.topOperators"
+          [useExternalTitle]="useTileTitles"
         ></app-ranked-operator-bar-chart>
       </app-chart-tile>
 
@@ -79,6 +94,8 @@
       <app-chart-tile
         title="Daily Plantwide Count Totals"
         icon="calendar_view_day"
+        [subtitle]="'Last 28 Days'"
+        [updatedAt]="cacheUpdatedAt"
         [chartWidth]="chartWidth"
         [chartHeight]="chartHeight"
       >
@@ -86,6 +103,7 @@
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
           [preloadedData]="preloadedData?.dailyCounts"
+          [useExternalTitle]="useTileTitles"
         ></app-daily-count-bar-chart>
       </app-chart-tile>
     </div>

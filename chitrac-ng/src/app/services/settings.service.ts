@@ -47,7 +47,6 @@ export class SettingsService {
     return this.http.get<AppSettings>('/api/utilities/settings').pipe(
       tap(settings => {
         this.settingsSubject.next(settings);
-        console.log('[SettingsService] Settings loaded:', settings);
       })
     );
   }
@@ -103,7 +102,6 @@ export class SettingsService {
     return this.http.get<ThemeResponse>('/api/preferences/user/theme', this.preferenceRequestOptions).pipe(
       tap(response => {
         this.currentThemeSubject.next(response.theme);
-        console.log('[SettingsService] Theme loaded:', response);
       })
     );
   }
@@ -115,7 +113,6 @@ export class SettingsService {
     return this.http.put('/api/preferences/user/theme', { theme }, this.preferenceRequestOptions).pipe(
       tap(() => {
         this.currentThemeSubject.next(theme);
-        console.log('[SettingsService] Theme saved:', theme);
       })
     );
   }

@@ -7,6 +7,16 @@
     </div>
   </div>
 
+  <section class="summary-strip" *ngIf="summaryCards.length">
+    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone">
+      <mat-icon>{{ card.icon }}</mat-icon>
+      <div>
+        <span>{{ card.label }}</span>
+        <strong>{{ card.value }}</strong>
+      </div>
+    </article>
+  </section>
+
   <div class="table-wrapper">
     <div class="table-container" [class.loading]="isLoading">
       <base-table
@@ -20,6 +30,11 @@
         [class.dark]="isDarkTheme"
         [class.light]="!isDarkTheme"
       ></base-table>
+      <div class="empty-state" *ngIf="!rows.length && !isLoading">
+        <mat-icon>person_search</mat-icon>
+        <strong>No operator data found</strong>
+        <span>Try a live view, current shift, or a wider timeframe.</span>
+      </div>
     </div>
   </div>
 

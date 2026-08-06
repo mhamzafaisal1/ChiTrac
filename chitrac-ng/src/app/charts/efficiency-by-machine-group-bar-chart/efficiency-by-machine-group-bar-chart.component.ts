@@ -30,6 +30,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   @Input() marginBottom!: number;
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
+  @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
   isDarkTheme = false;
@@ -77,6 +78,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     this.endTime = this.formatDateForInput(now);
 
     this.enterDummy();
+    if (this.useExternalTitle) return;
 
     this.performInitialFetch(isLive, wasConfirmed);
 
@@ -221,7 +223,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     }];
 
     return {
-      title: 'Efficiency % by Machine Group',
+      title: this.useExternalTitle ? '' : 'Efficiency % by Machine Group',
       showAxisLabels: false,
       width: this.chartWidth,
       height: this.chartHeight,
@@ -232,7 +234,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
         return data.find(d => d.id === key)?.name ?? key;
       },
       margin: {
-        top: Math.max(this.marginTop || 50, 60),
+        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
         right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, 120)

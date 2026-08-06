@@ -37,6 +37,9 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   chartWidth: number = 600;
   chartHeight: number = 450;
   preloadedData: any = null;
+  cacheSubtitle = 'Today';
+  cacheUpdatedAt: string | null = null;
+  readonly useTileTitles = true;
   private websocketStatus: WebsocketConnectionStatus = 'disconnected';
   private resizeObserver?: ResizeObserver;
   private resizeFrame: number | null = null;
@@ -150,9 +153,31 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
       : dailyAnalytics?.today;
 
     this.preloadedData = envelope?.data || null;
+    this.cacheSubtitle = this.buildCacheSubtitle(envelope, scope);
+    this.cacheUpdatedAt = this.formatUpdatedAt(envelope?.updatedAt);
   }
 
   private getDashboardCacheScope(): DashboardCacheScope {
     return this.dateTimeService.getShiftId() ? 'currentShift' : 'today';
+  }
+
+  private buildCacheSubtitle(envelope: any, scope: DashboardCacheScope): string {
+    const mode = envelope?.meta?.mode;
+    const shiftName = envelope?.meta?.shift?.name;
+    if (scope === 'currentShift') {
+      return shiftName ? `${shiftName} Shift` : 'Current Shift';
+    }
+    if (mode === 'today') return 'Today';
+    return 'Daily Analytics';
+  }
+
+  private formatUpdatedAt(updatedAt: string | Date | null | undefined): string | null {
+    if (!updatedAt) return null;
+    const date = new Date(updatedAt);
+    if (Number.isNaN(date.getTime())) return null;
+    return `Updated ${date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit'
+    })}`;
   }
 }
