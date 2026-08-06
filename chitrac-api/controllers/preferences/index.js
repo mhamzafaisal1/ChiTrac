@@ -170,9 +170,65 @@ function constructor(server) {
       preferences.defaultTheme = input.defaultTheme;
     }
 
+    if (input.dashboardLayouts && typeof input.dashboardLayouts === 'object' && !Array.isArray(input.dashboardLayouts)) {
+      const dashboardLayouts = {};
+      const machineDashboard = input.dashboardLayouts.machineDashboard;
+
+      if (machineDashboard && typeof machineDashboard === 'object' && !Array.isArray(machineDashboard)) {
+        const summaryCardOrder = machineDashboard.summaryCardOrder;
+
+        if (summaryCardOrder !== undefined) {
+          if (!Array.isArray(summaryCardOrder)) {
+            const error = new Error('Invalid summaryCardOrder. Must be an array of strings');
+            error.status = 400;
+            throw error;
+          }
+
+          if (summaryCardOrder.some((label) => typeof label !== 'string')) {
+            const error = new Error('Invalid summaryCardOrder. Every entry must be a string');
+            error.status = 400;
+            throw error;
+          }
+
+          const cleanedOrder = summaryCardOrder
+            .map((label) => label.trim())
+            .filter(Boolean)
+            .slice(0, 20);
+
+          dashboardLayouts.machineDashboard = {
+            summaryCardOrder: [...new Set(cleanedOrder)]
+          };
+        }
+      }
+
+      if (Object.keys(dashboardLayouts).length) {
+        preferences.dashboardLayouts = dashboardLayouts;
+      }
+    }
+
     preferences.userId = userId;
     preferences.updatedAt = new Date();
     return preferences;
+  }
+
+  function buildUserPreferenceUpdates(preferences = {}) {
+    const updates = {};
+
+    if (preferences.theme !== undefined) {
+      updates.theme = preferences.theme;
+    }
+
+    if (preferences.defaultTheme !== undefined) {
+      updates.defaultTheme = preferences.defaultTheme;
+    }
+
+    if (preferences.dashboardLayouts?.machineDashboard?.summaryCardOrder) {
+      updates['dashboardLayouts.machineDashboard.summaryCardOrder'] =
+        preferences.dashboardLayouts.machineDashboard.summaryCardOrder;
+    }
+
+    updates.updatedAt = preferences.updatedAt || new Date();
+    return updates;
   }
 
   function mergePreferences(envPreferences, systemPrefs, userPrefs) {
@@ -254,7 +310,7 @@ function constructor(server) {
       }
 
       const preferences = sanitizeUserPreferences(req.body, req.authUserId);
-      const { userId, ...updates } = preferences;
+      const updates = buildUserPreferenceUpdates(preferences);
       await userPreferencesCollection.updateOne(
         { userId: req.authUserId },
         {

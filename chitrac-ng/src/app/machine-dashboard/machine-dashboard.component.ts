@@ -14,7 +14,7 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { MatDialog } from "@angular/material/dialog";
 import { CdkDragDrop, DragDropModule, moveItemInArray } from "@angular/cdk/drag-drop";
-import { Subject, takeUntil, tap } from "rxjs";
+import { catchError, debounceTime, distinctUntilChanged, of, Subject, switchMap, takeUntil, tap } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
 import { MachineService } from "../services/machine.service";
@@ -22,7 +22,9 @@ import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
 import { PercentBreakpointService } from "../services/percent-breakpoint.service";
+import { SettingsService } from "../services/settings.service";
 import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
+import { UserService } from "../user.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
 import { UseCarouselComponent } from "../use-carousel/use-carousel.component";
@@ -106,6 +108,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private readonly handleResize = this.updateChartDimensions.bind(this);
   private readonly summaryCardOrderKey = "chitrac-machine-dashboard-summary-card-order";
   private summaryCardOrder: string[] = [];
+  private summaryCardOrderSource: "server" | "local" | "default" = "default";
+  private readonly summaryCardOrderSave$ = new Subject<string[]>();
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -135,14 +139,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
     private percentBreakpointService: PercentBreakpointService,
-    private websocketService: WebsocketService
+    private websocketService: WebsocketService,
+    private settingsService: SettingsService,
+    private userService: UserService
   ) {}
 
   ngOnInit(): void {
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
 
-    this.summaryCardOrder = this.loadSummaryCardOrder();
+    this.loadInitialSummaryCardOrder();
+    this.setupSummaryCardOrderPersistence();
+    this.subscribeToUserPreferences();
     this.updateChartDimensions();
     window.addEventListener("resize", this.handleResize);
 
@@ -239,6 +247,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (event.previousIndex === event.currentIndex) return;
     moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
     this.summaryCardOrder = this.summaryCards.map((card) => card.label);
+    this.settingsService.setMachineDashboardCardOrder(this.summaryCardOrder);
+
+    if (this.userService.getToken()) {
+      this.summaryCardOrderSource = "server";
+      this.summaryCardOrderSave$.next(this.summaryCardOrder);
+      return;
+    }
+
+    this.summaryCardOrderSource = "local";
     localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
   }
 
@@ -506,13 +523,62 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return [...ordered, ...additions];
   }
 
-  private loadSummaryCardOrder(): string[] {
+  private setupSummaryCardOrderPersistence(): void {
+    this.summaryCardOrderSave$
+      .pipe(
+        debounceTime(800),
+        distinctUntilChanged((previous, current) => JSON.stringify(previous) === JSON.stringify(current)),
+        switchMap((order) =>
+          this.settingsService.saveMachineDashboardCardOrder(order).pipe(
+            tap(() => localStorage.removeItem(this.summaryCardOrderKey)),
+            catchError((error) => {
+              console.error("[MachineDashboard] Failed to save summary card order", error);
+              return of(null);
+            })
+          )
+        ),
+        takeUntil(this.destroy$)
+      )
+      .subscribe();
+  }
+
+  private subscribeToUserPreferences(): void {
+    this.settingsService.userPreferences$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((preferences) => {
+        const serverOrder = preferences?.dashboardLayouts?.machineDashboard?.summaryCardOrder;
+        if (Array.isArray(serverOrder) && serverOrder.length) {
+          this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
+          this.summaryCardOrderSource = "server";
+          this.summaryCards = this.applySummaryCardOrder(this.summaryCards);
+          return;
+        }
+
+        if (preferences && this.summaryCardOrderSource === "local" && this.summaryCardOrder.length && this.userService.getToken()) {
+          this.summaryCardOrderSave$.next(this.summaryCardOrder);
+        }
+      });
+  }
+
+  private loadInitialSummaryCardOrder(): void {
+    const localOrder = this.loadLocalSummaryCardOrder();
+    if (!localOrder.length) return;
+
+    this.summaryCardOrder = localOrder;
+    this.summaryCardOrderSource = "local";
+  }
+
+  private loadLocalSummaryCardOrder(): string[] {
     try {
       const parsed = JSON.parse(localStorage.getItem(this.summaryCardOrderKey) || "[]");
-      return Array.isArray(parsed) ? parsed.filter((label) => typeof label === "string") : [];
+      return Array.isArray(parsed) ? this.cleanSummaryCardOrder(parsed) : [];
     } catch {
       return [];
     }
+  }
+
+  private cleanSummaryCardOrder(labels: any[]): string[] {
+    return [...new Set(labels.filter((label) => typeof label === "string").map((label) => label.trim()).filter(Boolean))];
   }
 
   private averagePercent(values: any[]): number {
