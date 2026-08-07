@@ -29,6 +29,9 @@ export interface DashboardLayoutPreferences {
   machineDashboard?: {
     summaryCardOrder?: string[];
   };
+  experimentalDailyDashboard?: {
+    chartOrder?: string[];
+  };
 }
 
 export interface UserPreferences {
@@ -165,6 +168,36 @@ export class SettingsService {
         this.userPreferencesSubject.next(preferences);
       })
     );
+  }
+
+  saveExperimentalDailyDashboardChartOrder(chartOrder: string[]): Observable<UserPreferences> {
+    const payload = {
+      dashboardLayouts: {
+        experimentalDailyDashboard: {
+          chartOrder
+        }
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+      })
+    );
+  }
+
+  setExperimentalDailyDashboardChartOrder(chartOrder: string[]): void {
+    const current = this.userPreferencesSubject.value || {};
+    this.userPreferencesSubject.next({
+      ...current,
+      dashboardLayouts: {
+        ...current.dashboardLayouts,
+        experimentalDailyDashboard: {
+          ...current.dashboardLayouts?.experimentalDailyDashboard,
+          chartOrder
+        }
+      }
+    });
   }
 
   setMachineDashboardCardOrder(summaryCardOrder: string[]): void {

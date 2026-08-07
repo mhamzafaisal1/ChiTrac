@@ -1,0 +1,89 @@
+<div class="dashboard-container" [class.dark-mode]="isDarkTheme" [class.layout-editing]="layoutEditing">
+  <div class="dashboard-wrapper">
+    <div
+      class="charts-grid"
+      #chartsGrid
+      cdkDropList
+      cdkDropListOrientation="mixed"
+      (cdkDropListDropped)="onChartDrop($event)"
+    >
+      <div
+        class="chart-shell"
+        *ngFor="let tile of chartTiles; trackBy: trackTile"
+        cdkDrag
+        [cdkDragDisabled]="!layoutEditing"
+      >
+        <button
+          class="chart-drag-handle"
+          type="button"
+          cdkDragHandle
+          *ngIf="layoutEditing"
+          aria-label="Drag to reorder chart"
+        >
+          <mat-icon>drag_indicator</mat-icon>
+        </button>
+
+        <app-chart-tile
+          [title]="tile.title"
+          [icon]="tile.icon"
+          [subtitle]="chartSubtitle(tile)"
+          [updatedAt]="cacheUpdatedAt"
+          [chartWidth]="chartWidth"
+          [chartHeight]="chartHeight"
+        >
+          <app-daily-machine-stacked-bar-chart
+            *ngIf="tile.id === 'machine-status'"
+            [chartWidth]="chartWidth"
+            [chartHeight]="chartHeight"
+            [preloadedData]="preloadedData?.machineStatus"
+            [useExternalTitle]="useTileTitles"
+          ></app-daily-machine-stacked-bar-chart>
+
+          <app-daily-machine-oee-bar-chart
+            *ngIf="tile.id === 'machine-oee'"
+            [chartWidth]="chartWidth"
+            [chartHeight]="chartHeight"
+            [preloadedData]="preloadedData?.machineOee"
+            [useExternalTitle]="useTileTitles"
+          ></app-daily-machine-oee-bar-chart>
+
+          <app-daily-count-by-item-chart
+            *ngIf="tile.id === 'item-totals'"
+            [chartWidth]="chartWidth"
+            [chartHeight]="chartHeight"
+            [preloadedData]="preloadedData?.itemTotals"
+            [marginTop]="50"
+            [marginRight]="30"
+            [marginBottom]="50"
+            [marginLeft]="120"
+            [useExternalTitle]="useTileTitles"
+          ></app-daily-count-by-item-chart>
+
+          <app-efficiency-by-machine-group-bar-chart
+            *ngIf="tile.id === 'machine-group-efficiency'"
+            [chartWidth]="chartWidth"
+            [chartHeight]="chartHeight"
+            [preloadedData]="preloadedData?.machineGroupEfficiency"
+            [useExternalTitle]="useTileTitles"
+          ></app-efficiency-by-machine-group-bar-chart>
+
+          <app-ranked-operator-bar-chart
+            *ngIf="tile.id === 'top-operators'"
+            [chartWidth]="chartWidth"
+            [chartHeight]="chartHeight"
+            [preloadedData]="preloadedData?.topOperators"
+            [useExternalTitle]="useTileTitles"
+          ></app-ranked-operator-bar-chart>
+
+          <app-daily-count-bar-chart
+            *ngIf="tile.id === 'daily-counts'"
+            [chartWidth]="chartWidth"
+            [chartHeight]="chartHeight"
+            [preloadedData]="preloadedData?.dailyCounts"
+            [useExternalTitle]="useTileTitles"
+          ></app-daily-count-bar-chart>
+        </app-chart-tile>
+      </div>
+    </div>
+  </div>
+</div>

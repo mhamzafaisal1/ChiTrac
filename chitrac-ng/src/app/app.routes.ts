@@ -77,6 +77,11 @@ export const routes: Routes = [
 	{ path: 'ng/downtime-pareto', component: DowntimeParetoComponent },
 	{ path: 'ng/shift-handoff', component: ShiftHandoffComponent },
 	{ path: 'ng/visual-ops', component: VisualOpsDashboardComponent },
+	{
+		path: 'ng/experimental/daily-dashboard',
+		loadComponent: () => import('./experimental-daily-dashboard/experimental-daily-dashboard.component')
+			.then(m => m.ExperimentalDailyDashboardComponent)
+	},
 	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
 	
 	// Reports

@@ -173,6 +173,7 @@ function constructor(server) {
     if (input.dashboardLayouts && typeof input.dashboardLayouts === 'object' && !Array.isArray(input.dashboardLayouts)) {
       const dashboardLayouts = {};
       const machineDashboard = input.dashboardLayouts.machineDashboard;
+      const experimentalDailyDashboard = input.dashboardLayouts.experimentalDailyDashboard;
 
       if (machineDashboard && typeof machineDashboard === 'object' && !Array.isArray(machineDashboard)) {
         const summaryCardOrder = machineDashboard.summaryCardOrder;
@@ -201,6 +202,33 @@ function constructor(server) {
         }
       }
 
+      if (experimentalDailyDashboard && typeof experimentalDailyDashboard === 'object' && !Array.isArray(experimentalDailyDashboard)) {
+        const chartOrder = experimentalDailyDashboard.chartOrder;
+
+        if (chartOrder !== undefined) {
+          if (!Array.isArray(chartOrder)) {
+            const error = new Error('Invalid chartOrder. Must be an array of strings');
+            error.status = 400;
+            throw error;
+          }
+
+          if (chartOrder.some((id) => typeof id !== 'string')) {
+            const error = new Error('Invalid chartOrder. Every entry must be a string');
+            error.status = 400;
+            throw error;
+          }
+
+          const cleanedOrder = chartOrder
+            .map((id) => id.trim())
+            .filter(Boolean)
+            .slice(0, 20);
+
+          dashboardLayouts.experimentalDailyDashboard = {
+            chartOrder: [...new Set(cleanedOrder)]
+          };
+        }
+      }
+
       if (Object.keys(dashboardLayouts).length) {
         preferences.dashboardLayouts = dashboardLayouts;
       }
@@ -225,6 +253,11 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.machineDashboard?.summaryCardOrder) {
       updates['dashboardLayouts.machineDashboard.summaryCardOrder'] =
         preferences.dashboardLayouts.machineDashboard.summaryCardOrder;
+    }
+
+    if (preferences.dashboardLayouts?.experimentalDailyDashboard?.chartOrder) {
+      updates['dashboardLayouts.experimentalDailyDashboard.chartOrder'] =
+        preferences.dashboardLayouts.experimentalDailyDashboard.chartOrder;
     }
 
     updates.updatedAt = preferences.updatedAt || new Date();
