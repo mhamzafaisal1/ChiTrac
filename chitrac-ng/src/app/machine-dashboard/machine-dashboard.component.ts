@@ -107,13 +107,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Serial Number",
     "Runtime",
     "Downtime",
-    "Total Count",
     "Misfeed Count",
     "PPH",
     "Availability",
     "Throughput",
     "Efficiency",
-    "OEE",
   ];
   tableColumnVisibility: Record<string, boolean> = {};
 

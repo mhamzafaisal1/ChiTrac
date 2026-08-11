@@ -226,6 +226,7 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   }
 
   isColumnEnabled(column: string): boolean {
+    if (!this.isColumnToggleable(column)) return true;
     return this.columnVisibility?.[column] !== false;
   }
 
