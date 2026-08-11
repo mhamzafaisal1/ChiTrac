@@ -3,12 +3,14 @@ const express = require('express');
 
 
 function init(app, server) {
+    const spindleEnabled = process.env.SPINDLE === 'true';
     const machineRoutes = require('../controllers/machine')(server);
     const itemRoutes = require('../controllers/item')(server);
     const operatorRoutes = require('../controllers/operator')(server);
     const statusRoutes = require('../controllers/status')(server);
     const softrolRoutes = require('../controllers/softrol')(server);
     const milnorRoutes = require('../controllers/milnor')(server);
+    const spindleRoutes = require('../controllers/spindle')(server);
     const alphaController = require('../controllers/alpha');
     const alphaRoutes = alphaController(server);
     alphaController.registerMachineXmlRoutes(app, server);
@@ -45,6 +47,13 @@ function init(app, server) {
     if (server.config.milnor) {
         app.get('/docs/api/milnor', (req, res, next) => {
             res.sendFile(path.join(server.appRoot.path, '/docs/api-milnor.html'));
+        });
+    }
+
+    // Conditionally load Spindle documentation based on environment setting
+    if (spindleEnabled) {
+        app.get('/docs/api/spindle', (req, res, next) => {
+            res.sendFile(path.join(server.appRoot.path, '/docs/api-spindle.html'));
         });
     }
 
@@ -275,6 +284,11 @@ function init(app, server) {
     // Conditionally load Milnor routes based on environment setting
     if (server.config.milnor) {
         app.use('/api/milnor', milnorRoutes);
+    }
+
+    // Conditionally load Spindle routes based on environment setting
+    if (spindleEnabled) {
+        app.use('/api/spindle', spindleRoutes);
     }
 
     app.use('/api/history', historyRoutes);
