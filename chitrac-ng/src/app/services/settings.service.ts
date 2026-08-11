@@ -25,6 +25,24 @@ export interface ThemeResponse {
   source: 'user' | 'default';
 }
 
+export interface DashboardLayoutPreferences {
+  machineDashboard?: {
+    summaryCardOrder?: string[];
+  };
+  experimentalDailyDashboard?: {
+    chartOrder?: string[];
+  };
+}
+
+export interface UserPreferences {
+  userId?: string;
+  theme?: 'light' | 'dark';
+  defaultTheme?: 'light' | 'dark';
+  dashboardLayouts?: DashboardLayoutPreferences;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -34,6 +52,8 @@ export class SettingsService {
 
   private currentThemeSubject = new BehaviorSubject<'light' | 'dark'>('light');
   public currentTheme$ = this.currentThemeSubject.asObservable();
+  private userPreferencesSubject = new BehaviorSubject<UserPreferences | null>(null);
+  public userPreferences$ = this.userPreferencesSubject.asObservable();
   private readonly preferenceRequestOptions = {
     headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' })
   };
@@ -53,6 +73,21 @@ export class SettingsService {
 
   getSystemPreferences(): Observable<AppSettings> {
     return this.http.get<AppSettings>('/api/preferences/system');
+  }
+
+  loadUserPreferences(): Observable<UserPreferences> {
+    return this.http.get<UserPreferences>('/api/preferences/user', this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+        if (preferences.theme) {
+          this.currentThemeSubject.next(preferences.theme);
+        }
+      })
+    );
+  }
+
+  clearUserPreferences(): void {
+    this.userPreferencesSubject.next(null);
   }
 
   saveDashboardTimeframe(dashboardTimeframe: 'current' | 'shift'): Observable<AppSettings> {
@@ -113,8 +148,70 @@ export class SettingsService {
     return this.http.put('/api/preferences/user/theme', { theme }, this.preferenceRequestOptions).pipe(
       tap(() => {
         this.currentThemeSubject.next(theme);
+        const current = this.userPreferencesSubject.value || {};
+        this.userPreferencesSubject.next({ ...current, theme, defaultTheme: theme });
       })
     );
+  }
+
+  saveMachineDashboardCardOrder(summaryCardOrder: string[]): Observable<UserPreferences> {
+    const payload = {
+      dashboardLayouts: {
+        machineDashboard: {
+          summaryCardOrder
+        }
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+      })
+    );
+  }
+
+  saveExperimentalDailyDashboardChartOrder(chartOrder: string[]): Observable<UserPreferences> {
+    const payload = {
+      dashboardLayouts: {
+        experimentalDailyDashboard: {
+          chartOrder
+        }
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+      })
+    );
+  }
+
+  setExperimentalDailyDashboardChartOrder(chartOrder: string[]): void {
+    const current = this.userPreferencesSubject.value || {};
+    this.userPreferencesSubject.next({
+      ...current,
+      dashboardLayouts: {
+        ...current.dashboardLayouts,
+        experimentalDailyDashboard: {
+          ...current.dashboardLayouts?.experimentalDailyDashboard,
+          chartOrder
+        }
+      }
+    });
+  }
+
+  setMachineDashboardCardOrder(summaryCardOrder: string[]): void {
+    const current = this.userPreferencesSubject.value || {};
+    this.userPreferencesSubject.next({
+      ...current,
+      dashboardLayouts: {
+        ...current.dashboardLayouts,
+        machineDashboard: {
+          ...current.dashboardLayouts?.machineDashboard,
+          summaryCardOrder
+        }
+      }
+    });
   }
 
   /**

@@ -40,10 +40,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.userService.user.pipe(takeUntil(this.destroy$)).subscribe(user => {
       if (user && user.username) {
         // User is logged in, load their theme preference
+        this.loadUserPreferences();
         this.loadTheme();
         this.websocketService.ensureConnected();
       } else {
         // User is not logged in, use default theme from settings
+        this.settingsService.clearUserPreferences();
         this.loadDefaultTheme();
       }
     });
@@ -105,6 +107,18 @@ export class AppComponent implements OnInit, OnDestroy {
         }
         // Fall back to default theme on error
         this.loadDefaultTheme();
+      }
+    });
+  }
+
+  private loadUserPreferences(): void {
+    this.settingsService.loadUserPreferences().subscribe({
+      next: () => {},
+      error: (err) => {
+        console.error('[AppComponent] Failed to load user preferences', err);
+        if (err?.status === 401) {
+          this.userService.clearStoredSession();
+        }
       }
     });
   }

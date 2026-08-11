@@ -23,6 +23,7 @@ import { map, shareReplay } from 'rxjs/operators';
 import { PermissionLevels, UserService } from '../user.service';
 import { SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
+import { LayoutEditContext, LayoutEditService } from '../services/layout-edit.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
 import { UserLoginComponent } from '../user-login/user-login.component';
 
@@ -101,11 +102,17 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/daily-summary',
         '/ng/daily-analytics-split',
         '/ng/comparison-dashboard',
+        '/ng/analytics/machine-dashboard'
+      ]
+    },
+    {
+      menu: 'experimental',
+      routes: [
         '/ng/action-center',
         '/ng/downtime-pareto',
         '/ng/shift-handoff',
         '/ng/visual-ops',
-        '/ng/analytics/machine-dashboard'
+        '/ng/experimental/daily-dashboard'
       ]
     },
     {
@@ -154,12 +161,14 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   private dialogCloseSub?: Subscription;
   private websocketStatusSub?: Subscription;
   private dashboardCacheSub?: Subscription;
+  private layoutEditSub?: Subscription;
 
   user: any;
   
   systemName: string = 'ChiTrac';
   websocketStatus: WebsocketConnectionStatus = 'disconnected';
   dashboardUpdatedAt: Date | null = null;
+  layoutEditContext: LayoutEditContext | null = null;
 
   subscribeToUser(): void {
     this.userSub = this.userService.user.subscribe(x => {
@@ -184,7 +193,8 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     private router: Router,
     private settingsService: SettingsService,
     private dialog: MatDialog,
-    private websocketService: WebsocketService
+    private websocketService: WebsocketService,
+    private layoutEditService: LayoutEditService
   ) {}
 
   ngOnInit() {
@@ -213,6 +223,10 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
       this.dashboardUpdatedAt = updatedAt ? new Date(updatedAt) : null;
     });
+    this.layoutEditSub = this.layoutEditService.context$
+      .subscribe((context) => {
+        this.layoutEditContext = context;
+      });
   }
 
   ngOnDestroy() {
@@ -221,6 +235,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     this.dialogCloseSub?.unsubscribe();
     this.websocketStatusSub?.unsubscribe();
     this.dashboardCacheSub?.unsubscribe();
+    this.layoutEditSub?.unsubscribe();
   }
 
   logout() {
@@ -319,6 +334,17 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
       ? `Last dashboard cache update: ${this.dashboardUpdatedAt.toLocaleString()}`
       : 'No dashboard cache update received yet';
     return `${this.getLiveChipLabel()} feed. ${updated}.`;
+  }
+
+  toggleLayoutEdit(): void {
+    this.layoutEditService.toggle();
+  }
+
+  getLayoutEditTooltip(): string {
+    if (!this.layoutEditContext) return '';
+    return this.layoutEditContext.editing
+      ? `Lock and save ${this.layoutEditContext.label} layout`
+      : `Edit ${this.layoutEditContext.label} layout`;
   }
 
   onLoginModalClose(): void {
