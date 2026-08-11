@@ -6,17 +6,12 @@
       <p>Fast visual reads for machine health, OEE losses, targets, and fault pressure.</p>
     </div>
     <div class="header-actions">
-      <button mat-stroked-button type="button" (click)="fetchData()" [disabled]="isLoading">
+      <button mat-stroked-button type="button" (click)="refreshData()" [disabled]="isLoading">
         <mat-icon>refresh</mat-icon>
         {{ isLoading ? 'Loading...' : 'Refresh' }}
       </button>
     </div>
   </header>
-
-  <section class="controls">
-    <app-date-time-picker label="Start Time" [(value)]="startTime"></app-date-time-picker>
-    <app-date-time-picker label="End Time" [(value)]="endTime"></app-date-time-picker>
-  </section>
 
   <section class="load-error" *ngIf="loadError">
     <mat-icon>info</mat-icon>
