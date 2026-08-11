@@ -14,8 +14,8 @@
     cdkDropListOrientation="mixed"
     (cdkDropListDropped)="onSummaryCardDrop($event)"
   >
-    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone" cdkDrag>
-      <button class="drag-handle" type="button" cdkDragHandle aria-label="Move summary card">
+    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone" cdkDrag [cdkDragDisabled]="!layoutEditing">
+      <button class="drag-handle" type="button" cdkDragHandle aria-label="Move summary card" *ngIf="layoutEditing">
         <mat-icon>drag_indicator</mat-icon>
       </button>
       <mat-icon>{{ card.icon }}</mat-icon>
@@ -37,6 +37,10 @@
         (rowClicked)="onRowClick($event)"
         [getCellClass]="getEfficiencyClass"
         [responsiveHiddenColumns]="responsiveHiddenColumns"
+        [columnEditMode]="layoutEditing"
+        [toggleableColumns]="machineDashboardToggleableColumns"
+        [columnVisibility]="tableColumnVisibility"
+        (columnVisibilityChange)="onTableColumnVisibilityChange($event)"
       ></base-table>
       <div class="empty-state" *ngIf="!rows.length && !isLoading">
         <mat-icon>query_stats</mat-icon>

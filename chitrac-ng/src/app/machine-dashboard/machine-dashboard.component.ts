@@ -23,6 +23,7 @@ import { DateTimeService } from "../services/date-time.service";
 import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
 import { PercentBreakpointService } from "../services/percent-breakpoint.service";
 import { SettingsService } from "../services/settings.service";
+import { LayoutEditService } from "../services/layout-edit.service";
 import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
 import { UserService } from "../user.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
@@ -33,6 +34,7 @@ import { MachineCurrentOperatorsComponent } from "../machine-current-operators/m
 import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component";
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
+import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
 
 interface SummaryCard {
   label: string;
@@ -64,6 +66,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   columns: string[] = [];
   rows: any[] = [];
   summaryCards: SummaryCard[] = [];
+  layoutEditing = false;
   columnTooltips: { [column: string]: string } = {
     Runtime: "Amount of time machine has been running",
     Downtime: "Amount of time machine has been paused, faulted, or offline.",
@@ -100,6 +103,19 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       "Efficiency",
     ],
   };
+  readonly machineDashboardToggleableColumns = [
+    "Serial Number",
+    "Runtime",
+    "Downtime",
+    "Total Count",
+    "Misfeed Count",
+    "PPH",
+    "Availability",
+    "Throughput",
+    "Efficiency",
+    "OEE",
+  ];
+  tableColumnVisibility: Record<string, boolean> = {};
 
   private observer!: MutationObserver;
   private pollingSubscription: any;
@@ -107,6 +123,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private websocketStatus: WebsocketConnectionStatus = "disconnected";
   private readonly handleResize = this.updateChartDimensions.bind(this);
   private readonly summaryCardOrderKey = "chitrac-machine-dashboard-summary-card-order";
+  private readonly layoutContextId = "machineDashboard";
   private summaryCardOrder: string[] = [];
   private summaryCardOrderSource: "server" | "local" | "default" = "default";
   private readonly summaryCardOrderSave$ = new Subject<string[]>();
@@ -141,7 +158,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private percentBreakpointService: PercentBreakpointService,
     private websocketService: WebsocketService,
     private settingsService: SettingsService,
-    private userService: UserService
+    private userService: UserService,
+    private layoutEditService: LayoutEditService
   ) {}
 
   ngOnInit(): void {
@@ -150,7 +168,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     this.loadInitialSummaryCardOrder();
     this.setupSummaryCardOrderPersistence();
+    this.subscribeToLayoutEditing();
     this.subscribeToUserPreferences();
+    this.layoutEditService.register(this.layoutContextId, "Machine Dashboard");
     this.updateChartDimensions();
     window.addEventListener("resize", this.handleResize);
 
@@ -244,22 +264,25 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   onSummaryCardDrop(event: CdkDragDrop<SummaryCard[]>): void {
+    if (!this.layoutEditing) return;
     if (event.previousIndex === event.currentIndex) return;
     moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
     this.summaryCardOrder = this.summaryCards.map((card) => card.label);
-    this.settingsService.setMachineDashboardCardOrder(this.summaryCardOrder);
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility);
 
-    if (this.userService.getToken()) {
-      this.summaryCardOrderSource = "server";
-      this.summaryCardOrderSave$.next(this.summaryCardOrder);
-      return;
+    if (!this.userService.getToken()) {
+      this.summaryCardOrderSource = "local";
+      localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
     }
+  }
 
-    this.summaryCardOrderSource = "local";
-    localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
+  onTableColumnVisibilityChange(visibility: Record<string, boolean>): void {
+    this.tableColumnVisibility = this.cleanTableColumnVisibility(visibility);
+    this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility);
   }
 
   ngOnDestroy(): void {
+    this.layoutEditService.unregister(this.layoutContextId);
     if (this.observer) this.observer.disconnect();
     this.stopPolling();
     this.destroy$.next();
@@ -523,6 +546,55 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return [...ordered, ...additions];
   }
 
+  private subscribeToLayoutEditing(): void {
+    this.layoutEditService.context$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((context) => {
+        this.layoutEditing = context?.id === this.layoutContextId && context.editing;
+      });
+
+    this.layoutEditService.lockRequested$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.confirmAndSaveLayout());
+  }
+
+  private confirmAndSaveLayout(): void {
+    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
+      width: "380px",
+      autoFocus: false,
+    });
+
+    dialogRef.afterClosed()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((result) => {
+        if (result !== "save") return;
+        this.saveLayoutPreferences();
+      });
+  }
+
+  private saveLayoutPreferences(): void {
+    this.summaryCardOrder = this.getSummaryCardOrder();
+    this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility);
+
+    if (!this.userService.getToken()) {
+      localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
+      this.layoutEditService.setEditing(false);
+      return;
+    }
+
+    this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility).subscribe({
+      next: () => {
+        localStorage.removeItem(this.summaryCardOrderKey);
+        this.summaryCardOrderSource = "server";
+        this.layoutEditService.setEditing(false);
+      },
+      error: (error) => {
+        console.error("[MachineDashboard] Failed to save layout preferences", error);
+      },
+    });
+  }
+
   private setupSummaryCardOrderPersistence(): void {
     this.summaryCardOrderSave$
       .pipe(
@@ -546,12 +618,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
-        const serverOrder = preferences?.dashboardLayouts?.machineDashboard?.summaryCardOrder;
+        const machineDashboardLayout = preferences?.dashboardLayouts?.machineDashboard;
+        const serverOrder = machineDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
           this.summaryCardOrderSource = "server";
           this.summaryCards = this.applySummaryCardOrder(this.summaryCards);
-          return;
+        }
+
+        if (machineDashboardLayout?.tableColumnVisibility) {
+          this.tableColumnVisibility = this.cleanTableColumnVisibility(machineDashboardLayout.tableColumnVisibility);
         }
 
         if (preferences && this.summaryCardOrderSource === "local" && this.summaryCardOrder.length && this.userService.getToken()) {
@@ -579,6 +655,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private cleanSummaryCardOrder(labels: any[]): string[] {
     return [...new Set(labels.filter((label) => typeof label === "string").map((label) => label.trim()).filter(Boolean))];
+  }
+
+  private cleanTableColumnVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
+    return this.machineDashboardToggleableColumns.reduce((acc, column) => {
+      if (typeof visibility[column] === "boolean") {
+        acc[column] = visibility[column];
+      }
+      return acc;
+    }, {} as Record<string, boolean>);
+  }
+
+  private getSummaryCardOrder(): string[] {
+    return this.summaryCards.length
+      ? this.summaryCards.map((card) => card.label)
+      : this.summaryCardOrder;
   }
 
   private averagePercent(values: any[]): number {

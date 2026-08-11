@@ -177,6 +177,8 @@ function constructor(server) {
 
       if (machineDashboard && typeof machineDashboard === 'object' && !Array.isArray(machineDashboard)) {
         const summaryCardOrder = machineDashboard.summaryCardOrder;
+        const tableColumnVisibility = machineDashboard.tableColumnVisibility;
+        const machineDashboardUpdates = {};
 
         if (summaryCardOrder !== undefined) {
           if (!Array.isArray(summaryCardOrder)) {
@@ -196,9 +198,34 @@ function constructor(server) {
             .filter(Boolean)
             .slice(0, 20);
 
-          dashboardLayouts.machineDashboard = {
-            summaryCardOrder: [...new Set(cleanedOrder)]
-          };
+          machineDashboardUpdates.summaryCardOrder = [...new Set(cleanedOrder)];
+        }
+
+        if (tableColumnVisibility !== undefined) {
+          if (!tableColumnVisibility || typeof tableColumnVisibility !== 'object' || Array.isArray(tableColumnVisibility)) {
+            const error = new Error('Invalid tableColumnVisibility. Must be an object of boolean values');
+            error.status = 400;
+            throw error;
+          }
+
+          const cleanedVisibility = {};
+          Object.entries(tableColumnVisibility).slice(0, 40).forEach(([column, enabled]) => {
+            if (typeof enabled !== 'boolean') {
+              const error = new Error('Invalid tableColumnVisibility. Every value must be boolean');
+              error.status = 400;
+              throw error;
+            }
+            const cleanedColumn = `${column}`.trim();
+            if (cleanedColumn) {
+              cleanedVisibility[cleanedColumn] = enabled;
+            }
+          });
+
+          machineDashboardUpdates.tableColumnVisibility = cleanedVisibility;
+        }
+
+        if (Object.keys(machineDashboardUpdates).length) {
+          dashboardLayouts.machineDashboard = machineDashboardUpdates;
         }
       }
 
@@ -253,6 +280,11 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.machineDashboard?.summaryCardOrder) {
       updates['dashboardLayouts.machineDashboard.summaryCardOrder'] =
         preferences.dashboardLayouts.machineDashboard.summaryCardOrder;
+    }
+
+    if (preferences.dashboardLayouts?.machineDashboard?.tableColumnVisibility) {
+      updates['dashboardLayouts.machineDashboard.tableColumnVisibility'] =
+        preferences.dashboardLayouts.machineDashboard.tableColumnVisibility;
     }
 
     if (preferences.dashboardLayouts?.experimentalDailyDashboard?.chartOrder) {
