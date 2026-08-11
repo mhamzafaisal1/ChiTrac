@@ -21,9 +21,11 @@ interface VisualMachine {
   name: string;
   serial: string;
   status: string;
+  statusDot: string;
   tone: string;
   oee: number;
   availability: number;
+  throughput: number;
   efficiency: number;
   count: number;
   runningMs: number;
@@ -37,6 +39,7 @@ interface WaterfallStep {
   value: number;
   width: number;
   tone: string;
+  remaining: number;
 }
 
 interface HeatCell {
@@ -198,17 +201,22 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     const pausedMs = this.numeric(statusRow?.pausedMs ?? row.pausedMs);
     const faultedMs = this.numeric(statusRow?.faultedMs ?? statusRow?.faultMs ?? row.faultedMs);
     const offlineMs = this.numeric(statusRow?.offlineMs ?? row.offlineMs);
-    const oee = this.percent(row.metrics?.performance?.oee?.percentage ?? row.performance?.oee?.percentage ?? row.oee);
-    const availability = this.percent(row.metrics?.performance?.availability?.percentage ?? row.performance?.availability?.percentage ?? row.availability);
-    const efficiency = this.percent(row.metrics?.performance?.efficiency?.percentage ?? row.performance?.efficiency?.percentage ?? row.efficiency);
+    const performance = row.metrics?.performance ?? row.performance ?? {};
+    const oee = this.performancePercent(performance.oee ?? row.oee);
+    const availability = this.performancePercent(performance.availability ?? row.availability);
+    const throughputSource = performance.throughput ?? row.throughput ?? row.quality;
+    const throughput = throughputSource == null ? 100 : this.performancePercent(throughputSource);
+    const efficiency = this.performancePercent(performance.efficiency ?? row.efficiency);
 
     return {
       name,
       serial,
       status,
+      statusDot,
       tone: this.machineTone(statusDot, oee),
       oee,
       availability,
+      throughput,
       efficiency,
       count: this.numeric(row.metrics?.output?.totalCount ?? row.performance?.output?.totalCount ?? row.totalCount),
       runningMs,
@@ -220,7 +228,7 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
 
   private buildMetrics(machines: VisualMachine[], faults: any[]): VisualMetric[] {
     const avgOee = this.average(machines.map((m) => m.oee));
-    const running = machines.filter((m) => m.tone === 'good').length;
+    const running = machines.filter((m) => m.statusDot === 'Running Dot').length;
     const totalCount = machines.reduce((sum, m) => sum + m.count, 0);
     const faultMinutes = Math.round(faults.reduce((sum, f) => sum + Number(f.totalDurationSeconds || 0), 0) / 60);
     const worstMachine = [...machines].sort((a, b) => a.oee - b.oee)[0];
@@ -246,34 +254,43 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
           { label: 'Avail', value: machine.availability },
           { label: 'Eff', value: machine.efficiency },
           { label: 'Run', value: this.stateWidth(machine, 'runningMs') },
-          { label: 'Loss', value: this.clamp(this.stateWidth(machine, 'pausedMs') + this.stateWidth(machine, 'faultedMs'), 0, 100) },
+          { label: 'Loss', value: this.clamp(this.stateWidth(machine, 'pausedMs') + this.stateWidth(machine, 'faultedMs') + this.stateWidth(machine, 'offlineMs'), 0, 100) },
         ],
       }));
   }
 
   private buildWaterfallSteps(machines: VisualMachine[]): WaterfallStep[] {
-    this.waterfallActual = this.average(machines.map((m) => m.oee));
+    const componentRows = machines.map((machine) => this.oeeComponentLosses(machine));
+    this.waterfallActual = this.average(componentRows.map((row) => row.actual));
     this.waterfallGap = Math.max(0, this.oeeTarget - this.waterfallActual);
 
-    if (!machines.length) return [];
+    if (!componentRows.length) return [];
 
-    const machineCount = machines.length || 1;
-    const contributors = machines
-      .map((machine) => ({
-        label: machine.name,
-        value: Math.max(0, Math.round((this.oeeTarget - machine.oee) / machineCount)),
-        width: 0,
-        tone: machine.oee < 55 ? 'bad' : 'watch',
-      }))
+    const steps = [
+      {
+        label: 'Availability Loss',
+        value: this.average(componentRows.map((row) => row.availabilityLoss)),
+        remaining: this.average(componentRows.map((row) => row.afterAvailability)),
+      },
+      {
+        label: 'Quality Loss',
+        value: this.average(componentRows.map((row) => row.throughputLoss)),
+        remaining: this.average(componentRows.map((row) => row.afterThroughput)),
+      },
+      {
+        label: 'Efficiency Loss',
+        value: this.average(componentRows.map((row) => row.efficiencyLoss)),
+        remaining: this.waterfallActual,
+      },
+    ];
+
+    return steps
       .filter((step) => step.value > 0)
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
-
-    const maxContribution = Math.max(...contributors.map((step) => step.value), 1);
-    return contributors.map((step) => ({
-      ...step,
-      width: this.clamp(Math.round((step.value / maxContribution) * 100), 8, 100),
-    }));
+      .map((step) => ({
+        ...step,
+        width: this.clamp(step.value, 4, 100),
+        tone: step.value >= 20 ? 'bad' : 'watch',
+      }));
   }
 
   private machineTone(statusDot: string, oee: number): string {
@@ -311,6 +328,44 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     if (typeof value === 'number') return Math.round(value);
     const parsed = Number(String(value).replace('%', ''));
     return Number.isFinite(parsed) ? Math.round(parsed) : 0;
+  }
+
+  private performancePercent(value: any): number {
+    if (value && typeof value === 'object') {
+      if (value.percentage != null) return this.percent(value.percentage);
+      if (value.value != null) return this.ratioPercent(value.value);
+    }
+    return this.percent(value);
+  }
+
+  private ratioPercent(value: any): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed <= 1 ? parsed * 100 : parsed);
+  }
+
+  private oeeComponentLosses(machine: VisualMachine): {
+    availabilityLoss: number;
+    throughputLoss: number;
+    efficiencyLoss: number;
+    afterAvailability: number;
+    afterThroughput: number;
+    actual: number;
+  } {
+    const availability = this.clamp(machine.availability, 0, 100);
+    const throughput = this.clamp(machine.throughput, 0, 100);
+    const efficiency = this.clamp(machine.efficiency, 0, 100);
+    const afterThroughput = availability * (throughput / 100);
+    const actual = afterThroughput * (efficiency / 100);
+
+    return {
+      availabilityLoss: Math.round(100 - availability),
+      throughputLoss: Math.round(availability - afterThroughput),
+      efficiencyLoss: Math.round(afterThroughput - actual),
+      afterAvailability: Math.round(availability),
+      afterThroughput: Math.round(afterThroughput),
+      actual: Math.round(actual),
+    };
   }
 
   private numeric(value: any): number {

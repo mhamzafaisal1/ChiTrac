@@ -376,7 +376,13 @@
 }
 
 .bridge-loss-row {
-  grid-template-columns: minmax(100px, 1fr) minmax(160px, 2fr) 70px;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) 70px 70px;
+}
+
+.bridge-loss-row small {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
 }
 
 .bridge-loss-row.bad .loss-track i {
@@ -499,5 +505,9 @@
     grid-template-columns: minmax(88px, 1.2fr) repeat(5, minmax(44px, 1fr));
     gap: 5px;
     font-size: 12px;
+  }
+
+  .bridge-loss-row small {
+    text-align: left;
   }
 }
