@@ -251,9 +251,27 @@ function removeClientSession(server, sessionId) {
     return removed || null;
 }
 
+function getWebsocketServers(server) {
+    return Array.isArray(server.websocketServers)
+        ? server.websocketServers
+        : [];
+}
+
+function broadcastJsonToServers(websocketServers, payload) {
+    websocketServers.forEach((wss) => broadcastJson(wss, payload));
+}
+
 function attachServerClientSessionHelpers(server, wss) {
     if (!Array.isArray(server.clientSessions)) {
         server.clientSessions = [];
+    }
+
+    if (!Array.isArray(server.websocketServers)) {
+        server.websocketServers = [];
+    }
+
+    if (!server.websocketServers.includes(wss)) {
+        server.websocketServers.push(wss);
     }
 
     if (typeof server.getClientSession !== 'function') {
@@ -276,14 +294,18 @@ function attachServerClientSessionHelpers(server, wss) {
         Object.defineProperty(server, 'broadcastWebsocket', {
             enumerable: false,
             configurable: true,
-            value: (payload) => broadcastJson(wss, payload)
+            value: (payload) => broadcastJsonToServers(getWebsocketServers(server), payload)
         });
     }
 }
 
-function startWebsocketServer(server) {
+function startWebsocketServer(server, options = {}) {
     const { writeLog, writeError } = createLogHelpers(server);
-    const wss = new WebSocket.Server({ port: WS_PORT });
+    const httpServer = options.httpServer;
+    const websocketPath = options.path || '/ws';
+    const wss = httpServer
+        ? new WebSocket.Server({ server: httpServer, path: websocketPath })
+        : new WebSocket.Server({ port: WS_PORT });
     attachServerClientSessionHelpers(server, wss);
 
     const subscription = typeof server.subscribe === 'function'
@@ -313,8 +335,12 @@ function startWebsocketServer(server) {
         : null;
 
     wss.on('listening', () => {
-        server.logger?.info(`ChiTrac WebSocket server started and listening on port ${WS_PORT}`);
-        writeLog('listening', { port: WS_PORT });
+        const listenDetails = httpServer
+            ? { path: websocketPath, mode: 'http-server' }
+            : { port: WS_PORT, mode: 'dedicated-port' };
+        const location = httpServer ? `path ${websocketPath}` : `port ${WS_PORT}`;
+        server.logger?.info(`ChiTrac WebSocket server started and listening on ${location}`);
+        writeLog('listening', listenDetails);
     });
 
     wss.on('connection', (ws, req) => {
@@ -390,6 +416,9 @@ function startWebsocketServer(server) {
 
     wss.on('close', () => {
         subscription?.unsubscribe();
+        if (Array.isArray(server.websocketServers)) {
+            server.websocketServers = server.websocketServers.filter((item) => item !== wss);
+        }
         writeLog('server-closed', { port: WS_PORT });
     });
 
