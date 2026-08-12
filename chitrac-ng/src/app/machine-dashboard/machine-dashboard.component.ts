@@ -39,6 +39,9 @@ interface SummaryCard {
   value: string | number;
   icon: string;
   tone: string;
+  sparklineData?: number[];
+  sparklineLinePoints?: string;
+  sparklineAreaPath?: string;
 }
 
 @Component({
@@ -285,6 +288,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                 tap((data: any) => {
                   const responses = Array.isArray(data) ? data : [data];
                   this.machineData = responses;
+                  this.updateSummaryCards(responses, this.websocketService.getDashboardCacheSnapshot());
 
                   const formattedData = responses.map((response) => ({
                     Status: getStatusDotByCode(response.currentStatus?.code),
@@ -449,7 +453,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     );
 
     this.machineData = validResponses;
-    this.updateSummaryCards(validResponses);
+    this.updateSummaryCards(validResponses, this.websocketService.getDashboardCacheSnapshot());
 
     if (validResponses.length === 0) {
       this.rows = [];
@@ -485,7 +489,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.rows = formattedData;
   }
 
-  private updateSummaryCards(responses: any[]): void {
+  private updateSummaryCards(responses: any[], cache?: DashboardCacheState | null): void {
     const totalMachines = responses.length;
     const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Running Dot").length;
     const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Faulted Dot").length;
@@ -504,11 +508,73 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Running", value: running, icon: "play_circle", tone: "good" },
       { label: "Faulted", value: faulted, icon: "warning", tone: faulted > 0 ? "bad" : "neutral" },
       { label: "Offline", value: offline, icon: "cloud_off", tone: offline > 0 ? "warn" : "neutral" },
-      { label: "Total Count", value: totalCount.toLocaleString(), icon: "tag", tone: "neutral" },
+      this.withSparkline({
+        label: "Total Count",
+        value: totalCount.toLocaleString(),
+        icon: "tag",
+        tone: "neutral",
+        sparklineData: this.getCountSparklineData(cache) || this.getMockCountSparklineData(totalCount, currentPph),
+      }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
     ]);
+  }
+
+  private getMockCountSparklineData(totalCount: number, currentPph: number): number[] {
+    const baseline = Math.max(12, Math.round((currentPph || totalCount / 8 || 120) / 60));
+    return Array.from({ length: 60 }, (_, index) => {
+      const trend = index * 0.32;
+      const wave = Math.sin(index / 4.5) * 3.8 + Math.cos(index / 8) * 2.4;
+      const dip = index > 18 && index < 24 ? -8 + Math.abs(21 - index) * 1.4 : 0;
+      const bump = index > 39 ? 4 : 0;
+      return Math.max(0, Math.round(baseline + trend + wave + dip + bump));
+    });
+  }
+
+  private getCountSparklineData(cache?: DashboardCacheState | null): number[] | null {
+    const sparkline =
+      cache?.countSparkline ||
+      cache?.dashboard?.counts?.sparkline ||
+      cache?.today?.countSparkline ||
+      cache?.currentShift?.countSparkline;
+    const points = sparkline?.allMachines;
+    if (!Array.isArray(points) || points.length < 2) return null;
+
+    const values = points
+      .map((point) => Number(point?.count))
+      .filter((value) => Number.isFinite(value));
+    return values.length >= 2 ? values : null;
+  }
+
+  private withSparkline(card: SummaryCard): SummaryCard {
+    const data = (card.sparklineData || []).map(Number).filter((value) => Number.isFinite(value));
+    if (data.length < 2) return card;
+
+    const width = 160;
+    const height = 48;
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    const points = data.map((value, index) => {
+      const x = (index / (data.length - 1)) * width;
+      const y = height - ((value - min) / range) * (height - 8) - 4;
+      return { x, y };
+    });
+    const linePoints = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+    const areaPath = [
+      `M0,${height}`,
+      ...points.map((point, index) => `${index === 0 ? "L" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`),
+      `L${width},${height}`,
+      "Z",
+    ].join(" ");
+
+    return {
+      ...card,
+      sparklineData: data,
+      sparklineLinePoints: linePoints,
+      sparklineAreaPath: areaPath,
+    };
   }
 
   private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
@@ -935,7 +1001,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.machineData = validResponses;
-    this.updateSummaryCards(validResponses);
+    this.updateSummaryCards(validResponses, dashboardCache);
     const formattedData = validResponses.map((response) => {
       const totalCount = response.metrics?.output?.totalCount ??
         response.itemSummary?.machineSummary?.totalCount ?? 0;

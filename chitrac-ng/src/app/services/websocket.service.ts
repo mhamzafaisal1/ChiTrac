@@ -8,6 +8,7 @@ export type DashboardCacheScope = 'today' | 'currentShift';
 export interface DashboardCacheEnvelope {
   machinesSummary?: any[];
   operatorsSummary?: any[];
+  countSparkline?: any;
   data?: any;
   updatedAt?: string | Date;
   meta?: any;
@@ -16,6 +17,7 @@ export interface DashboardCacheEnvelope {
 export interface DashboardCacheState {
   today?: DashboardCacheEnvelope;
   currentShift?: DashboardCacheEnvelope;
+  countSparkline?: any;
   dashboard?: {
     machines?: {
       today?: DashboardCacheEnvelope;
@@ -41,12 +43,15 @@ export interface DashboardCacheState {
       today?: DashboardCacheEnvelope;
       shifts?: DashboardCacheEnvelope[];
     };
+    counts?: {
+      sparkline?: any;
+    };
   };
 }
 
 interface DashboardCacheMessage {
   type: 'dashboard-cache-update' | 'dashboard-cache';
-  scope?: DashboardCacheScope | 'all' | 'dashboard' | 'dashboardHistory' | 'initial';
+  scope?: DashboardCacheScope | 'all' | 'dashboard' | 'dashboardHistory' | 'countSparkline' | 'initial';
   cache?: DashboardCacheEnvelope | DashboardCacheState;
   dashboard?: DashboardCacheState['dashboard'];
 }
@@ -263,6 +268,7 @@ export class WebsocketService {
       this.dashboardCacheSubject.next({
         today: cache?.today || current.today,
         currentShift: cache?.currentShift || current.currentShift,
+        countSparkline: cache?.countSparkline || current.countSparkline,
         dashboard: message.dashboard || cache?.dashboard || current.dashboard
       });
       return;
@@ -271,6 +277,18 @@ export class WebsocketService {
     if (message.scope === 'dashboard' || message.scope === 'dashboardHistory') {
       this.dashboardCacheSubject.next({
         ...current,
+        countSparkline: cache?.countSparkline || current.countSparkline,
+        dashboard: message.dashboard || cache?.dashboard || current.dashboard
+      });
+      return;
+    }
+
+    if (message.scope === 'countSparkline') {
+      this.dashboardCacheSubject.next({
+        ...current,
+        countSparkline: cache?.countSparkline || current.countSparkline,
+        today: cache?.today || current.today,
+        currentShift: cache?.currentShift || current.currentShift,
         dashboard: message.dashboard || cache?.dashboard || current.dashboard
       });
       return;
@@ -280,6 +298,7 @@ export class WebsocketService {
       this.dashboardCacheSubject.next({
         ...current,
         [message.scope]: message.cache as DashboardCacheEnvelope,
+        countSparkline: cache?.countSparkline || current.countSparkline,
         dashboard: message.dashboard || current.dashboard
       });
     }
