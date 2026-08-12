@@ -30,6 +30,10 @@ export interface DashboardLayoutPreferences {
     summaryCardOrder?: string[];
     tableColumnVisibility?: Record<string, boolean>;
   };
+  operatorDashboard?: {
+    summaryCardOrder?: string[];
+    tableColumnVisibility?: Record<string, boolean>;
+  };
   experimentalDailyDashboard?: {
     chartOrder?: string[];
   };
@@ -188,6 +192,23 @@ export class SettingsService {
     );
   }
 
+  saveOperatorDashboardLayout(summaryCardOrder: string[], tableColumnVisibility: Record<string, boolean>): Observable<UserPreferences> {
+    const payload = {
+      dashboardLayouts: {
+        operatorDashboard: {
+          summaryCardOrder,
+          tableColumnVisibility
+        }
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+      })
+    );
+  }
+
   saveExperimentalDailyDashboardChartOrder(chartOrder: string[]): Observable<UserPreferences> {
     const payload = {
       dashboardLayouts: {
@@ -240,6 +261,21 @@ export class SettingsService {
         ...current.dashboardLayouts,
         machineDashboard: {
           ...current.dashboardLayouts?.machineDashboard,
+          summaryCardOrder,
+          tableColumnVisibility
+        }
+      }
+    });
+  }
+
+  setOperatorDashboardLayout(summaryCardOrder: string[], tableColumnVisibility: Record<string, boolean>): void {
+    const current = this.userPreferencesSubject.value || {};
+    this.userPreferencesSubject.next({
+      ...current,
+      dashboardLayouts: {
+        ...current.dashboardLayouts,
+        operatorDashboard: {
+          ...current.dashboardLayouts?.operatorDashboard,
           summaryCardOrder,
           tableColumnVisibility
         }

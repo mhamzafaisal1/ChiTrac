@@ -8,6 +8,7 @@ import { MatTableModule } from '@angular/material/table';
 import { MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { delay, Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
@@ -17,7 +18,10 @@ import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { SettingsService } from '../services/settings.service';
+import { LayoutEditService } from '../services/layout-edit.service';
 import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
+import { UserService } from '../user.service';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -27,6 +31,14 @@ import { OperatorCyclePieChartComponent } from '../operator-cycle-pie-chart/oper
 import { OperatorFaultHistoryComponent } from '../operator-fault-history/operator-fault-history.component';
 import { OperatorLineChartComponent } from '../operator-line-chart/operator-line-chart.component';
 import { OperatorMachineSummaryComponent } from '../operator-machine-summary/operator-machine-summary.component';
+import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
+
+interface SummaryCard {
+  label: string;
+  value: string | number;
+  icon: string;
+  tone: string;
+}
 
 @Component({
     selector: 'app-operator-analytics-dashboard',
@@ -39,7 +51,8 @@ import { OperatorMachineSummaryComponent } from '../operator-machine-summary/ope
         MatSortModule,
         MatButtonModule,
         MatIconModule,
-        MatSlideToggleModule
+        MatSlideToggleModule,
+        DragDropModule
     ],
     templateUrl: './operator-analytics-dashboard.component.html',
     styleUrl: './operator-analytics-dashboard.component.scss'
@@ -52,7 +65,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   operatorId?: number;
   columns: string[] = [];
   rows: any[] = [];
-  summaryCards: Array<{ label: string; value: string | number; icon: string; tone: string }> = [];
+  summaryCards: SummaryCard[] = [];
+  layoutEditing = false;
   columnTooltips: { [column: string]: string } = {
     Runtime: 'Amount of time operator has been running across all machines',
     Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
@@ -74,7 +88,22 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private websocketStatus: WebsocketConnectionStatus = 'disconnected';
   private readonly handleResize = this.updateChartDimensions.bind(this);
+  private readonly summaryCardOrderKey = 'chitrac-operator-dashboard-summary-card-order';
+  private readonly layoutContextId = 'operatorDashboard';
+  private summaryCardOrder: string[] = [];
+  private summaryCardOrderSource: 'server' | 'local' | 'default' = 'default';
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
+  readonly operatorDashboardToggleableColumns = [
+    'Operator ID',
+    'Current Machine Serial',
+    'Downtime',
+    'Misfeed Count',
+    'PPH',
+    'Availability',
+    'Throughput',
+    'Efficiency',
+  ];
+  tableColumnVisibility: Record<string, boolean> = {};
 
   // Chart dimensions
   chartHeight = 700;
@@ -102,10 +131,17 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     private dashboardTimeframeService: DashboardTimeframeService,
     private cdr: ChangeDetectorRef,
     private percentBreakpointService: PercentBreakpointService,
-    private websocketService: WebsocketService
+    private websocketService: WebsocketService,
+    private settingsService: SettingsService,
+    private userService: UserService,
+    private layoutEditService: LayoutEditService
   ) {}
 
   ngOnInit(): void {
+    this.loadInitialSummaryCardOrder();
+    this.subscribeToLayoutEditing();
+    this.subscribeToUserPreferences();
+    this.layoutEditService.register(this.layoutContextId, 'Operator Dashboard');
     this.updateChartDimensions();
     window.addEventListener("resize", this.handleResize);
 
@@ -206,6 +242,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.layoutEditService.unregister(this.layoutContextId);
     if (this.observer) {
       this.observer.disconnect();
     }
@@ -213,6 +250,24 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
     this.stopPolling();
     window.removeEventListener("resize", this.handleResize);
+  }
+
+  onSummaryCardDrop(event: CdkDragDrop<SummaryCard[]>): void {
+    if (!this.layoutEditing) return;
+    if (event.previousIndex === event.currentIndex) return;
+    moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
+    this.summaryCardOrder = this.summaryCards.map((card) => card.label);
+    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility);
+
+    if (!this.userService.getToken()) {
+      this.summaryCardOrderSource = 'local';
+      localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
+    }
+  }
+
+  onTableColumnVisibilityChange(visibility: Record<string, boolean>): void {
+    this.tableColumnVisibility = this.cleanTableColumnVisibility(visibility);
+    this.settingsService.setOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility);
   }
 
   detectTheme(): void {
@@ -325,14 +380,140 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
 
-    this.summaryCards = [
+    this.summaryCards = this.applySummaryCardOrder([
       { label: 'Operators', value: totalOperators, icon: 'groups', tone: 'neutral' },
       { label: 'Assigned', value: active, icon: 'assignment_ind', tone: 'neutral' },
       { label: 'Running', value: running, icon: 'play_circle', tone: 'good' },
       { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
       { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
-    ];
+    ]);
+  }
+
+  private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
+    if (!this.summaryCardOrder.length) return cards;
+
+    const byLabel = new Map(cards.map((card) => [card.label, card]));
+    const ordered = this.summaryCardOrder
+      .map((label) => byLabel.get(label))
+      .filter((card): card is SummaryCard => Boolean(card));
+    const additions = cards.filter((card) => !this.summaryCardOrder.includes(card.label));
+
+    return [...ordered, ...additions];
+  }
+
+  private subscribeToLayoutEditing(): void {
+    this.layoutEditService.context$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((context) => {
+        this.layoutEditing = context?.id === this.layoutContextId && context.editing;
+      });
+
+    this.layoutEditService.lockRequested$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.confirmAndSaveLayout());
+  }
+
+  private confirmAndSaveLayout(): void {
+    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
+      width: '380px',
+      autoFocus: false,
+    });
+
+    dialogRef.afterClosed()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((result) => {
+        if (result !== 'save') return;
+        this.saveLayoutPreferences();
+      });
+  }
+
+  private saveLayoutPreferences(): void {
+    this.summaryCardOrder = this.getSummaryCardOrder();
+    this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
+    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility);
+
+    if (!this.userService.getToken()) {
+      localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
+      this.layoutEditService.setEditing(false);
+      return;
+    }
+
+    this.settingsService.saveOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility).subscribe({
+      next: () => {
+        localStorage.removeItem(this.summaryCardOrderKey);
+        this.summaryCardOrderSource = 'server';
+        this.layoutEditService.setEditing(false);
+      },
+      error: (error) => {
+        console.error('[OperatorDashboard] Failed to save layout preferences', error);
+      },
+    });
+  }
+
+  private subscribeToUserPreferences(): void {
+    this.settingsService.userPreferences$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((preferences) => {
+        const operatorDashboardLayout = preferences?.dashboardLayouts?.operatorDashboard;
+        const serverOrder = operatorDashboardLayout?.summaryCardOrder;
+        if (Array.isArray(serverOrder) && serverOrder.length) {
+          this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
+          this.summaryCardOrderSource = 'server';
+          this.summaryCards = this.applySummaryCardOrder(this.summaryCards);
+        }
+
+        if (operatorDashboardLayout?.tableColumnVisibility) {
+          this.tableColumnVisibility = this.cleanTableColumnVisibility(operatorDashboardLayout.tableColumnVisibility);
+        }
+
+        if (preferences && this.summaryCardOrderSource === 'local' && this.summaryCardOrder.length && this.userService.getToken()) {
+          this.summaryCardOrderSource = 'server';
+          this.settingsService.saveOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility).subscribe({
+            next: () => localStorage.removeItem(this.summaryCardOrderKey),
+            error: (error) => {
+              this.summaryCardOrderSource = 'local';
+              console.error('[OperatorDashboard] Failed to save local layout preferences', error);
+            },
+          });
+        }
+      });
+  }
+
+  private loadInitialSummaryCardOrder(): void {
+    const localOrder = this.loadLocalSummaryCardOrder();
+    if (!localOrder.length) return;
+
+    this.summaryCardOrder = localOrder;
+    this.summaryCardOrderSource = 'local';
+  }
+
+  private loadLocalSummaryCardOrder(): string[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(this.summaryCardOrderKey) || '[]');
+      return Array.isArray(parsed) ? this.cleanSummaryCardOrder(parsed) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private cleanSummaryCardOrder(labels: any[]): string[] {
+    return [...new Set(labels.filter((label) => typeof label === 'string').map((label) => label.trim()).filter(Boolean))];
+  }
+
+  private cleanTableColumnVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
+    return this.operatorDashboardToggleableColumns.reduce((acc, column) => {
+      if (typeof visibility[column] === 'boolean') {
+        acc[column] = visibility[column];
+      }
+      return acc;
+    }, {} as Record<string, boolean>);
+  }
+
+  private getSummaryCardOrder(): string[] {
+    return this.summaryCards.length
+      ? this.summaryCards.map((card) => card.label)
+      : this.summaryCardOrder;
   }
 
   private averagePercent(values: any[]): number {
