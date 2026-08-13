@@ -14,14 +14,27 @@
     cdkDropListOrientation="mixed"
     (cdkDropListDropped)="onSummaryCardDrop($event)"
   >
-    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone" cdkDrag [cdkDragDisabled]="!layoutEditing">
+    <article
+      class="summary-card"
+      *ngFor="let card of summaryCards"
+      [ngClass]="card.tone"
+      [class.has-sparkline]="card.sparklineLinePoints"
+      [cdkDragDisabled]="!layoutEditing"
+      cdkDrag
+    >
       <button class="drag-handle" type="button" cdkDragHandle aria-label="Move summary card" *ngIf="layoutEditing">
         <mat-icon>drag_indicator</mat-icon>
       </button>
-      <mat-icon>{{ card.icon }}</mat-icon>
-      <div>
+      <mat-icon class="summary-icon">{{ card.icon }}</mat-icon>
+      <div class="summary-copy">
         <span>{{ card.label }}</span>
         <strong>{{ card.value }}</strong>
+      </div>
+      <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
+        <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
+          <path class="sparkline-fill" [attr.d]="card.sparklineAreaPath"></path>
+          <polyline class="sparkline-line" [attr.points]="card.sparklineLinePoints"></polyline>
+        </svg>
       </div>
     </article>
   </section>

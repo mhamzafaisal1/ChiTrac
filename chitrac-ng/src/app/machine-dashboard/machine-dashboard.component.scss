@@ -142,12 +142,12 @@
   cursor: grab;
   transition: box-shadow 140ms ease, transform 140ms ease;
 
-  mat-icon {
+  .summary-icon {
     flex: 0 0 auto;
     color: var(--theme-color-primary);
   }
 
-  div {
+  .summary-copy {
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -165,6 +165,39 @@
   strong {
     font-size: 1.2rem;
     line-height: 1.1;
+  }
+
+  &.has-sparkline {
+    min-height: 4.35rem;
+  }
+
+  .summary-sparkline {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0.45rem;
+    width: min(45%, 10rem);
+    height: 2.55rem;
+    pointer-events: none;
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+  }
+
+  .sparkline-fill {
+    fill: rgba(132, 86, 255, 0.2);
+  }
+
+  .sparkline-line {
+    fill: none;
+    stroke: #8456ff;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
   }
 
   &.good {

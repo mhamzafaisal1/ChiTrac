@@ -14,6 +14,10 @@ const {
   buildTodayDailyAnalyticsCache,
   buildShiftDailyAnalyticsCache,
 } = require("../utils/dailyAnalyticsDashboardCache");
+const {
+  buildLastHourCountSparklineCache,
+  appendCompletedMinuteCountSparklineCache,
+} = require("../utils/countSparklineCache");
 const { SYSTEM_TIMEZONE } = require("../utils/time");
 const {
   addDerivedShiftTimeComponents,
@@ -25,6 +29,7 @@ const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
 const DASHBOARD_HISTORY_REFRESH_JOB_KEY = "dashboardHistoryRefresh";
 const DASHBOARD_HISTORY_DAYS = 7;
 const LAST_SEVEN_DAYS_CACHE_JOB_KEY = "lastSevenDaysCacheRefresh";
+const COUNT_SPARKLINE_JOB_KEY = "countSparklineMinuteRefresh";
 const HISTORICAL_DAY_COUNT = 7;
 
 function ensureCache(server) {
@@ -36,6 +41,7 @@ function ensureCache(server) {
   if (!server.cache.dashboard.machines) server.cache.dashboard.machines = {};
   if (!server.cache.dashboard.operators) server.cache.dashboard.operators = {};
   if (!server.cache.dashboard.dailyAnalytics) server.cache.dashboard.dailyAnalytics = {};
+  if (!server.cache.dashboard.counts) server.cache.dashboard.counts = {};
   if (!Array.isArray(server.cache.dashboard.machines.shifts)) server.cache.dashboard.machines.shifts = [];
   if (!Array.isArray(server.cache.dashboard.operators.shifts)) server.cache.dashboard.operators.shifts = [];
   if (!Array.isArray(server.cache.dashboard.dailyAnalytics.shifts)) server.cache.dashboard.dailyAnalytics.shifts = [];
@@ -105,6 +111,7 @@ function buildDashboardCacheMessage(server, scope = "all") {
       today: server.cache?.today || cacheEnvelope({}, { source: "none" }),
       currentShift: server.cache?.currentShift || cacheEnvelope({}, { source: "none" }),
       lastSevenDays: server.cache?.lastSevenDays || {},
+      countSparkline: server.cache?.countSparkline || {},
       dashboard: server.cache?.dashboard || {},
     },
     dashboard: server.cache?.dashboard || {},
@@ -171,6 +178,9 @@ async function refreshTodayCache(server) {
   server.cache.today = nextCache;
   server.cache.dashboard.machines.today = machineDashboardEnvelope(machineResult.data, meta);
   server.cache.dashboard.operators.today = operatorDashboardEnvelope(operatorResult.data, meta);
+  if (server.cache.countSparkline) {
+    server.cache.today.countSparkline = server.cache.countSparkline;
+  }
 
   if (logger) {
     logger.info(
@@ -183,6 +193,37 @@ async function refreshTodayCache(server) {
   }
 
   return { machines: machineResult, operators: operatorResult };
+}
+
+async function refreshCountSparklineCache(server, options = {}) {
+  const { db, logger, config } = server;
+  const existing = server.cache?.countSparkline;
+  const nextCache = options.initial || !existing?.allMachines
+    ? await buildLastHourCountSparklineCache(db, config, options.now)
+    : await appendCompletedMinuteCountSparklineCache(db, config, existing, options.now);
+
+  ensureCache(server);
+  server.cache.countSparkline = nextCache;
+  server.cache.dashboard.counts.sparkline = nextCache;
+
+  if (server.cache.today) {
+    server.cache.today.countSparkline = nextCache;
+  }
+  if (server.cache.currentShift) {
+    server.cache.currentShift.countSparkline = nextCache;
+  }
+
+  if (logger) {
+    logger.info(
+      `[mongoWatchers] Updated count sparkline cache with ${nextCache.allMachines?.length || 0} minute buckets`
+    );
+  }
+
+  if (options.broadcast !== false) {
+    broadcastDashboardCache(server, "countSparkline");
+  }
+
+  return nextCache;
 }
 
 async function refreshTodayDailyAnalyticsCache(server) {
@@ -789,6 +830,38 @@ async function refreshDashboardCache(server) {
   await refreshTodayShiftCaches(server);
 }
 
+function scheduleCountSparklineRefresh(server) {
+  ensureCache(server);
+  if (!server.scheduledJobs) server.scheduledJobs = {};
+
+  const existing = server.scheduledJobs[COUNT_SPARKLINE_JOB_KEY];
+  if (existing && typeof existing.cancel === "function") {
+    existing.cancel();
+  }
+
+  const rule = new schedule.RecurrenceRule();
+  rule.tz = SYSTEM_TIMEZONE;
+  rule.second = 0;
+
+  const job = schedule.scheduleJob(rule, async () => {
+    try {
+      await refreshCountSparklineCache(server);
+    } catch (error) {
+      if (server.logger) {
+        server.logger.error(`[mongoWatchers] Count sparkline refresh failed: ${error.message}`);
+      }
+    }
+  });
+
+  server.scheduledJobs[COUNT_SPARKLINE_JOB_KEY] = job;
+
+  if (server.logger) {
+    server.logger.info("[mongoWatchers] Scheduled count sparkline refresh at the start of each minute");
+  }
+
+  return job;
+}
+
 function scheduleLastSevenDaysRefresh(server) {
   ensureCache(server);
   if (!server.scheduledJobs) server.scheduledJobs = {};
@@ -934,11 +1007,13 @@ function stopHistoryRefreshSchedule(server) {
 async function startMongoWatchers(server) {
   ensureCache(server);
 
+  await refreshCountSparklineCache(server, { initial: true, broadcast: false });
   await refreshLastWeekDashboardCache(server);
   await refreshDashboardCache(server);
   startHistoryRefreshSchedule(server);
   await refreshLastSevenDaysCache(server, { broadcast: false });
   scheduleLastSevenDaysRefresh(server);
+  scheduleCountSparklineRefresh(server);
   startCachePolling(server);
 
   return server.cache;
@@ -955,6 +1030,13 @@ async function stopMongoWatchers(server) {
   if (server.scheduledJobs) {
     server.scheduledJobs[LAST_SEVEN_DAYS_CACHE_JOB_KEY] = null;
   }
+  const countSparklineJob = server.scheduledJobs?.[COUNT_SPARKLINE_JOB_KEY];
+  if (countSparklineJob && typeof countSparklineJob.cancel === "function") {
+    countSparklineJob.cancel();
+  }
+  if (server.scheduledJobs) {
+    server.scheduledJobs[COUNT_SPARKLINE_JOB_KEY] = null;
+  }
   server.cache.watchers = {};
 }
 
@@ -964,6 +1046,7 @@ module.exports = {
   refreshTodayCache,
   refreshCurrentShiftCache,
   refreshTodayDailyAnalyticsCache,
+  refreshCountSparklineCache,
   refreshLastWeekDashboardCache,
   refreshDashboardCache,
   refreshLastSevenDaysCache,
