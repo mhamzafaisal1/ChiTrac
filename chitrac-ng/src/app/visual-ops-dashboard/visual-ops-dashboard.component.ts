@@ -1,13 +1,14 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
-import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
+import { forkJoin, of, Subject, Subscription } from 'rxjs';
+import { catchError, delay, takeUntil, tap } from 'rxjs/operators';
 import { getStatusDot } from '../../utils/status-utils';
+import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { DailyDashboardService } from '../services/daily-dashboard.service';
+import { DateTimeService } from '../services/date-time.service';
+import { PollingService } from '../services/polling-service.service';
 
 interface VisualMetric {
   label: string;
@@ -21,9 +22,11 @@ interface VisualMachine {
   name: string;
   serial: string;
   status: string;
+  statusDot: string;
   tone: string;
   oee: number;
   availability: number;
+  throughput: number;
   efficiency: number;
   count: number;
   runningMs: number;
@@ -37,6 +40,7 @@ interface WaterfallStep {
   value: number;
   width: number;
   tone: string;
+  remaining: number;
 }
 
 interface HeatCell {
@@ -47,7 +51,7 @@ interface HeatCell {
 @Component({
   selector: 'app-visual-ops-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatIconModule, DateTimePickerComponent],
+  imports: [CommonModule, MatButtonModule, MatIconModule],
   templateUrl: './visual-ops-dashboard.component.html',
   styleUrl: './visual-ops-dashboard.component.scss',
 })
@@ -69,24 +73,31 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
   faultRows: any[] = [];
 
   private observer!: MutationObserver;
+  private destroy$ = new Subject<void>();
+  private pollingSubscription: Subscription | null = null;
   readonly oeeTarget = 85;
+  private readonly pollingIntervalMs = 60000;
 
-  constructor(private dailyDashboardService: DailyDashboardService) {}
+  constructor(
+    private dailyDashboardService: DailyDashboardService,
+    private dateTimeService: DateTimeService,
+    private dashboardTimeframeService: DashboardTimeframeService,
+    private pollingService: PollingService
+  ) {}
 
   ngOnInit(): void {
-    const end = new Date();
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(end);
     this.detectTheme();
     this.observer = new MutationObserver(() => this.detectTheme());
     this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    this.fetchData();
+    this.subscribeToTimeframePicker();
+    this.initializeTimeframe();
   }
 
   ngOnDestroy(): void {
     this.observer?.disconnect();
+    this.destroy$.next();
+    this.destroy$.complete();
+    this.stopPolling();
   }
 
   fetchData(): void {
@@ -94,28 +105,9 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     this.loadError = '';
 
-    const start = new Date(this.startTime).toISOString();
-    const end = new Date(this.endTime).toISOString();
-
-    forkJoin({
-      machines: this.dailyDashboardService.getMachinesSummary(start, end).pipe(catchError(() => of([]))),
-      status: this.dailyDashboardService.getDailyMachineStatusFast(start, end).pipe(catchError(() => of([]))),
-      faults: this.dailyDashboardService.getFaultReportSummary(start, end).pipe(catchError(() => of({ summaries: [] }))),
-    }).subscribe({
-      next: ({ machines, status, faults }) => {
-        const machineList = this.unwrapList(machines, 'machineResults');
-        const statusList = this.unwrapList(status, 'machineStatus');
-        const merged = this.mergeMachineRows(machineList, statusList);
-
-        this.machines = merged.sort((a, b) => a.name.localeCompare(b.name));
-        this.timelineRows = [...merged].sort((a, b) => this.totalStateMs(b) - this.totalStateMs(a)).slice(0, 10);
-        this.bulletRows = [...merged].sort((a, b) => b.oee - a.oee).slice(0, 8);
-        this.heatmapRows = this.buildHeatmapRows(merged);
-        this.waterfallSteps = this.buildWaterfallSteps(merged);
-        this.faultRows = [...(faults?.summaries || [])]
-          .sort((a, b) => Number(b.totalDurationSeconds || 0) - Number(a.totalDurationSeconds || 0))
-          .slice(0, 6);
-        this.metrics = this.buildMetrics(merged, this.faultRows);
+    this.loadDashboardData().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (data) => {
+        this.applyDashboardData(data);
         this.isLoading = false;
       },
       error: () => {
@@ -124,6 +116,11 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
         this.isLoading = false;
       },
     });
+  }
+
+  refreshData(): void {
+    if (this.dateTimeService.getLiveMode()) this.updateLiveEndTime();
+    this.fetchData();
   }
 
   stateWidth(machine: VisualMachine, key: 'runningMs' | 'pausedMs' | 'faultedMs' | 'offlineMs'): number {
@@ -198,17 +195,22 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     const pausedMs = this.numeric(statusRow?.pausedMs ?? row.pausedMs);
     const faultedMs = this.numeric(statusRow?.faultedMs ?? statusRow?.faultMs ?? row.faultedMs);
     const offlineMs = this.numeric(statusRow?.offlineMs ?? row.offlineMs);
-    const oee = this.percent(row.metrics?.performance?.oee?.percentage ?? row.performance?.oee?.percentage ?? row.oee);
-    const availability = this.percent(row.metrics?.performance?.availability?.percentage ?? row.performance?.availability?.percentage ?? row.availability);
-    const efficiency = this.percent(row.metrics?.performance?.efficiency?.percentage ?? row.performance?.efficiency?.percentage ?? row.efficiency);
+    const performance = row.metrics?.performance ?? row.performance ?? {};
+    const oee = this.performancePercent(performance.oee ?? row.oee);
+    const availability = this.performancePercent(performance.availability ?? row.availability);
+    const throughputSource = performance.throughput ?? row.throughput ?? row.quality;
+    const throughput = throughputSource == null ? 100 : this.performancePercent(throughputSource);
+    const efficiency = this.performancePercent(performance.efficiency ?? row.efficiency);
 
     return {
       name,
       serial,
       status,
+      statusDot,
       tone: this.machineTone(statusDot, oee),
       oee,
       availability,
+      throughput,
       efficiency,
       count: this.numeric(row.metrics?.output?.totalCount ?? row.performance?.output?.totalCount ?? row.totalCount),
       runningMs,
@@ -220,7 +222,7 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
 
   private buildMetrics(machines: VisualMachine[], faults: any[]): VisualMetric[] {
     const avgOee = this.average(machines.map((m) => m.oee));
-    const running = machines.filter((m) => m.tone === 'good').length;
+    const running = machines.filter((m) => m.statusDot === 'Running Dot').length;
     const totalCount = machines.reduce((sum, m) => sum + m.count, 0);
     const faultMinutes = Math.round(faults.reduce((sum, f) => sum + Number(f.totalDurationSeconds || 0), 0) / 60);
     const worstMachine = [...machines].sort((a, b) => a.oee - b.oee)[0];
@@ -246,34 +248,43 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
           { label: 'Avail', value: machine.availability },
           { label: 'Eff', value: machine.efficiency },
           { label: 'Run', value: this.stateWidth(machine, 'runningMs') },
-          { label: 'Loss', value: this.clamp(this.stateWidth(machine, 'pausedMs') + this.stateWidth(machine, 'faultedMs'), 0, 100) },
+          { label: 'Loss', value: this.clamp(this.stateWidth(machine, 'pausedMs') + this.stateWidth(machine, 'faultedMs') + this.stateWidth(machine, 'offlineMs'), 0, 100) },
         ],
       }));
   }
 
   private buildWaterfallSteps(machines: VisualMachine[]): WaterfallStep[] {
-    this.waterfallActual = this.average(machines.map((m) => m.oee));
+    const componentRows = machines.map((machine) => this.oeeComponentLosses(machine));
+    this.waterfallActual = this.average(componentRows.map((row) => row.actual));
     this.waterfallGap = Math.max(0, this.oeeTarget - this.waterfallActual);
 
-    if (!machines.length) return [];
+    if (!componentRows.length) return [];
 
-    const machineCount = machines.length || 1;
-    const contributors = machines
-      .map((machine) => ({
-        label: machine.name,
-        value: Math.max(0, Math.round((this.oeeTarget - machine.oee) / machineCount)),
-        width: 0,
-        tone: machine.oee < 55 ? 'bad' : 'watch',
-      }))
+    const steps = [
+      {
+        label: 'Availability Loss',
+        value: this.average(componentRows.map((row) => row.availabilityLoss)),
+        remaining: this.average(componentRows.map((row) => row.afterAvailability)),
+      },
+      {
+        label: 'Quality Loss',
+        value: this.average(componentRows.map((row) => row.throughputLoss)),
+        remaining: this.average(componentRows.map((row) => row.afterThroughput)),
+      },
+      {
+        label: 'Efficiency Loss',
+        value: this.average(componentRows.map((row) => row.efficiencyLoss)),
+        remaining: this.waterfallActual,
+      },
+    ];
+
+    return steps
       .filter((step) => step.value > 0)
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
-
-    const maxContribution = Math.max(...contributors.map((step) => step.value), 1);
-    return contributors.map((step) => ({
-      ...step,
-      width: this.clamp(Math.round((step.value / maxContribution) * 100), 8, 100),
-    }));
+      .map((step) => ({
+        ...step,
+        width: this.clamp(step.value, 4, 100),
+        tone: step.value >= 20 ? 'bad' : 'watch',
+      }));
   }
 
   private machineTone(statusDot: string, oee: number): string {
@@ -290,6 +301,108 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     this.heatmapRows = [];
     this.waterfallSteps = [];
     this.faultRows = [];
+  }
+
+  private subscribeToTimeframePicker(): void {
+    this.dateTimeService.confirmTrigger$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        this.stopPolling();
+        this.syncTimeframeFromService();
+        if (this.dateTimeService.getLiveMode()) {
+          this.updateLiveEndTime();
+          this.setupPolling();
+        }
+        this.fetchData();
+      });
+  }
+
+  private initializeTimeframe(): void {
+    if (this.dateTimeService.getConfirmed()) {
+      this.syncTimeframeFromService();
+      if (this.dateTimeService.getLiveMode()) {
+        this.updateLiveEndTime();
+        this.setupPolling();
+      }
+      this.fetchData();
+      return;
+    }
+
+    this.dashboardTimeframeService.applyDefault()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((selection) => {
+        this.syncTimeframeFromService();
+        this.dateTimeService.setLiveMode(selection.mode === 'current');
+        if (selection.mode === 'current') {
+          this.updateLiveEndTime();
+          this.setupPolling();
+        }
+        this.fetchData();
+      });
+  }
+
+  private syncTimeframeFromService(): void {
+    this.startTime = this.dateTimeService.getStartTime();
+    this.endTime = this.dateTimeService.getEndTime();
+  }
+
+  private setupPolling(): void {
+    this.stopPolling();
+    this.pollingSubscription = this.pollingService.poll(
+      () => {
+        this.updateLiveEndTime();
+        return this.loadDashboardData().pipe(
+          tap((data) => this.applyDashboardData(data)),
+          catchError((error) => {
+            console.error('[VisualOps] Poll failed', error);
+            return of(null);
+          }),
+          delay(0)
+        );
+      },
+      this.pollingIntervalMs,
+      this.destroy$,
+      false,
+      false
+    ).subscribe();
+  }
+
+  private stopPolling(): void {
+    this.pollingSubscription?.unsubscribe();
+    this.pollingSubscription = null;
+  }
+
+  private updateLiveEndTime(): void {
+    this.endTime = new Date().toISOString();
+    this.dateTimeService.setEndTime(this.endTime);
+  }
+
+  private loadDashboardData() {
+    const start = new Date(this.startTime).toISOString();
+    const end = new Date(this.endTime).toISOString();
+
+    return forkJoin({
+      machines: this.dailyDashboardService.getMachinesSummary(start, end).pipe(catchError(() => of([]))),
+      status: this.dailyDashboardService.getDailyMachineStatusFast(start, end).pipe(catchError(() => of([]))),
+      faults: this.dailyDashboardService.getFaultReportSummary(start, end).pipe(catchError(() => of({ summaries: [] }))),
+    });
+  }
+
+  private applyDashboardData(data: any): void {
+    if (!data) return;
+    const machineList = this.unwrapList(data.machines, 'machineResults');
+    const statusList = this.unwrapList(data.status, 'machineStatus');
+    const merged = this.mergeMachineRows(machineList, statusList);
+
+    this.machines = merged.sort((a, b) => a.name.localeCompare(b.name));
+    this.timelineRows = [...merged].sort((a, b) => this.totalStateMs(b) - this.totalStateMs(a)).slice(0, 10);
+    this.bulletRows = [...merged].sort((a, b) => b.oee - a.oee).slice(0, 8);
+    this.heatmapRows = this.buildHeatmapRows(merged);
+    this.waterfallSteps = this.buildWaterfallSteps(merged);
+    this.faultRows = [...(data.faults?.summaries || [])]
+      .sort((a, b) => Number(b.totalDurationSeconds || 0) - Number(a.totalDurationSeconds || 0))
+      .slice(0, 6);
+    this.metrics = this.buildMetrics(merged, this.faultRows);
   }
 
   private unwrapList(data: any, fallbackKey: string): any[] {
@@ -313,6 +426,44 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     return Number.isFinite(parsed) ? Math.round(parsed) : 0;
   }
 
+  private performancePercent(value: any): number {
+    if (value && typeof value === 'object') {
+      if (value.percentage != null) return this.percent(value.percentage);
+      if (value.value != null) return this.ratioPercent(value.value);
+    }
+    return this.percent(value);
+  }
+
+  private ratioPercent(value: any): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed <= 1 ? parsed * 100 : parsed);
+  }
+
+  private oeeComponentLosses(machine: VisualMachine): {
+    availabilityLoss: number;
+    throughputLoss: number;
+    efficiencyLoss: number;
+    afterAvailability: number;
+    afterThroughput: number;
+    actual: number;
+  } {
+    const availability = this.clamp(machine.availability, 0, 100);
+    const throughput = this.clamp(machine.throughput, 0, 100);
+    const efficiency = this.clamp(machine.efficiency, 0, 100);
+    const afterThroughput = availability * (throughput / 100);
+    const actual = afterThroughput * (efficiency / 100);
+
+    return {
+      availabilityLoss: Math.round(100 - availability),
+      throughputLoss: Math.round(availability - afterThroughput),
+      efficiencyLoss: Math.round(afterThroughput - actual),
+      afterAvailability: Math.round(availability),
+      afterThroughput: Math.round(afterThroughput),
+      actual: Math.round(actual),
+    };
+  }
+
   private numeric(value: any): number {
     const parsed = Number(value || 0);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -330,12 +481,4 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
   }
 
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 }

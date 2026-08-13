@@ -6,17 +6,12 @@
       <p>Fast visual reads for machine health, OEE losses, targets, and fault pressure.</p>
     </div>
     <div class="header-actions">
-      <button mat-stroked-button type="button" (click)="fetchData()" [disabled]="isLoading">
+      <button mat-stroked-button type="button" (click)="refreshData()" [disabled]="isLoading">
         <mat-icon>refresh</mat-icon>
         {{ isLoading ? 'Loading...' : 'Refresh' }}
       </button>
     </div>
   </header>
-
-  <section class="controls">
-    <app-date-time-picker label="Start Time" [(value)]="startTime"></app-date-time-picker>
-    <app-date-time-picker label="End Time" [(value)]="endTime"></app-date-time-picker>
-  </section>
 
   <section class="load-error" *ngIf="loadError">
     <mat-icon>info</mat-icon>
@@ -85,7 +80,7 @@
       <div class="panel-heading">
         <div>
           <h2>OEE Bridge</h2>
-          <p>Target gap and the machines pulling plant OEE down.</p>
+          <p>Availability, quality, and efficiency losses from ideal production.</p>
         </div>
       </div>
       <div class="oee-bridge" *ngIf="machines.length">
@@ -122,6 +117,7 @@
               <i [style.width.%]="step.width"></i>
             </div>
             <strong>-{{ step.value }} pts</strong>
+            <small>{{ step.remaining }}% left</small>
           </div>
         </div>
       </div>
