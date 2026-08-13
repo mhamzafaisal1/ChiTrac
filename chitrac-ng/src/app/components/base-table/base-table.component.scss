@@ -76,6 +76,25 @@ mat-cell {
   word-break: break-word;
 }
 
+.column-edit-control {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.25rem;
+
+  ::ng-deep .mat-mdc-slide-toggle {
+    transform: scale(0.78);
+    transform-origin: center;
+  }
+}
+
+.column-label {
+  display: inline-block;
+}
+
+.column-disabled {
+  opacity: 0.42;
+}
+
 /*mat-header-row {
   font-weight: 700;
   font-size: 1rem;

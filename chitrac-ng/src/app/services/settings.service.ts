@@ -28,6 +28,11 @@ export interface ThemeResponse {
 export interface DashboardLayoutPreferences {
   machineDashboard?: {
     summaryCardOrder?: string[];
+    tableColumnVisibility?: Record<string, boolean>;
+  };
+  operatorDashboard?: {
+    summaryCardOrder?: string[];
+    tableColumnVisibility?: Record<string, boolean>;
   };
   experimentalDailyDashboard?: {
     chartOrder?: string[];
@@ -170,6 +175,40 @@ export class SettingsService {
     );
   }
 
+  saveMachineDashboardLayout(summaryCardOrder: string[], tableColumnVisibility: Record<string, boolean>): Observable<UserPreferences> {
+    const payload = {
+      dashboardLayouts: {
+        machineDashboard: {
+          summaryCardOrder,
+          tableColumnVisibility
+        }
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+      })
+    );
+  }
+
+  saveOperatorDashboardLayout(summaryCardOrder: string[], tableColumnVisibility: Record<string, boolean>): Observable<UserPreferences> {
+    const payload = {
+      dashboardLayouts: {
+        operatorDashboard: {
+          summaryCardOrder,
+          tableColumnVisibility
+        }
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+      })
+    );
+  }
+
   saveExperimentalDailyDashboardChartOrder(chartOrder: string[]): Observable<UserPreferences> {
     const payload = {
       dashboardLayouts: {
@@ -209,6 +248,36 @@ export class SettingsService {
         machineDashboard: {
           ...current.dashboardLayouts?.machineDashboard,
           summaryCardOrder
+        }
+      }
+    });
+  }
+
+  setMachineDashboardLayout(summaryCardOrder: string[], tableColumnVisibility: Record<string, boolean>): void {
+    const current = this.userPreferencesSubject.value || {};
+    this.userPreferencesSubject.next({
+      ...current,
+      dashboardLayouts: {
+        ...current.dashboardLayouts,
+        machineDashboard: {
+          ...current.dashboardLayouts?.machineDashboard,
+          summaryCardOrder,
+          tableColumnVisibility
+        }
+      }
+    });
+  }
+
+  setOperatorDashboardLayout(summaryCardOrder: string[], tableColumnVisibility: Record<string, boolean>): void {
+    const current = this.userPreferencesSubject.value || {};
+    this.userPreferencesSubject.next({
+      ...current,
+      dashboardLayouts: {
+        ...current.dashboardLayouts,
+        operatorDashboard: {
+          ...current.dashboardLayouts?.operatorDashboard,
+          summaryCardOrder,
+          tableColumnVisibility
         }
       }
     });
