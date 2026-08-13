@@ -129,11 +129,16 @@
     border-color: rgba(242, 189, 0, 0.35);
   }
 
-  &.error,
   &.disconnected {
     color: var(--sg-color-orange);
     background: rgba(234, 139, 27, 0.14);
     border-color: rgba(234, 139, 27, 0.35);
+  }
+
+  &.error {
+    color: var(--sg-color-red);
+    background: rgba(223, 21, 22, 0.14);
+    border-color: rgba(223, 21, 22, 0.35);
   }
 }
 

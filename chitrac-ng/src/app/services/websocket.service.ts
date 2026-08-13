@@ -62,6 +62,10 @@ interface DashboardCacheMessage {
 export class WebsocketService {
   private socket: WebSocket | null = null;
   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempt = 0;
+  private manualDisconnect = false;
+  private readonly reconnectDelays = [10000, 20000, 30000];
   private readonly statusSubject = new BehaviorSubject<WebsocketConnectionStatus>('disconnected');
   private readonly messageSubject = new BehaviorSubject<string>('No websocket messages received.');
   private readonly errorSubject = new BehaviorSubject<string | null>(null);
@@ -85,6 +89,9 @@ export class WebsocketService {
   }
 
   connect(): void {
+    this.manualDisconnect = false;
+    this.clearReconnectTimeout();
+
     if (
       this.socket &&
       (this.socket.readyState === WebSocket.CONNECTING || this.socket.readyState === WebSocket.OPEN)
@@ -101,8 +108,7 @@ export class WebsocketService {
   private connectToCandidate(urls: string[], index: number): void {
     if (index >= urls.length) {
       this.socket = null;
-      this.errorSubject.next('Websocket connection error.');
-      this.statusSubject.next('error');
+      this.scheduleReconnect('Websocket connection error.');
       return;
     }
 
@@ -119,6 +125,8 @@ export class WebsocketService {
     socket.onopen = () => {
       this.zone.run(() => {
         this.clearConnectTimeout();
+        this.clearReconnectTimeout();
+        this.reconnectAttempt = 0;
         this.statusSubject.next('connected');
         this.send({
           type: 'server-info-request',
@@ -149,14 +157,21 @@ export class WebsocketService {
         this.clearConnectTimeout();
         this.socket = null;
 
-        if (this.statusSubject.value !== 'error') {
+        if (this.manualDisconnect) {
           this.statusSubject.next('disconnected');
+          return;
         }
+
+        this.scheduleReconnect('Websocket disconnected.');
       });
     };
   }
 
   disconnect(): void {
+    this.manualDisconnect = true;
+    this.reconnectAttempt = 0;
+    this.clearReconnectTimeout();
+
     if (!this.socket) {
       this.errorSubject.next(null);
       this.statusSubject.next('disconnected');
@@ -236,8 +251,7 @@ export class WebsocketService {
       return;
     }
 
-    this.errorSubject.next(message);
-    this.statusSubject.next('error');
+    this.scheduleReconnect(message);
   }
 
   private clearConnectTimeout(): void {
@@ -245,6 +259,35 @@ export class WebsocketService {
       clearTimeout(this.connectTimeout);
       this.connectTimeout = null;
     }
+  }
+
+  private clearReconnectTimeout(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+  }
+
+  private getReconnectDelay(attempt: number): number {
+    return this.reconnectDelays[attempt - 1] || 60000;
+  }
+
+  private scheduleReconnect(message: string): void {
+    if (this.manualDisconnect || this.reconnectTimeout) {
+      return;
+    }
+
+    this.errorSubject.next(message);
+    this.reconnectAttempt += 1;
+    const attempt = this.reconnectAttempt;
+
+    this.statusSubject.next(attempt >= 4 ? 'error' : 'disconnected');
+    this.reconnectTimeout = setTimeout(() => {
+      this.zone.run(() => {
+        this.reconnectTimeout = null;
+        this.connect();
+      });
+    }, this.getReconnectDelay(attempt));
   }
 
   private handleMessage(data: unknown): void {
