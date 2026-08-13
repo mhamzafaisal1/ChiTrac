@@ -637,6 +637,9 @@ async function getCachedMachineResults(db, completeDays, serial) {
           output: { totalCount: 0, validCount: 0, misfeedCount: 0 },
           runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
           workedTime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+          availability: { value: 0, percentage: 0 },
+          throughput: { value: 0, percentage: 0 },
+          efficiency: { value: 0, percentage: 0 },
           oee: { percentage: 0 },
           totalTimeCreditMs: 0,
           pausedTimeMs: 0,
@@ -698,6 +701,18 @@ async function getCachedMachineResults(db, completeDays, serial) {
     const oee = availability * throughput * efficiency;
     machine.performance.runtime.formatted = formatDuration(machine.performance.runtime.total);
     machine.performance.workedTime.formatted = formatDuration(machine.performance.workedTime.total);
+    machine.performance.availability = {
+      value: availability,
+      percentage: parseFloat((availability * 100).toFixed(2))
+    };
+    machine.performance.throughput = {
+      value: throughput,
+      percentage: parseFloat((throughput * 100).toFixed(2))
+    };
+    machine.performance.efficiency = {
+      value: efficiency,
+      percentage: parseFloat((efficiency * 100).toFixed(2))
+    };
     machine.performance.oee.percentage = parseFloat((oee * 100).toFixed(2));
     delete machine.performance.totalTimeCreditMs;
     delete machine.performance.pausedTimeMs;

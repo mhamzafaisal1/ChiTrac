@@ -107,6 +107,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     },
     {
       menu: 'experimental',
+      parent: 'dashboards',
       routes: [
         '/ng/action-center',
         '/ng/downtime-pareto',
@@ -284,8 +285,9 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
     if (currentMenu && currentMenu !== 'main') {
       this.shownMenu = currentMenu;
-      this.menuIndex = 1;
-      this.menuHistory = ['main'];
+      const parentMenu = this.routeMenuMap.find(group => group.menu === currentMenu)?.parent;
+      this.menuHistory = parentMenu ? ['main', parentMenu] : ['main'];
+      this.menuIndex = this.menuHistory.length;
       return;
     }
 

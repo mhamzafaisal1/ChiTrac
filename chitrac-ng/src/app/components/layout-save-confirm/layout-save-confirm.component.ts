@@ -13,7 +13,7 @@ import { MatIconModule } from '@angular/material/icon';
       <mat-icon>dashboard_customize</mat-icon>
       <h2 mat-dialog-title>Save Layout?</h2>
       <mat-dialog-content>
-        Save this dashboard order to your user preferences.
+        Save these layout settings to your user preferences.
       </mat-dialog-content>
       <mat-dialog-actions align="end">
         <button mat-stroked-button mat-dialog-close="cancel">Keep Editing</button>

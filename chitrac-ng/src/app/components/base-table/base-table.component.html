@@ -39,9 +39,23 @@
       [matTooltipShowDelay]="700"
       [matTooltipClass]="['tooltip', 'tooltip-tableheader']"
     >
-      {{ column }}
+      <span class="column-edit-control" *ngIf="columnEditMode && isColumnToggleable(column)" (click)="$event.stopPropagation()">
+        <mat-slide-toggle
+          [checked]="isColumnEnabled(column)"
+          aria-label="Toggle column visibility"
+          (change)="onColumnToggle(column, $event.checked)"
+        ></mat-slide-toggle>
+      </span>
+      <span class="column-label" [class.column-disabled]="columnEditMode && isColumnToggleable(column) && !isColumnEnabled(column)">
+        {{ column }}
+      </span>
     </th>
-    <td mat-cell *matCellDef="let row" [ngClass]="getCellClassForColumn(row[column], column)">
+    <td
+      mat-cell
+      *matCellDef="let row"
+      [ngClass]="getCellClassForColumn(row[column], column)"
+      [class.column-disabled]="columnEditMode && isColumnToggleable(column) && !isColumnEnabled(column)"
+    >
       <span *ngIf="column == 'Status'">
         <mat-icon aria-hidden="false" [attr.aria-label]="getStatusAriaLabel(row[column])" fontIcon="circle" *ngIf="row[column] == 'Running Dot'" class="green"></mat-icon>
         <mat-icon aria-hidden="false" [attr.aria-label]="getStatusAriaLabel(row[column])" fontIcon="circle" *ngIf="row[column] == 'Paused Dot'" class="yellow"></mat-icon>

@@ -18,6 +18,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 @Component({
@@ -32,7 +33,8 @@ import { PercentBreakpointService } from '../../services/percent-breakpoint.serv
     MatTooltipModule,
     MatFormFieldModule,
     MatInputModule,
-    MatButtonModule
+    MatButtonModule,
+    MatSlideToggleModule
   ],
   templateUrl: './base-table.component.html',
   styleUrls: ['./base-table.component.scss'],
@@ -48,8 +50,12 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   @Input() getCellTooltip: ((row: any, column: string) => string) | null = null;
   @Input() enableToolbar: boolean = true;
   @Input() exportFileName: string = 'chitrac-table-export.csv';
+  @Input() columnEditMode: boolean = false;
+  @Input() toggleableColumns: string[] = [];
+  @Input() columnVisibility: Record<string, boolean> = {};
 
   @Output() rowClicked = new EventEmitter<any>();
+  @Output() columnVisibilityChange = new EventEmitter<Record<string, boolean>>();
 
   @ViewChild(MatSort) sort!: MatSort;
   dataSource = new MatTableDataSource<any>();
@@ -167,14 +173,20 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
     const screenWidth = window.innerWidth;
     const hidden = new Set<string>();
 
-    Object.entries(this.responsiveHiddenColumns || {}).forEach(([breakpointStr, cols]) => {
-      const breakpoint = parseInt(breakpointStr, 10);
-      if (screenWidth < breakpoint) {
-        cols.forEach(col => hidden.add(col));
-      }
-    });
+    if (!this.columnEditMode) {
+      Object.entries(this.responsiveHiddenColumns || {}).forEach(([breakpointStr, cols]) => {
+        const breakpoint = parseInt(breakpointStr, 10);
+        if (screenWidth < breakpoint) {
+          cols.forEach(col => hidden.add(col));
+        }
+      });
+    }
 
-    this.visibleColumns = this.columns.filter(col => !hidden.has(col));
+    this.visibleColumns = this.columns.filter(col => {
+      if (hidden.has(col)) return false;
+      if (this.columnEditMode) return true;
+      return this.isColumnEnabled(col);
+    });
   }
 
   onRowClick(row: any) {
@@ -207,6 +219,24 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
 
   hasTooltipForColumn(column: string): boolean {
     return !!this.getTooltipForColumn(column);
+  }
+
+  isColumnToggleable(column: string): boolean {
+    return this.toggleableColumns.includes(column);
+  }
+
+  isColumnEnabled(column: string): boolean {
+    if (!this.isColumnToggleable(column)) return true;
+    return this.columnVisibility?.[column] !== false;
+  }
+
+  onColumnToggle(column: string, enabled: boolean): void {
+    if (!this.isColumnToggleable(column)) return;
+
+    this.columnVisibilityChange.emit({
+      ...(this.columnVisibility || {}),
+      [column]: enabled
+    });
   }
 
   getTooltipForCell(row: any, column: string): string {
