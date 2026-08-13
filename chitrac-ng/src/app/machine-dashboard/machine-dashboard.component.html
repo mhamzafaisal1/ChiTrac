@@ -9,7 +9,7 @@
 
   <section
     class="summary-strip"
-    *ngIf="summaryCards.length"
+    *ngIf="summaryCards.length || layoutEditing"
     cdkDropList
     cdkDropListOrientation="mixed"
     (cdkDropListDropped)="onSummaryCardDrop($event)"
@@ -37,6 +37,19 @@
         </svg>
       </div>
     </article>
+    <button
+      class="summary-card summary-card-config"
+      type="button"
+      *ngIf="layoutEditing"
+      (click)="openSummaryCardVisibilityDialog()"
+      aria-label="Show or hide infoboxes"
+    >
+      <mat-icon class="summary-icon">visibility</mat-icon>
+      <div class="summary-copy">
+        <span>Layout</span>
+        <strong>Show/Hide Infoboxes</strong>
+      </div>
+    </button>
   </section>
 
   <div class="table-wrapper">

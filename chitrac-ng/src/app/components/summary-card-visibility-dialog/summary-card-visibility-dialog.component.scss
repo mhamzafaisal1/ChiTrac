@@ -1,0 +1,131 @@
+.visibility-dialog {
+  color: var(--theme-color-text, #202124);
+  min-width: min(42rem, 92vw);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+
+  h2 {
+    margin: 0;
+    padding: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0.2rem 0 0;
+    color: var(--theme-color-on-surface-variant, #69707a);
+    font-size: 0.86rem;
+  }
+}
+
+.list-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+  padding-top: 0.4rem;
+}
+
+.list-panel {
+  min-height: 18rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  border-radius: 6px;
+  background: var(--theme-color-surface-container, #f7f8fa);
+
+  h3 {
+    margin: 0 0 0.6rem;
+    color: var(--theme-color-on-surface-variant, #69707a);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}
+
+.infobox-row {
+  width: 100%;
+  min-height: 2.65rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--theme-color-surface, #ffffff);
+  color: var(--theme-color-text, #202124);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+
+  mat-icon {
+    color: var(--theme-color-primary, #1c9bd1);
+    flex: 0 0 auto;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  &:hover,
+  &.selected {
+    border-color: var(--theme-color-primary, #1c9bd1);
+    box-shadow: 0 0 0 2px rgba(28, 155, 209, 0.12);
+  }
+}
+
+.transfer-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+
+  button {
+    background: var(--theme-color-surface-container, #f7f8fa);
+  }
+}
+
+.empty-list {
+  min-height: 11rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--theme-color-on-surface-variant, #69707a);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+:host-context(.dark-theme) {
+  .list-panel,
+  .transfer-actions button {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .infobox-row {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+@media (max-width: 640px) {
+  .visibility-dialog {
+    min-width: 0;
+  }
+
+  .list-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-actions {
+    flex-direction: row;
+  }
+}

@@ -35,6 +35,10 @@ import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
 import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
+import {
+  SummaryCardVisibilityDialogComponent,
+  SummaryCardVisibilityOption,
+} from "../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component";
 
 interface SummaryCard {
   label: string;
@@ -69,6 +73,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   columns: string[] = [];
   rows: any[] = [];
   summaryCards: SummaryCard[] = [];
+  allSummaryCards: SummaryCard[] = [];
   layoutEditing = false;
   columnTooltips: { [column: string]: string } = {
     Runtime: "Amount of time machine has been running",
@@ -117,6 +122,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Efficiency",
   ];
   tableColumnVisibility: Record<string, boolean> = {};
+  summaryCardVisibility: Record<string, boolean> = {};
 
   private observer!: MutationObserver;
   private pollingSubscription: any;
@@ -124,9 +130,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private websocketStatus: WebsocketConnectionStatus = "disconnected";
   private readonly handleResize = this.updateChartDimensions.bind(this);
   private readonly summaryCardOrderKey = "chitrac-machine-dashboard-summary-card-order";
+  private readonly summaryCardVisibilityKey = "chitrac-machine-dashboard-summary-card-visibility";
+  private readonly machineSummaryCardLabels = [
+    "Machines",
+    "Running",
+    "Faulted",
+    "Offline",
+    "Total Count",
+    "Current Pace",
+    "Projected Count",
+    "Avg OEE",
+  ];
   private readonly layoutContextId = "machineDashboard";
   private summaryCardOrder: string[] = [];
   private summaryCardOrderSource: "server" | "local" | "default" = "default";
+  private summaryCardVisibilitySource: "server" | "local" | "default" = "default";
   private readonly summaryCardOrderSave$ = new Subject<string[]>();
 
   chartWidth: number = 1200;
@@ -168,6 +186,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const wasConfirmed = this.dateTimeService.getConfirmed();
 
     this.loadInitialSummaryCardOrder();
+    this.loadInitialSummaryCardVisibility();
     this.setupSummaryCardOrderPersistence();
     this.subscribeToLayoutEditing();
     this.subscribeToUserPreferences();
@@ -268,8 +287,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (!this.layoutEditing) return;
     if (event.previousIndex === event.currentIndex) return;
     moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
-    this.summaryCardOrder = this.summaryCards.map((card) => card.label);
-    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility);
+    this.summaryCardOrder = this.mergeVisibleSummaryCardOrder(this.summaryCards.map((card) => card.label));
+    this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
 
     if (!this.userService.getToken()) {
       this.summaryCardOrderSource = "local";
@@ -279,7 +299,33 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   onTableColumnVisibilityChange(visibility: Record<string, boolean>): void {
     this.tableColumnVisibility = this.cleanTableColumnVisibility(visibility);
-    this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility);
+    this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
+  }
+
+  openSummaryCardVisibilityDialog(): void {
+    const dialogRef = this.dialog.open(SummaryCardVisibilityDialogComponent, {
+      width: "680px",
+      maxWidth: "94vw",
+      autoFocus: false,
+      data: {
+        cards: this.getSummaryCardVisibilityOptions(),
+        visibility: this.summaryCardVisibility,
+      },
+    });
+
+    dialogRef.afterClosed()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((visibility: Record<string, boolean> | undefined) => {
+        if (!visibility) return;
+        this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
+        this.syncSummaryCardsFromAll();
+        this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
+
+        if (!this.userService.getToken()) {
+          this.summaryCardVisibilitySource = "local";
+          localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
+        }
+      });
   }
 
   ngOnDestroy(): void {
@@ -524,7 +570,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
     const projectedCount = this.getProjectedCount(totalCount, elapsedHours);
 
-    this.summaryCards = this.applySummaryCardOrder([
+    this.allSummaryCards = this.applySummaryCardOrder([
       { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
       { label: "Running", value: running, icon: "play_circle", tone: "good" },
       { label: "Faulted", value: faulted, icon: "warning", tone: faulted > 0 ? "bad" : "neutral" },
@@ -540,6 +586,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
     ]);
+    this.syncSummaryCardsFromAll();
   }
 
   private getMockCountSparklineData(totalCount: number, currentPph: number): number[] {
@@ -610,6 +657,41 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return [...ordered, ...additions];
   }
 
+  private applySummaryCardVisibility(cards: SummaryCard[]): SummaryCard[] {
+    return cards.filter((card) => this.summaryCardVisibility[card.label] !== false);
+  }
+
+  private syncSummaryCardsFromAll(): void {
+    this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
+    this.summaryCards = this.applySummaryCardVisibility(this.allSummaryCards);
+  }
+
+  private getSummaryCardVisibilityOptions(): SummaryCardVisibilityOption[] {
+    const cards = this.allSummaryCards.length
+      ? this.allSummaryCards
+      : this.machineSummaryCardLabels.map((label) => ({ label, value: "", icon: this.getSummaryCardFallbackIcon(label), tone: "neutral" }));
+
+    return cards.map((card) => ({
+      label: card.label,
+      icon: card.icon,
+      tone: card.tone,
+    }));
+  }
+
+  private getSummaryCardFallbackIcon(label: string): string {
+    const icons: Record<string, string> = {
+      Machines: "precision_manufacturing",
+      Running: "play_circle",
+      Faulted: "warning",
+      Offline: "cloud_off",
+      "Total Count": "tag",
+      "Current Pace": "trending_up",
+      "Projected Count": "flag",
+      "Avg OEE": "speed",
+    };
+    return icons[label] || "dashboard";
+  }
+
   private subscribeToLayoutEditing(): void {
     this.layoutEditService.context$
       .pipe(takeUntil(this.destroy$))
@@ -639,18 +721,22 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private saveLayoutPreferences(): void {
     this.summaryCardOrder = this.getSummaryCardOrder();
     this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
-    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility);
+    this.summaryCardVisibility = this.cleanSummaryCardVisibility(this.summaryCardVisibility);
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
 
     if (!this.userService.getToken()) {
       localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
+      localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
       this.layoutEditService.setEditing(false);
       return;
     }
 
-    this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility).subscribe({
+    this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility).subscribe({
       next: () => {
         localStorage.removeItem(this.summaryCardOrderKey);
+        localStorage.removeItem(this.summaryCardVisibilityKey);
         this.summaryCardOrderSource = "server";
+        this.summaryCardVisibilitySource = "server";
         this.layoutEditService.setEditing(false);
       },
       error: (error) => {
@@ -687,15 +773,38 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
           this.summaryCardOrderSource = "server";
-          this.summaryCards = this.applySummaryCardOrder(this.summaryCards);
+          this.syncSummaryCardsFromAll();
+        }
+
+        if (machineDashboardLayout?.summaryCardVisibility) {
+          this.summaryCardVisibility = this.cleanSummaryCardVisibility(machineDashboardLayout.summaryCardVisibility);
+          this.summaryCardVisibilitySource = "server";
+          this.syncSummaryCardsFromAll();
         }
 
         if (machineDashboardLayout?.tableColumnVisibility) {
           this.tableColumnVisibility = this.cleanTableColumnVisibility(machineDashboardLayout.tableColumnVisibility);
         }
 
-        if (preferences && this.summaryCardOrderSource === "local" && this.summaryCardOrder.length && this.userService.getToken()) {
-          this.summaryCardOrderSave$.next(this.summaryCardOrder);
+        if (
+          preferences &&
+          this.userService.getToken() &&
+          (this.summaryCardOrderSource === "local" || this.summaryCardVisibilitySource === "local") &&
+          (this.summaryCardOrder.length || Object.keys(this.summaryCardVisibility).length)
+        ) {
+          this.settingsService
+            .saveMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility)
+            .subscribe({
+              next: () => {
+                localStorage.removeItem(this.summaryCardOrderKey);
+                localStorage.removeItem(this.summaryCardVisibilityKey);
+                this.summaryCardOrderSource = "server";
+                this.summaryCardVisibilitySource = "server";
+              },
+              error: (error) => {
+                console.error("[MachineDashboard] Failed to save local layout preferences", error);
+              },
+            });
         }
       });
   }
@@ -708,6 +817,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.summaryCardOrderSource = "local";
   }
 
+  private loadInitialSummaryCardVisibility(): void {
+    const localVisibility = this.loadLocalSummaryCardVisibility();
+    if (!Object.keys(localVisibility).length) return;
+
+    this.summaryCardVisibility = localVisibility;
+    this.summaryCardVisibilitySource = "local";
+  }
+
   private loadLocalSummaryCardOrder(): string[] {
     try {
       const parsed = JSON.parse(localStorage.getItem(this.summaryCardOrderKey) || "[]");
@@ -717,8 +834,29 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  private loadLocalSummaryCardVisibility(): Record<string, boolean> {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(this.summaryCardVisibilityKey) || "{}");
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? this.cleanSummaryCardVisibility(parsed)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
   private cleanSummaryCardOrder(labels: any[]): string[] {
-    return [...new Set(labels.filter((label) => typeof label === "string").map((label) => label.trim()).filter(Boolean))];
+    const allowedLabels = new Set(this.machineSummaryCardLabels);
+    return [...new Set(labels.filter((label) => typeof label === "string").map((label) => label.trim()).filter((label) => allowedLabels.has(label)))];
+  }
+
+  private cleanSummaryCardVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
+    return this.machineSummaryCardLabels.reduce((acc, label) => {
+      if (typeof visibility[label] === "boolean") {
+        acc[label] = visibility[label];
+      }
+      return acc;
+    }, {} as Record<string, boolean>);
   }
 
   private cleanTableColumnVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
@@ -731,9 +869,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private getSummaryCardOrder(): string[] {
-    return this.summaryCards.length
-      ? this.summaryCards.map((card) => card.label)
+    return this.allSummaryCards.length
+      ? this.allSummaryCards.map((card) => card.label)
       : this.summaryCardOrder;
+  }
+
+  private mergeVisibleSummaryCardOrder(visibleLabels: string[]): string[] {
+    const hiddenLabels = this.getSummaryCardOrder().filter((label) => !visibleLabels.includes(label));
+    return this.cleanSummaryCardOrder([...visibleLabels, ...hiddenLabels]);
   }
 
   private averagePercent(values: any[]): number {

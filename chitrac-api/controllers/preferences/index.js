@@ -182,6 +182,7 @@ function constructor(server) {
         }
 
         const summaryCardOrder = layout.summaryCardOrder;
+        const summaryCardVisibility = layout.summaryCardVisibility;
         const tableColumnVisibility = layout.tableColumnVisibility;
         const dashboardUpdates = {};
 
@@ -204,6 +205,29 @@ function constructor(server) {
             .slice(0, 20);
 
           dashboardUpdates.summaryCardOrder = [...new Set(cleanedOrder)];
+        }
+
+        if (summaryCardVisibility !== undefined) {
+          if (!summaryCardVisibility || typeof summaryCardVisibility !== 'object' || Array.isArray(summaryCardVisibility)) {
+            const error = new Error(`Invalid ${dashboardName}.summaryCardVisibility. Must be an object of boolean values`);
+            error.status = 400;
+            throw error;
+          }
+
+          const cleanedVisibility = {};
+          Object.entries(summaryCardVisibility).slice(0, 40).forEach(([label, enabled]) => {
+            if (typeof enabled !== 'boolean') {
+              const error = new Error(`Invalid ${dashboardName}.summaryCardVisibility. Every value must be boolean`);
+              error.status = 400;
+              throw error;
+            }
+            const cleanedLabel = `${label}`.trim();
+            if (cleanedLabel) {
+              cleanedVisibility[cleanedLabel] = enabled;
+            }
+          });
+
+          dashboardUpdates.summaryCardVisibility = cleanedVisibility;
         }
 
         if (tableColumnVisibility !== undefined) {
@@ -295,6 +319,11 @@ function constructor(server) {
         preferences.dashboardLayouts.machineDashboard.summaryCardOrder;
     }
 
+    if (preferences.dashboardLayouts?.machineDashboard?.summaryCardVisibility) {
+      updates['dashboardLayouts.machineDashboard.summaryCardVisibility'] =
+        preferences.dashboardLayouts.machineDashboard.summaryCardVisibility;
+    }
+
     if (preferences.dashboardLayouts?.machineDashboard?.tableColumnVisibility) {
       updates['dashboardLayouts.machineDashboard.tableColumnVisibility'] =
         preferences.dashboardLayouts.machineDashboard.tableColumnVisibility;
@@ -303,6 +332,11 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.operatorDashboard?.summaryCardOrder) {
       updates['dashboardLayouts.operatorDashboard.summaryCardOrder'] =
         preferences.dashboardLayouts.operatorDashboard.summaryCardOrder;
+    }
+
+    if (preferences.dashboardLayouts?.operatorDashboard?.summaryCardVisibility) {
+      updates['dashboardLayouts.operatorDashboard.summaryCardVisibility'] =
+        preferences.dashboardLayouts.operatorDashboard.summaryCardVisibility;
     }
 
     if (preferences.dashboardLayouts?.operatorDashboard?.tableColumnVisibility) {
