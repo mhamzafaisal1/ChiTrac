@@ -30,6 +30,10 @@ getItemsSummary(start: string, end: string, serial?: number, shiftId?: string | 
   return this.http.get(`${this.apiUrl}/analytics/daily-summary-dashboard/items`, { params });
 }
 
+getUnusedStationsSummary(): Observable<any> {
+  return this.http.get(`${this.apiUrl}/analytics/unused-stations`);
+}
+
 //The 6 chart Daily Dashboard 
 
   getDailyMachineStatus(start: string, end: string, serial?: number): Observable<any> {

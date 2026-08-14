@@ -8,7 +8,12 @@ const { ObjectId } = require("mongodb");
 const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { DateTime } = require("luxon");
 const config = require("../../modules/config");
-const { loadActiveShifts, computeShiftElapsedMs, getShiftDayHourEnvelope } = require("../../utils/shiftElapsed");
+const {
+  loadActiveShifts,
+  computeShiftElapsedMs,
+  resolveShiftProjectionWindow,
+  getShiftDayHourEnvelope,
+} = require("../../utils/shiftElapsed");
 const { getSessionDataForPartialDays } = require("../../utils/reportFunctions");
 const {
   buildMachineSummaryFromDailyCache,
@@ -533,6 +538,49 @@ function constructor(server) {
 	// Machine analytics routes are defined below in this controller
 
   const getMachinesSummaryRealTimeHandler = getMachinesSummaryRealTime(db, logger, config);
+
+  // GET /api/machine/analytics/shift-projection-window
+  // Returns today's shift-aware elapsed/scheduled window for plant-level projections.
+  router.get(
+    "/machine/analytics/shift-projection-window",
+    async (req, res) => {
+      try {
+        const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+        const day = req.query.date
+          ? DateTime.fromISO(String(req.query.date), { zone: SYSTEM_TIMEZONE })
+          : now;
+
+        if (!day.isValid) {
+          return res.status(400).json({ error: "Invalid date" });
+        }
+
+        const activeShifts = await loadActiveShifts(db, {
+          collectionName: config.shiftCollectionName,
+        }).catch(() => []);
+        const window = resolveShiftProjectionWindow(
+          activeShifts,
+          day.toJSDate(),
+          now.toJSDate(),
+          SYSTEM_TIMEZONE
+        );
+
+        res.json({
+          date: day.toISODate(),
+          start: window.start,
+          end: window.end,
+          now: window.now,
+          totalShiftMs: window.totalShiftMs,
+          elapsedShiftMs: window.elapsedShiftMs,
+          totalShiftHours: window.totalShiftMs / 3600000,
+          elapsedShiftHours: window.elapsedShiftMs / 3600000,
+          fallback: window.fallback,
+        });
+      } catch (err) {
+        logger.error("[machineSessions] Error in shift-projection-window route:", err);
+        res.status(500).json({ error: "Failed to resolve shift projection window" });
+      }
+    }
+  );
 
   // GET /api/machine/analytics/machines-summary-daily-cached
   // Returns daily machine summary from totals-daily cache; falls back to real-time if no cache.

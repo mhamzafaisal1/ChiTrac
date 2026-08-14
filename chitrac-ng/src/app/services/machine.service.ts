@@ -5,6 +5,18 @@ import { Observable } from 'rxjs/internal/Observable';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { DateTimeService } from './date-time.service';
 
+export interface ShiftProjectionWindow {
+  date: string;
+  start: string | Date | null;
+  end: string | Date | null;
+  now: string | Date | null;
+  totalShiftMs: number;
+  elapsedShiftMs: number;
+  totalShiftHours: number;
+  elapsedShiftHours: number;
+  fallback: boolean;
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -22,6 +34,16 @@ export class MachineService {
         if (shiftId) params = params.set('shiftId', shiftId);
       
         return this.http.get(`${this.machineApiUrl}/analytics/machines-summary-daily-cached`, { params });
+      }
+
+      getShiftProjectionWindow(date?: string): Observable<ShiftProjectionWindow> {
+        let params = new HttpParams();
+        if (date) params = params.set('date', date);
+
+        return this.http.get<ShiftProjectionWindow>(
+          `${this.machineApiUrl}/analytics/shift-projection-window`,
+          { params }
+        );
       }
 
       getMachineDetails(start: string, end: string, serial: number, shiftId?: string | null): Observable<any> {

@@ -210,10 +210,87 @@ function buildDailySummaryItemRows(itemTotals) {
   });
 }
 
+function normalizeOperatorId(id) {
+  if (id === null || typeof id === "undefined" || id === -1) return null;
+  const numeric = typeof id === "string" ? Number.parseInt(id, 10) : Number(id);
+  return Number.isFinite(numeric) && numeric !== -1 ? numeric : null;
+}
+
+async function buildUnusedStationsSummary(db) {
+  const [machines, tickers] = await Promise.all([
+    db
+      .collection(config.machineCollectionName)
+      .find({ active: { $ne: false } })
+      .project({ _id: 0, id: 1, serial: 1, name: 1, stations: 1 })
+      .toArray(),
+    db
+      .collection(config.stateTickerCollectionName)
+      .find({})
+      .project({ _id: 0, machine: 1, operators: 1 })
+      .toArray(),
+  ]);
+
+  const totalStations = machines.reduce((sum, machine) => {
+    return sum + (Array.isArray(machine.stations) ? machine.stations.length : 0);
+  }, 0);
+
+  const activeMachineKeys = new Set();
+  for (const machine of machines) {
+    for (const key of [machine.id, machine.serial]) {
+      if (key !== null && typeof key !== "undefined") {
+        activeMachineKeys.add(String(key));
+      }
+    }
+  }
+
+  const activeOperatorIds = new Set();
+  for (const ticker of tickers) {
+    const tickerMachineKey = ticker.machine?.id ?? ticker.machine?.serial ?? ticker.machine?.serialNumber;
+    if (
+      tickerMachineKey !== null &&
+      typeof tickerMachineKey !== "undefined" &&
+      !activeMachineKeys.has(String(tickerMachineKey))
+    ) {
+      continue;
+    }
+
+    if (!Array.isArray(ticker.operators)) continue;
+
+    for (const operator of ticker.operators) {
+      const operatorId = normalizeOperatorId(operator?.id);
+      if (operatorId !== null) activeOperatorIds.add(operatorId);
+    }
+  }
+
+  const loggedInOperators = activeOperatorIds.size;
+  const unusedStations = Math.max(totalStations - loggedInOperators, 0);
+
+  return {
+    unusedStations,
+    totalStations,
+    loggedInOperators,
+    activeMachines: machines.length,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
   const logger = server.logger;
+
+  // ---------------------------------------------------------------------------
+  // Action Center: unused stations summary.
+  // GET /api/dashboard/analytics/unused-stations
+  // ---------------------------------------------------------------------------
+  router.get("/analytics/unused-stations", async (req, res) => {
+    try {
+      res.json(await buildUnusedStationsSummary(db));
+    } catch (error) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
+      res.status(500).json({ error: "Failed to generate unused stations summary" });
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // From daily-summary-dashboard: machines summary route.

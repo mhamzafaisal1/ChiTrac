@@ -2,7 +2,6 @@
 import { Injectable, NgZone, inject } from '@angular/core';
 import { Observable, timer, Subject, BehaviorSubject, of } from 'rxjs';
 import { switchMap, filter, takeUntil, tap, concatMap, delay, mergeMap } from 'rxjs/operators';
-import { DateTime } from 'luxon';
 
 @Injectable({ providedIn: 'root' })
 export class PollingService {
@@ -69,8 +68,7 @@ export class PollingService {
   
   // Utility method to update end timestamp to now
   updateEndTimestampToNow(): string {
-    //const now = new Date();
-    const now = new Date(DateTime.now().endOf('day').toISO());
+    const now = new Date();
     return this.formatDateForInput(now);
   }
 

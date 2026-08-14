@@ -224,6 +224,42 @@ function computeShiftElapsedMsFromShifts(shifts, start, end, zone = SYSTEM_TIMEZ
   return Math.max(0, totalMs);
 }
 
+function resolveShiftProjectionWindow(shifts, dayInput = new Date(), nowInput = new Date(), zone = SYSTEM_TIMEZONE) {
+  const dayDT = toDateTime(dayInput, zone);
+  const nowDT = toDateTime(nowInput, zone);
+  const referenceDay = dayDT.isValid ? dayDT : nowDT;
+
+  if (!referenceDay.isValid || !nowDT.isValid) {
+    return {
+      totalShiftMs: 0,
+      elapsedShiftMs: 0,
+      fallback: true,
+      start: null,
+      end: null,
+      now: null,
+    };
+  }
+
+  const dayStart = referenceDay.startOf("day");
+  const dayEnd = dayStart.plus({ days: 1 });
+  const nowForDay =
+    nowDT.toISODate() === dayStart.toISODate()
+      ? nowDT
+      : DateTime.min(DateTime.max(nowDT, dayStart), dayEnd);
+
+  const totalShiftMs = computeShiftElapsedMsFromShifts(shifts, dayStart.toJSDate(), dayEnd.toJSDate(), zone);
+  const elapsedShiftMs = computeShiftElapsedMsFromShifts(shifts, dayStart.toJSDate(), nowForDay.toJSDate(), zone);
+
+  return {
+    totalShiftMs,
+    elapsedShiftMs,
+    fallback: !Array.isArray(shifts) || shifts.length === 0,
+    start: dayStart.toJSDate(),
+    end: dayEnd.toJSDate(),
+    now: nowForDay.toJSDate(),
+  };
+}
+
 /**
  * Inclusive 0–23 local hour indices for the "shift day" on `day` in `zone`:
  * from the earliest shift start through the hour bucket that contains the latest shift end.
@@ -321,6 +357,7 @@ async function loadActiveShifts(
 module.exports = {
   loadActiveShifts,
   computeShiftElapsedMs: computeShiftElapsedMsFromShifts,
+  resolveShiftProjectionWindow,
   getShiftDayHourEnvelope,
   resolveShiftHourEnvelopeForDisplay,
 };
