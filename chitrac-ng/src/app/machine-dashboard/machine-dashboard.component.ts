@@ -584,14 +584,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const projectionWindow = this.shouldUseShiftProjectionForSummary()
       ? this.resolveProjectionWindow(cache)
       : null;
-    const elapsedHours =
-      projectionWindow && Number.isFinite(Number(projectionWindow.elapsedShiftHours))
-        ? Number(projectionWindow.elapsedShiftHours)
-        : this.getElapsedHours();
-    const totalProjectionHours =
-      projectionWindow && Number.isFinite(Number(projectionWindow.totalShiftHours))
-        ? Number(projectionWindow.totalShiftHours)
-        : this.getProjectionWindowHours(elapsedHours);
+    const elapsedHours = this.getProjectionElapsedHours(projectionWindow) ?? this.getElapsedHours();
+    const totalProjectionHours = this.getProjectionTotalHours(projectionWindow) ?? this.getProjectionWindowHours(elapsedHours);
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
     const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
 
@@ -939,10 +933,29 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private getCachedProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
     if (!cache) return null;
-    const envelope = this.dateTimeService.getShiftId()
-      ? cache.currentShift
-      : cache.today;
+    const shiftId = this.dateTimeService.getShiftId();
+    const envelope = shiftId
+      ? cache.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) || cache.currentShift
+      : cache.dashboard?.machines?.today || cache.today;
     return envelope?.meta?.projectionWindow || null;
+  }
+
+  private getProjectionElapsedHours(projectionWindow: ShiftProjectionWindow | null): number | null {
+    if (!projectionWindow) return null;
+    const hours = Number(projectionWindow.elapsedShiftHours);
+    if (Number.isFinite(hours)) return hours;
+
+    const ms = Number(projectionWindow.elapsedShiftMs);
+    return Number.isFinite(ms) ? ms / 36e5 : null;
+  }
+
+  private getProjectionTotalHours(projectionWindow: ShiftProjectionWindow | null): number | null {
+    if (!projectionWindow) return null;
+    const hours = Number(projectionWindow.totalShiftHours);
+    if (Number.isFinite(hours)) return hours;
+
+    const ms = Number(projectionWindow.totalShiftMs);
+    return Number.isFinite(ms) ? ms / 36e5 : null;
   }
 
   private getProjectionDate(): string | undefined {
@@ -957,7 +970,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private shouldUseShiftProjectionForSummary(): boolean {
-    return this.dateTimeService.getLiveMode() || (!this.dateTimeService.getConfirmed() && this.isToday(this.startTime));
+    return Boolean(this.dateTimeService.getShiftId()) || this.dateTimeService.getLiveMode() || this.isToday(this.startTime);
   }
 
   /**
