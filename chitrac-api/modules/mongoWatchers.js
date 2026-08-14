@@ -159,6 +159,7 @@ function resultMeta(machineResult, operatorResult) {
     },
     start: machineResult.start || operatorResult.start,
     end: machineResult.end || operatorResult.end,
+    projectionWindow: machineResult.projectionWindow,
   };
 }
 
@@ -315,6 +316,7 @@ async function refreshCurrentShiftCache(server) {
     },
     start: context.start,
     end: context.end,
+    projectionWindow: machineResult.projectionWindow,
     errors,
   };
   const nextCache = cacheEnvelope({
