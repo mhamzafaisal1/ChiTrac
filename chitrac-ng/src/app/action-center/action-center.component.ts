@@ -3,6 +3,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Subject, takeUntil } from 'rxjs';
+import { DashboardService } from '../services/dashboard.service';
 import { DailyDashboardService } from '../services/daily-dashboard.service';
 import { DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
@@ -23,6 +24,14 @@ interface InsightCard {
   tone: 'good' | 'warn' | 'bad' | 'neutral';
 }
 
+interface UnusedStationsSummary {
+  unusedStations: number;
+  totalStations: number;
+  loggedInOperators: number;
+  activeMachines: number;
+  updatedAt?: string | Date;
+}
+
 @Component({
   selector: 'app-action-center',
   standalone: true,
@@ -36,10 +45,12 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
   alerts: ActionAlert[] = [];
   insightCards: InsightCard[] = [];
   topFaults: any[] = [];
+  private unusedStationsSummary: UnusedStationsSummary | null = null;
   private readonly destroy$ = new Subject<void>();
 
   constructor(
     private websocketService: WebsocketService,
+    private dashboardService: DashboardService,
     private dailyDashboardService: DailyDashboardService
   ) {}
 
@@ -57,6 +68,7 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
       .subscribe((cache) => this.rebuildFromCache(cache));
 
     this.loadFaults();
+    this.loadUnusedStations();
   }
 
   ngOnDestroy(): void {
@@ -67,6 +79,7 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
   refresh(): void {
     this.websocketService.ensureConnected();
     this.loadFaults();
+    this.loadUnusedStations();
     this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot());
   }
 
@@ -93,10 +106,15 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
         Number(b.metrics?.performance?.oee?.percentage ?? b.performance?.oee?.percentage)
       )[0];
 
+    const unusedStations = Number(this.unusedStationsSummary?.unusedStations ?? 0);
+    const totalStations = Number(this.unusedStationsSummary?.totalStations ?? 0);
+    const loggedInOperators = Number(this.unusedStationsSummary?.loggedInOperators ?? 0);
+
     this.insightCards = [
       { label: 'Running Machines', value: `${running}/${machines.length}`, detail: 'Live machine status', icon: 'play_circle', tone: running === machines.length ? 'good' : 'warn' },
       { label: 'Plant OEE', value: `${avgOee}%`, detail: 'Average across machines', icon: 'speed', tone: avgOee >= 85 ? 'good' : avgOee >= 60 ? 'warn' : 'bad' },
       { label: 'Operator Efficiency', value: `${avgEfficiency}%`, detail: 'Average across active operators', icon: 'groups', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
+      { label: 'Unused Stations', value: unusedStations, detail: `${totalStations} stations / ${loggedInOperators} operators`, icon: 'event_seat', tone: unusedStations > 0 ? 'warn' : 'good' },
       { label: 'Total Count', value: totalCount.toLocaleString(), detail: 'Current dashboard window', icon: 'tag', tone: 'neutral' },
     ];
 
@@ -141,7 +159,33 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
       });
     }
 
+    if (unusedStations > 0) {
+      alerts.push({
+        severity: 'warning',
+        icon: 'event_seat',
+        title: `${unusedStations} unused station${unusedStations === 1 ? '' : 's'} available`,
+        detail: `${loggedInOperators} operator${loggedInOperators === 1 ? '' : 's'} logged in across ${totalStations} active station${totalStations === 1 ? '' : 's'}.`,
+        meta: 'Assign available labor where possible',
+      });
+    }
+
     this.alerts = alerts;
+  }
+
+  private loadUnusedStations(): void {
+    this.dashboardService
+      .getUnusedStationsSummary()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (summary) => {
+          this.unusedStationsSummary = summary || null;
+          this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot());
+        },
+        error: () => {
+          this.unusedStationsSummary = null;
+          this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot());
+        },
+      });
   }
 
   private loadFaults(): void {
