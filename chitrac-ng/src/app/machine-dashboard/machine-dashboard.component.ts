@@ -14,10 +14,10 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { MatDialog } from "@angular/material/dialog";
 import { CdkDragDrop, DragDropModule, moveItemInArray } from "@angular/cdk/drag-drop";
-import { catchError, debounceTime, distinctUntilChanged, of, Subject, switchMap, takeUntil, tap } from "rxjs";
+import { catchError, debounceTime, distinctUntilChanged, forkJoin, of, Subject, switchMap, takeUntil, tap } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
-import { MachineService } from "../services/machine.service";
+import { MachineService, ShiftProjectionWindow } from "../services/machine.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
@@ -128,6 +128,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private summaryCardOrder: string[] = [];
   private summaryCardOrderSource: "server" | "local" | "default" = "default";
   private readonly summaryCardOrderSave$ = new Subject<string[]>();
+  private shiftProjectionWindow: ShiftProjectionWindow | null = null;
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -303,10 +304,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
 
-            return this.machineService
-              .getMachinesSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
-              .pipe(
-                tap((data: any) => {
+            return forkJoin({
+              data: this.machineService.getMachinesSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId()),
+              projection: this.machineService
+                .getShiftProjectionWindow(this.getProjectionDate())
+                .pipe(catchError(() => of(null))),
+            }).pipe(
+                tap(({ data, projection }: any) => {
+                  this.shiftProjectionWindow = projection;
                   const responses = Array.isArray(data) ? data : [data];
                   this.machineData = responses;
                   this.updateSummaryCards(responses, this.websocketService.getDashboardCacheSnapshot());
@@ -381,10 +386,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const shiftId = this.dateTimeService.getShiftId();
 
     if (timeframe) {
-      this.machineService
-        .getMachineSummaryWithTimeframe(timeframe, shiftId)
+      forkJoin({
+        data: this.machineService.getMachineSummaryWithTimeframe(timeframe, shiftId),
+        projection: this.machineService
+          .getShiftProjectionWindow(this.getProjectionDate())
+          .pipe(catchError(() => of(null))),
+      })
         .subscribe({
-          next: (data: any) => {
+          next: ({ data, projection }: any) => {
+            this.shiftProjectionWindow = projection;
             this.updateDashboardData(data);
             this.isLoading = false;
           },
@@ -403,10 +413,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.machineService
-      .getMachinesSummary(this.startTime, this.endTime, shiftId)
+    forkJoin({
+      data: this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId),
+      projection: this.machineService
+        .getShiftProjectionWindow(this.getProjectionDate())
+        .pipe(catchError(() => of(null))),
+    })
       .subscribe({
-        next: (data: any) => {
+        next: ({ data, projection }: any) => {
+          this.shiftProjectionWindow = projection;
           this.updateDashboardData(data);
           this.isLoading = false;
         },
@@ -520,9 +535,19 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return sum + Number(value || 0);
     }, 0);
     const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage ?? r.performance?.oee?.percentage));
-    const elapsedHours = this.getElapsedHours();
+    const projectionWindow = this.shouldUseShiftProjectionForSummary()
+      ? this.resolveProjectionWindow(cache)
+      : null;
+    const elapsedHours =
+      projectionWindow && Number.isFinite(Number(projectionWindow.elapsedShiftHours))
+        ? Number(projectionWindow.elapsedShiftHours)
+        : this.getElapsedHours();
+    const totalProjectionHours =
+      projectionWindow && Number.isFinite(Number(projectionWindow.totalShiftHours))
+        ? Number(projectionWindow.totalShiftHours)
+        : this.getProjectionWindowHours(elapsedHours);
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
-    const projectedCount = this.getProjectedCount(totalCount, elapsedHours);
+    const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
 
     this.summaryCards = this.applySummaryCardOrder([
       { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
@@ -749,15 +774,47 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return (end - start) / 36e5;
   }
 
-  private getProjectedCount(totalCount: number, elapsedHours: number): number {
+  private getProjectedCount(totalCount: number, elapsedHours: number, totalWindowHours: number): number {
     if (elapsedHours <= 0) return totalCount;
+    if (!Number.isFinite(totalWindowHours) || totalWindowHours <= 0) return totalCount;
+    return Math.round((totalCount / elapsedHours) * Math.max(elapsedHours, totalWindowHours));
+  }
+
+  private getProjectionWindowHours(elapsedHours: number): number {
     const start = new Date(this.startTime);
     const end = new Date(this.endTime);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return totalCount;
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return elapsedHours;
     const projectionEnd = new Date(end);
     projectionEnd.setHours(23, 59, 59, 999);
-    const totalWindowHours = Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
-    return Math.round((totalCount / elapsedHours) * totalWindowHours);
+    return Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
+  }
+
+  private resolveProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
+    const cachedWindow = this.getCachedProjectionWindow(cache);
+    return cachedWindow || this.shiftProjectionWindow;
+  }
+
+  private getCachedProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
+    if (!cache) return null;
+    const envelope = this.dateTimeService.getShiftId()
+      ? cache.currentShift
+      : cache.today;
+    return envelope?.meta?.projectionWindow || null;
+  }
+
+  private getProjectionDate(): string | undefined {
+    const source = this.startTime || this.dateTimeService.getStartTime();
+    if (!source) return undefined;
+    const date = new Date(source);
+    if (Number.isNaN(date.getTime())) return undefined;
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  private shouldUseShiftProjectionForSummary(): boolean {
+    return this.dateTimeService.getLiveMode() || (!this.dateTimeService.getConfirmed() && this.isToday(this.startTime));
   }
 
   /**

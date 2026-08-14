@@ -1,7 +1,7 @@
 const { ObjectId } = require("mongodb");
 const { DateTime } = require("luxon");
 const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
-const { loadActiveShifts, computeShiftElapsedMs } = require("./shiftElapsed");
+const { loadActiveShifts, computeShiftElapsedMs, resolveShiftProjectionWindow } = require("./shiftElapsed");
 const { getSessionDataForPartialDays } = require("./reportFunctions");
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
 const { getShiftTimeComponents, getShiftStartMinutes } = require("./shiftTimeComponents");
@@ -394,6 +394,7 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
     ? await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end)
     : [];
   const data = await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial);
+  const projectionWindow = resolveShiftProjectionWindow(activeShifts, start, end, SYSTEM_TIMEZONE);
 
   return {
     data,
@@ -402,6 +403,7 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
     dateStr,
     start,
     end,
+    projectionWindow,
     recordCount: records.length,
   };
 }
@@ -432,6 +434,7 @@ async function buildMachineSummaryFromShiftCache(db, logger, config, options) {
       dateStr,
       start,
       end,
+      projectionWindow: resolveShiftProjectionWindow([shiftDoc], start, end, SYSTEM_TIMEZONE),
       shiftId: String(shiftOid),
       shift: shiftDoc,
       recordCount: records.length,
@@ -446,6 +449,7 @@ async function buildMachineSummaryFromShiftCache(db, logger, config, options) {
     dateStr,
     start,
     end,
+    projectionWindow: resolveShiftProjectionWindow([shiftDoc], start, end, SYSTEM_TIMEZONE),
     shiftId: String(shiftOid),
     shift: shiftDoc,
     recordCount: 0,
