@@ -73,6 +73,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   private resizeObserver?: ResizeObserver;
   private resizeFrame: number | null = null;
   private destroy$ = new Subject<void>();
+  private layoutSnapshot: string[] | null = null;
 
   constructor(
     private websocketService: WebsocketService,
@@ -134,6 +135,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   onChartDrop(event: CdkDragDrop<ExperimentalChartTile[]>): void {
     if (!this.layoutEditing || event.previousIndex === event.currentIndex) return;
     moveItemInArray(this.chartTiles, event.previousIndex, event.currentIndex);
+    this.layoutEditService.markEditsMade();
     this.settingsService.setExperimentalDailyDashboardChartOrder(this.getChartOrder());
     this.scheduleChartDimensionUpdate();
   }
@@ -150,7 +152,13 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     this.layoutEditService.context$
       .pipe(takeUntil(this.destroy$))
       .subscribe((context) => {
-        this.layoutEditing = context?.id === this.layoutContextId && context.editing;
+        const nextEditing = context?.id === this.layoutContextId && context.editing;
+        if (nextEditing && !this.layoutEditing) {
+          this.layoutSnapshot = [...this.getChartOrder()];
+        } else if (!nextEditing && this.layoutEditing) {
+          this.layoutSnapshot = null;
+        }
+        this.layoutEditing = nextEditing;
       });
 
     this.layoutEditService.lockRequested$
@@ -178,8 +186,13 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
-        if (result !== 'save') return;
-        this.saveLayout();
+        if (result === 'save') {
+          this.saveLayout();
+          return;
+        }
+        if (result === 'discard') {
+          this.revertLayoutChanges();
+        }
       });
   }
 
@@ -193,11 +206,27 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     }
 
     this.settingsService.saveExperimentalDailyDashboardChartOrder(chartOrder).subscribe({
-      next: () => this.layoutEditService.setEditing(false),
+      next: () => {
+        this.layoutSnapshot = null;
+        this.layoutEditService.setEditing(false);
+      },
       error: (error) => {
         console.error('[ExperimentalDailyDashboard] Failed to save chart order', error);
       }
     });
+  }
+
+  private revertLayoutChanges(): void {
+    if (!this.layoutSnapshot) {
+      this.layoutEditService.setEditing(false);
+      return;
+    }
+
+    const chartOrder = [...this.layoutSnapshot];
+    this.applyChartOrder(chartOrder);
+    this.settingsService.setExperimentalDailyDashboardChartOrder(chartOrder);
+    this.layoutSnapshot = null;
+    this.layoutEditService.setEditing(false);
   }
 
   private applyChartOrder(chartOrder: string[]): void {

@@ -50,6 +50,14 @@ interface SummaryCard {
   sparklineAreaPath?: string;
 }
 
+interface MachineDashboardLayoutSnapshot {
+  summaryCardOrder: string[];
+  tableColumnVisibility: Record<string, boolean>;
+  summaryCardVisibility: Record<string, boolean>;
+  summaryCardOrderSource: "server" | "local" | "default";
+  summaryCardVisibilitySource: "server" | "local" | "default";
+}
+
 @Component({
   selector: "app-machine-dashboard",
   imports: [
@@ -145,6 +153,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private summaryCardOrder: string[] = [];
   private summaryCardOrderSource: "server" | "local" | "default" = "default";
   private summaryCardVisibilitySource: "server" | "local" | "default" = "default";
+  private layoutSnapshot: MachineDashboardLayoutSnapshot | null = null;
   private readonly summaryCardOrderSave$ = new Subject<string[]>();
   private shiftProjectionWindow: ShiftProjectionWindow | null = null;
 
@@ -288,6 +297,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (!this.layoutEditing) return;
     if (event.previousIndex === event.currentIndex) return;
     moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
+    this.layoutEditService.markEditsMade();
     this.summaryCardOrder = this.mergeVisibleSummaryCardOrder(this.summaryCards.map((card) => card.label));
     this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
     this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
@@ -299,6 +309,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   onTableColumnVisibilityChange(visibility: Record<string, boolean>): void {
+    if (this.layoutEditing) {
+      this.layoutEditService.markEditsMade();
+    }
     this.tableColumnVisibility = this.cleanTableColumnVisibility(visibility);
     this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
   }
@@ -318,6 +331,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe((visibility: Record<string, boolean> | undefined) => {
         if (!visibility) return;
+        this.layoutEditService.markEditsMade();
         this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
         this.syncSummaryCardsFromAll();
         this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
@@ -715,7 +729,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.layoutEditService.context$
       .pipe(takeUntil(this.destroy$))
       .subscribe((context) => {
-        this.layoutEditing = context?.id === this.layoutContextId && context.editing;
+        const nextEditing = context?.id === this.layoutContextId && context.editing;
+        if (nextEditing && !this.layoutEditing) {
+          this.captureLayoutSnapshot();
+        } else if (!nextEditing && this.layoutEditing) {
+          this.layoutSnapshot = null;
+        }
+        this.layoutEditing = nextEditing;
       });
 
     this.layoutEditService.lockRequested$
@@ -732,8 +752,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
-        if (result !== "save") return;
-        this.saveLayoutPreferences();
+        if (result === "save") {
+          this.saveLayoutPreferences();
+          return;
+        }
+        if (result === "discard") {
+          this.revertLayoutChanges();
+        }
       });
   }
 
@@ -756,12 +781,58 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         localStorage.removeItem(this.summaryCardVisibilityKey);
         this.summaryCardOrderSource = "server";
         this.summaryCardVisibilitySource = "server";
+        this.layoutSnapshot = null;
         this.layoutEditService.setEditing(false);
       },
       error: (error) => {
         console.error("[MachineDashboard] Failed to save layout preferences", error);
       },
     });
+  }
+
+  private captureLayoutSnapshot(): void {
+    this.layoutSnapshot = {
+      summaryCardOrder: [...this.getSummaryCardOrder()],
+      tableColumnVisibility: { ...this.tableColumnVisibility },
+      summaryCardVisibility: { ...this.summaryCardVisibility },
+      summaryCardOrderSource: this.summaryCardOrderSource,
+      summaryCardVisibilitySource: this.summaryCardVisibilitySource,
+    };
+  }
+
+  private revertLayoutChanges(): void {
+    const snapshot = this.layoutSnapshot;
+    if (!snapshot) {
+      this.layoutEditService.setEditing(false);
+      return;
+    }
+
+    this.summaryCardOrder = [...snapshot.summaryCardOrder];
+    this.tableColumnVisibility = { ...snapshot.tableColumnVisibility };
+    this.summaryCardVisibility = { ...snapshot.summaryCardVisibility };
+    this.summaryCardOrderSource = snapshot.summaryCardOrderSource;
+    this.summaryCardVisibilitySource = snapshot.summaryCardVisibilitySource;
+    this.syncSummaryCardsFromAll();
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
+    this.summaryCardOrderSource = snapshot.summaryCardOrderSource;
+    this.summaryCardVisibilitySource = snapshot.summaryCardVisibilitySource;
+    this.restoreLocalLayoutStorage(snapshot);
+    this.layoutSnapshot = null;
+    this.layoutEditService.setEditing(false);
+  }
+
+  private restoreLocalLayoutStorage(snapshot: MachineDashboardLayoutSnapshot): void {
+    if (snapshot.summaryCardOrderSource === "local" && snapshot.summaryCardOrder.length) {
+      localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(snapshot.summaryCardOrder));
+    } else {
+      localStorage.removeItem(this.summaryCardOrderKey);
+    }
+
+    if (snapshot.summaryCardVisibilitySource === "local" && Object.keys(snapshot.summaryCardVisibility).length) {
+      localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(snapshot.summaryCardVisibility));
+    } else {
+      localStorage.removeItem(this.summaryCardVisibilityKey);
+    }
   }
 
   private setupSummaryCardOrderPersistence(): void {

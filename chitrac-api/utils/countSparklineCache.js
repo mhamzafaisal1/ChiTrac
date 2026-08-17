@@ -91,6 +91,7 @@ function buildPayload(machineSerials, startMinute, endMinuteExclusive, bucketMap
       start: startMinute,
       end: endMinuteExclusive,
     },
+    machineSerials,
     machines,
     allMachines,
   };
@@ -108,57 +109,7 @@ async function buildLastHourCountSparklineCache(db, config, nowInput = new Date(
 }
 
 async function appendCompletedMinuteCountSparklineCache(db, config, existingCache, nowInput = new Date()) {
-  const completedMinuteStart = addMinutes(floorToMinute(nowInput), -1);
-  const completedMinuteEnd = addMinutes(completedMinuteStart, 1);
-  const keepStart = addMinutes(completedMinuteEnd, -LOOKBACK_MINUTES);
-  const [machineSerials, bucketMap] = await Promise.all([
-    loadActiveMachineSerials(db, config),
-    aggregateCountBuckets(db, config, completedMinuteStart, completedMinuteEnd),
-  ]);
-
-  const previousMachines = existingCache?.machines || {};
-  const nextMachines = {};
-
-  for (const serial of machineSerials) {
-    const serialKey = String(serial);
-    const previousPoints = Array.isArray(previousMachines[serialKey]) ? previousMachines[serialKey] : [];
-    const count = bucketMap.get(`${serial}|${completedMinuteStart.toISOString()}`) || 0;
-    const pointsByMinute = new Map(
-      previousPoints
-        .filter((point) => new Date(point.minuteStart) >= keepStart)
-        .map((point) => [point.minuteStart, { minuteStart: point.minuteStart, count: Number(point.count) || 0 }])
-    );
-
-    pointsByMinute.set(completedMinuteStart.toISOString(), {
-      minuteStart: completedMinuteStart.toISOString(),
-      count,
-    });
-
-    nextMachines[serialKey] = emptyMinuteSeries(keepStart, completedMinuteEnd).map((point) => (
-      pointsByMinute.get(point.minuteStart) || point
-    ));
-  }
-
-  const totalsByMinute = new Map();
-  for (const points of Object.values(nextMachines)) {
-    for (const point of points) {
-      totalsByMinute.set(point.minuteStart, (totalsByMinute.get(point.minuteStart) || 0) + (Number(point.count) || 0));
-    }
-  }
-
-  return {
-    lookbackMinutes: LOOKBACK_MINUTES,
-    updatedAt: new Date(),
-    range: {
-      start: keepStart,
-      end: completedMinuteEnd,
-    },
-    machines: nextMachines,
-    allMachines: emptyMinuteSeries(keepStart, completedMinuteEnd).map((point) => ({
-      minuteStart: point.minuteStart,
-      count: totalsByMinute.get(point.minuteStart) || 0,
-    })),
-  };
+  return buildLastHourCountSparklineCache(db, config, nowInput);
 }
 
 module.exports = {

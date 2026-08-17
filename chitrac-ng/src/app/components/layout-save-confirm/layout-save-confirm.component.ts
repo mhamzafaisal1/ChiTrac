@@ -16,7 +16,8 @@ import { MatIconModule } from '@angular/material/icon';
         Save these layout settings to your user preferences.
       </mat-dialog-content>
       <mat-dialog-actions align="end">
-        <button mat-stroked-button mat-dialog-close="cancel">Keep Editing</button>
+        <button mat-button [mat-dialog-close]="'discard'">Cancel</button>
+        <button mat-stroked-button [mat-dialog-close]="'keep-editing'">Keep Editing</button>
         <button mat-flat-button color="primary" [mat-dialog-close]="'save'">Save and Lock</button>
       </mat-dialog-actions>
     </div>
