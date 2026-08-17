@@ -179,6 +179,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         this.user = {
           username: null
         }
+        this.layoutEditService.setEditing(false);
       }
     });
   }
@@ -339,6 +340,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   toggleLayoutEdit(): void {
+    if (!this.userService.getToken()) return;
     this.layoutEditService.toggle();
   }
 

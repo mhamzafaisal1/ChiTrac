@@ -135,6 +135,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   onChartDrop(event: CdkDragDrop<ExperimentalChartTile[]>): void {
     if (!this.layoutEditing || event.previousIndex === event.currentIndex) return;
     moveItemInArray(this.chartTiles, event.previousIndex, event.currentIndex);
+    this.layoutEditService.markEditsMade();
     this.settingsService.setExperimentalDailyDashboardChartOrder(this.getChartOrder());
     this.scheduleChartDimensionUpdate();
   }

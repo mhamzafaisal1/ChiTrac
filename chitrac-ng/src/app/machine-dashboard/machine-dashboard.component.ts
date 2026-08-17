@@ -297,6 +297,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (!this.layoutEditing) return;
     if (event.previousIndex === event.currentIndex) return;
     moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
+    this.layoutEditService.markEditsMade();
     this.summaryCardOrder = this.mergeVisibleSummaryCardOrder(this.summaryCards.map((card) => card.label));
     this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
     this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
@@ -308,6 +309,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   onTableColumnVisibilityChange(visibility: Record<string, boolean>): void {
+    if (this.layoutEditing) {
+      this.layoutEditService.markEditsMade();
+    }
     this.tableColumnVisibility = this.cleanTableColumnVisibility(visibility);
     this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
   }
@@ -327,6 +331,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe((visibility: Record<string, boolean> | undefined) => {
         if (!visibility) return;
+        this.layoutEditService.markEditsMade();
         this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
         this.syncSummaryCardsFromAll();
         this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);

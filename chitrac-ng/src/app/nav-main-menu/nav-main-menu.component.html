@@ -222,7 +222,7 @@
           mat-icon-button
           class="layout-edit-btn"
           [class.editing]="layoutEditContext?.editing"
-          *ngIf="layoutEditContext"
+          *ngIf="layoutEditContext && user?.username"
           [matTooltip]="getLayoutEditTooltip()"
           matTooltipShowDelay="500"
           aria-label="Toggle dashboard layout editing"
