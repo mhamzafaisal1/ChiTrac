@@ -19,6 +19,7 @@
       *ngFor="let card of summaryCards"
       [ngClass]="card.tone"
       [class.has-sparkline]="card.sparklineLinePoints"
+      [class.layout-editing]="layoutEditing"
       [cdkDragDisabled]="!layoutEditing"
       cdkDrag
     >

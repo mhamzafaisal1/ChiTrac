@@ -14,7 +14,14 @@
     cdkDropListOrientation="mixed"
     (cdkDropListDropped)="onSummaryCardDrop($event)"
   >
-    <article class="summary-card" *ngFor="let card of summaryCards" [ngClass]="card.tone" cdkDrag [cdkDragDisabled]="!layoutEditing">
+    <article
+      class="summary-card"
+      *ngFor="let card of summaryCards"
+      [ngClass]="card.tone"
+      [class.layout-editing]="layoutEditing"
+      cdkDrag
+      [cdkDragDisabled]="!layoutEditing"
+    >
       <button class="drag-handle" type="button" cdkDragHandle aria-label="Move summary card" *ngIf="layoutEditing">
         <mat-icon>drag_indicator</mat-icon>
       </button>
