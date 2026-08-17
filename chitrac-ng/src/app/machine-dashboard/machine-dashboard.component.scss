@@ -139,7 +139,7 @@
   color: var(--theme-color-text);
   border-left: 4px solid var(--theme-color-primary);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  cursor: grab;
+  cursor: default;
   transition: box-shadow 140ms ease, transform 140ms ease;
 
   .summary-icon {
@@ -212,6 +212,10 @@
     border-left-color: var(--sg-color-red);
   }
 
+  &.layout-editing {
+    cursor: grab;
+  }
+
   &.cdk-drag-preview {
     box-sizing: border-box;
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
@@ -279,7 +283,7 @@
 }
 
 .drag-handle:active,
-.summary-card:active {
+.summary-card.layout-editing:active {
   cursor: grabbing;
 }
 
