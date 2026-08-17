@@ -3,8 +3,150 @@
   <head>
     <meta charset="UTF-8" />
     <title>ChiTrac Spindle API</title>
+    <style>
+      :root {
+        --markdown-font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif;
+        --markdown-font-size: 14px;
+        --markdown-line-height: 1.6;
+        --vscode-editor-background: #ffffff;
+        --vscode-editor-foreground: #000000;
+        --vscode-textLink-foreground: #006ab1;
+        --vscode-textBlockQuote-border: rgba(0, 122, 204, 0.5);
+        --vscode-textCodeBlock-background: rgba(220, 220, 220, 0.4);
+        --vscode-editorWidget-border: #c8c8c8;
+      }
+
+      html,
+      body {
+        font-family: var(--markdown-font-family);
+        font-size: var(--markdown-font-size);
+        line-height: var(--markdown-line-height);
+        color: var(--vscode-editor-foreground);
+        background-color: var(--vscode-editor-background);
+      }
+
+      body {
+        box-sizing: border-box;
+        min-width: 200px;
+        max-width: 100%;
+        margin: 0;
+        padding: 1em 53px 2em;
+        word-wrap: break-word;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4,
+      h5,
+      h6 {
+        font-weight: 600;
+        line-height: 1.25;
+        margin-top: 24px;
+        margin-bottom: 16px;
+      }
+
+      h1,
+      h2 {
+        padding-bottom: 0.3em;
+        border-bottom: 1px solid #d0d7de;
+      }
+
+      h1 {
+        font-size: 2em;
+        margin-top: 0;
+      }
+
+      h2 {
+        font-size: 1.5em;
+      }
+
+      h3 {
+        font-size: 1.25em;
+      }
+
+      h4 {
+        font-size: 1em;
+      }
+
+      p,
+      blockquote,
+      ul,
+      ol,
+      dl,
+      table,
+      pre {
+        margin-top: 16px;
+        margin-bottom: 16px;
+      }
+
+      a {
+        color: var(--vscode-textLink-foreground);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      code {
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 85%;
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        background-color: var(--vscode-textCodeBlock-background);
+      }
+
+      pre {
+        overflow: auto;
+        padding: 16px;
+        line-height: 1.45;
+        border-radius: 6px;
+        background-color: var(--vscode-textCodeBlock-background);
+      }
+
+      pre code {
+        display: inline;
+        padding: 0;
+        overflow: visible;
+        line-height: inherit;
+        word-wrap: normal;
+        background-color: transparent;
+        border: 0;
+      }
+
+      table {
+        display: block;
+        width: max-content;
+        max-width: 100%;
+        overflow: auto;
+        border-collapse: collapse;
+        border-spacing: 0;
+      }
+
+      table th,
+      table td {
+        padding: 6px 13px;
+        border: 1px solid #d0d7de;
+      }
+
+      table tr {
+        background-color: #ffffff;
+        border-top: 1px solid #d0d7de;
+      }
+
+      table tr:nth-child(2n) {
+        background-color: #f6f8fa;
+      }
+
+      blockquote {
+        padding: 0 1em;
+        color: #57606a;
+        border-left: 0.25em solid var(--vscode-textBlockQuote-border);
+      }
+    </style>
   </head>
-  <body>
+  <body class="vscode-body vscode-light">
     <h1>ChiTrac Spindle API</h1>
     <p>Documentation for Spindle-specific ChiTrac API endpoints.</p>
 
