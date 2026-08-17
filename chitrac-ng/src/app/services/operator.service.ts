@@ -22,6 +22,15 @@ export class OperatorService {
     return this.http.get(`${this.apiUrl}/analytics/operators-summary-daily-cached`, { params });
   }
 
+  getIdleOperatorSummary(startTime?: string, endTime?: string, shiftId?: string | null): Observable<any> {
+    let params = new HttpParams();
+    if (startTime) params = params.set('start', startTime);
+    if (endTime) params = params.set('end', endTime);
+    if (shiftId) params = params.set('shiftId', shiftId);
+
+    return this.http.get(`${this.apiUrl}/analytics/idle-operators`, { params });
+  }
+
   getOperatorDetails(start: string, end: string, operatorId: number): Observable<any> {
     const params = new HttpParams()
       .set('start', start)

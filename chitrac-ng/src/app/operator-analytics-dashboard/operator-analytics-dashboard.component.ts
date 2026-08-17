@@ -9,7 +9,7 @@ import { MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { delay, Subject, takeUntil, tap } from 'rxjs';
+import { Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
@@ -42,6 +42,13 @@ interface SummaryCard {
   value: string | number;
   icon: string;
   tone: string;
+}
+
+interface IdleOperatorSummary {
+  idleOperators: number;
+  shiftOperators: number;
+  activeOperators: number;
+  idleOperatorIds?: number[];
 }
 
 @Component({
@@ -100,6 +107,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Assigned',
     'Running',
     'Faulted',
+    'Idle Operators',
     'Total Count',
     'Avg Efficiency',
   ];
@@ -120,6 +128,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   ];
   tableColumnVisibility: Record<string, boolean> = {};
   summaryCardVisibility: Record<string, boolean> = {};
+  private idleOperatorSummary: IdleOperatorSummary | null = null;
 
   // Chart dimensions
   chartHeight = 700;
@@ -352,8 +361,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
-                }),
-                delay(0) // Force change detection cycle
+                  this.loadIdleOperatorSummary();
+                })
               );
           } else {
             // Use regular API call with start/end times
@@ -361,8 +370,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
               .pipe(
                 tap((data: any) => {
                   this.updateDashboardData(data);
-                }),
-                delay(0) // Force change detection cycle
+                  this.loadIdleOperatorSummary();
+                })
               );
           }
         },
@@ -421,6 +430,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const active = responses.filter((r) => !!r.currentMachine?.name).length;
     const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Running Dot').length;
     const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Faulted Dot').length;
+    const idleOperators = Number(this.idleOperatorSummary?.idleOperators ?? 0);
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
 
@@ -429,6 +439,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Assigned', value: active, icon: 'assignment_ind', tone: 'neutral' },
       { label: 'Running', value: running, icon: 'play_circle', tone: 'good' },
       { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
+      { label: 'Idle Operators', value: idleOperators, icon: 'person_off', tone: idleOperators > 0 ? 'warn' : 'good' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
       { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
     ]);
@@ -474,6 +485,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Assigned: 'assignment_ind',
       Running: 'play_circle',
       Faulted: 'warning',
+      'Idle Operators': 'person_off',
       'Total Count': 'tag',
       'Avg Efficiency': 'speed',
     };
@@ -675,6 +687,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         .subscribe({
           next: (data: any) => {
             this.updateDashboardData(data);
+            this.loadIdleOperatorSummary();
             this.isLoading = false;
           },
           error: (error) => {
@@ -696,6 +709,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (data: any) => {
           this.updateDashboardData(data);
+          this.loadIdleOperatorSummary();
           this.isLoading = false;
         },
         error: (error) => {
@@ -743,7 +757,26 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe((data) => {
         this.updateDashboardData(data);
+        this.loadIdleOperatorSummary();
         this.isLoading = false;
+      });
+  }
+
+  private loadIdleOperatorSummary(): void {
+    this.operatorService
+      .getIdleOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (summary) => {
+          this.idleOperatorSummary = summary || null;
+          this.updateSummaryCards(this.operatorData);
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.idleOperatorSummary = null;
+          this.updateSummaryCards(this.operatorData);
+          this.cdr.markForCheck();
+        },
       });
   }
 
