@@ -21,6 +21,8 @@
           [selectedRow]="selectedRow"
           (rowClicked)="onMachineClick($event)"
           [getCellClass]="getPerformanceClass"
+          [enableSearch]="false"
+          [enableCsvExport]="false"
           >
         </base-table>          
         </div>
@@ -33,6 +35,8 @@
             [rows]="operatorRows"
             [selectedRow]="selectedOperator"
             [getCellClass]="getPerformanceClass"
+            [enableSearch]="false"
+            [enableCsvExport]="false"
             (rowClicked)="onOperatorClick($event)"
             >
           </base-table>
@@ -43,7 +47,9 @@
             [class.dark]="isDarkTheme"
             [class.light]="!isDarkTheme"
             [columns]="itemColumns"
-            [rows]="itemRows">
+            [rows]="itemRows"
+            [enableSearch]="false"
+            [enableCsvExport]="false">
           </base-table>
         </div>
 
