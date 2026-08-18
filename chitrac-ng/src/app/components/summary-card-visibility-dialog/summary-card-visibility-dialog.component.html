@@ -16,13 +16,14 @@
           *ngFor="let card of showCards"
           [class.selected]="selectedShowLabel === card.label"
           (click)="selectShow(card.label)"
+          [ngClass]="card.tone"
+          [class.has-sparkline]="card.sparklineLinePoints"
         >
           <article
             class="summary-card-preview"
             [ngClass]="card.tone"
             [class.has-sparkline]="card.sparklineLinePoints"
           >
-            <mat-icon class="drag-indicator" aria-hidden="true">drag_indicator</mat-icon>
             <mat-icon class="summary-icon">{{ card.icon }}</mat-icon>
             <div class="summary-copy">
               <span>{{ card.label }}</span>
@@ -56,13 +57,14 @@
           *ngFor="let card of hideCards"
           [class.selected]="selectedHideLabel === card.label"
           (click)="selectHide(card.label)"
+          [ngClass]="card.tone"
+          [class.has-sparkline]="card.sparklineLinePoints"
         >
           <article
             class="summary-card-preview"
             [ngClass]="card.tone"
             [class.has-sparkline]="card.sparklineLinePoints"
           >
-            <mat-icon class="drag-indicator" aria-hidden="true">drag_indicator</mat-icon>
             <mat-icon class="summary-icon">{{ card.icon }}</mat-icon>
             <div class="summary-copy">
               <span>{{ card.label }}</span>

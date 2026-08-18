@@ -239,14 +239,15 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'linear',
+      fitToContentMargins: this.useExternalTitle,
       yTickFormat: (v: any) => {
         const key = String(v);
         return data.find(d => String(d.id) === key)?.label ?? key;
       },
       margin: {
-        top: this.useExternalTitle ? 12 : Math.max(this.marginTop || 40, 60),
-        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
-        bottom: Math.max(this.marginBottom || 50, 80),
+        top: this.useExternalTitle ? 4 : Math.max(this.marginTop || 40, 60),
+        right: this.useExternalTitle ? 8 : Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: this.useExternalTitle ? 22 : Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, 120)
       },
       legend: { show: false, position: 'top' },

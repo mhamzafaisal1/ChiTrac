@@ -1,13 +1,14 @@
 .visibility-dialog {
   color: var(--theme-color-text, #202124);
-  min-width: min(42rem, 92vw);
+  min-width: 800px;
 }
 
 .dialog-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
   gap: 1rem;
+  text-align: center;
 
   h2 {
     margin: 0;
@@ -48,6 +49,7 @@
 }
 
 .infobox-row {
+  position: relative;
   width: 100%;
   margin-bottom: 0.5rem;
   padding: 0;
@@ -79,24 +81,13 @@
   min-width: 0;
   min-height: 3.35rem;
   width: 100%;
-  padding: 0.8rem 0.9rem 0.8rem 2.15rem;
+  padding: 0.8rem 0.9rem;
   border-left: 4px solid var(--theme-color-primary, #1c9bd1);
   border-radius: 4px;
   background: var(--theme-color-surface, #ffffff);
   color: var(--theme-color-text, #202124);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   box-sizing: border-box;
-
-  .drag-indicator {
-    position: absolute;
-    left: 0.35rem;
-    top: 50%;
-    width: 1.15rem;
-    height: 1.15rem;
-    color: var(--theme-color-on-surface-variant, #69707a);
-    font-size: 1.15rem;
-    transform: translateY(-50%);
-  }
 
   .summary-icon {
     flex: 0 0 auto;

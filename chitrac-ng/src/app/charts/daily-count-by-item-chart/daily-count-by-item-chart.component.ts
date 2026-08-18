@@ -216,13 +216,14 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'linear',
+      fitToContentMargins: this.useExternalTitle,
       xTickFormat: shouldAbbreviateXAxis
         ? (v: any) => this.formatCountTickAsThousands(v)
         : (v: any) => this.formatCountTick(v),
       margin: {
-        top: this.useExternalTitle ? 12 : Math.max(this.marginTop || 40, 60),
-        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
-        bottom: Math.max(this.marginBottom || 50, 80),
+        top: this.useExternalTitle ? 4 : Math.max(this.marginTop || 40, 60),
+        right: this.useExternalTitle ? 8 : Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: this.useExternalTitle ? 22 : Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft ?? 0, 150) 
       },
       legend: { show: false, position: 'top' },

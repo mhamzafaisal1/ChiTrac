@@ -58,6 +58,7 @@ import {
     xTickFormat?: (v:any)=>string;
     yTickFormat?: (v:number)=>string;
     margin?: { top:number; right:number; bottom:number; left:number };
+    fitToContentMargins?: boolean;
     /** Offset in px from the x-axis line to the x-axis label (default derived from margin). Use a smaller value to bring the label closer to the axis. */
     xLabelOffsetFromAxis?: number;
     legend?: { show: boolean; position: 'top'|'right'; yOffset?: number; titleYOffset?: number };
@@ -175,6 +176,10 @@ import {
       const yMin = Number.isFinite(cfg.yMin) ? cfg.yMin! : 0;
       const isHorizontal = cfg.orientation === 'horizontal';
 
+      if (cfg.fitToContentMargins) {
+        cfg.margin = this.measureContentMargins(cfg, allX, yMin, yMax, isHorizontal);
+      }
+
       // Auto-fit left margin for y-axis tick labels (vertical charts with numeric y-axis)
       if (!isHorizontal) {
         const yTicks = d3.scaleLinear().domain([yMin, yMax]).nice().ticks(6);
@@ -189,12 +194,22 @@ import {
       const { width, height } = this.getHostRenderSize(cfg);
       const { margin, orientation } = cfg;
   
-      // size
       this.applySvgSize(width, height);
   
       // clear
       this.rootG.selectAll('*').remove();
-      const g = this.rootG.attr('transform', `translate(${margin.left},${margin.top})`);
+      this.rootG.attr('transform', null);
+      this.rootG
+        .append('rect')
+        .attr('class', 'cc-root-fill')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('fill', 'transparent')
+        .attr('pointer-events', 'none');
+      const g = this.rootG
+        .append('g')
+        .attr('class', 'cc-plot-root')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
   
       const innerW = Math.max(10, width - margin.left - margin.right);
       const innerH = Math.max(10, height - margin.top - margin.bottom);
@@ -315,9 +330,12 @@ import {
         const items = cfg.series.map(s => ({ id: s.id, title: s.title, color: s.color || this.colorForSeries(s.id) }));
         
         if (cfg.legend.position === 'top') {
+          const legendY = cfg.fitToContentMargins
+            ? -Math.max(0, margin.top - 2)
+            : (cfg.legend.yOffset ?? -20);
           const lg = g.append('g')
             .attr('class', 'cc-legend')
-            .attr('transform', `translate(0, ${cfg.legend.yOffset ?? -20})`);
+            .attr('transform', `translate(0, ${legendY})`);
           let xOff = 0;
           items.forEach(it => {
             const row = lg.append('g').attr('transform', `translate(${xOff},0)`);
@@ -431,12 +449,94 @@ import {
         xTickFormat: cfg.xTickFormat,
         yTickFormat: cfg.yTickFormat,
         margin,
+        fitToContentMargins: cfg.fitToContentMargins,
         xLabelOffsetFromAxis: cfg.xLabelOffsetFromAxis,
         legend,
         tooltip: cfg.tooltip,
         pie: cfg.pie,
         series: cfg.series || []
       };
+    }
+
+    private measureContentMargins(
+      cfg: CartesianChartConfig,
+      allX: (string | number | Date)[],
+      yMin: number,
+      yMax: number,
+      isHorizontal: boolean
+    ): { top: number; right: number; bottom: number; left: number } {
+      const margin = { top: 0, right: 0, bottom: 0, left: 0 };
+      const xTickPadding = 8;
+      const axisTickLength = 6;
+      const labelGap = 4;
+      const edgeGutter = 10;
+
+      if (isHorizontal) {
+        const yLabels = allX.map((value) => cfg.yTickFormat ? cfg.yTickFormat(value as any) : String(value));
+        const xTicks = d3.scaleLinear().domain([0, yMax]).nice().ticks(6);
+        const xLabels = xTicks.map((value) => cfg.xTickFormat ? cfg.xTickFormat(value as any) : String(value));
+
+        const yLabelBox = this.measureLargestText(yLabels, '12px');
+        const xLabelBox = this.measureLargestText(xLabels, '12px');
+        const lastXLabelBox = this.measureLargestText(xLabels.slice(-1), '12px');
+        const legendHeight = cfg.legend?.show && cfg.legend.position === 'top'
+          ? this.measureLargestText(cfg.series.map((series) => series.title), '12px').height + Math.max(0, cfg.legend.yOffset ?? 0)
+          : 0;
+        const titleHeight = cfg.title ? this.measureLargestText([cfg.title], '14px', '600').height : 0;
+
+        margin.top = Math.ceil(Math.max(titleHeight, legendHeight) + labelGap);
+        margin.right = Math.ceil(lastXLabelBox.width / 2) + labelGap + edgeGutter;
+        margin.bottom = Math.ceil(xLabelBox.height) + xTickPadding + axisTickLength + labelGap;
+        margin.left = Math.ceil(yLabelBox.width) + xTickPadding + axisTickLength + labelGap + edgeGutter;
+        return margin;
+      }
+
+      const yTicks = d3.scaleLinear().domain([yMin, yMax]).nice().ticks(6);
+      const yLabels = yTicks.map((value) => cfg.yTickFormat ? cfg.yTickFormat(value as any) : String(value));
+      const xLabels = allX.map((value) => cfg.xTickFormat ? cfg.xTickFormat(value as any) : String(value));
+      const yLabelBox = this.measureLargestText(yLabels, '12px');
+      const xLabelBox = this.measureLargestText(xLabels, '12px');
+      const lastXLabelBox = this.measureLargestText(xLabels.slice(-1), '12px');
+      const needsRotate = xLabels.length * (xLabelBox.width + labelGap) > ((cfg.width ?? 900) - yLabelBox.width);
+
+      const titleHeight = cfg.title ? this.measureLargestText([cfg.title], '14px', '600').height : 0;
+      margin.top = Math.ceil(Math.max(titleHeight, yLabelBox.height / 2 + labelGap));
+      margin.right = Math.ceil(lastXLabelBox.width / 2) + labelGap + edgeGutter;
+      margin.bottom = needsRotate
+        ? Math.ceil((xLabelBox.width * Math.SQRT1_2) + (xLabelBox.height * Math.SQRT1_2) + xTickPadding + axisTickLength)
+        : Math.ceil(xLabelBox.height + xTickPadding + axisTickLength + labelGap);
+      margin.left = Math.ceil(yLabelBox.width) + xTickPadding + axisTickLength + labelGap + edgeGutter;
+      return margin;
+    }
+
+    private measureLargestText(labels: string[], fontSize: string, fontWeight = '400'): { width: number; height: number } {
+      if (!labels.length || !this.svg) return { width: 0, height: 0 };
+
+      const measurer = this.svg
+        .append('g')
+        .attr('visibility', 'hidden')
+        .attr('aria-hidden', 'true');
+
+      const boxes = labels.map((label, index) => {
+        const text = measurer
+          .append('text')
+          .attr('x', 0)
+          .attr('y', index * 20)
+          .style('font-size', fontSize)
+          .style('font-weight', fontWeight)
+          .text(label);
+        return text.node()?.getBBox();
+      });
+
+      measurer.remove();
+
+      return boxes.reduce(
+        (largest, box) => ({
+          width: Math.max(largest.width, box?.width ?? 0),
+          height: Math.max(largest.height, box?.height ?? 0),
+        }),
+        { width: 0, height: 0 }
+      );
     }
 
     private getHostRenderSize(cfg: CartesianChartConfig): { width: number; height: number } {
@@ -695,11 +795,17 @@ import {
       const { width, height } = this.getHostRenderSize(cfg);
       const { margin } = cfg;
       
-      // Set SVG dimensions
       this.applySvgSize(width, height);
       
       // Clear existing content
       g.selectAll('*').remove();
+      g.attr('transform', null);
+      g.append('rect')
+        .attr('class', 'cc-root-fill')
+        .attr('width', width)
+        .attr('height', height)
+        .attr('fill', 'transparent')
+        .attr('pointer-events', 'none');
       
       const innerW = Math.max(10, width - margin.left - margin.right);
       const innerH = Math.max(10, height - margin.top - margin.bottom);
