@@ -221,10 +221,11 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
       height: this.chartHeight,
       orientation: 'horizontal',  // horizontal bars: machines on Y, OEE % on X
       xType: 'linear',  // OEE values are numeric (X-axis = bar length)
+      fitToContentMargins: this.useExternalTitle,
       margin: {
-        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
-        right: Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
-        bottom: Math.max(this.marginBottom || 50, 80),
+        top: this.useExternalTitle ? 4 : Math.max(this.marginTop || 40, 60),
+        right: this.useExternalTitle ? 8 : Math.max(this.marginRight || 30, (this.legendPosition === 'right' ? 120 : 30)),
+        bottom: this.useExternalTitle ? 22 : Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, 120)  // space for machine names
       },
       legend: {

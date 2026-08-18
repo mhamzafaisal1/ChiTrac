@@ -126,7 +126,8 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     const tile = this.chartsGrid?.nativeElement.querySelector('app-chart-tile');
     if (!tile) return;
 
-    const { width, height } = tile.getBoundingClientRect();
+    const chartContent = tile.querySelector('.chart-content') as HTMLElement | null;
+    const { width, height } = (chartContent || tile).getBoundingClientRect();
     const nextWidth = Math.floor(width);
     const nextHeight = Math.floor(height);
 

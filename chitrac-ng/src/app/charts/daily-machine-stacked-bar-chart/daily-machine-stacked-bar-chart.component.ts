@@ -273,10 +273,11 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
       height: this.chartHeight,
       orientation: 'horizontal',
       xType: 'category',
+      fitToContentMargins: this.useExternalTitle,
       margin: {
-        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
-        right: Math.max(this.marginRight || 30, 30),
-        bottom: Math.max(this.marginBottom || 50, 80),
+        top: this.useExternalTitle ? 4 : Math.max(this.marginTop || 40, 60),
+        right: this.useExternalTitle ? 8 : Math.max(this.marginRight || 30, 30),
+        bottom: this.useExternalTitle ? 22 : Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft || 50, leftMargin)
       },
       legend: {
