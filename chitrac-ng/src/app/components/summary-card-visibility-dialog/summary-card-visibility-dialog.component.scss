@@ -1,13 +1,14 @@
 .visibility-dialog {
   color: var(--theme-color-text, #202124);
-  min-width: min(42rem, 92vw);
+  min-width: 800px;
 }
 
 .dialog-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
   gap: 1rem;
+  text-align: center;
 
   h2 {
     margin: 0;
@@ -48,14 +49,16 @@
 }
 
 .infobox-row {
+  position: relative;
   width: 100%;
-  min-height: 2.65rem;
+  min-height: 3.9rem;
   display: flex;
   align-items: center;
   gap: 0.7rem;
   margin-bottom: 0.5rem;
-  padding: 0.55rem 0.7rem;
+  padding: 0.8rem 0.9rem;
   border: 1px solid transparent;
+  border-left: 4px solid var(--theme-color-primary, #1c9bd1);
   border-radius: 4px;
   background: var(--theme-color-surface, #ffffff);
   color: var(--theme-color-text, #202124);
@@ -63,17 +66,76 @@
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
 
-  mat-icon {
+  .summary-icon {
     color: var(--theme-color-primary, #1c9bd1);
     flex: 0 0 auto;
   }
 
-  span {
+  .summary-copy {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  span {
+    color: var(--theme-color-on-surface-variant, #69707a);
+    font-size: 0.72rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 600;
+  }
+
+  strong {
+    color: var(--theme-color-text, #202124);
+    font-size: 1.2rem;
+    line-height: 1.1;
+  }
+
+  &.has-sparkline {
+    min-height: 4.35rem;
+    padding-right: 10.5rem;
+  }
+
+  .summary-sparkline {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0.45rem;
+    width: min(45%, 10rem);
+    height: 2.55rem;
+    pointer-events: none;
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+  }
+
+  .sparkline-fill {
+    fill: rgba(132, 86, 255, 0.2);
+  }
+
+  .sparkline-line {
+    fill: none;
+    stroke: #8456ff;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  &.good {
+    border-left-color: var(--sg-color-green);
+  }
+
+  &.warn {
+    border-left-color: var(--sg-color-orange);
+  }
+
+  &.bad {
+    border-left-color: var(--sg-color-red);
   }
 
   &:hover,
