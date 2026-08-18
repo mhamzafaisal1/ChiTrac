@@ -49,6 +49,8 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
   @Input() columnTooltips: { [column: string]: string } = {};
   @Input() getCellTooltip: ((row: any, column: string) => string) | null = null;
   @Input() enableToolbar: boolean = true;
+  @Input() enableSearch: boolean = true;
+  @Input() enableCsvExport: boolean = true;
   @Input() exportFileName: string = 'chitrac-table-export.csv';
   @Input() columnEditMode: boolean = false;
   @Input() toggleableColumns: string[] = [];
