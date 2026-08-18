@@ -277,7 +277,8 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     const tile = this.chartsGrid?.nativeElement.querySelector('.chart-shell');
     if (!tile) return;
 
-    const { width, height } = tile.getBoundingClientRect();
+    const chartContent = tile.querySelector('.chart-content') as HTMLElement | null;
+    const { width, height } = (chartContent || tile).getBoundingClientRect();
     const nextWidth = Math.floor(width);
     const nextHeight = Math.floor(height);
 

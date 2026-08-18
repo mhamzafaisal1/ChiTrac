@@ -312,7 +312,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   openSummaryCardVisibilityDialog(): void {
     const dialogRef = this.dialog.open(SummaryCardVisibilityDialogComponent, {
-      width: '680px',
+      width: '800px',
       maxWidth: '94vw',
       autoFocus: false,
       data: {
@@ -489,6 +489,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     return cards.map((card) => ({
       label: card.label,
       icon: card.icon,
+      value: card.value,
       tone: card.tone,
     }));
   }

@@ -318,7 +318,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   openSummaryCardVisibilityDialog(): void {
     const dialogRef = this.dialog.open(SummaryCardVisibilityDialogComponent, {
-      width: "680px",
+      width: "800px",
       maxWidth: "94vw",
       autoFocus: false,
       data: {
@@ -700,14 +700,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private getSummaryCardVisibilityOptions(): SummaryCardVisibilityOption[] {
-    const cards = this.allSummaryCards.length
+    const cards: SummaryCard[] = this.allSummaryCards.length
       ? this.allSummaryCards
-      : this.machineSummaryCardLabels.map((label) => ({ label, value: "", icon: this.getSummaryCardFallbackIcon(label), tone: "neutral" }));
+      : this.machineSummaryCardLabels.map((label): SummaryCard => ({ label, value: "", icon: this.getSummaryCardFallbackIcon(label), tone: "neutral" }));
 
     return cards.map((card) => ({
       label: card.label,
       icon: card.icon,
+      value: card.value,
       tone: card.tone,
+      sparklineLinePoints: card.sparklineLinePoints,
+      sparklineAreaPath: card.sparklineAreaPath,
     }));
   }
 

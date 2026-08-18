@@ -260,14 +260,15 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       height: this.chartHeight,
       orientation: 'vertical',
       xType: 'category',
+      fitToContentMargins: this.useExternalTitle,
       xTickFormat: (v: any) => this.formatXAxisDate(v),
       yTickFormat: shouldAbbreviateYAxis
         ? (v: any) => this.formatCountTickAsThousands(v)
         : (v: any) => this.formatCountTick(v),
       margin: {
-        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
-        right: Math.max(this.marginRight || 30, 30),
-        bottom: Math.max(this.marginBottom || 50, 80),
+        top: this.useExternalTitle ? 4 : Math.max(this.marginTop || 40, 60),
+        right: this.useExternalTitle ? 8 : Math.max(this.marginRight || 30, 30),
+        bottom: this.useExternalTitle ? 56 : Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft ?? 0, 60) 
       },
       legend: { show: false, position: 'top' },
