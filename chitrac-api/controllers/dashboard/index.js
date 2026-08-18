@@ -19,6 +19,7 @@ const {
   getItemsCachedDataForDays,
   getItemsSessionDataForPartialDays,
   combineItemsHybridData,
+  buildItemSummaryRows,
 } = require("../../utils/itemFunctions");
 const {
   splitTimeRangeForHybrid,
@@ -62,6 +63,10 @@ const {
   buildOperatorSummaryFromDailyCache,
   buildOperatorSummaryFromShiftCache,
 } = require("../../utils/operatorDashboardCache");
+const {
+  buildMachineSummaryFromDailyCache: buildCanonicalMachineSummaryFromDailyCache,
+  buildMachineSummaryFromShiftCache: buildCanonicalMachineSummaryFromShiftCache,
+} = require("../../utils/machineDashboardCache");
 
 async function resolveShiftIdString(req, db) {
   const raw = req.query.shiftId;
@@ -167,47 +172,27 @@ function getDailyMachineMetric(record, topLevelKey, totalsKey) {
   return record[topLevelKey] ?? record.totals?.[totalsKey] ?? 0;
 }
 
-function buildDailySummaryItemRows(itemTotals) {
-  const normalizePPH = (std) => {
-    const n = Number(std) || 0;
-    return n > 0 && n < 60 ? n * 60 : n;
+function toDailySummaryMachineResult(row) {
+  const metrics = row.metrics || {};
+  const performance = metrics.performance || row.performance || {};
+  return {
+    ...row,
+    performance: {
+      output: metrics.output || row.performance?.output || { totalCount: 0, misfeedCount: 0 },
+      runtime: metrics.runtime || row.performance?.runtime || { total: 0, formatted: formatDuration(0) },
+      downtime: metrics.downtime || row.performance?.downtime || { total: 0, formatted: formatDuration(0) },
+      availability: performance.availability || { value: 0, percentage: 0 },
+      throughput: performance.throughput || { value: 0, percentage: 0 },
+      efficiency: performance.efficiency || { value: 0, percentage: 0 },
+      oee: performance.oee || { value: 0, percentage: 0 },
+      piecesPerHour: performance.piecesPerHour,
+      pph: performance.pph,
+    },
+    itemSummary: row.itemSummary || [],
+    itemHourlyStack: row.itemHourlyStack || [],
+    faultData: row.faultData || { faultSummaries: [], faultCycles: [] },
+    operatorEfficiency: row.operatorEfficiency || [],
   };
-
-  const resultsMap = new Map();
-  for (const itemTotal of itemTotals) {
-    const itemId = String(itemTotal.itemId);
-    if (!resultsMap.has(itemId)) {
-      resultsMap.set(itemId, {
-        itemId: itemTotal.itemId,
-        itemName: itemTotal.itemName || "Unknown",
-        standardRaw: itemTotal.itemStandard ?? 0,
-        count: 0,
-        workedSec: 0,
-      });
-    }
-
-    const acc = resultsMap.get(itemId);
-    acc.count += itemTotal.totalCounts || 0;
-    acc.workedSec += (itemTotal.workedTimeMs || 0) / 1000;
-  }
-
-  return Array.from(resultsMap.values()).map((entry) => {
-    const workedMs = Math.round(entry.workedSec * 1000);
-    const hours = workedMs / 3600000;
-    const pph = hours > 0 ? entry.count / hours : 0;
-    const stdPPH = normalizePPH(entry.standardRaw);
-    const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
-
-    return {
-      itemId: entry.itemId,
-      itemName: entry.itemName,
-      workedTimeFormatted: formatDuration(workedMs),
-      count: entry.count,
-      pph: Math.round(pph * 100) / 100,
-      standard: entry.standardRaw ?? 0,
-      efficiency: Math.round(efficiencyPct * 100) / 100,
-    };
-  });
 }
 
 function normalizeOperatorId(id) {
@@ -305,61 +290,25 @@ module.exports = function (server) {
       const exactEnd = new Date(end);
 
       if (req.query.shiftId) {
-        let shiftIdStr;
+        let resolvedShift;
         try {
-          shiftIdStr = await resolveShiftIdString(req, db);
+          resolvedShift = await resolveShift(req, db);
         } catch (e) {
           const code = e.statusCode || 400;
           return res.status(code).json({ error: e.message });
         }
-        const sessionData = await getSessionDataForPartialDays(
+        const result = await buildCanonicalMachineSummaryFromShiftCache(
           db,
-          [{ start, end }],
-          serial ? parseInt(serial, 10) : undefined,
-          { shiftId: shiftIdStr }
-        );
-        const machineSerials = [
-          ...new Set((sessionData.machines || []).map((m) => Number(m.machineSerial))),
-        ].filter((n) => Number.isFinite(n));
-        const tickers = machineSerials.length
-          ? await db
-              .collection(config.stateTickerCollectionName)
-              .find({ "machine.id": { $in: machineSerials } })
-              .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
-              .toArray()
-          : [];
-        const latestTickers = new Map();
-        tickers.forEach((ticker) => {
-          const id = Number(ticker.machine?.id);
-          const ts = new Date(ticker.timestamp || 0);
-          const existing = latestTickers.get(id);
-          if (!existing || ts > new Date(existing.timestamp || 0)) {
-            latestTickers.set(id, ticker);
+          logger,
+          config,
+          {
+            ...resolvedShift,
+            start,
+            end,
+            serial: serial ? parseInt(serial, 10) : undefined,
           }
-        });
-        const statusMap = new Map();
-        for (const [id, ticker] of latestTickers) {
-          statusMap.set(id, {
-            code: ticker.status?.code ?? ticker.status?.id ?? 0,
-            name: ticker.status?.name || "Unknown",
-            color: ticker.status?.color || ticker.status?.softrolColor || "None",
-          });
-        }
-        const machineResults = (sessionData.machines || []).map((record) => {
-          const serialNum = Number(record.machineSerial);
-          const st = statusMap.get(serialNum) || { code: 0, name: "Unknown" };
-          const runtimeMs = record.runtimeMs || 0;
-          const totalCounts = record.totalCounts || 0;
-          return {
-            machine: { serial: serialNum, name: record.machineName || "Unknown" },
-            currentStatus: st,
-            performance: {
-              output: { totalCount: totalCounts },
-              oee: { percentage: 0 },
-              runtime: { formatted: formatDuration(runtimeMs) },
-            },
-          };
-        });
+        );
+        const machineResults = (result.data || []).map(toDailySummaryMachineResult);
         return res.json({
           timeRange: { start, end, total: formatDuration(Date.now() - started) },
           machineResults,
@@ -450,22 +399,17 @@ module.exports = function (server) {
           );
         }
       } else {
-        const startDate = exactStart.toISOString().split("T")[0];
-        const endDate = exactEnd.toISOString().split("T")[0];
-
-        const daysForCache = [
-          {
-            dateStr: startDate,
-            start: startOfDayStart,
-            end: endOfDayEnd,
-          },
-        ];
-
-        machineResults = await getCachedMachineResults(
+        const result = await buildCanonicalMachineSummaryFromDailyCache(
           db,
-          daysForCache,
-          serial ? parseInt(serial) : undefined
+          logger,
+          config,
+          {
+            start,
+            end,
+            serial: serial ? parseInt(serial, 10) : undefined,
+          }
         );
+        machineResults = (result.data || []).map(toDailySummaryMachineResult);
       }
 
       res.json({
@@ -559,7 +503,7 @@ module.exports = function (server) {
           db,
           logger
         );
-        const items = buildDailySummaryItemRows(sessionData);
+        const items = buildItemSummaryRows(sessionData);
         return res.json({
           timeRange: { start, end, total: formatDuration(Date.now() - started) },
           items,
@@ -633,7 +577,7 @@ module.exports = function (server) {
 
       res.json({
         timeRange: { start, end, total: formatDuration(Date.now() - started) },
-        items: buildDailySummaryItemRows(items),
+        items: buildItemSummaryRows(items),
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
