@@ -700,14 +700,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private getSummaryCardVisibilityOptions(): SummaryCardVisibilityOption[] {
-    const cards = this.allSummaryCards.length
+    const cards: SummaryCard[] = this.allSummaryCards.length
       ? this.allSummaryCards
       : this.machineSummaryCardLabels.map((label) => ({ label, value: "", icon: this.getSummaryCardFallbackIcon(label), tone: "neutral" }));
 
     return cards.map((card) => ({
       label: card.label,
       icon: card.icon,
+      value: card.value,
       tone: card.tone,
+      sparklineLinePoints: card.sparklineLinePoints,
+      sparklineAreaPath: card.sparklineAreaPath,
     }));
   }
 

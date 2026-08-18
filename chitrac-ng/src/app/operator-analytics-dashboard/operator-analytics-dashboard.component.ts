@@ -489,6 +489,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     return cards.map((card) => ({
       label: card.label,
       icon: card.icon,
+      value: card.value,
       tone: card.tone,
     }));
   }
