@@ -6,8 +6,8 @@ import { MatIconModule } from '@angular/material/icon';
 
 export interface SummaryCardVisibilityOption {
   label: string;
-  value?: string | number;
   icon: string;
+  value: string | number;
   tone?: string;
   sparklineLinePoints?: string;
   sparklineAreaPath?: string;

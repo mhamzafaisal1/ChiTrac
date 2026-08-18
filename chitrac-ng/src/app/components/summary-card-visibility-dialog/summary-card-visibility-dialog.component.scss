@@ -51,24 +51,47 @@
 .infobox-row {
   position: relative;
   width: 100%;
-  min-height: 3.9rem;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
   margin-bottom: 0.5rem;
-  padding: 0.8rem 0.9rem;
+  padding: 0;
   border: 1px solid transparent;
-  border-left: 4px solid var(--theme-color-primary, #1c9bd1);
   border-radius: 4px;
-  background: var(--theme-color-surface, #ffffff);
-  color: var(--theme-color-text, #202124);
+  background: transparent;
+  color: inherit;
   text-align: left;
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
 
+  &:hover,
+  &.selected {
+    border-color: var(--theme-color-primary, #1c9bd1);
+    box-shadow: 0 0 0 2px rgba(28, 155, 209, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--theme-color-primary, #1c9bd1);
+    outline-offset: 2px;
+  }
+}
+
+.summary-card-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  min-height: 3.35rem;
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border-left: 4px solid var(--theme-color-primary, #1c9bd1);
+  border-radius: 4px;
+  background: var(--theme-color-surface, #ffffff);
+  color: var(--theme-color-text, #202124);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-sizing: border-box;
+
   .summary-icon {
-    color: var(--theme-color-primary, #1c9bd1);
     flex: 0 0 auto;
+    color: var(--theme-color-primary, #1c9bd1);
   }
 
   .summary-copy {
@@ -79,8 +102,10 @@
   }
 
   span {
+    min-width: 0;
     color: var(--theme-color-on-surface-variant, #69707a);
     font-size: 0.72rem;
+    line-height: 1.1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -92,9 +117,20 @@
     line-height: 1.1;
   }
 
+  &.good {
+    border-left-color: var(--sg-color-green);
+  }
+
+  &.warn {
+    border-left-color: var(--sg-color-orange);
+  }
+
+  &.bad {
+    border-left-color: var(--sg-color-red);
+  }
+
   &.has-sparkline {
     min-height: 4.35rem;
-    padding-right: 10.5rem;
   }
 
   .summary-sparkline {
@@ -124,24 +160,6 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     vector-effect: non-scaling-stroke;
-  }
-
-  &.good {
-    border-left-color: var(--sg-color-green);
-  }
-
-  &.warn {
-    border-left-color: var(--sg-color-orange);
-  }
-
-  &.bad {
-    border-left-color: var(--sg-color-red);
-  }
-
-  &:hover,
-  &.selected {
-    border-color: var(--theme-color-primary, #1c9bd1);
-    box-shadow: 0 0 0 2px rgba(28, 155, 209, 0.12);
   }
 }
 
@@ -173,7 +191,7 @@
     border-color: rgba(255, 255, 255, 0.12);
   }
 
-  .infobox-row {
+  .summary-card-preview {
     background: rgba(255, 255, 255, 0.06);
   }
 }

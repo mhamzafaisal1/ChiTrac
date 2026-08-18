@@ -191,15 +191,10 @@ import {
         };
       }
 
-      const { width, height, margin, orientation } = cfg;
+      const { width, height } = this.getHostRenderSize(cfg);
+      const { margin, orientation } = cfg;
   
-      // Let CSS constrain the rendered SVG to its host while keeping D3's
-      // internal coordinate system matched to the measured chart area.
-      this.svg
-        .attr('width', null)
-        .attr('height', null)
-        .attr('viewBox', `0 0 ${width} ${height}`)
-        .attr('preserveAspectRatio', 'none');
+      this.applySvgSize(width, height);
   
       // clear
       this.rootG.selectAll('*').remove();
@@ -544,6 +539,25 @@ import {
       );
     }
 
+    private getHostRenderSize(cfg: CartesianChartConfig): { width: number; height: number } {
+      const rect = this.host?.nativeElement.getBoundingClientRect();
+      const width = Math.floor(rect?.width || cfg.width || 900);
+      const height = Math.floor(rect?.height || cfg.height || 500);
+
+      return {
+        width: Math.max(10, width),
+        height: Math.max(10, height)
+      };
+    }
+
+    private applySvgSize(width: number, height: number): void {
+      this.svg
+        .attr('width', null)
+        .attr('height', null)
+        .attr('viewBox', `0 0 ${width} ${height}`)
+        .attr('preserveAspectRatio', 'none');
+    }
+
     private applyAxisTheme(axisG: d3.Selection<SVGGElement, unknown, null, undefined>): void {
       axisG.selectAll('path,line')
         .style('stroke', this.chartAxisColor);
@@ -778,15 +792,10 @@ import {
       g: d3.Selection<SVGGElement, unknown, null, undefined>,
       cfg: CartesianChartConfig
     ) {
-      const { width, height, margin } = cfg;
+      const { width, height } = this.getHostRenderSize(cfg);
+      const { margin } = cfg;
       
-      // Let CSS constrain the rendered SVG to its host while keeping D3's
-      // internal coordinate system matched to the measured chart area.
-      this.svg
-        .attr('width', null)
-        .attr('height', null)
-        .attr('viewBox', `0 0 ${width} ${height}`)
-        .attr('preserveAspectRatio', 'none');
+      this.applySvgSize(width, height);
       
       // Clear existing content
       g.selectAll('*').remove();
