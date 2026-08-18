@@ -265,7 +265,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         ? (v: any) => this.formatCountTickAsThousands(v)
         : (v: any) => this.formatCountTick(v),
       margin: {
-        top: Math.max(this.marginTop || 40, this.useExternalTitle ? 24 : 60),
+        top: this.useExternalTitle ? 12 : Math.max(this.marginTop || 40, 60),
         right: Math.max(this.marginRight || 30, 30),
         bottom: Math.max(this.marginBottom || 50, 80),
         left: Math.max(this.marginLeft ?? 0, 60) 
