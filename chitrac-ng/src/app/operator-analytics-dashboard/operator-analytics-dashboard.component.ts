@@ -117,6 +117,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Faulted',
     'Idle Operators',
     'Total Count',
+    'Projected Count',
     'Avg Efficiency',
   ];
   private readonly layoutContextId = 'operatorDashboard';
@@ -447,6 +448,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const idleOperators = Number(this.idleOperatorSummary?.idleOperators ?? 0);
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
+    const elapsedHours = this.getElapsedHours();
+    const totalProjectionHours = this.getProjectionWindowHours(elapsedHours);
+    const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
 
     this.allSummaryCards = this.applySummaryCardOrder([
       { label: 'Operators', value: totalOperators, icon: 'groups', tone: 'neutral' },
@@ -455,6 +459,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
       { label: 'Idle Operators', value: idleOperators, icon: 'person_off', tone: idleOperators > 0 ? 'warn' : 'good' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
+      { label: 'Projected Count', value: projectedCount.toLocaleString(), icon: 'flag', tone: projectedCount >= totalCount ? 'good' : 'neutral' },
       { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
     ]);
     this.syncSummaryCardsFromAll();
@@ -502,6 +507,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Faulted: 'warning',
       'Idle Operators': 'person_off',
       'Total Count': 'tag',
+      'Projected Count': 'flag',
       'Avg Efficiency': 'speed',
     };
     return icons[label] || 'dashboard';
@@ -735,6 +741,28 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const numbers = values.map(Number).filter((value) => Number.isFinite(value));
     if (!numbers.length) return 0;
     return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
+  }
+
+  private getElapsedHours(): number {
+    const start = new Date(this.startTime).getTime();
+    const end = new Date(this.endTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+    return (end - start) / 36e5;
+  }
+
+  private getProjectedCount(totalCount: number, elapsedHours: number, totalWindowHours: number): number {
+    if (elapsedHours <= 0) return totalCount;
+    if (!Number.isFinite(totalWindowHours) || totalWindowHours <= 0) return totalCount;
+    return Math.round((totalCount / elapsedHours) * Math.max(elapsedHours, totalWindowHours));
+  }
+
+  private getProjectionWindowHours(elapsedHours: number): number {
+    const start = new Date(this.startTime);
+    const end = new Date(this.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return elapsedHours;
+    const projectionEnd = new Date(end);
+    projectionEnd.setHours(23, 59, 59, 999);
+    return Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
   }
 
   async fetchAnalyticsData(): Promise<void> {
