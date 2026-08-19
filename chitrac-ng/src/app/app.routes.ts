@@ -58,7 +58,7 @@ export const routes: Routes = [
 	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.apiTokens } },
 	{ path: 'ng/settings/root/users', component: UserManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
 	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
-	{ path: 'ng/settings/root/utilities', component: SettingsUtilitiesComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/root/utilities', component: SettingsUtilitiesComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.utilities } },
 	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.serverLogs } },
 	{ path: 'ng/test', component: TestComponent, canActivate: [AuthGuard] },
 	

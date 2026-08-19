@@ -179,7 +179,7 @@
       <a mat-list-item *ngIf="canAccess(permissionLevels.serverLogs)" routerLink="/ng/settings/server-logs" (click)="closeMenu()">
         <mat-icon>description</mat-icon><span>Server Logs</span>
       </a>
-      <a mat-list-item *ngIf="user?.username === 'root'" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
+      <a mat-list-item *ngIf="canAccess(permissionLevels.utilities)" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
         <mat-icon>build_circle</mat-icon><span>Utilities</span>
       </a>
       <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/shifts" (click)="closeMenu()">
