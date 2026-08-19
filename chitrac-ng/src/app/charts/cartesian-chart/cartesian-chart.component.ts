@@ -714,6 +714,7 @@ import {
           ?.html(lines.map(line => this.escapeHtml(line)).join('<br>'))
           .style('opacity', '1')
           .classed('is-visible', true);
+        this.positionTooltip(event);
       }, cfg.tooltip?.delayMs ?? 750);
     }
 
@@ -730,9 +731,27 @@ import {
     private positionTooltip(event: MouseEvent | PointerEvent): void {
       if (!this.tooltipEl || !this.host) return;
       const [x, y] = d3.pointer(event, this.host.nativeElement);
+      const hostEl = this.host.nativeElement;
+      const tooltipNode = this.tooltipEl.node();
+      const tooltipWidth = tooltipNode?.offsetWidth || 0;
+      const tooltipHeight = tooltipNode?.offsetHeight || 0;
+      const gutter = 8;
+      let left = x + 12;
+      let top = y;
+
+      if (tooltipWidth && left + tooltipWidth + gutter > hostEl.clientWidth) {
+        left = x - tooltipWidth - 12;
+      }
+      if (tooltipHeight && top + tooltipHeight + gutter > hostEl.clientHeight) {
+        top = hostEl.clientHeight - tooltipHeight - gutter;
+      }
+
+      left = Math.max(gutter, Math.min(left, hostEl.clientWidth - tooltipWidth - gutter));
+      top = Math.max(gutter, top);
+
       this.tooltipEl
-        .style('left', `${x + 12}px`)
-        .style('top', `${y}px`);
+        .style('left', `${left}px`)
+        .style('top', `${top}px`);
     }
 
     private hideTooltip(): void {
