@@ -13,7 +13,14 @@ import { Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
+import { MachineService } from '../services/machine.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
+import {
+  calculateMachineStatusCounts,
+  calculateOperatorStatusCounts,
+  EMPTY_MACHINE_STATUS_COUNTS,
+  MachineStatusCounts,
+} from '../../utils/dashboard-status-counts';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
@@ -114,8 +121,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Operators',
     'Assigned',
     'Running',
+    'Paused Operators',
     'Faulted',
     'Idle Operators',
+    'Idle/Paused Operators',
+    'Down Operators',
+    'Paused Machines',
+    'Idle/Paused Machines',
+    'Down Machines',
     'Total Count',
     'Avg Efficiency',
   ];
@@ -138,6 +151,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   tableColumnVisibility: Record<string, boolean> = {};
   summaryCardVisibility: Record<string, boolean> = {};
   private idleOperatorSummary: IdleOperatorSummary | null = null;
+  private machineStatusCounts: MachineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
 
   // Chart dimensions
   chartHeight = 700;
@@ -157,6 +171,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   constructor(
     private operatorService: OperatorService,
+    private machineService: MachineService,
     private dialog: MatDialog,
     private renderer: Renderer2,
     private elRef: ElementRef,
@@ -408,6 +423,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const responses = Array.isArray(data) ? data : [data];
     this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
     this.updateSummaryCards(this.operatorData);
+    this.loadMachineStatusCounts();
 
     if (this.operatorData.length === 0) {
       this.rows = [];
@@ -440,24 +456,65 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateSummaryCards(responses: any[]): void {
-    const totalOperators = responses.length;
-    const active = responses.filter((r) => !!r.currentMachine?.name).length;
-    const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Running Dot').length;
-    const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Faulted Dot').length;
     const idleOperators = Number(this.idleOperatorSummary?.idleOperators ?? 0);
+    const operatorCounts = calculateOperatorStatusCounts(responses, idleOperators);
+    const machineCounts = this.machineStatusCounts;
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
 
     this.allSummaryCards = this.applySummaryCardOrder([
-      { label: 'Operators', value: totalOperators, icon: 'groups', tone: 'neutral' },
-      { label: 'Assigned', value: active, icon: 'assignment_ind', tone: 'neutral' },
-      { label: 'Running', value: running, icon: 'play_circle', tone: 'good' },
-      { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
-      { label: 'Idle Operators', value: idleOperators, icon: 'person_off', tone: idleOperators > 0 ? 'warn' : 'good' },
+      { label: 'Operators', value: operatorCounts.total, icon: 'groups', tone: 'neutral' },
+      { label: 'Assigned', value: operatorCounts.assigned, icon: 'assignment_ind', tone: 'neutral' },
+      { label: 'Running', value: operatorCounts.running, icon: 'play_circle', tone: 'good' },
+      { label: 'Paused Operators', value: operatorCounts.paused, icon: 'pause_circle', tone: operatorCounts.paused > 0 ? 'warn' : 'neutral' },
+      { label: 'Faulted', value: operatorCounts.faulted, icon: 'warning', tone: operatorCounts.faulted > 0 ? 'bad' : 'neutral' },
+      { label: 'Idle Operators', value: operatorCounts.idle, icon: 'person_off', tone: operatorCounts.idle > 0 ? 'warn' : 'good' },
+      { label: 'Idle/Paused Operators', value: operatorCounts.idlePaused, icon: 'person_off', tone: operatorCounts.idlePaused > 0 ? 'warn' : 'neutral' },
+      { label: 'Down Operators', value: operatorCounts.down, icon: 'warning', tone: operatorCounts.down > 0 ? 'warn' : 'neutral' },
+      { label: 'Paused Machines', value: machineCounts.paused, icon: 'pause_circle', tone: machineCounts.paused > 0 ? 'warn' : 'neutral' },
+      { label: 'Idle/Paused Machines', value: machineCounts.idlePaused, icon: 'motion_photos_paused', tone: machineCounts.idlePaused > 0 ? 'warn' : 'neutral' },
+      { label: 'Down Machines', value: machineCounts.down, icon: 'do_not_disturb_on', tone: machineCounts.down > 0 ? 'warn' : 'neutral' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
       { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
     ]);
     this.syncSummaryCardsFromAll();
+  }
+
+  private loadMachineStatusCounts(): void {
+    if (!this.startTime || !this.endTime) {
+      this.machineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
+      this.updateSummaryCards(this.operatorData);
+      return;
+    }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    const timeframe = this.dateTimeService.getTimeframe();
+    const summaryObservable = timeframe
+      ? this.machineService.getMachineSummaryWithTimeframe(timeframe, shiftId)
+      : this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId);
+
+    summaryObservable
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (data) => {
+          const responses = Array.isArray(data) ? data : [data];
+          const machineData = responses.filter(
+            (response) =>
+              response &&
+              (response.metrics || response.itemSummary || response.performance) &&
+              response.machine &&
+              response.currentStatus
+          );
+          this.machineStatusCounts = calculateMachineStatusCounts(machineData);
+          this.updateSummaryCards(this.operatorData);
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.machineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
+          this.updateSummaryCards(this.operatorData);
+          this.cdr.markForCheck();
+        },
+      });
   }
 
   private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
@@ -499,8 +556,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Operators: 'groups',
       Assigned: 'assignment_ind',
       Running: 'play_circle',
+      'Paused Operators': 'pause_circle',
       Faulted: 'warning',
       'Idle Operators': 'person_off',
+      'Idle/Paused Operators': 'person_off',
+      'Down Operators': 'warning',
+      'Paused Machines': 'pause_circle',
+      'Idle/Paused Machines': 'motion_photos_paused',
+      'Down Machines': 'do_not_disturb_on',
       'Total Count': 'tag',
       'Avg Efficiency': 'speed',
     };
