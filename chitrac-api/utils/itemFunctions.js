@@ -100,27 +100,90 @@ async function getItemsCachedDataForDays(completeDays, db) {
 /**
  * Get item data from sessions for partial day ranges (non-today).
  */
+function normalizePPH(std) {
+  const n = Number(std) || 0;
+  return n > 0 && n < 60 ? n * 60 : n;
+}
+
+function itemWorkedTimeMs(itemTotal) {
+  return Number(
+    itemTotal.workedTimeMs ??
+    itemTotal.totalWorkedTimeMs ??
+    itemTotal.workTimeMs ??
+    0
+  ) || 0;
+}
+
+function itemCount(itemTotal) {
+  return Number(
+    itemTotal.totalCounts ??
+    itemTotal.count ??
+    itemTotal.totalCount ??
+    0
+  ) || 0;
+}
+
+function buildItemSummaryRows(itemTotals) {
+  const resultsMap = new Map();
+
+  for (const itemTotal of itemTotals || []) {
+    const itemId = String(itemTotal.itemId ?? itemTotal.item?.id ?? itemTotal.itemName ?? "Unknown");
+    if (!resultsMap.has(itemId)) {
+      resultsMap.set(itemId, {
+        itemId: itemTotal.itemId ?? itemTotal.item?.id,
+        itemName: itemTotal.itemName || itemTotal.item?.name || "Unknown",
+        standardRaw: itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? 0,
+        count: 0,
+        workedMs: 0,
+      });
+    }
+
+    const acc = resultsMap.get(itemId);
+    acc.count += itemCount(itemTotal);
+    acc.workedMs += itemWorkedTimeMs(itemTotal);
+  }
+
+  return Array.from(resultsMap.values()).map((entry) => {
+    const workedMs = Math.round(entry.workedMs);
+    const hours = workedMs / 3600000;
+    const pph = hours > 0 ? entry.count / hours : 0;
+    const stdPPH = normalizePPH(entry.standardRaw);
+    const efficiencyPct = stdPPH > 0 && hours > 0 ? (pph / stdPPH) * 100 : 0;
+
+    return {
+      itemId: entry.itemId,
+      itemName: entry.itemName,
+      workedTimeFormatted: formatDuration(workedMs),
+      count: entry.count,
+      pph: Math.round(pph * 100) / 100,
+      standard: entry.standardRaw ?? 0,
+      efficiency: Math.round(efficiencyPct * 100) / 100,
+      workedTimeMs: workedMs,
+    };
+  });
+}
+
 async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
   const items = [];
   const now = new Date();
 
-  logger.info(`[getItemsSessionDataForPartialDays] Processing ${partialDays.length} partial day ranges`);
+  if (logger) logger.info(`[getItemsSessionDataForPartialDays] Processing ${partialDays.length} partial day ranges`);
 
   const activeSerials = await db
     .collection(config.machineCollectionName || "machine")
     .distinct("id", { active: true });
 
-  logger.info(`[getItemsSessionDataForPartialDays] Found ${activeSerials.length} active machines`);
+  if (logger) logger.info(`[getItemsSessionDataForPartialDays] Found ${activeSerials.length} active machines`);
 
   for (const partialDay of partialDays) {
-    logger.debug(`[getItemsSessionDataForPartialDays] Processing partial day: ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
+    if (logger) logger.debug(`[getItemsSessionDataForPartialDays] Processing partial day: ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
 
     for (const serial of activeSerials) {
       const bookended = await getBookendedStatesAndTimeRange(db, serial, partialDay.start, partialDay.end);
       if (!bookended) continue;
       const { sessionStart, sessionEnd } = bookended;
 
-      logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial} bookended window: ${sessionStart.toISOString()} to ${sessionEnd.toISOString()}`);
+      if (logger) logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial} bookended window: ${sessionStart.toISOString()} to ${sessionEnd.toISOString()}`);
 
       const sessions = await db
         .collection(config.itemSessionCollectionName || "item-session")
@@ -148,11 +211,11 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
         .toArray();
 
       if (!sessions.length) {
-        logger.debug(`[getItemsSessionDataForPartialDays] No sessions found for machine ${serial}`);
+        if (logger) logger.debug(`[getItemsSessionDataForPartialDays] No sessions found for machine ${serial}`);
         continue;
       }
 
-      logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial}: Found ${sessions.length} item sessions`);
+      if (logger) logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial}: Found ${sessions.length} item sessions`);
 
       for (const s of sessions) {
         const itm = s.item || (Array.isArray(s.items) && s.items.length === 1 ? s.items[0] : null);
@@ -208,7 +271,7 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
     }
   }
 
-  logger.info(`[getItemsSessionDataForPartialDays] Collected ${items.length} total item records from sessions`);
+  if (logger) logger.info(`[getItemsSessionDataForPartialDays] Collected ${items.length} total item records from sessions`);
 
   return items;
 }
@@ -250,5 +313,6 @@ module.exports = {
   splitTimeRangeForHybridItems,
   getItemsCachedDataForDays,
   getItemsSessionDataForPartialDays,
-  combineItemsHybridData
+  combineItemsHybridData,
+  buildItemSummaryRows,
 };

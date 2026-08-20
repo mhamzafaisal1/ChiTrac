@@ -4,10 +4,13 @@
       <mat-icon *ngIf="icon" aria-hidden="true">{{ icon }}</mat-icon>
       <div class="chart-tile-text">
         <div class="chart-tile-title" *ngIf="title">{{ title }}</div>
-        <div class="chart-tile-subtitle" *ngIf="subtitle">{{ subtitle }}</div>
+        <div class="chart-tile-subtitle" *ngIf="subtitle || updatedAt">
+          <span *ngIf="subtitle">{{ subtitle }}</span>
+          <span *ngIf="subtitle && updatedAt"> &mdash; </span>
+          <span *ngIf="updatedAt">{{ updatedAt }}</span>
+        </div>
       </div>
     </div>
-    <div class="chart-tile-updated" *ngIf="updatedAt">{{ updatedAt }}</div>
   </div>
   <div class="chart-content">
     <ng-content></ng-content>
