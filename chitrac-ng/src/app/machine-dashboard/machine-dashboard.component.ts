@@ -638,9 +638,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
-      { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
+      { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: this.getOeeSummaryTone(avgOee) },
     ]);
     this.syncSummaryCardsFromAll();
+  }
+
+  private getOeeSummaryTone(value: unknown): "good" | "warn" | "bad" {
+    const color = this.percentBreakpointService.getOeDashboardColor(value);
+    if (color === "green") return "good";
+    if (color === "orange") return "warn";
+    return "bad";
   }
 
   private loadOperatorStatusCounts(): void {
