@@ -90,6 +90,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   columnTooltips: { [column: string]: string } = {
     Runtime: 'Amount of time operator has been running across all machines',
     Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
+    'Paused Time': 'Amount of time this operator has been paused.',
     'Total Count': 'Amount of pieces fed by operator',
     'Misfeed Count': 'Amount of pieces misfed or rejected by the operator.',
     PPH: 'Pieces Per Hour',
@@ -116,6 +117,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Running',
     'Faulted',
     'Idle Operators',
+    'Run Time',
+    'Paused Time',
+    'Down Time',
     'Total Count',
     'Avg Efficiency',
   ];
@@ -129,6 +133,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Operator ID',
     'Current Machine Serial',
     'Downtime',
+    'Paused Time',
     'Misfeed Count',
     'PPH',
     'Availability',
@@ -423,6 +428,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Current Machine Serial': response.currentMachine?.serial || '',
       'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
       'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Paused Time': this.formatDurationMetric(response.metrics.pausedTime),
       'Total Count': response.metrics.output?.totalCount ?? 0,
       'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
       'PPH': this.formatPph(response),
@@ -445,6 +451,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Running Dot').length;
     const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Faulted Dot').length;
     const idleOperators = Number(this.idleOperatorSummary?.idleOperators ?? 0);
+    const totalRunTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.runtime?.total || 0), 0);
+    const totalPausedTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.pausedTime?.total || 0), 0);
+    const totalDownTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.downTime?.total ?? r.metrics?.downtime?.total ?? 0), 0);
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
 
@@ -454,10 +463,29 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Running', value: running, icon: 'play_circle', tone: 'good' },
       { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
       { label: 'Idle Operators', value: idleOperators, icon: 'person_off', tone: idleOperators > 0 ? 'warn' : 'good' },
+      { label: 'Run Time', value: this.formatMilliseconds(totalRunTimeMs), icon: 'timer', tone: totalRunTimeMs > 0 ? 'good' : 'neutral' },
+      { label: 'Paused Time', value: this.formatMilliseconds(totalPausedTimeMs), icon: 'pause_circle', tone: totalPausedTimeMs > 0 ? 'warn' : 'neutral' },
+      { label: 'Down Time', value: this.formatMilliseconds(totalDownTimeMs), icon: 'timer_off', tone: totalDownTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
       { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
     ]);
     this.syncSummaryCardsFromAll();
+  }
+
+  private formatDurationMetric(metric: any): string {
+    if (metric?.formatted) {
+      return `${metric.formatted.hours ?? 0}h ${metric.formatted.minutes ?? 0}m`;
+    }
+
+    return this.formatMilliseconds(Number(metric?.total || 0));
+  }
+
+  private formatMilliseconds(totalMs: number): string {
+    const safeMs = Number.isFinite(totalMs) ? Math.max(0, totalMs) : 0;
+    const totalMinutes = Math.floor(safeMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
   }
 
   private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
@@ -501,6 +529,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Running: 'play_circle',
       Faulted: 'warning',
       'Idle Operators': 'person_off',
+      'Run Time': 'timer',
+      'Paused Time': 'pause_circle',
+      'Down Time': 'timer_off',
       'Total Count': 'tag',
       'Avg Efficiency': 'speed',
     };
@@ -1160,6 +1191,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1178,6 +1210,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1196,6 +1229,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1214,6 +1248,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1232,6 +1267,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1254,6 +1290,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial',
         'Runtime',
         'Downtime',
+        'Paused Time',
         'Total Count',
         'Misfeed Count',
         'PPH',

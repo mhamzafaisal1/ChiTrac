@@ -163,6 +163,7 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
     }
 
     const runtimeMs = record.runtimeMs || 0;
+    const pausedTimeMs = record.pausedTimeMs || 0;
     const breakTimeMs = record.breakTimeMs || 0;
     const productiveElapsedMs = Math.max(0, elapsedMs - breakTimeMs);
     const totalCounts = record.totalCounts || 0;
@@ -202,6 +203,14 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
           formatted: formatDuration(runtimeMs),
         },
         downtime: {
+          total: downtimeMs,
+          formatted: formatDuration(downtimeMs),
+        },
+        pausedTime: {
+          total: pausedTimeMs,
+          formatted: formatDuration(pausedTimeMs),
+        },
+        downTime: {
           total: downtimeMs,
           formatted: formatDuration(downtimeMs),
         },
@@ -289,6 +298,14 @@ function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd) {
         total: 0,
         formatted: formatDuration(0),
       },
+      pausedTime: {
+        total: 0,
+        formatted: formatDuration(0),
+      },
+      downTime: {
+        total: 0,
+        formatted: formatDuration(0),
+      },
       output: {
         totalCount: 0,
         misfeedCount: 0,
@@ -356,6 +373,7 @@ async function buildMachineSummaryFromSessions(db, logger, config, start, end, s
     machineSerial: Number(record.machineSerial),
     machineName: record.machineName,
     runtimeMs: record.runtimeMs || 0,
+    pausedTimeMs: record.pausedTimeMs || 0,
     workedTimeMs: record.workedTimeMs || 0,
     totalCounts: record.totalCounts || 0,
     totalMisfeeds: record.totalMisfeeds || 0,
