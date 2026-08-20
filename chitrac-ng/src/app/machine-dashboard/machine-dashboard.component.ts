@@ -147,6 +147,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Total Count",
     "Current Pace",
     "Projected Count",
+    "Projected Count (Shift)",
     "Avg OEE",
   ];
   private readonly layoutContextId = "machineDashboard";
@@ -363,11 +364,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         .poll(
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
+            const shiftId = this.dateTimeService.getShiftId();
 
             return forkJoin({
-              data: this.machineService.getMachinesSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId()),
+              data: this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId),
               projection: this.machineService
-                .getShiftProjectionWindow(this.getProjectionDate())
+                .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
                 .pipe(catchError(() => of(null))),
             }).pipe(
                 tap(({ data, projection }: any) => {
@@ -449,7 +451,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       forkJoin({
         data: this.machineService.getMachineSummaryWithTimeframe(timeframe, shiftId),
         projection: this.machineService
-          .getShiftProjectionWindow(this.getProjectionDate())
+          .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
           .pipe(catchError(() => of(null))),
       })
         .subscribe({
@@ -476,7 +478,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     forkJoin({
       data: this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId),
       projection: this.machineService
-        .getShiftProjectionWindow(this.getProjectionDate())
+        .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
         .pipe(catchError(() => of(null))),
     })
       .subscribe({
@@ -602,6 +604,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const totalProjectionHours = this.getProjectionTotalHours(projectionWindow) ?? this.getProjectionWindowHours(elapsedHours);
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
     const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
+    const shiftProjection = this.getShiftProjection(responses, cache);
 
     this.allSummaryCards = this.applySummaryCardOrder([
       { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
@@ -617,9 +620,42 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
+      { label: "Projected Count (Shift)", value: shiftProjection.projectedCount.toLocaleString(), icon: "outlined_flag", tone: shiftProjection.projectedCount >= shiftProjection.totalCount ? "good" : "neutral" },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
     ]);
     this.syncSummaryCardsFromAll();
+  }
+
+  private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): { totalCount: number; projectedCount: number } {
+    const shiftResponses = this.getShiftProjectionResponses(responses, cache);
+    const totalCount = this.getSummaryTotalCount(shiftResponses);
+    const projectionWindow = this.getShiftProjectionWindow(cache);
+    const elapsedHours = this.getProjectionElapsedHours(projectionWindow) ?? (this.dateTimeService.getShiftId() ? this.getElapsedHours() : 0);
+    const totalHours = this.getProjectionTotalHours(projectionWindow) ?? elapsedHours;
+
+    return {
+      totalCount,
+      projectedCount: this.getProjectedCount(totalCount, elapsedHours, totalHours),
+    };
+  }
+
+  private getShiftProjectionResponses(responses: any[], cache?: DashboardCacheState | null): any[] {
+    if (this.dateTimeService.getShiftId()) {
+      return responses;
+    }
+
+    const currentShiftRows =
+      cache?.currentShift?.machinesSummary ||
+      cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === cache?.currentShift?.meta?.shiftId)?.machinesSummary;
+
+    return Array.isArray(currentShiftRows) ? currentShiftRows : [];
+  }
+
+  private getSummaryTotalCount(responses: any[]): number {
+    return responses.reduce((sum, r) => {
+      const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
+      return sum + Number(value || 0);
+    }, 0);
   }
 
   private getMockCountSparklineData(totalCount: number, currentPph: number): number[] {
@@ -723,6 +759,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       "Total Count": "tag",
       "Current Pace": "trending_up",
       "Projected Count": "flag",
+      "Projected Count (Shift)": "outlined_flag",
       "Avg OEE": "speed",
     };
     return icons[label] || "dashboard";
@@ -1003,6 +1040,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private resolveProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
     const cachedWindow = this.getCachedProjectionWindow(cache);
     return cachedWindow || this.shiftProjectionWindow;
+  }
+
+  private getShiftProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
+    if (this.dateTimeService.getShiftId()) {
+      return this.resolveProjectionWindow(cache);
+    }
+
+    return cache?.currentShift?.meta?.projectionWindow || null;
   }
 
   private getCachedProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
