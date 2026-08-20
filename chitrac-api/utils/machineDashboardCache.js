@@ -5,6 +5,7 @@ const { loadActiveShifts, computeShiftElapsedMs, resolveShiftProjectionWindow } 
 const { getSessionDataForPartialDays } = require("./reportFunctions");
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
 const { getShiftTimeComponents, getShiftStartMinutes } = require("./shiftTimeComponents");
+const { getMachineFaultTimeBySerial } = require("./faultTimeSummary");
 
 const TOTALS_SHIFT_COLLECTION = "totals-shift";
 
@@ -115,6 +116,7 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
   const useShiftElapsed = options.useShiftElapsed !== false;
   const shiftElapsedCache = new Map();
   const machineSerials = records.map((r) => Number(r.machineSerial)).filter(Number.isFinite);
+  const faultTimeBySerial = await getMachineFaultTimeBySerial(db, config, machineSerials, requestStart, requestEnd);
   const tickers = machineSerials.length
     ? await db
         .collection(config.stateTickerCollectionName)
@@ -164,6 +166,7 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
 
     const runtimeMs = record.runtimeMs || 0;
     const pausedTimeMs = record.pausedTimeMs || 0;
+    const faultTimeMs = faultTimeBySerial.get(Number(record.machineSerial)) ?? record.faultTimeMs ?? 0;
     const breakTimeMs = record.breakTimeMs || 0;
     const productiveElapsedMs = Math.max(0, elapsedMs - breakTimeMs);
     const totalCounts = record.totalCounts || 0;
@@ -213,6 +216,10 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
         downTime: {
           total: downtimeMs,
           formatted: formatDuration(downtimeMs),
+        },
+        faultTime: {
+          total: faultTimeMs,
+          formatted: formatDuration(faultTimeMs),
         },
         output: {
           totalCount: totalCounts,
@@ -306,6 +313,10 @@ function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd) {
         total: 0,
         formatted: formatDuration(0),
       },
+      faultTime: {
+        total: 0,
+        formatted: formatDuration(0),
+      },
       output: {
         totalCount: 0,
         misfeedCount: 0,
@@ -374,6 +385,7 @@ async function buildMachineSummaryFromSessions(db, logger, config, start, end, s
     machineName: record.machineName,
     runtimeMs: record.runtimeMs || 0,
     pausedTimeMs: record.pausedTimeMs || 0,
+    faultTimeMs: record.faultTimeMs || 0,
     workedTimeMs: record.workedTimeMs || 0,
     totalCounts: record.totalCounts || 0,
     totalMisfeeds: record.totalMisfeeds || 0,
