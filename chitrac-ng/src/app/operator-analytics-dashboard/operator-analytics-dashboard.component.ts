@@ -97,6 +97,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   columnTooltips: { [column: string]: string } = {
     Runtime: 'Amount of time operator has been running across all machines',
     Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
+    'Paused Time': 'Amount of time this operator has been paused.',
     'Fault Time': 'Amount of time this operator has overlapped machine fault sessions.',
     'Total Count': 'Amount of pieces fed by operator',
     'Misfeed Count': 'Amount of pieces misfed or rejected by the operator.',
@@ -126,6 +127,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Faulted',
     'Fault Time',
     'Idle Operators',
+    'Run Time',
+    'Paused Time',
+    'Down Time',
     'Idle/Paused Operators',
     'Down Operators',
     'Paused Machines',
@@ -145,6 +149,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Operator ID',
     'Current Machine Serial',
     'Downtime',
+    'Paused Time',
     'Fault Time',
     'Misfeed Count',
     'PPH',
@@ -443,6 +448,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Current Machine Serial': response.currentMachine?.serial || '',
       'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
       'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Paused Time': this.formatDurationMetric(response.metrics.pausedTime),
       'Fault Time': this.formatDurationMetric(response.metrics.faultTime),
       'Total Count': response.metrics.output?.totalCount ?? 0,
       'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
@@ -462,6 +468,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private updateSummaryCards(responses: any[]): void {
     const idleOperators = Number(this.idleOperatorSummary?.idleOperators ?? 0);
+    const totalRunTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.runtime?.total || 0), 0);
+    const totalPausedTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.pausedTime?.total || 0), 0);
+    const totalDownTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.downTime?.total ?? r.metrics?.downtime?.total ?? 0), 0);
     const totalFaultTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.faultTime?.total || 0), 0);
     const operatorCounts = calculateOperatorStatusCounts(responses, idleOperators);
     const machineCounts = this.machineStatusCounts;
@@ -479,6 +488,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Faulted', value: operatorCounts.faulted, icon: 'warning', tone: operatorCounts.faulted > 0 ? 'bad' : 'neutral' },
       { label: 'Fault Time', value: this.formatMilliseconds(totalFaultTimeMs), icon: 'timer_off', tone: totalFaultTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Idle Operators', value: operatorCounts.idle, icon: 'person_off', tone: operatorCounts.idle > 0 ? 'warn' : 'good' },
+      { label: 'Run Time', value: this.formatMilliseconds(totalRunTimeMs), icon: 'timer', tone: totalRunTimeMs > 0 ? 'good' : 'neutral' },
+      { label: 'Paused Time', value: this.formatMilliseconds(totalPausedTimeMs), icon: 'pause_circle', tone: totalPausedTimeMs > 0 ? 'warn' : 'neutral' },
+      { label: 'Down Time', value: this.formatMilliseconds(totalDownTimeMs), icon: 'timer_off', tone: totalDownTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Idle/Paused Operators', value: operatorCounts.idlePaused, icon: 'person_off', tone: operatorCounts.idlePaused > 0 ? 'warn' : 'neutral' },
       { label: 'Down Operators', value: operatorCounts.down, icon: 'do_not_disturb_on', tone: operatorCounts.down > 0 ? 'warn' : 'neutral' },
       { label: 'Paused Machines', value: machineCounts.paused, icon: 'pause_circle', tone: machineCounts.paused > 0 ? 'warn' : 'neutral' },
@@ -587,6 +599,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Faulted: 'warning',
       'Fault Time': 'timer_off',
       'Idle Operators': 'person_off',
+      'Run Time': 'timer',
+      'Paused Time': 'pause_circle',
+      'Down Time': 'timer_off',
       'Idle/Paused Operators': 'person_off',
       'Down Operators': 'do_not_disturb_on',
       'Paused Machines': 'pause_circle',
@@ -1274,6 +1289,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
@@ -1293,6 +1309,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
@@ -1312,6 +1329,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
@@ -1331,6 +1349,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
@@ -1350,6 +1369,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
         'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
@@ -1373,6 +1393,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial',
         'Runtime',
         'Downtime',
+        'Paused Time',
         'Fault Time',
         'Total Count',
         'Misfeed Count',
