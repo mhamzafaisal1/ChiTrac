@@ -18,6 +18,7 @@ import { catchError, debounceTime, distinctUntilChanged, forkJoin, of, Subject, 
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
 import { MachineService, ShiftProjectionWindow } from "../services/machine.service";
+import { OperatorService } from "../services/operator.service";
 import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
@@ -27,6 +28,12 @@ import { LayoutEditService } from "../services/layout-edit.service";
 import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
 import { UserService } from "../user.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
+import {
+  calculateMachineStatusCounts,
+  calculateOperatorStatusCounts,
+  EMPTY_OPERATOR_STATUS_COUNTS,
+  OperatorStatusCounts,
+} from "../../utils/dashboard-status-counts";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
 import { UseCarouselComponent } from "../use-carousel/use-carousel.component";
 import { MachineItemSummaryTableComponent } from "../machine-item-summary-table/machine-item-summary-table.component";
@@ -144,14 +151,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private readonly machineSummaryCardLabels = [
     "Machines",
     "Running",
+    "Paused Machines",
     "Faulted",
     "Offline",
     "Run Time",
     "Paused Time",
     "Down Time",
+    "Idle/Paused Machines",
+    "Down Machines",
+    "Paused Operators",
+    "Idle/Paused Operators",
+    "Down Operators",
     "Total Count",
     "Current Pace",
     "Projected Count",
+    "Projected Count (Shift)",
     "Avg OEE",
   ];
   private readonly layoutContextId = "machineDashboard";
@@ -161,6 +175,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private layoutSnapshot: MachineDashboardLayoutSnapshot | null = null;
   private readonly summaryCardOrderSave$ = new Subject<string[]>();
   private shiftProjectionWindow: ShiftProjectionWindow | null = null;
+  private operatorStatusCounts: OperatorStatusCounts = EMPTY_OPERATOR_STATUS_COUNTS;
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -183,6 +198,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   constructor(
     private machineService: MachineService,
+    private operatorService: OperatorService,
     private renderer: Renderer2,
     private elRef: ElementRef,
     private dialog: MatDialog,
@@ -368,11 +384,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         .poll(
           () => {
             this.endTime = this.pollingService.updateEndTimestampToNow();
+            const shiftId = this.dateTimeService.getShiftId();
 
             return forkJoin({
-              data: this.machineService.getMachinesSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId()),
+              data: this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId),
               projection: this.machineService
-                .getShiftProjectionWindow(this.getProjectionDate())
+                .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
                 .pipe(catchError(() => of(null))),
             }).pipe(
                 tap(({ data, projection }: any) => {
@@ -380,6 +397,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   const responses = Array.isArray(data) ? data : [data];
                   this.machineData = responses;
                   this.updateSummaryCards(responses, this.websocketService.getDashboardCacheSnapshot());
+                  this.loadOperatorStatusCounts();
 
                   const formattedData = responses.map((response) => ({
                     Status: getStatusDotByCode(response.currentStatus?.code),
@@ -455,7 +473,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       forkJoin({
         data: this.machineService.getMachineSummaryWithTimeframe(timeframe, shiftId),
         projection: this.machineService
-          .getShiftProjectionWindow(this.getProjectionDate())
+          .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
           .pipe(catchError(() => of(null))),
       })
         .subscribe({
@@ -482,7 +500,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     forkJoin({
       data: this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId),
       projection: this.machineService
-        .getShiftProjectionWindow(this.getProjectionDate())
+        .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
         .pipe(catchError(() => of(null))),
     })
       .subscribe({
@@ -556,6 +574,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     this.machineData = validResponses;
     this.updateSummaryCards(validResponses, this.websocketService.getDashboardCacheSnapshot());
+    this.loadOperatorStatusCounts();
 
     if (validResponses.length === 0) {
       this.rows = [];
@@ -594,13 +613,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateSummaryCards(responses: any[], cache?: DashboardCacheState | null): void {
-    const totalMachines = responses.length;
-    const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Running Dot").length;
-    const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Faulted Dot").length;
-    const offline = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Offline Dot").length;
     const totalRunTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.runtime?.total ?? r.performance?.runtime?.total ?? 0), 0);
     const totalPausedTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.pausedTime?.total ?? r.performance?.pausedTime?.total ?? 0), 0);
     const totalDownTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.downTime?.total ?? r.metrics?.downtime?.total ?? r.performance?.downTime?.total ?? r.performance?.downtime?.total ?? 0), 0);
+    const machineCounts = calculateMachineStatusCounts(responses);
+    const operatorCounts = this.operatorStatusCounts;
     const totalCount = responses.reduce((sum, r) => {
       const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
       return sum + Number(value || 0);
@@ -613,15 +630,22 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const totalProjectionHours = this.getProjectionTotalHours(projectionWindow) ?? this.getProjectionWindowHours(elapsedHours);
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
     const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
+    const shiftProjection = this.getShiftProjection(responses, cache);
 
     this.allSummaryCards = this.applySummaryCardOrder([
-      { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
-      { label: "Running", value: running, icon: "play_circle", tone: "good" },
-      { label: "Faulted", value: faulted, icon: "warning", tone: faulted > 0 ? "bad" : "neutral" },
-      { label: "Offline", value: offline, icon: "cloud_off", tone: offline > 0 ? "warn" : "neutral" },
+      { label: "Machines", value: machineCounts.total, icon: "precision_manufacturing", tone: "neutral" },
+      { label: "Running", value: machineCounts.running, icon: "play_circle", tone: "good" },
+      { label: "Paused Machines", value: machineCounts.paused, icon: "pause_circle", tone: machineCounts.paused > 0 ? "warn" : "neutral" },
+      { label: "Faulted", value: machineCounts.faulted, icon: "warning", tone: machineCounts.faulted > 0 ? "bad" : "neutral" },
+      { label: "Offline", value: machineCounts.offline, icon: "cloud_off", tone: machineCounts.offline > 0 ? "warn" : "neutral" },
       { label: "Run Time", value: this.formatMilliseconds(totalRunTimeMs), icon: "timer", tone: totalRunTimeMs > 0 ? "good" : "neutral" },
       { label: "Paused Time", value: this.formatMilliseconds(totalPausedTimeMs), icon: "pause_circle", tone: totalPausedTimeMs > 0 ? "warn" : "neutral" },
       { label: "Down Time", value: this.formatMilliseconds(totalDownTimeMs), icon: "timer_off", tone: totalDownTimeMs > 0 ? "bad" : "neutral" },
+      { label: "Idle/Paused Machines", value: machineCounts.idlePaused, icon: "motion_photos_paused", tone: machineCounts.idlePaused > 0 ? "warn" : "neutral" },
+      { label: "Down Machines", value: machineCounts.down, icon: "do_not_disturb_on", tone: machineCounts.down > 0 ? "warn" : "neutral" },
+      { label: "Paused Operators", value: operatorCounts.paused, icon: "pause_circle", tone: operatorCounts.paused > 0 ? "warn" : "neutral" },
+      { label: "Idle/Paused Operators", value: operatorCounts.idlePaused, icon: "person_off", tone: operatorCounts.idlePaused > 0 ? "warn" : "neutral" },
+      { label: "Down Operators", value: operatorCounts.down, icon: "do_not_disturb_on", tone: operatorCounts.down > 0 ? "warn" : "neutral" },
       this.withSparkline({
         label: "Total Count",
         value: totalCount.toLocaleString(),
@@ -631,7 +655,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
-      { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
+      { label: "Projected Count (Shift)", value: shiftProjection.projectedCount.toLocaleString(), icon: "outlined_flag", tone: shiftProjection.projectedCount >= shiftProjection.totalCount ? "good" : "neutral" },
+      { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: this.getOeeSummaryTone(avgOee) },
     ]);
     this.syncSummaryCardsFromAll();
   }
@@ -650,6 +675,77 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${hours}h ${minutes}m`;
+  }
+
+  private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): { totalCount: number; projectedCount: number } {
+    const shiftResponses = this.getShiftProjectionResponses(responses, cache);
+    const totalCount = this.getSummaryTotalCount(shiftResponses);
+    const projectionWindow = this.getShiftProjectionWindow(cache);
+    const elapsedHours = this.getProjectionElapsedHours(projectionWindow) ?? (this.dateTimeService.getShiftId() ? this.getElapsedHours() : 0);
+    const totalHours = this.getProjectionTotalHours(projectionWindow) ?? elapsedHours;
+
+    return {
+      totalCount,
+      projectedCount: this.getProjectedCount(totalCount, elapsedHours, totalHours),
+    };
+  }
+
+  private getShiftProjectionResponses(responses: any[], cache?: DashboardCacheState | null): any[] {
+    if (this.dateTimeService.getShiftId()) {
+      return responses;
+    }
+
+    const currentShiftRows =
+      cache?.currentShift?.machinesSummary ||
+      cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === cache?.currentShift?.meta?.shiftId)?.machinesSummary;
+
+    return Array.isArray(currentShiftRows) ? currentShiftRows : [];
+  }
+
+  private getSummaryTotalCount(responses: any[]): number {
+    return responses.reduce((sum, r) => {
+      const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
+      return sum + Number(value || 0);
+    }, 0);
+  }
+
+  private getOeeSummaryTone(value: unknown): "good" | "warn" | "bad" {
+    const color = this.percentBreakpointService.getOeDashboardColor(value);
+    if (color === "green") return "good";
+    if (color === "orange") return "warn";
+    return "bad";
+  }
+
+  private loadOperatorStatusCounts(): void {
+    if (!this.startTime || !this.endTime) {
+      this.operatorStatusCounts = EMPTY_OPERATOR_STATUS_COUNTS;
+      this.updateSummaryCards(this.machineData, this.websocketService.getDashboardCacheSnapshot());
+      return;
+    }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    const timeframe = this.dateTimeService.getTimeframe();
+    const summaryObservable = timeframe
+      ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe, shiftId)
+      : this.operatorService.getOperatorSummary(this.startTime, this.endTime, shiftId);
+
+    forkJoin({
+      data: summaryObservable,
+      idle: this.operatorService.getIdleOperatorSummary(this.startTime, this.endTime, shiftId),
+    })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: ({ data, idle }) => {
+          const responses = Array.isArray(data) ? data : [data];
+          const operatorData = responses.filter((response) => response?.operator && response?.metrics);
+          this.operatorStatusCounts = calculateOperatorStatusCounts(operatorData, idle?.idleOperators);
+          this.updateSummaryCards(this.machineData, this.websocketService.getDashboardCacheSnapshot());
+        },
+        error: () => {
+          this.operatorStatusCounts = EMPTY_OPERATOR_STATUS_COUNTS;
+          this.updateSummaryCards(this.machineData, this.websocketService.getDashboardCacheSnapshot());
+        },
+      });
   }
 
   private getMockCountSparklineData(totalCount: number, currentPph: number): number[] {
@@ -748,14 +844,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const icons: Record<string, string> = {
       Machines: "precision_manufacturing",
       Running: "play_circle",
+      "Paused Machines": "pause_circle",
       Faulted: "warning",
       Offline: "cloud_off",
       "Run Time": "timer",
       "Paused Time": "pause_circle",
       "Down Time": "timer_off",
+      "Idle/Paused Machines": "motion_photos_paused",
+      "Down Machines": "do_not_disturb_on",
+      "Paused Operators": "pause_circle",
+      "Idle/Paused Operators": "person_off",
+      "Down Operators": "do_not_disturb_on",
       "Total Count": "tag",
       "Current Pace": "trending_up",
       "Projected Count": "flag",
+      "Projected Count (Shift)": "outlined_flag",
       "Avg OEE": "speed",
     };
     return icons[label] || "dashboard";
@@ -1036,6 +1139,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private resolveProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
     const cachedWindow = this.getCachedProjectionWindow(cache);
     return cachedWindow || this.shiftProjectionWindow;
+  }
+
+  private getShiftProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
+    if (this.dateTimeService.getShiftId()) {
+      return this.resolveProjectionWindow(cache);
+    }
+
+    return cache?.currentShift?.meta?.projectionWindow || null;
   }
 
   private getCachedProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
@@ -1411,6 +1522,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     this.machineData = validResponses;
     this.updateSummaryCards(validResponses, dashboardCache);
+    this.loadOperatorStatusCounts();
     const formattedData = validResponses.map((response) => {
       const totalCount = response.metrics?.output?.totalCount ??
         response.itemSummary?.machineSummary?.totalCount ?? 0;
