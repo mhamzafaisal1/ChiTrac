@@ -22,6 +22,7 @@ const {
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
   getShiftTimeComponents,
+  getTimeComponentsFromTimestamp,
   addDerivedShiftTimeComponents,
 } = require("../../utils/shiftTimeComponents");
 const {
@@ -312,6 +313,19 @@ function constructor(server) {
   // Import level-two dashboard-related routes
   const levelTwoDashboardRoutes = require("./level-twoRoutes")(server);
   router.use("/analytics", levelTwoDashboardRoutes);
+
+  // Shift Settings needs full shift documents, including breaks. Register this
+  // before reports routes, which also expose GET /shifts as a summary endpoint.
+  router.get("/shifts", async (req, res) => {
+    try {
+      res.json({
+        shifts: await listShiftLikeDocs(db, config.shiftCollectionName),
+      });
+    } catch (err) {
+      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
+      res.status(500).json({ error: "Failed to list shifts" });
+    }
+  });
 
   // Import report routes from reports controller (cached machine/operator/item summaries)
   const reportRoutes = require("../reports")(server);
@@ -4110,6 +4124,17 @@ function constructor(server) {
     };
   }
 
+  function normalizeBreakForClient(b) {
+    const derivedStartTime = getTimeComponentsFromTimestamp(b?.timestamps?.start);
+    const derivedEndTime = getTimeComponentsFromTimestamp(b?.timestamps?.end);
+
+    return {
+      ...b,
+      startTime: normalizeTimePart(b?.startTime || derivedStartTime),
+      endTime: normalizeTimePart(b?.endTime || derivedEndTime),
+    };
+  }
+
   /**
    * Plain JSON for the Angular client: string _id, numeric hour/minute,
    * so rows always render (avoids EJSON / type quirks from mixed drivers).
@@ -4134,11 +4159,7 @@ function constructor(server) {
       out.activeDays = [];
     }
     if (Array.isArray(s.breaks)) {
-      out.breaks = s.breaks.map((b) => ({
-        ...b,
-        startTime: normalizeTimePart(b && b.startTime),
-        endTime: normalizeTimePart(b && b.endTime),
-      }));
+      out.breaks = s.breaks.map((b) => normalizeBreakForClient(b));
     }
     return out;
   }
@@ -4196,17 +4217,6 @@ function constructor(server) {
     });
     return shifts.map((s) => normalizeShiftForClient(s));
   }
-
-  router.get("/shifts", async (req, res) => {
-    try {
-      res.json({
-        shifts: await listShiftLikeDocs(db, config.shiftCollectionName),
-      });
-    } catch (err) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
-      res.status(500).json({ error: "Failed to list shifts" });
-    }
-  });
 
   router.post("/shifts", async (req, res) => {
     try {

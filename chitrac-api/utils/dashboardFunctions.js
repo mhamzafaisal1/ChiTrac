@@ -1709,14 +1709,17 @@ async function buildMachineStatusFromDailyTotals(db, dayStart, dayEnd, logger) {
       }
     }
 
+    const safeMs = (value) => Math.max(0, Number(value) || 0);
+
     const machineStatus = dailyTotals.map(total => {
-      const runningMs = total.runtimeMs || 0;
-      const faultedMs = total.faultTimeMs || 0;
+      const runningMs = safeMs(total.runtimeMs);
+      const faultedMs = safeMs(total.faultTimeMs);
+      const cachedPausedMs = safeMs(total.pausedTimeMs || total.pauseTimeMs);
       const serialKey = String(total.machineSerial);
-      // Cap pausedMs so running + faulted + paused never exceeds the window
-      const maxDowntimeMs = Math.max(0, windowMs - runningMs - faultedMs);
-      const pausedMs = Math.min(pausedMsByMachine.get(serialKey) || 0, maxDowntimeMs);
-      const offlineMs = Math.max(0, maxDowntimeMs - pausedMs);
+      const maxPausedMs = Math.max(0, windowMs - runningMs - faultedMs);
+      const sourcePausedMs = cachedPausedMs || pausedMsByMachine.get(serialKey) || 0;
+      const pausedMs = Math.min(sourcePausedMs, maxPausedMs);
+      const offlineMs = Math.max(0, windowMs - runningMs - pausedMs - faultedMs);
 
       return {
         serial: total.machineSerial,

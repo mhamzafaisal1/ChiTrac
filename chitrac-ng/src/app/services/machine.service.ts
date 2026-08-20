@@ -36,9 +36,10 @@ export class MachineService {
         return this.http.get(`${this.machineApiUrl}/analytics/machines-summary-daily-cached`, { params });
       }
 
-      getShiftProjectionWindow(date?: string): Observable<ShiftProjectionWindow> {
+      getShiftProjectionWindow(date?: string, shiftId?: string | null): Observable<ShiftProjectionWindow> {
         let params = new HttpParams();
         if (date) params = params.set('date', date);
+        if (shiftId) params = params.set('shiftId', shiftId);
 
         return this.http.get<ShiftProjectionWindow>(
           `${this.machineApiUrl}/analytics/shift-projection-window`,

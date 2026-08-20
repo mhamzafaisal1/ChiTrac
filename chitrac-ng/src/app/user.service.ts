@@ -8,6 +8,7 @@ import { map } from 'rxjs/operators';
 import { BehaviorSubject, Observable } from 'rxjs';
 
 export const PermissionLevels = {
+  utilities: 0,
   apiTokens: 1,
   serverLogs: 1,
   users: 2,
