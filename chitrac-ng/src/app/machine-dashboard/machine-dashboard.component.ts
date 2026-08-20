@@ -86,6 +86,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   columnTooltips: { [column: string]: string } = {
     Runtime: "Amount of time machine has been running",
     Downtime: "Amount of time machine has been paused, faulted, or offline.",
+    "Fault Time": "Amount of time machine has been faulted.",
     "Total Count": "Amount of pieces fed into the machine/line.",
     "Misfeed Count": "Amount of pieces misfed or rejected by the machine/line.",
     PPH: "Pieces Per Hour",
@@ -123,6 +124,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Serial Number",
     "Runtime",
     "Downtime",
+    "Fault Time",
     "Misfeed Count",
     "PPH",
     "Availability",
@@ -143,6 +145,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Machines",
     "Running",
     "Faulted",
+    "Fault Time",
     "Offline",
     "Total Count",
     "Current Pace",
@@ -382,6 +385,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     "Serial Number": response.machine.serial,
                     Runtime: `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
                     Downtime: `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
+                    "Fault Time": this.formatDurationMetric(response.metrics.faultTime),
                     "Total Count": response.metrics.output.totalCount,
                     "Misfeed Count": response.metrics.output.misfeedCount,
                     PPH: this.formatPph(response),
@@ -563,6 +567,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         response.itemSummary?.machineSummary?.misfeedCount ?? 0;
       const runtime = response.metrics?.runtime ?? response.performance?.runtime;
       const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+      const faultTime = response.metrics?.faultTime ?? response.performance?.faultTime;
       const performance = response.metrics?.performance ?? response.performance;
 
       return {
@@ -571,6 +576,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number": response.machine?.serial,
         Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
         Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        "Fault Time": this.formatDurationMetric(faultTime),
         "Total Count": totalCount,
         "Misfeed Count": misfeedCount,
         PPH: this.formatPph(response),
@@ -590,6 +596,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Running Dot").length;
     const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Faulted Dot").length;
     const offline = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === "Offline Dot").length;
+    const totalFaultTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.faultTime?.total ?? r.performance?.faultTime?.total ?? 0), 0);
     const totalCount = responses.reduce((sum, r) => {
       const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
       return sum + Number(value || 0);
@@ -607,6 +614,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Machines", value: totalMachines, icon: "precision_manufacturing", tone: "neutral" },
       { label: "Running", value: running, icon: "play_circle", tone: "good" },
       { label: "Faulted", value: faulted, icon: "warning", tone: faulted > 0 ? "bad" : "neutral" },
+      { label: "Fault Time", value: this.formatMilliseconds(totalFaultTimeMs), icon: "timer_off", tone: totalFaultTimeMs > 0 ? "bad" : "neutral" },
       { label: "Offline", value: offline, icon: "cloud_off", tone: offline > 0 ? "warn" : "neutral" },
       this.withSparkline({
         label: "Total Count",
@@ -620,6 +628,22 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: avgOee >= 85 ? "good" : avgOee >= 60 ? "warn" : "bad" },
     ]);
     this.syncSummaryCardsFromAll();
+  }
+
+  private formatDurationMetric(metric: any): string {
+    if (metric?.formatted) {
+      return `${metric.formatted.hours ?? 0}h ${metric.formatted.minutes ?? 0}m`;
+    }
+
+    return this.formatMilliseconds(Number(metric?.total || 0));
+  }
+
+  private formatMilliseconds(totalMs: number): string {
+    const safeMs = Number.isFinite(totalMs) ? Math.max(0, totalMs) : 0;
+    const totalMinutes = Math.floor(safeMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
   }
 
   private getMockCountSparklineData(totalCount: number, currentPph: number): number[] {
@@ -719,6 +743,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       Machines: "precision_manufacturing",
       Running: "play_circle",
       Faulted: "warning",
+      "Fault Time": "timer_off",
       Offline: "cloud_off",
       "Total Count": "tag",
       "Current Pace": "trending_up",
@@ -1385,6 +1410,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         response.itemSummary?.machineSummary?.misfeedCount ?? 0;
       const runtime = response.metrics?.runtime ?? response.performance?.runtime;
       const downtime = response.metrics?.downtime ?? response.performance?.downtime;
+      const faultTime = response.metrics?.faultTime ?? response.performance?.faultTime;
       const performance = response.metrics?.performance ?? response.performance;
 
       return {
@@ -1393,6 +1419,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number": response.machine?.serial,
         Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
         Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        "Fault Time": this.formatDurationMetric(faultTime),
         "Total Count": totalCount,
         "Misfeed Count": misfeedCount,
         PPH: this.formatPph(response),
@@ -1420,6 +1447,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number": "",
         Runtime: "",
         Downtime: "",
+        "Fault Time": "",
         "Total Count": "",
         "Misfeed Count": "",
         PPH: "",
@@ -1437,6 +1465,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number": "",
         Runtime: "",
         Downtime: "",
+        "Fault Time": "",
         "Total Count": "",
         "Misfeed Count": "",
         PPH: "",
@@ -1454,6 +1483,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number": "",
         Runtime: "",
         Downtime: "",
+        "Fault Time": "",
         "Total Count": "",
         "Misfeed Count": "",
         PPH: "",
@@ -1471,6 +1501,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number": "",
         Runtime: "",
         Downtime: "",
+        "Fault Time": "",
         "Total Count": "",
         "Misfeed Count": "",
         PPH: "",
@@ -1488,6 +1519,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number": "",
         Runtime: "",
         Downtime: "",
+        "Fault Time": "",
         "Total Count": "",
         "Misfeed Count": "",
         PPH: "",
@@ -1508,6 +1540,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         "Serial Number",
         "Runtime",
         "Downtime",
+        "Fault Time",
         "Total Count",
         "Misfeed Count",
         "PPH",

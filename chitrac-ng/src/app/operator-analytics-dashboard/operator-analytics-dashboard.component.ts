@@ -90,6 +90,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   columnTooltips: { [column: string]: string } = {
     Runtime: 'Amount of time operator has been running across all machines',
     Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
+    'Fault Time': 'Amount of time this operator has overlapped machine fault sessions.',
     'Total Count': 'Amount of pieces fed by operator',
     'Misfeed Count': 'Amount of pieces misfed or rejected by the operator.',
     PPH: 'Pieces Per Hour',
@@ -115,6 +116,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Assigned',
     'Running',
     'Faulted',
+    'Fault Time',
     'Idle Operators',
     'Total Count',
     'Avg Efficiency',
@@ -129,6 +131,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Operator ID',
     'Current Machine Serial',
     'Downtime',
+    'Fault Time',
     'Misfeed Count',
     'PPH',
     'Availability',
@@ -423,6 +426,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Current Machine Serial': response.currentMachine?.serial || '',
       'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
       'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Fault Time': this.formatDurationMetric(response.metrics.faultTime),
       'Total Count': response.metrics.output?.totalCount ?? 0,
       'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
       'PPH': this.formatPph(response),
@@ -445,6 +449,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Running Dot').length;
     const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Faulted Dot').length;
     const idleOperators = Number(this.idleOperatorSummary?.idleOperators ?? 0);
+    const totalFaultTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.faultTime?.total || 0), 0);
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
 
@@ -453,11 +458,28 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Assigned', value: active, icon: 'assignment_ind', tone: 'neutral' },
       { label: 'Running', value: running, icon: 'play_circle', tone: 'good' },
       { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
+      { label: 'Fault Time', value: this.formatMilliseconds(totalFaultTimeMs), icon: 'timer_off', tone: totalFaultTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Idle Operators', value: idleOperators, icon: 'person_off', tone: idleOperators > 0 ? 'warn' : 'good' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
       { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
     ]);
     this.syncSummaryCardsFromAll();
+  }
+
+  private formatDurationMetric(metric: any): string {
+    if (metric?.formatted) {
+      return `${metric.formatted.hours ?? 0}h ${metric.formatted.minutes ?? 0}m`;
+    }
+
+    return this.formatMilliseconds(Number(metric?.total || 0));
+  }
+
+  private formatMilliseconds(totalMs: number): string {
+    const safeMs = Number.isFinite(totalMs) ? Math.max(0, totalMs) : 0;
+    const totalMinutes = Math.floor(safeMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
   }
 
   private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
@@ -500,6 +522,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Assigned: 'assignment_ind',
       Running: 'play_circle',
       Faulted: 'warning',
+      'Fault Time': 'timer_off',
       'Idle Operators': 'person_off',
       'Total Count': 'tag',
       'Avg Efficiency': 'speed',
@@ -1160,6 +1183,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1178,6 +1202,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1196,6 +1221,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1214,6 +1240,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1232,6 +1259,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1254,6 +1282,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial',
         'Runtime',
         'Downtime',
+        'Fault Time',
         'Total Count',
         'Misfeed Count',
         'PPH',
