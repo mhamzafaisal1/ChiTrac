@@ -631,7 +631,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Down Machines", value: machineCounts.down, icon: "do_not_disturb_on", tone: machineCounts.down > 0 ? "warn" : "neutral" },
       { label: "Paused Operators", value: operatorCounts.paused, icon: "pause_circle", tone: operatorCounts.paused > 0 ? "warn" : "neutral" },
       { label: "Idle/Paused Operators", value: operatorCounts.idlePaused, icon: "person_off", tone: operatorCounts.idlePaused > 0 ? "warn" : "neutral" },
-      { label: "Down Operators", value: operatorCounts.down, icon: "warning", tone: operatorCounts.down > 0 ? "warn" : "neutral" },
+      { label: "Down Operators", value: operatorCounts.down, icon: "do_not_disturb_on", tone: operatorCounts.down > 0 ? "warn" : "neutral" },
       this.withSparkline({
         label: "Total Count",
         value: totalCount.toLocaleString(),
@@ -821,7 +821,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       "Down Machines": "do_not_disturb_on",
       "Paused Operators": "pause_circle",
       "Idle/Paused Operators": "person_off",
-      "Down Operators": "warning",
+      "Down Operators": "do_not_disturb_on",
       "Total Count": "tag",
       "Current Pace": "trending_up",
       "Projected Count": "flag",
