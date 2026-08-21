@@ -15,6 +15,7 @@ const {
   getSessionDataForPartialDays,
 } = require("../../utils/reportFunctions");
 const {
+  buildItemSummaryRows,
   splitTimeRangeForHybridItems,
   getItemsCachedDataForDays,
   getItemsSessionDataForPartialDays,
@@ -165,49 +166,6 @@ function getMachineDepartment(record, departmentLookup) {
 
 function getDailyMachineMetric(record, topLevelKey, totalsKey) {
   return record[topLevelKey] ?? record.totals?.[totalsKey] ?? 0;
-}
-
-function buildDailySummaryItemRows(itemTotals) {
-  const normalizePPH = (std) => {
-    const n = Number(std) || 0;
-    return n > 0 && n < 60 ? n * 60 : n;
-  };
-
-  const resultsMap = new Map();
-  for (const itemTotal of itemTotals) {
-    const itemId = String(itemTotal.itemId);
-    if (!resultsMap.has(itemId)) {
-      resultsMap.set(itemId, {
-        itemId: itemTotal.itemId,
-        itemName: itemTotal.itemName || "Unknown",
-        standardRaw: itemTotal.itemStandard ?? 0,
-        count: 0,
-        workedSec: 0,
-      });
-    }
-
-    const acc = resultsMap.get(itemId);
-    acc.count += itemTotal.totalCounts || 0;
-    acc.workedSec += (itemTotal.workedTimeMs || 0) / 1000;
-  }
-
-  return Array.from(resultsMap.values()).map((entry) => {
-    const workedMs = Math.round(entry.workedSec * 1000);
-    const hours = workedMs / 3600000;
-    const pph = hours > 0 ? entry.count / hours : 0;
-    const stdPPH = normalizePPH(entry.standardRaw);
-    const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
-
-    return {
-      itemId: entry.itemId,
-      itemName: entry.itemName,
-      workedTimeFormatted: formatDuration(workedMs),
-      count: entry.count,
-      pph: Math.round(pph * 100) / 100,
-      standard: entry.standardRaw ?? 0,
-      efficiency: Math.round(efficiencyPct * 100) / 100,
-    };
-  });
 }
 
 function normalizeOperatorId(id) {
@@ -633,7 +591,7 @@ module.exports = function (server) {
 
       res.json({
         timeRange: { start, end, total: formatDuration(Date.now() - started) },
-        items: buildDailySummaryItemRows(items),
+        items: buildItemSummaryRows(items),
       });
     } catch (error) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
