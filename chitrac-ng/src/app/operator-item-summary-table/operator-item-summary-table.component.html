@@ -5,6 +5,8 @@
         [columns]="itemColumns"
         [rows]="itemRows"
         [getCellClass]="getEfficiencyClass"
+        [enableSearch]="!isModal"
+        [enableCsvExport]="!isModal"
         [class.dark]="isDarkTheme"
         [class.light]="!isDarkTheme"
       ></base-table>
