@@ -162,7 +162,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
         () => {
           this.endTime = this.pollingService.updateEndTimestampToNow();
           this.dateTimeService.setEndTime(this.endTime);
-          return this.itemService.getItemAnalytics(this.startTime, this.endTime)
+          return this.itemService.getItemAnalytics(this.startTime, this.endTime, this.dateTimeService.getShiftId())
             .pipe(
               tap((data: any[]) => {
                 this.updateTableData(data);
@@ -215,7 +215,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
     // Set loading state
     this.isLoading = true;
 
-    return this.itemService.getItemAnalytics(this.startTime, this.endTime)
+    return this.itemService.getItemAnalytics(this.startTime, this.endTime, this.dateTimeService.getShiftId())
       .pipe(
         takeUntil(this.destroy$),
         tap({

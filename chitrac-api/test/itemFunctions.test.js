@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { buildItemSummaryRows } = require("../utils/itemFunctions");
 
-test("item summary efficiency uses time credit over worked time", () => {
+test("item summary efficiency uses count, worked time, and standard", () => {
   const [row] = buildItemSummaryRows([
     {
       itemId: 10,

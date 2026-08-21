@@ -57,6 +57,26 @@ function constructor(server) {
 		return Math.max(1, minutes) * 60 * 1000;
 	}
 
+  async function resolveShiftIdString(req) {
+    const raw = req.query.shiftId;
+    if (!raw) return null;
+    let oid;
+    try {
+      oid = new ObjectId(String(raw));
+    } catch (e) {
+      const err = new Error("Invalid shiftId");
+      err.statusCode = 400;
+      throw err;
+    }
+    const doc = await db.collection(config.shiftCollectionName).findOne({ _id: oid });
+    if (!doc) {
+      const err = new Error("Shift not found");
+      err.statusCode = 404;
+      throw err;
+    }
+    return String(oid);
+  }
+
 	function wantsDelayedApply(req) {
 		return req.query.applyAfterMachinesOffline === 'true';
 	}
@@ -425,6 +445,7 @@ function constructor(server) {
   router.get("/item/analytics/items-summary-daily-cache", async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
+      const shiftId = await resolveShiftIdString(req);
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
@@ -494,7 +515,7 @@ function constructor(server) {
         const daysForCache = [...completeDays, ...partialDaysToday];
 
         if (daysForCache.length > 0) {
-          itemTotals = await getItemsCachedDataForDays(daysForCache, db);
+          itemTotals = await getItemsCachedDataForDays(daysForCache, db, { shiftId, logger });
         }
 
         if (partialDaysNotToday.length > 0) {
@@ -505,25 +526,12 @@ function constructor(server) {
           itemTotals = combineItemsHybridData(itemTotals, sessionData);
         }
       } else {
-        const cacheCollection = db.collection(config.totalsDailyCollectionName);
-
         const startDate = exactStart.toISOString().split("T")[0];
-        const endDate = exactEnd.toISOString().split("T")[0];
-
-        const itemQuery = {
-          entityType: "item",
-          $or: [
-            { date: { $gte: startDate, $lte: endDate } },
-            {
-              dateObj: {
-                $gte: new Date(startDate + "T00:00:00.000Z"),
-                $lte: new Date(endDate + "T23:59:59.999Z"),
-              },
-            },
-          ],
-        };
-
-        itemTotals = await cacheCollection.find(itemQuery).toArray();
+        itemTotals = await getItemsCachedDataForDays(
+          [{ dateStr: startDate, start: startOfDayStart, end: endOfDayEnd }],
+          db,
+          { shiftId, logger }
+        );
       }
 
       if (!itemTotals.length) {
@@ -532,6 +540,9 @@ function constructor(server) {
 
       res.json(buildItemSummaryRows(itemTotals));
     } catch (err) {
+      if (err.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
       res
         .status(500)
         .json({ error: "Failed to generate items summary from daily cache" });

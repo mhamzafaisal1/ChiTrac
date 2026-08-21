@@ -3,8 +3,10 @@
  * Extracted from controllers/alpha/itemSessions.js
  */
 const config = require("../modules/config");
+const { ObjectId } = require("mongodb");
 const { formatDuration } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
+const { normalizeTotalsDocument } = require("./totalsSchema");
 
 function normalizeSessionSeconds(value, session) {
   const numeric = Number(value);
@@ -23,11 +25,6 @@ function normalizeSessionSeconds(value, session) {
 function normalizePPH(standard) {
   const n = Number(standard) || 0;
   return n > 0 && n < 60 ? n * 60 : n;
-}
-
-function calculateTimeCreditMs(count, standard) {
-  const stdPPH = normalizePPH(standard);
-  return stdPPH > 0 ? (Number(count) || 0) / stdPPH * 3600000 : 0;
 }
 
 function itemWorkedTimeMs(itemTotal) {
@@ -60,18 +57,15 @@ function buildItemSummaryRows(itemTotals) {
         standardRaw: itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? 0,
         count: 0,
         workedMs: 0,
-        timeCreditMs: 0,
       });
     }
 
     const acc = resultsMap.get(itemId);
     const count = itemCount(itemTotal);
     const standard = itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? acc.standardRaw ?? 0;
-    const timeCreditMs = itemTotal.totalTimeCreditMs ?? calculateTimeCreditMs(count, standard);
 
     acc.count += count;
     acc.workedMs += itemWorkedTimeMs(itemTotal);
-    acc.timeCreditMs += timeCreditMs || 0;
     if (!acc.standardRaw && standard) acc.standardRaw = standard;
   }
 
@@ -79,10 +73,7 @@ function buildItemSummaryRows(itemTotals) {
     const hours = entry.workedMs / 3600000;
     const pph = hours > 0 ? entry.count / hours : 0;
     const stdPPH = normalizePPH(entry.standardRaw);
-    const fallbackEfficiency = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
-    const efficiencyPct = entry.workedMs > 0 && entry.timeCreditMs > 0
-      ? (entry.timeCreditMs / entry.workedMs) * 100
-      : fallbackEfficiency;
+    const efficiencyPct = stdPPH > 0 && hours > 0 ? (pph / stdPPH) * 100 : 0;
 
     return {
       itemId: entry.itemId,
@@ -152,102 +143,68 @@ function splitTimeRangeForHybridItems(exactStart, exactEnd) {
 }
 
 /**
- * Get cached item data for complete days from totals-daily collection.
+ * Get cached item data for complete days from totals-daily or totals-shift.
  */
-async function getItemsCachedDataForDays(completeDays, db) {
-  const cacheCollection = db.collection('totals-daily');
+async function getItemsCachedDataForDays(completeDays, db, options = {}) {
+  const shiftId = options.shiftId ? String(options.shiftId) : "";
+  const shiftObjectId = ObjectId.isValid(shiftId) ? new ObjectId(shiftId) : null;
+  const cacheCollection = db.collection(
+    shiftId ? config.totalsShiftCollectionName : config.totalsDailyCollectionName
+  );
   const dateStrings = completeDays.map(day => day.dateStr);
 
   if (dateStrings.length === 0) return [];
 
-  const itemQuery = {
-    entityType: 'item',
-    $or: [
-      { date: { $in: dateStrings } },
-      { dateObj: {
-        $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
-      }}
-    ]
-  };
+  const dateFilter = [
+    { date: { $in: dateStrings } },
+    { dateObj: { $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z')) } },
+    ...completeDays.map(day => ({
+      "timestamps.create": {
+        $gte: day.start,
+        $lte: day.end,
+      },
+    })),
+  ];
 
-  const [itemTotals, operatorItemTotals] = await Promise.all([
-    cacheCollection.find(itemQuery).toArray(),
-    cacheCollection.find({
-      entityType: 'operator-item',
-      $or: [
-        { date: { $in: dateStrings } },
-        { dateObj: {
-          $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
-        }}
-      ]
-    }).toArray()
-  ]);
-
-  const operatorWorkedByItem = new Map();
-  for (const operatorItem of operatorItemTotals) {
-    const itemId = String(operatorItem.itemId);
-    const existing = operatorWorkedByItem.get(itemId) || {
-      workedTimeMs: 0,
-      totalTimeCreditMs: 0,
-      totalCounts: 0,
-      itemStandard: 0,
-      itemName: operatorItem.itemName || "Unknown",
+  const buildQuery = (entityType) => {
+    const query = {
+      $and: [
+        { $or: [{ entityType }, { type: entityType }] },
+        { $or: dateFilter },
+      ],
     };
 
-    existing.workedTimeMs += operatorItem.workedTimeMs || 0;
-    existing.totalTimeCreditMs += operatorItem.totalTimeCreditMs || 0;
-    existing.totalCounts += operatorItem.totalCounts || 0;
-    if (operatorItem.itemStandard && operatorItem.itemStandard > existing.itemStandard) {
-      existing.itemStandard = operatorItem.itemStandard;
+    if (shiftId) {
+      const shiftValues = shiftObjectId ? [shiftId, shiftObjectId] : [shiftId];
+      query.$and.push({
+        $or: [
+          { shiftId: { $in: shiftValues } },
+          { "shift.id": { $in: shiftValues } },
+          { "shift._id": { $in: shiftValues } },
+        ],
+      });
     }
-    if (operatorItem.itemName && existing.itemName === "Unknown") existing.itemName = operatorItem.itemName;
-    operatorWorkedByItem.set(itemId, existing);
+
+    return query;
+  };
+
+  const operatorItemTotals = (await cacheCollection.find(buildQuery('operator-item')).toArray())
+    .map(normalizeTotalsDocument);
+
+  if (operatorItemTotals.length > 0) {
+    return operatorItemTotals;
   }
 
-  if (itemTotals.length > 0) {
-    for (const itemTotal of itemTotals) {
-      const operatorItem = operatorWorkedByItem.get(String(itemTotal.itemId));
-      if (operatorItem?.workedTimeMs > 0) {
-        itemTotal.workedTimeMs = operatorItem.workedTimeMs;
-      }
-      if ((itemTotal.totalTimeCreditMs || 0) <= 0 && operatorItem?.totalTimeCreditMs > 0) {
-        itemTotal.totalTimeCreditMs = operatorItem.totalTimeCreditMs;
-      }
-      if (!itemTotal.itemStandard && operatorItem?.itemStandard) {
-        itemTotal.itemStandard = operatorItem.itemStandard;
-      }
-    }
-
+  const itemTotals = (await cacheCollection.find(buildQuery('item')).toArray())
+    .map(normalizeTotalsDocument);
+  if (itemTotals.length > 0 || !shiftId) {
     return itemTotals;
   }
 
-  if (operatorWorkedByItem.size > 0) {
-    return Array.from(operatorWorkedByItem.entries()).map(([itemId, item]) => ({
-      itemId,
-      itemName: item.itemName,
-      itemStandard: item.itemStandard,
-      totalCounts: item.totalCounts,
-      workedTimeMs: item.workedTimeMs,
-      totalTimeCreditMs: item.totalTimeCreditMs,
-    }));
-  }
-
-  if (itemTotals.length === 0 && dateStrings.length > 0) {
-    console.log(`[getItemsCachedDataForDays] No results found. Date strings:`, dateStrings);
-    const testQuery = {
-      $or: [
-        { date: { $in: dateStrings } },
-        { dateObj: {
-          $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
-        }}
-      ]
-    };
-    const testResults = await cacheCollection.find(testQuery).limit(5).toArray();
-    console.log(`[getItemsCachedDataForDays] Found ${testResults.length} records in date range (without entityType filter):`,
-      testResults.map(r => ({ entityType: r.entityType, itemId: r.itemId, date: r.date })));
-  }
-
-  return [];
+  options.logger?.warn?.(
+    `[getItemsCachedDataForDays] No item totals found in totals-shift for shift ${shiftId}; falling back to totals-daily`
+  );
+  return getItemsCachedDataForDays(completeDays, db, { logger: options.logger });
 }
 
 async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
@@ -354,7 +311,6 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
           itemStandard: itm.standard ?? 0,
           totalCounts: countInWin,
           workedTimeMs: workedSec * 1000,
-          totalTimeCreditMs: calculateTimeCreditMs(countInWin, itm.standard),
         });
       }
     }

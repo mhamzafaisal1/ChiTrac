@@ -479,6 +479,7 @@ module.exports = function (server) {
     try {
       const started = Date.now();
       const { start, end, serial } = parseAndValidateQueryParams(req);
+      const shiftId = await resolveShiftIdString(req, db);
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
 
@@ -543,7 +544,7 @@ module.exports = function (server) {
         const daysForCache = [...completeDays, ...partialDaysToday];
 
         if (daysForCache.length > 0) {
-          items = await getItemsCachedDataForDays(daysForCache, db);
+          items = await getItemsCachedDataForDays(daysForCache, db, { shiftId, logger });
         }
 
         if (partialDaysNotToday.length > 0) {
@@ -564,7 +565,7 @@ module.exports = function (server) {
           },
         ];
 
-        items = await getItemsCachedDataForDays(daysForCache, db);
+        items = await getItemsCachedDataForDays(daysForCache, db, { shiftId, logger });
       }
 
       if (serial) {
