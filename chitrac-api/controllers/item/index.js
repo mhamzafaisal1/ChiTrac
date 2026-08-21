@@ -11,13 +11,13 @@ const { ObjectId } = require('mongodb');
 const schedule = require('node-schedule');
 const config = require('../../modules/config');
 const timestampsSchema = require('../../schemas/timestampsSchema');
-const { parseAndValidateQueryParams, formatDuration } = require("../../utils/time");
+const { parseAndValidateQueryParams } = require("../../utils/time");
 const {
+  buildItemSummaryRows,
   splitTimeRangeForHybridItems,
   getItemsCachedDataForDays,
   getItemsSessionDataForPartialDays,
   combineItemsHybridData,
-  buildItemSummaryRows,
 } = require("../../utils/itemFunctions");
 
 const DELAYED_ITEM_JOB_PREFIX = 'delayedItemConfigApply:';
@@ -450,7 +450,6 @@ function constructor(server) {
       if (isPartialDay && !isToday) {
         const partialDays = [{ start: exactStart, end: exactEnd }];
         const sessionItems = await getItemsSessionDataForPartialDays(partialDays, db);
-
         return res.json(buildItemSummaryRows(sessionItems));
       }
 

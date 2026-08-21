@@ -6,6 +6,97 @@ const config = require("../modules/config");
 const { formatDuration } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
 
+function normalizeSessionSeconds(value, session) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+
+  const start = session?.timestamps?.start ? new Date(session.timestamps.start) : null;
+  const end = session?.timestamps?.end ? new Date(session.timestamps.end) : null;
+  if (start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start) {
+    const expectedSeconds = (end - start) / 1000;
+    if (expectedSeconds > 0 && numeric > expectedSeconds * 10) return numeric / 1000;
+  }
+
+  return numeric > 86400 ? numeric / 1000 : numeric;
+}
+
+function normalizePPH(standard) {
+  const n = Number(standard) || 0;
+  return n > 0 && n < 60 ? n * 60 : n;
+}
+
+function calculateTimeCreditMs(count, standard) {
+  const stdPPH = normalizePPH(standard);
+  return stdPPH > 0 ? (Number(count) || 0) / stdPPH * 3600000 : 0;
+}
+
+function itemWorkedTimeMs(itemTotal) {
+  return Number(
+    itemTotal.workedTimeMs ??
+    itemTotal.totalWorkedTimeMs ??
+    itemTotal.workTimeMs ??
+    0
+  ) || 0;
+}
+
+function itemCount(itemTotal) {
+  return Number(
+    itemTotal.totalCounts ??
+    itemTotal.count ??
+    itemTotal.totalCount ??
+    0
+  ) || 0;
+}
+
+function buildItemSummaryRows(itemTotals) {
+  const resultsMap = new Map();
+
+  for (const itemTotal of itemTotals || []) {
+    const itemId = String(itemTotal.itemId ?? itemTotal.item?.id ?? itemTotal.itemName ?? "Unknown");
+    if (!resultsMap.has(itemId)) {
+      resultsMap.set(itemId, {
+        itemId: itemTotal.itemId ?? itemTotal.item?.id,
+        itemName: itemTotal.itemName || itemTotal.item?.name || "Unknown",
+        standardRaw: itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? 0,
+        count: 0,
+        workedMs: 0,
+        timeCreditMs: 0,
+      });
+    }
+
+    const acc = resultsMap.get(itemId);
+    const count = itemCount(itemTotal);
+    const standard = itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? acc.standardRaw ?? 0;
+    const timeCreditMs = itemTotal.totalTimeCreditMs ?? calculateTimeCreditMs(count, standard);
+
+    acc.count += count;
+    acc.workedMs += itemWorkedTimeMs(itemTotal);
+    acc.timeCreditMs += timeCreditMs || 0;
+    if (!acc.standardRaw && standard) acc.standardRaw = standard;
+  }
+
+  return Array.from(resultsMap.values()).map((entry) => {
+    const hours = entry.workedMs / 3600000;
+    const pph = hours > 0 ? entry.count / hours : 0;
+    const stdPPH = normalizePPH(entry.standardRaw);
+    const fallbackEfficiency = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
+    const efficiencyPct = entry.workedMs > 0 && entry.timeCreditMs > 0
+      ? (entry.timeCreditMs / entry.workedMs) * 100
+      : fallbackEfficiency;
+
+    return {
+      itemId: entry.itemId,
+      itemName: entry.itemName,
+      workedTimeFormatted: formatDuration(Math.round(entry.workedMs)),
+      count: entry.count,
+      pph: Math.round(pph * 100) / 100,
+      standard: entry.standardRaw ?? 0,
+      efficiency: Math.round(efficiencyPct * 100) / 100,
+      workedTimeMs: Math.round(entry.workedMs),
+    };
+  });
+}
+
 /**
  * Split a time range into complete days and partial days for hybrid cache/session queries.
  */
@@ -67,6 +158,8 @@ async function getItemsCachedDataForDays(completeDays, db) {
   const cacheCollection = db.collection('totals-daily');
   const dateStrings = completeDays.map(day => day.dateStr);
 
+  if (dateStrings.length === 0) return [];
+
   const itemQuery = {
     entityType: 'item',
     $or: [
@@ -77,7 +170,67 @@ async function getItemsCachedDataForDays(completeDays, db) {
     ]
   };
 
-  const itemTotals = await cacheCollection.find(itemQuery).toArray();
+  const [itemTotals, operatorItemTotals] = await Promise.all([
+    cacheCollection.find(itemQuery).toArray(),
+    cacheCollection.find({
+      entityType: 'operator-item',
+      $or: [
+        { date: { $in: dateStrings } },
+        { dateObj: {
+          $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
+        }}
+      ]
+    }).toArray()
+  ]);
+
+  const operatorWorkedByItem = new Map();
+  for (const operatorItem of operatorItemTotals) {
+    const itemId = String(operatorItem.itemId);
+    const existing = operatorWorkedByItem.get(itemId) || {
+      workedTimeMs: 0,
+      totalTimeCreditMs: 0,
+      totalCounts: 0,
+      itemStandard: 0,
+      itemName: operatorItem.itemName || "Unknown",
+    };
+
+    existing.workedTimeMs += operatorItem.workedTimeMs || 0;
+    existing.totalTimeCreditMs += operatorItem.totalTimeCreditMs || 0;
+    existing.totalCounts += operatorItem.totalCounts || 0;
+    if (operatorItem.itemStandard && operatorItem.itemStandard > existing.itemStandard) {
+      existing.itemStandard = operatorItem.itemStandard;
+    }
+    if (operatorItem.itemName && existing.itemName === "Unknown") existing.itemName = operatorItem.itemName;
+    operatorWorkedByItem.set(itemId, existing);
+  }
+
+  if (itemTotals.length > 0) {
+    for (const itemTotal of itemTotals) {
+      const operatorItem = operatorWorkedByItem.get(String(itemTotal.itemId));
+      if (operatorItem?.workedTimeMs > 0) {
+        itemTotal.workedTimeMs = operatorItem.workedTimeMs;
+      }
+      if ((itemTotal.totalTimeCreditMs || 0) <= 0 && operatorItem?.totalTimeCreditMs > 0) {
+        itemTotal.totalTimeCreditMs = operatorItem.totalTimeCreditMs;
+      }
+      if (!itemTotal.itemStandard && operatorItem?.itemStandard) {
+        itemTotal.itemStandard = operatorItem.itemStandard;
+      }
+    }
+
+    return itemTotals;
+  }
+
+  if (operatorWorkedByItem.size > 0) {
+    return Array.from(operatorWorkedByItem.entries()).map(([itemId, item]) => ({
+      itemId,
+      itemName: item.itemName,
+      itemStandard: item.itemStandard,
+      totalCounts: item.totalCounts,
+      workedTimeMs: item.workedTimeMs,
+      totalTimeCreditMs: item.totalTimeCreditMs,
+    }));
+  }
 
   if (itemTotals.length === 0 && dateStrings.length > 0) {
     console.log(`[getItemsCachedDataForDays] No results found. Date strings:`, dateStrings);
@@ -94,96 +247,30 @@ async function getItemsCachedDataForDays(completeDays, db) {
       testResults.map(r => ({ entityType: r.entityType, itemId: r.itemId, date: r.date })));
   }
 
-  return itemTotals;
-}
-
-/**
- * Get item data from sessions for partial day ranges (non-today).
- */
-function normalizePPH(std) {
-  const n = Number(std) || 0;
-  return n > 0 && n < 60 ? n * 60 : n;
-}
-
-function itemWorkedTimeMs(itemTotal) {
-  return Number(
-    itemTotal.workedTimeMs ??
-    itemTotal.totalWorkedTimeMs ??
-    itemTotal.workTimeMs ??
-    0
-  ) || 0;
-}
-
-function itemCount(itemTotal) {
-  return Number(
-    itemTotal.totalCounts ??
-    itemTotal.count ??
-    itemTotal.totalCount ??
-    0
-  ) || 0;
-}
-
-function buildItemSummaryRows(itemTotals) {
-  const resultsMap = new Map();
-
-  for (const itemTotal of itemTotals || []) {
-    const itemId = String(itemTotal.itemId ?? itemTotal.item?.id ?? itemTotal.itemName ?? "Unknown");
-    if (!resultsMap.has(itemId)) {
-      resultsMap.set(itemId, {
-        itemId: itemTotal.itemId ?? itemTotal.item?.id,
-        itemName: itemTotal.itemName || itemTotal.item?.name || "Unknown",
-        standardRaw: itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? 0,
-        count: 0,
-        workedMs: 0,
-      });
-    }
-
-    const acc = resultsMap.get(itemId);
-    acc.count += itemCount(itemTotal);
-    acc.workedMs += itemWorkedTimeMs(itemTotal);
-  }
-
-  return Array.from(resultsMap.values()).map((entry) => {
-    const workedMs = Math.round(entry.workedMs);
-    const hours = workedMs / 3600000;
-    const pph = hours > 0 ? entry.count / hours : 0;
-    const stdPPH = normalizePPH(entry.standardRaw);
-    const efficiencyPct = stdPPH > 0 && hours > 0 ? (pph / stdPPH) * 100 : 0;
-
-    return {
-      itemId: entry.itemId,
-      itemName: entry.itemName,
-      workedTimeFormatted: formatDuration(workedMs),
-      count: entry.count,
-      pph: Math.round(pph * 100) / 100,
-      standard: entry.standardRaw ?? 0,
-      efficiency: Math.round(efficiencyPct * 100) / 100,
-      workedTimeMs: workedMs,
-    };
-  });
+  return [];
 }
 
 async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
   const items = [];
   const now = new Date();
 
-  if (logger) logger.info(`[getItemsSessionDataForPartialDays] Processing ${partialDays.length} partial day ranges`);
+  logger?.info?.(`[getItemsSessionDataForPartialDays] Processing ${partialDays.length} partial day ranges`);
 
   const activeSerials = await db
     .collection(config.machineCollectionName || "machine")
     .distinct("id", { active: true });
 
-  if (logger) logger.info(`[getItemsSessionDataForPartialDays] Found ${activeSerials.length} active machines`);
+  logger?.info?.(`[getItemsSessionDataForPartialDays] Found ${activeSerials.length} active machines`);
 
   for (const partialDay of partialDays) {
-    if (logger) logger.debug(`[getItemsSessionDataForPartialDays] Processing partial day: ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
+    logger?.debug?.(`[getItemsSessionDataForPartialDays] Processing partial day: ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
 
     for (const serial of activeSerials) {
       const bookended = await getBookendedStatesAndTimeRange(db, serial, partialDay.start, partialDay.end);
       if (!bookended) continue;
       const { sessionStart, sessionEnd } = bookended;
 
-      if (logger) logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial} bookended window: ${sessionStart.toISOString()} to ${sessionEnd.toISOString()}`);
+      logger?.debug?.(`[getItemsSessionDataForPartialDays] Machine ${serial} bookended window: ${sessionStart.toISOString()} to ${sessionEnd.toISOString()}`);
 
       const sessions = await db
         .collection(config.itemSessionCollectionName || "item-session")
@@ -202,6 +289,7 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
           items: 1,
           counts: 1,
           totalCount: 1,
+          totalTimeCredit: 1,
           workTime: 1,
           runtime: 1,
           activeStations: 1,
@@ -211,11 +299,11 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
         .toArray();
 
       if (!sessions.length) {
-        if (logger) logger.debug(`[getItemsSessionDataForPartialDays] No sessions found for machine ${serial}`);
+        logger?.debug?.(`[getItemsSessionDataForPartialDays] No sessions found for machine ${serial}`);
         continue;
       }
 
-      if (logger) logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial}: Found ${sessions.length} item sessions`);
+      logger?.debug?.(`[getItemsSessionDataForPartialDays] Machine ${serial}: Found ${sessions.length} item sessions`);
 
       for (const s of sessions) {
         const itm = s.item || (Array.isArray(s.items) && s.items.length === 1 ? s.items[0] : null);
@@ -238,9 +326,9 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
           : (Array.isArray(s.operators) ? s.operators.filter(o => o && o.id !== -1).length : 0);
 
         const baseWorkSec = typeof s.workTime === "number"
-          ? s.workTime
+          ? normalizeSessionSeconds(s.workTime, s)
           : typeof s.runtime === "number"
-            ? s.runtime * Math.max(1, stations || 0)
+            ? normalizeSessionSeconds(s.runtime, s) * Math.max(1, stations || 0)
             : 0;
 
         const workedSec = baseWorkSec > 0 ? baseWorkSec * (ovSec / sessSec) : 0;
@@ -266,12 +354,13 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
           itemStandard: itm.standard ?? 0,
           totalCounts: countInWin,
           workedTimeMs: workedSec * 1000,
+          totalTimeCreditMs: calculateTimeCreditMs(countInWin, itm.standard),
         });
       }
     }
   }
 
-  if (logger) logger.info(`[getItemsSessionDataForPartialDays] Collected ${items.length} total item records from sessions`);
+  logger?.info?.(`[getItemsSessionDataForPartialDays] Collected ${items.length} total item records from sessions`);
 
   return items;
 }
@@ -310,9 +399,9 @@ function combineItemsHybridData(cachedItems, sessionItems, logger) {
 }
 
 module.exports = {
+  buildItemSummaryRows,
   splitTimeRangeForHybridItems,
   getItemsCachedDataForDays,
   getItemsSessionDataForPartialDays,
   combineItemsHybridData,
-  buildItemSummaryRows,
 };
