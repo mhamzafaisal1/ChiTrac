@@ -3,8 +3,90 @@
  * Extracted from controllers/alpha/itemSessions.js
  */
 const config = require("../modules/config");
+const { ObjectId } = require("mongodb");
 const { formatDuration } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
+const { normalizeTotalsDocument } = require("./totalsSchema");
+
+function normalizeSessionSeconds(value, session) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+
+  const start = session?.timestamps?.start ? new Date(session.timestamps.start) : null;
+  const end = session?.timestamps?.end ? new Date(session.timestamps.end) : null;
+  if (start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start) {
+    const expectedSeconds = (end - start) / 1000;
+    if (expectedSeconds > 0 && numeric > expectedSeconds * 10) return numeric / 1000;
+  }
+
+  return numeric > 86400 ? numeric / 1000 : numeric;
+}
+
+function normalizePPH(standard) {
+  const n = Number(standard) || 0;
+  return n > 0 && n < 60 ? n * 60 : n;
+}
+
+function itemWorkedTimeMs(itemTotal) {
+  return Number(
+    itemTotal.workedTimeMs ??
+    itemTotal.totalWorkedTimeMs ??
+    itemTotal.workTimeMs ??
+    0
+  ) || 0;
+}
+
+function itemCount(itemTotal) {
+  return Number(
+    itemTotal.totalCounts ??
+    itemTotal.count ??
+    itemTotal.totalCount ??
+    0
+  ) || 0;
+}
+
+function buildItemSummaryRows(itemTotals) {
+  const resultsMap = new Map();
+
+  for (const itemTotal of itemTotals || []) {
+    const itemId = String(itemTotal.itemId ?? itemTotal.item?.id ?? itemTotal.itemName ?? "Unknown");
+    if (!resultsMap.has(itemId)) {
+      resultsMap.set(itemId, {
+        itemId: itemTotal.itemId ?? itemTotal.item?.id,
+        itemName: itemTotal.itemName || itemTotal.item?.name || "Unknown",
+        standardRaw: itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? 0,
+        count: 0,
+        workedMs: 0,
+      });
+    }
+
+    const acc = resultsMap.get(itemId);
+    const count = itemCount(itemTotal);
+    const standard = itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? acc.standardRaw ?? 0;
+
+    acc.count += count;
+    acc.workedMs += itemWorkedTimeMs(itemTotal);
+    if (!acc.standardRaw && standard) acc.standardRaw = standard;
+  }
+
+  return Array.from(resultsMap.values()).map((entry) => {
+    const hours = entry.workedMs / 3600000;
+    const pph = hours > 0 ? entry.count / hours : 0;
+    const stdPPH = normalizePPH(entry.standardRaw);
+    const efficiencyPct = stdPPH > 0 && hours > 0 ? (pph / stdPPH) * 100 : 0;
+
+    return {
+      itemId: entry.itemId,
+      itemName: entry.itemName,
+      workedTimeFormatted: formatDuration(Math.round(entry.workedMs)),
+      count: entry.count,
+      pph: Math.round(pph * 100) / 100,
+      standard: entry.standardRaw ?? 0,
+      efficiency: Math.round(efficiencyPct * 100) / 100,
+      workedTimeMs: Math.round(entry.workedMs),
+    };
+  });
+}
 
 /**
  * Split a time range into complete days and partial days for hybrid cache/session queries.
@@ -61,66 +143,91 @@ function splitTimeRangeForHybridItems(exactStart, exactEnd) {
 }
 
 /**
- * Get cached item data for complete days from totals-daily collection.
+ * Get cached item data for complete days from totals-daily or totals-shift.
  */
-async function getItemsCachedDataForDays(completeDays, db) {
-  const cacheCollection = db.collection('totals-daily');
+async function getItemsCachedDataForDays(completeDays, db, options = {}) {
+  const shiftId = options.shiftId ? String(options.shiftId) : "";
+  const shiftObjectId = ObjectId.isValid(shiftId) ? new ObjectId(shiftId) : null;
+  const cacheCollection = db.collection(
+    shiftId ? config.totalsShiftCollectionName : config.totalsDailyCollectionName
+  );
   const dateStrings = completeDays.map(day => day.dateStr);
 
-  const itemQuery = {
-    entityType: 'item',
-    $or: [
-      { date: { $in: dateStrings } },
-      { dateObj: {
-        $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
-      }}
-    ]
+  if (dateStrings.length === 0) return [];
+
+  const dateFilter = [
+    { date: { $in: dateStrings } },
+    { dateObj: { $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z')) } },
+    ...completeDays.map(day => ({
+      "timestamps.create": {
+        $gte: day.start,
+        $lte: day.end,
+      },
+    })),
+  ];
+
+  const buildQuery = (entityType) => {
+    const query = {
+      $and: [
+        { $or: [{ entityType }, { type: entityType }] },
+        { $or: dateFilter },
+      ],
+    };
+
+    if (shiftId) {
+      const shiftValues = shiftObjectId ? [shiftId, shiftObjectId] : [shiftId];
+      query.$and.push({
+        $or: [
+          { shiftId: { $in: shiftValues } },
+          { "shift.id": { $in: shiftValues } },
+          { "shift._id": { $in: shiftValues } },
+        ],
+      });
+    }
+
+    return query;
   };
 
-  const itemTotals = await cacheCollection.find(itemQuery).toArray();
+  const operatorItemTotals = (await cacheCollection.find(buildQuery('operator-item')).toArray())
+    .map(normalizeTotalsDocument);
 
-  if (itemTotals.length === 0 && dateStrings.length > 0) {
-    console.log(`[getItemsCachedDataForDays] No results found. Date strings:`, dateStrings);
-    const testQuery = {
-      $or: [
-        { date: { $in: dateStrings } },
-        { dateObj: {
-          $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z'))
-        }}
-      ]
-    };
-    const testResults = await cacheCollection.find(testQuery).limit(5).toArray();
-    console.log(`[getItemsCachedDataForDays] Found ${testResults.length} records in date range (without entityType filter):`,
-      testResults.map(r => ({ entityType: r.entityType, itemId: r.itemId, date: r.date })));
+  if (operatorItemTotals.length > 0) {
+    return operatorItemTotals;
   }
 
-  return itemTotals;
+  const itemTotals = (await cacheCollection.find(buildQuery('item')).toArray())
+    .map(normalizeTotalsDocument);
+  if (itemTotals.length > 0 || !shiftId) {
+    return itemTotals;
+  }
+
+  options.logger?.warn?.(
+    `[getItemsCachedDataForDays] No item totals found in totals-shift for shift ${shiftId}; falling back to totals-daily`
+  );
+  return getItemsCachedDataForDays(completeDays, db, { logger: options.logger });
 }
 
-/**
- * Get item data from sessions for partial day ranges (non-today).
- */
 async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
   const items = [];
   const now = new Date();
 
-  logger.info(`[getItemsSessionDataForPartialDays] Processing ${partialDays.length} partial day ranges`);
+  logger?.info?.(`[getItemsSessionDataForPartialDays] Processing ${partialDays.length} partial day ranges`);
 
   const activeSerials = await db
     .collection(config.machineCollectionName || "machine")
     .distinct("id", { active: true });
 
-  logger.info(`[getItemsSessionDataForPartialDays] Found ${activeSerials.length} active machines`);
+  logger?.info?.(`[getItemsSessionDataForPartialDays] Found ${activeSerials.length} active machines`);
 
   for (const partialDay of partialDays) {
-    logger.debug(`[getItemsSessionDataForPartialDays] Processing partial day: ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
+    logger?.debug?.(`[getItemsSessionDataForPartialDays] Processing partial day: ${partialDay.start.toISOString()} to ${partialDay.end.toISOString()}`);
 
     for (const serial of activeSerials) {
       const bookended = await getBookendedStatesAndTimeRange(db, serial, partialDay.start, partialDay.end);
       if (!bookended) continue;
       const { sessionStart, sessionEnd } = bookended;
 
-      logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial} bookended window: ${sessionStart.toISOString()} to ${sessionEnd.toISOString()}`);
+      logger?.debug?.(`[getItemsSessionDataForPartialDays] Machine ${serial} bookended window: ${sessionStart.toISOString()} to ${sessionEnd.toISOString()}`);
 
       const sessions = await db
         .collection(config.itemSessionCollectionName || "item-session")
@@ -139,6 +246,7 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
           items: 1,
           counts: 1,
           totalCount: 1,
+          totalTimeCredit: 1,
           workTime: 1,
           runtime: 1,
           activeStations: 1,
@@ -148,11 +256,11 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
         .toArray();
 
       if (!sessions.length) {
-        logger.debug(`[getItemsSessionDataForPartialDays] No sessions found for machine ${serial}`);
+        logger?.debug?.(`[getItemsSessionDataForPartialDays] No sessions found for machine ${serial}`);
         continue;
       }
 
-      logger.debug(`[getItemsSessionDataForPartialDays] Machine ${serial}: Found ${sessions.length} item sessions`);
+      logger?.debug?.(`[getItemsSessionDataForPartialDays] Machine ${serial}: Found ${sessions.length} item sessions`);
 
       for (const s of sessions) {
         const itm = s.item || (Array.isArray(s.items) && s.items.length === 1 ? s.items[0] : null);
@@ -175,9 +283,9 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
           : (Array.isArray(s.operators) ? s.operators.filter(o => o && o.id !== -1).length : 0);
 
         const baseWorkSec = typeof s.workTime === "number"
-          ? s.workTime
+          ? normalizeSessionSeconds(s.workTime, s)
           : typeof s.runtime === "number"
-            ? s.runtime * Math.max(1, stations || 0)
+            ? normalizeSessionSeconds(s.runtime, s) * Math.max(1, stations || 0)
             : 0;
 
         const workedSec = baseWorkSec > 0 ? baseWorkSec * (ovSec / sessSec) : 0;
@@ -208,7 +316,7 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
     }
   }
 
-  logger.info(`[getItemsSessionDataForPartialDays] Collected ${items.length} total item records from sessions`);
+  logger?.info?.(`[getItemsSessionDataForPartialDays] Collected ${items.length} total item records from sessions`);
 
   return items;
 }
@@ -247,8 +355,9 @@ function combineItemsHybridData(cachedItems, sessionItems, logger) {
 }
 
 module.exports = {
+  buildItemSummaryRows,
   splitTimeRangeForHybridItems,
   getItemsCachedDataForDays,
   getItemsSessionDataForPartialDays,
-  combineItemsHybridData
+  combineItemsHybridData,
 };

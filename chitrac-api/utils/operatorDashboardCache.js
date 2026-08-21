@@ -8,6 +8,7 @@ const {
   getTodayRange,
 } = require("./machineDashboardCache");
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
+const { getOperatorFaultTimeByOperatorId } = require("./faultTimeSummary");
 
 async function buildOperatorTickerMap(db, config) {
   const stateTickerData = await db.collection(config.stateTickerCollectionName).find({}).toArray();
@@ -62,6 +63,8 @@ function operatorNameFromRecord(record) {
 
 async function buildOperatorSummaryRows(db, config, records, activeShifts, requestStart, requestEnd) {
   const operatorTickerMap = await buildOperatorTickerMap(db, config);
+  const operatorIds = records.map((record) => record.operatorId).filter((id) => id && id !== -1);
+  const faultTimeByOperatorId = await getOperatorFaultTimeByOperatorId(db, config, operatorIds, requestStart, requestEnd);
   const operatorMap = new Map();
 
   for (const record of records) {
@@ -76,6 +79,9 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
         metrics: {
           runtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
           downtime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+          pausedTime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+          downTime: { total: 0, formatted: { hours: 0, minutes: 0 } },
+          faultTime: { total: 0, formatted: { hours: 0, minutes: 0 } },
           output: { totalCount: 0, misfeedCount: 0 },
           performance: {
             availability: { value: 0, percentage: "0.00" },
@@ -102,6 +108,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
     operatorData.currentMachine = tickerContext?.machine || null;
     operatorData.currentStatus = tickerContext?.status || null;
     operatorData.metrics.runtime.total += record.runtimeMs || 0;
+    operatorData.metrics.pausedTime.total += record.pausedTimeMs || 0;
     operatorData.breakTimeMs += record.breakTimeMs || 0;
     operatorData.metrics.output.totalCount += record.totalCounts || 0;
     operatorData.metrics.output.misfeedCount += record.totalMisfeeds || 0;
@@ -116,7 +123,8 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
   }
 
   const results = Array.from(operatorMap.values()).map((operatorData) => {
-    const { runtime, downtime, output } = operatorData.metrics;
+    const { runtime, downtime, pausedTime, downTime, output } = operatorData.metrics;
+    const faultTime = operatorData.metrics.faultTime;
     let rangeStart = new Date(requestStart);
     let rangeEnd = new Date(requestEnd);
 
@@ -132,6 +140,8 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
     const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
     const productiveElapsedMs = Math.max(0, shiftElapsedMs - operatorData.breakTimeMs);
     downtime.total = Math.max(productiveElapsedMs - runtime.total, 0);
+    downTime.total = downtime.total;
+    faultTime.total = faultTimeByOperatorId.get(Number(operatorData.operator.id)) || 0;
     const availability =
       productiveElapsedMs > 0 ? runtime.total / productiveElapsedMs : 0;
     const throughput =
@@ -153,6 +163,9 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
 
     operatorData.metrics.runtime.formatted = formatDuration(runtime.total);
     operatorData.metrics.downtime.formatted = formatDuration(downtime.total);
+    operatorData.metrics.pausedTime.formatted = formatDuration(pausedTime.total);
+    operatorData.metrics.downTime.formatted = formatDuration(downTime.total);
+    operatorData.metrics.faultTime.formatted = formatDuration(faultTime.total);
     operatorData.metrics.performance = {
       availability: {
         value: availability,
@@ -209,6 +222,8 @@ async function buildOperatorSummaryFromSessions(db, config, start, end, operator
     machineSerial: null,
     machineName: null,
     runtimeMs: record.runtimeMs || 0,
+    pausedTimeMs: record.pausedTimeMs || 0,
+    faultTimeMs: record.faultTimeMs || 0,
     workedTimeMs: record.workedTimeMs || 0,
     totalCounts: record.totalCounts || 0,
     totalMisfeeds: record.totalMisfeeds || 0,

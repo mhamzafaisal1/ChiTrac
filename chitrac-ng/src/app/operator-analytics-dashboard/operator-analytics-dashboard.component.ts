@@ -13,7 +13,14 @@ import { Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
+import { MachineService } from '../services/machine.service';
 import { getStatusDotByCode } from '../../utils/status-utils';
+import {
+  calculateMachineStatusCounts,
+  calculateOperatorStatusCounts,
+  EMPTY_MACHINE_STATUS_COUNTS,
+  MachineStatusCounts,
+} from '../../utils/dashboard-status-counts';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
@@ -90,6 +97,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   columnTooltips: { [column: string]: string } = {
     Runtime: 'Amount of time operator has been running across all machines',
     Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
+    'Paused Time': 'Amount of time this operator has been paused.',
+    'Fault Time': 'Amount of time this operator has overlapped machine fault sessions.',
     'Total Count': 'Amount of pieces fed by operator',
     'Misfeed Count': 'Amount of pieces misfed or rejected by the operator.',
     PPH: 'Pieces Per Hour',
@@ -114,9 +123,20 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Operators',
     'Assigned',
     'Running',
+    'Paused Operators',
     'Faulted',
+    'Fault Time',
     'Idle Operators',
+    'Run Time',
+    'Paused Time',
+    'Down Time',
+    'Idle/Paused Operators',
+    'Down Operators',
+    'Paused Machines',
+    'Idle/Paused Machines',
+    'Down Machines',
     'Total Count',
+    'Projected Count',
     'Avg Efficiency',
   ];
   private readonly layoutContextId = 'operatorDashboard';
@@ -129,6 +149,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Operator ID',
     'Current Machine Serial',
     'Downtime',
+    'Paused Time',
+    'Fault Time',
     'Misfeed Count',
     'PPH',
     'Availability',
@@ -138,6 +160,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   tableColumnVisibility: Record<string, boolean> = {};
   summaryCardVisibility: Record<string, boolean> = {};
   private idleOperatorSummary: IdleOperatorSummary | null = null;
+  private machineStatusCounts: MachineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
 
   // Chart dimensions
   chartHeight = 700;
@@ -157,6 +180,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   constructor(
     private operatorService: OperatorService,
+    private machineService: MachineService,
     private dialog: MatDialog,
     private renderer: Renderer2,
     private elRef: ElementRef,
@@ -408,6 +432,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const responses = Array.isArray(data) ? data : [data];
     this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
     this.updateSummaryCards(this.operatorData);
+    this.loadMachineStatusCounts();
 
     if (this.operatorData.length === 0) {
       this.rows = [];
@@ -423,6 +448,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Current Machine Serial': response.currentMachine?.serial || '',
       'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
       'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Paused Time': this.formatDurationMetric(response.metrics.pausedTime),
+      'Fault Time': this.formatDurationMetric(response.metrics.faultTime),
       'Total Count': response.metrics.output?.totalCount ?? 0,
       'Misfeed Count': response.metrics.output?.misfeedCount ?? 0,
       'PPH': this.formatPph(response),
@@ -440,24 +467,93 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateSummaryCards(responses: any[]): void {
-    const totalOperators = responses.length;
-    const active = responses.filter((r) => !!r.currentMachine?.name).length;
-    const running = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Running Dot').length;
-    const faulted = responses.filter((r) => getStatusDotByCode(r.currentStatus?.code) === 'Faulted Dot').length;
     const idleOperators = Number(this.idleOperatorSummary?.idleOperators ?? 0);
+    const totalRunTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.runtime?.total || 0), 0);
+    const totalPausedTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.pausedTime?.total || 0), 0);
+    const totalDownTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.downTime?.total ?? r.metrics?.downtime?.total ?? 0), 0);
+    const totalFaultTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.faultTime?.total || 0), 0);
+    const operatorCounts = calculateOperatorStatusCounts(responses, idleOperators);
+    const machineCounts = this.machineStatusCounts;
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
+    const elapsedHours = this.getElapsedHours();
+    const totalProjectionHours = this.getProjectionWindowHours(elapsedHours);
+    const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
 
     this.allSummaryCards = this.applySummaryCardOrder([
-      { label: 'Operators', value: totalOperators, icon: 'groups', tone: 'neutral' },
-      { label: 'Assigned', value: active, icon: 'assignment_ind', tone: 'neutral' },
-      { label: 'Running', value: running, icon: 'play_circle', tone: 'good' },
-      { label: 'Faulted', value: faulted, icon: 'warning', tone: faulted > 0 ? 'bad' : 'neutral' },
-      { label: 'Idle Operators', value: idleOperators, icon: 'person_off', tone: idleOperators > 0 ? 'warn' : 'good' },
+      { label: 'Operators', value: operatorCounts.total, icon: 'groups', tone: 'neutral' },
+      { label: 'Assigned', value: operatorCounts.assigned, icon: 'assignment_ind', tone: 'neutral' },
+      { label: 'Running', value: operatorCounts.running, icon: 'play_circle', tone: 'good' },
+      { label: 'Paused Operators', value: operatorCounts.paused, icon: 'pause_circle', tone: operatorCounts.paused > 0 ? 'warn' : 'neutral' },
+      { label: 'Faulted', value: operatorCounts.faulted, icon: 'warning', tone: operatorCounts.faulted > 0 ? 'bad' : 'neutral' },
+      { label: 'Fault Time', value: this.formatMilliseconds(totalFaultTimeMs), icon: 'timer_off', tone: totalFaultTimeMs > 0 ? 'bad' : 'neutral' },
+      { label: 'Idle Operators', value: operatorCounts.idle, icon: 'person_off', tone: operatorCounts.idle > 0 ? 'warn' : 'good' },
+      { label: 'Run Time', value: this.formatMilliseconds(totalRunTimeMs), icon: 'timer', tone: totalRunTimeMs > 0 ? 'good' : 'neutral' },
+      { label: 'Paused Time', value: this.formatMilliseconds(totalPausedTimeMs), icon: 'pause_circle', tone: totalPausedTimeMs > 0 ? 'warn' : 'neutral' },
+      { label: 'Down Time', value: this.formatMilliseconds(totalDownTimeMs), icon: 'timer_off', tone: totalDownTimeMs > 0 ? 'bad' : 'neutral' },
+      { label: 'Idle/Paused Operators', value: operatorCounts.idlePaused, icon: 'person_off', tone: operatorCounts.idlePaused > 0 ? 'warn' : 'neutral' },
+      { label: 'Down Operators', value: operatorCounts.down, icon: 'do_not_disturb_on', tone: operatorCounts.down > 0 ? 'warn' : 'neutral' },
+      { label: 'Paused Machines', value: machineCounts.paused, icon: 'pause_circle', tone: machineCounts.paused > 0 ? 'warn' : 'neutral' },
+      { label: 'Idle/Paused Machines', value: machineCounts.idlePaused, icon: 'motion_photos_paused', tone: machineCounts.idlePaused > 0 ? 'warn' : 'neutral' },
+      { label: 'Down Machines', value: machineCounts.down, icon: 'do_not_disturb_on', tone: machineCounts.down > 0 ? 'warn' : 'neutral' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
+      { label: 'Projected Count', value: projectedCount.toLocaleString(), icon: 'flag', tone: projectedCount >= totalCount ? 'good' : 'neutral' },
       { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
     ]);
     this.syncSummaryCardsFromAll();
+  }
+
+  private formatDurationMetric(metric: any): string {
+    if (metric?.formatted) {
+      return `${metric.formatted.hours ?? 0}h ${metric.formatted.minutes ?? 0}m`;
+    }
+
+    return this.formatMilliseconds(Number(metric?.total || 0));
+  }
+
+  private formatMilliseconds(totalMs: number): string {
+    const safeMs = Number.isFinite(totalMs) ? Math.max(0, totalMs) : 0;
+    const totalMinutes = Math.floor(safeMs / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  }
+
+  private loadMachineStatusCounts(): void {
+    if (!this.startTime || !this.endTime) {
+      this.machineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
+      this.updateSummaryCards(this.operatorData);
+      return;
+    }
+
+    const shiftId = this.dateTimeService.getShiftId();
+    const timeframe = this.dateTimeService.getTimeframe();
+    const summaryObservable = timeframe
+      ? this.machineService.getMachineSummaryWithTimeframe(timeframe, shiftId)
+      : this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId);
+
+    summaryObservable
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (data) => {
+          const responses = Array.isArray(data) ? data : [data];
+          const machineData = responses.filter(
+            (response) =>
+              response &&
+              (response.metrics || response.itemSummary || response.performance) &&
+              response.machine &&
+              response.currentStatus
+          );
+          this.machineStatusCounts = calculateMachineStatusCounts(machineData);
+          this.updateSummaryCards(this.operatorData);
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.machineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
+          this.updateSummaryCards(this.operatorData);
+          this.cdr.markForCheck();
+        },
+      });
   }
 
   private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
@@ -499,9 +595,20 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Operators: 'groups',
       Assigned: 'assignment_ind',
       Running: 'play_circle',
+      'Paused Operators': 'pause_circle',
       Faulted: 'warning',
+      'Fault Time': 'timer_off',
       'Idle Operators': 'person_off',
+      'Run Time': 'timer',
+      'Paused Time': 'pause_circle',
+      'Down Time': 'timer_off',
+      'Idle/Paused Operators': 'person_off',
+      'Down Operators': 'do_not_disturb_on',
+      'Paused Machines': 'pause_circle',
+      'Idle/Paused Machines': 'motion_photos_paused',
+      'Down Machines': 'do_not_disturb_on',
       'Total Count': 'tag',
+      'Projected Count': 'flag',
       'Avg Efficiency': 'speed',
     };
     return icons[label] || 'dashboard';
@@ -735,6 +842,28 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const numbers = values.map(Number).filter((value) => Number.isFinite(value));
     if (!numbers.length) return 0;
     return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
+  }
+
+  private getElapsedHours(): number {
+    const start = new Date(this.startTime).getTime();
+    const end = new Date(this.endTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+    return (end - start) / 36e5;
+  }
+
+  private getProjectedCount(totalCount: number, elapsedHours: number, totalWindowHours: number): number {
+    if (elapsedHours <= 0) return totalCount;
+    if (!Number.isFinite(totalWindowHours) || totalWindowHours <= 0) return totalCount;
+    return Math.round((totalCount / elapsedHours) * Math.max(elapsedHours, totalWindowHours));
+  }
+
+  private getProjectionWindowHours(elapsedHours: number): number {
+    const start = new Date(this.startTime);
+    const end = new Date(this.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return elapsedHours;
+    const projectionEnd = new Date(end);
+    projectionEnd.setHours(23, 59, 59, 999);
+    return Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
   }
 
   async fetchAnalyticsData(): Promise<void> {
@@ -1160,6 +1289,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1178,6 +1309,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1196,6 +1329,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1214,6 +1349,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1232,6 +1369,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial': '',
         'Runtime': '',
         'Downtime': '',
+        'Paused Time': '',
+        'Fault Time': '',
         'Total Count': '',
         'Misfeed Count': '',
         'PPH': '',
@@ -1254,6 +1393,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Current Machine Serial',
         'Runtime',
         'Downtime',
+        'Paused Time',
+        'Fault Time',
         'Total Count',
         'Misfeed Count',
         'PPH',

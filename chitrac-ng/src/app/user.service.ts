@@ -1,13 +1,14 @@
 /** Angular imports */
 import { Injectable } from '@angular/core';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 /** Other module imports */
 import { map } from 'rxjs/operators';
 import { BehaviorSubject, Observable } from 'rxjs';
 
 export const PermissionLevels = {
+  utilities: 0,
   apiTokens: 1,
   serverLogs: 1,
   users: 2,
@@ -41,7 +42,8 @@ export class UserService {
   }
 
   public postUserLogin(user: any) {
-    return this.http.post<any>('/api/passport/user/login', user).pipe(map(x => {
+    const headers = new HttpHeaders({ 'X-Skip-Error-Modal': 'true' });
+    return this.http.post<any>('/api/passport/user/login', user, { headers }).pipe(map(x => {
       // store user details and jwt token in local storage to keep user logged in between page refreshes
       if (x.user && x.token) {
         const userWithToken = { ...x.user, token: x.token };
