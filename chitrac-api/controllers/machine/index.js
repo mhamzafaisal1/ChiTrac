@@ -554,11 +554,28 @@ function constructor(server) {
           return res.status(400).json({ error: "Invalid date" });
         }
 
-        const activeShifts = await loadActiveShifts(db, {
-          collectionName: config.shiftCollectionName,
-        }).catch(() => []);
+        let projectionShifts;
+        if (req.query.shiftId) {
+          let shiftOid;
+          try {
+            shiftOid = new ObjectId(String(req.query.shiftId));
+          } catch (error) {
+            return res.status(400).json({ error: "Invalid shiftId" });
+          }
+
+          const shiftDoc = await db.collection(config.shiftCollectionName).findOne({ _id: shiftOid });
+          if (!shiftDoc) {
+            return res.status(404).json({ error: "Shift not found" });
+          }
+          projectionShifts = [shiftDoc];
+        } else {
+          projectionShifts = await loadActiveShifts(db, {
+            collectionName: config.shiftCollectionName,
+          }).catch(() => []);
+        }
+
         const window = resolveShiftProjectionWindow(
-          activeShifts,
+          projectionShifts,
           day.toJSDate(),
           now.toJSDate(),
           SYSTEM_TIMEZONE

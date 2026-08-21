@@ -28,7 +28,7 @@
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   color: var(--theme-color-on-surface-variant, #2f3542);
 }
@@ -63,17 +63,11 @@
   text-overflow: ellipsis;
 }
 
-.chart-tile-subtitle,
-.chart-tile-updated {
+.chart-tile-subtitle {
   font-size: 11px;
   line-height: 15px;
   opacity: 0.72;
   white-space: nowrap;
-}
-
-.chart-tile-updated {
-  flex: 0 0 auto;
-  text-align: right;
 }
 
 .chart-content {

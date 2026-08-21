@@ -30,16 +30,34 @@ function calculateTimeCreditMs(count, standard) {
   return stdPPH > 0 ? (Number(count) || 0) / stdPPH * 3600000 : 0;
 }
 
+function itemWorkedTimeMs(itemTotal) {
+  return Number(
+    itemTotal.workedTimeMs ??
+    itemTotal.totalWorkedTimeMs ??
+    itemTotal.workTimeMs ??
+    0
+  ) || 0;
+}
+
+function itemCount(itemTotal) {
+  return Number(
+    itemTotal.totalCounts ??
+    itemTotal.count ??
+    itemTotal.totalCount ??
+    0
+  ) || 0;
+}
+
 function buildItemSummaryRows(itemTotals) {
   const resultsMap = new Map();
 
-  for (const itemTotal of itemTotals) {
-    const itemId = String(itemTotal.itemId);
+  for (const itemTotal of itemTotals || []) {
+    const itemId = String(itemTotal.itemId ?? itemTotal.item?.id ?? itemTotal.itemName ?? "Unknown");
     if (!resultsMap.has(itemId)) {
       resultsMap.set(itemId, {
-        itemId: itemTotal.itemId,
-        itemName: itemTotal.itemName || "Unknown",
-        standardRaw: itemTotal.itemStandard ?? 0,
+        itemId: itemTotal.itemId ?? itemTotal.item?.id,
+        itemName: itemTotal.itemName || itemTotal.item?.name || "Unknown",
+        standardRaw: itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? 0,
         count: 0,
         workedMs: 0,
         timeCreditMs: 0,
@@ -47,12 +65,12 @@ function buildItemSummaryRows(itemTotals) {
     }
 
     const acc = resultsMap.get(itemId);
-    const count = itemTotal.totalCounts || 0;
-    const standard = itemTotal.itemStandard ?? acc.standardRaw ?? 0;
+    const count = itemCount(itemTotal);
+    const standard = itemTotal.itemStandard ?? itemTotal.standard ?? itemTotal.item?.standard ?? acc.standardRaw ?? 0;
     const timeCreditMs = itemTotal.totalTimeCreditMs ?? calculateTimeCreditMs(count, standard);
 
     acc.count += count;
-    acc.workedMs += itemTotal.workedTimeMs || 0;
+    acc.workedMs += itemWorkedTimeMs(itemTotal);
     acc.timeCreditMs += timeCreditMs || 0;
     if (!acc.standardRaw && standard) acc.standardRaw = standard;
   }
@@ -74,6 +92,7 @@ function buildItemSummaryRows(itemTotals) {
       pph: Math.round(pph * 100) / 100,
       standard: entry.standardRaw ?? 0,
       efficiency: Math.round(efficiencyPct * 100) / 100,
+      workedTimeMs: Math.round(entry.workedMs),
     };
   });
 }
@@ -231,9 +250,6 @@ async function getItemsCachedDataForDays(completeDays, db) {
   return [];
 }
 
-/**
- * Get item data from sessions for partial day ranges (non-today).
- */
 async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
   const items = [];
   const now = new Date();
@@ -387,5 +403,5 @@ module.exports = {
   splitTimeRangeForHybridItems,
   getItemsCachedDataForDays,
   getItemsSessionDataForPartialDays,
-  combineItemsHybridData
+  combineItemsHybridData,
 };

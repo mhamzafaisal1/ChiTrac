@@ -13,6 +13,7 @@ const { DateTime, Duration, Interval } = require("luxon"); //For handling dates 
 const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
+const { hasPermissionLevel } = require("../../modules/permissions");
 
 let usbPackage = null;
 
@@ -48,8 +49,11 @@ function constructor(server) {
     return null;
   }
 
-  function isRootUser(req) {
-    if (req.isAuthenticated?.() && req.user?.local?.username === "root") {
+  function hasUtilitiesAccess(req) {
+    if (
+      req.isAuthenticated?.() &&
+      (req.user?.local?.username === "root" || hasPermissionLevel(req.user, 0))
+    ) {
       return true;
     }
 
@@ -60,20 +64,20 @@ function constructor(server) {
 
     try {
       const decoded = jwt.verify(token, config.jwtSecret);
-      return decoded?.username === "root";
+      return decoded?.username === "root" || hasPermissionLevel(decoded, 0);
     } catch (error) {
       return false;
     }
   }
 
   function requireRoot(req, res, next) {
-    if (isRootUser(req)) {
+    if (hasUtilitiesAccess(req)) {
       return next();
     }
 
     return res.status(403).json({
       success: false,
-      error: "Root user permission is required"
+      error: "Level 0 user permission is required"
     });
   }
 
@@ -484,7 +488,7 @@ function constructor(server) {
         return res.json(result);
       }
 
-      logger.warn("Root user created MongoDB backup to USB drive.", result);
+      logger.warn("Level 0 user created MongoDB backup to USB drive.", result);
       return res.json(result);
     } catch (error) {
       logger.error("Failed to create MongoDB backup to USB drive:", error);
@@ -2462,7 +2466,7 @@ function constructor(server) {
 
     try {
       scheduleLinuxReboot();
-      logger.warn("Root user scheduled server reboot in 30 seconds from web utilities route.");
+      logger.warn("Level 0 user scheduled server reboot in 30 seconds from web utilities route.");
 
       return res.json({
         success: true,
@@ -2495,7 +2499,7 @@ function constructor(server) {
         });
       }
 
-      logger.warn("Root user deleted old Node.js logs from web utilities route.", {
+      logger.warn("Level 0 user deleted old Node.js logs from web utilities route.", {
         cutoffDate: result.cutoffDate,
         oldestLogDate: result.oldestLogDate,
         deletedCount: result.deletedCount,

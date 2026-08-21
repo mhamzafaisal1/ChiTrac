@@ -281,7 +281,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
         left: Math.max(this.marginLeft || 50, leftMargin)
       },
       legend: {
-        show: this.showLegend !== false,
+        show: false,
         position: 'top',
         titleYOffset: -10,
         yOffset: 10
