@@ -2,6 +2,7 @@ import { Component, inject, model, OnInit, EventEmitter, Output, HostListener, V
 import { CommonModule } from '@angular/common';
 import { FormsModule, FormControl, FormGroup, FormGroupDirective, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 
 /*** rxjs Imports */
 import { Subscription, timer } from 'rxjs';
@@ -44,7 +45,7 @@ export class UserLoginComponent implements OnInit {
     username: null,
     password: null
   };
-  error: any = null;
+  error: string | null = null;
 
   subscribeToUser(): void {
     if (this.sub) {
@@ -69,6 +70,7 @@ export class UserLoginComponent implements OnInit {
       debounceTime(1),
       distinctUntilChanged()
     ).subscribe(res => {
+      this.error = null;
       this.user.username = res.username;
       this.user.password = res.password;
       this.user.active = res.active;
@@ -95,19 +97,21 @@ export class UserLoginComponent implements OnInit {
   }
 
   onSubmit(): void {
+    this.error = null;
     this.userService.postUserLogin(this.userLoginFormGroup.value).pipe(first())
       .subscribe({
         next: (user) => {
-          console.log(user);
           this.clearLoginForm();
-          // get return url from query parameters or default to home page
-          const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
-          this.router.navigateByUrl(returnUrl);
-          // Emit close modal event for popup
+          const returnUrl = this.route.snapshot.queryParams['returnUrl'];
+          if (returnUrl && this.router.url.split('?')[0] === '/ng/login') {
+            this.router.navigateByUrl(returnUrl);
+          }
           this.closeModal.emit();
         },
-        error: error => {
-          console.log(error);
+        error: (error: HttpErrorResponse) => {
+          this.error = error.status === 401
+            ? 'Username or password is incorrect.'
+            : 'Unable to log in right now. Please try again.';
           this.clearPassword();
         }
       });
