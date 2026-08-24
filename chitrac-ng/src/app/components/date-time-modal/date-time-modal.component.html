@@ -55,7 +55,9 @@
       <button
         *ngFor="let s of shifts"
         mat-stroked-button
-        [class.selected]="selectedOption === 'shift:' + s._id"
+        [class.selected]="isSelectedShift(s)"
+        [class.current-shift]="isCurrentShift(s) && !isSelectedShift(s)"
+        [class.current-shift-selected]="isCurrentShift(s) && isSelectedShift(s)"
         (click)="selectShift(s._id)">
         {{ s.name || 'Shift' }}
       </button>

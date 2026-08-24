@@ -86,6 +86,29 @@ function cacheEnvelope(data, meta) {
   };
 }
 
+function activeShiftIndicatorFromCache(currentShiftCache) {
+  const meta = currentShiftCache?.meta || {};
+  const isCurrent = meta.mode === "current" && meta.shiftId;
+
+  if (!isCurrent) {
+    return {
+      shiftId: null,
+      shift: null,
+      mode: "none",
+      start: null,
+      end: null,
+    };
+  }
+
+  return {
+    shiftId: String(meta.shiftId),
+    shift: meta.shift || null,
+    mode: "current",
+    start: meta.start || null,
+    end: meta.end || null,
+  };
+}
+
 function machineDashboardEnvelope(machinesSummary, meta) {
   return {
     machinesSummary: Array.isArray(machinesSummary) ? machinesSummary : [],
@@ -110,6 +133,7 @@ function buildDashboardCacheMessage(server, scope = "all") {
     cache: {
       today: server.cache?.today || cacheEnvelope({}, { source: "none" }),
       currentShift: server.cache?.currentShift || cacheEnvelope({}, { source: "none" }),
+      activeShift: activeShiftIndicatorFromCache(server.cache?.currentShift),
       lastSevenDays: server.cache?.lastSevenDays || {},
       countSparkline: server.cache?.countSparkline || {},
       dashboard: server.cache?.dashboard || {},

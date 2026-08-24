@@ -14,10 +14,18 @@ export interface DashboardCacheEnvelope {
   meta?: any;
 }
 
+export interface ActiveShiftIndicator {
+  shiftId: string | null;
+  shift?: any | null;
+  mode: 'current' | 'none';
+  start?: string | Date | null;
+  end?: string | Date | null;
+}
+
 export interface DashboardCacheState {
   today?: DashboardCacheEnvelope;
   currentShift?: DashboardCacheEnvelope;
-  activeShift?: any;
+  activeShift?: ActiveShiftIndicator;
   countSparkline?: any;
   dashboard?: {
     machines?: {
@@ -312,6 +320,7 @@ export class WebsocketService {
       this.dashboardCacheSubject.next({
         today: cache?.today || current.today,
         currentShift: cache?.currentShift || current.currentShift,
+        activeShift: cache?.activeShift || this.activeShiftFromCurrentShift(cache?.currentShift || current.currentShift),
         countSparkline: cache?.countSparkline || current.countSparkline,
         dashboard: message.dashboard || cache?.dashboard || current.dashboard
       });
@@ -321,6 +330,7 @@ export class WebsocketService {
     if (message.scope === 'dashboard' || message.scope === 'dashboardHistory') {
       this.dashboardCacheSubject.next({
         ...current,
+        activeShift: cache?.activeShift || this.activeShiftFromCurrentShift(cache?.currentShift || current.currentShift),
         countSparkline: cache?.countSparkline || current.countSparkline,
         dashboard: message.dashboard || cache?.dashboard || current.dashboard
       });
@@ -333,6 +343,7 @@ export class WebsocketService {
         countSparkline: cache?.countSparkline || current.countSparkline,
         today: cache?.today || current.today,
         currentShift: cache?.currentShift || current.currentShift,
+        activeShift: cache?.activeShift || this.activeShiftFromCurrentShift(cache?.currentShift || current.currentShift),
         dashboard: message.dashboard || cache?.dashboard || current.dashboard
       });
       return;
@@ -342,10 +353,35 @@ export class WebsocketService {
       this.dashboardCacheSubject.next({
         ...current,
         [message.scope]: message.cache as DashboardCacheEnvelope,
+        activeShift: message.scope === 'currentShift'
+          ? this.activeShiftFromCurrentShift(message.cache as DashboardCacheEnvelope)
+          : current.activeShift,
         countSparkline: cache?.countSparkline || current.countSparkline,
         dashboard: message.dashboard || current.dashboard
       });
     }
+  }
+
+  private activeShiftFromCurrentShift(currentShift?: DashboardCacheEnvelope): ActiveShiftIndicator {
+    const meta = currentShift?.meta || {};
+
+    if (meta.mode !== 'current' || !meta.shiftId) {
+      return {
+        shiftId: null,
+        shift: null,
+        mode: 'none',
+        start: null,
+        end: null
+      };
+    }
+
+    return {
+      shiftId: String(meta.shiftId),
+      shift: meta.shift || null,
+      mode: 'current',
+      start: meta.start || null,
+      end: meta.end || null
+    };
   }
 
   private resolveDashboardEnvelope(
