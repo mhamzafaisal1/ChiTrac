@@ -150,6 +150,10 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     return Boolean(this.currentShiftId && shift?._id && String(shift._id) === this.currentShiftId);
   }
 
+  trackByShiftId(index: number, shift: ShiftListItem): string {
+    return shift?._id ? String(shift._id) : String(index);
+  }
+
   selectCustom(): void {
     this.selectedOption = 'custom';
     this.selectedShiftId = null;
