@@ -6,6 +6,7 @@ import {
   Output,
   EventEmitter,
   OnInit,
+  OnDestroy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -19,10 +20,12 @@ import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
+import { Subscription } from 'rxjs';
 
 import { DateTimeService } from '../../services/date-time.service';
 import { DashboardTimeframeService } from '../../services/dashboard-timeframe.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
+import { WebsocketService } from '../../services/websocket.service';
 
 @Component({
   selector: 'app-date-time-modal',
@@ -45,10 +48,11 @@ import { ShiftListItem, ShiftService } from '../../services/shift.service';
   styleUrls: ['./date-time-modal.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DateTimeModalComponent implements OnInit {
+export class DateTimeModalComponent implements OnInit, OnDestroy {
   private dateTimeService = inject(DateTimeService);
   private dashboardTimeframeService = inject(DashboardTimeframeService);
   private shiftService = inject(ShiftService);
+  private websocketService = inject(WebsocketService);
   private cdr = inject(ChangeDetectorRef);
   @Output() closeModal = new EventEmitter<void>();
 
@@ -59,7 +63,9 @@ export class DateTimeModalComponent implements OnInit {
   selectedOption: string = 'today';
   shifts: ShiftListItem[] = [];
   selectedShiftId: string | null = null;
+  currentShiftId: string | null = null;
   shiftsLoadError: string | null = null;
+  private dashboardCacheSub?: Subscription;
 
   ngOnInit(): void {
     this.initializePickerDates();
@@ -86,6 +92,23 @@ export class DateTimeModalComponent implements OnInit {
         this.cdr.markForCheck();
       },
     });
+
+    this.dashboardCacheSub = this.websocketService.dashboardCache$.subscribe((cache) => {
+      const activeShift = cache.activeShift;
+      const currentShiftMeta = cache.currentShift?.meta;
+      const shiftId = activeShift?.mode === 'current'
+        ? activeShift.shiftId
+        : currentShiftMeta?.mode === 'current'
+          ? currentShiftMeta.shiftId
+          : null;
+
+      this.currentShiftId = shiftId ? String(shiftId) : null;
+      this.cdr.markForCheck();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.dashboardCacheSub?.unsubscribe();
   }
 
   isDisabled(): boolean {
@@ -117,6 +140,14 @@ export class DateTimeModalComponent implements OnInit {
     this.dateTimeService.setLiveMode(false);
     this.dateTimeService.setTimeframe('');
     this.cdr.markForCheck();
+  }
+
+  isSelectedShift(shift: ShiftListItem): boolean {
+    return this.selectedOption === `shift:${shift._id}`;
+  }
+
+  isCurrentShift(shift: ShiftListItem): boolean {
+    return Boolean(this.currentShiftId && shift?._id && String(shift._id) === this.currentShiftId);
   }
 
   selectCustom(): void {

@@ -68,6 +68,17 @@
           color: var(--theme-color-on-primary);
           border-color: var(--theme-color-primary);
         }
+
+        &.current-shift {
+          color: var(--sg-color-green);
+          background: rgba(63, 171, 108, 0.14);
+          border-color: rgba(63, 171, 108, 0.35);
+          font-weight: 700;
+        }
+
+        &.current-shift-selected {
+          font-weight: 700;
+        }
       }
     }
   }
