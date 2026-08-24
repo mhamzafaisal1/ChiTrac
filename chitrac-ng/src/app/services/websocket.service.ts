@@ -17,6 +17,7 @@ export interface DashboardCacheEnvelope {
 export interface DashboardCacheState {
   today?: DashboardCacheEnvelope;
   currentShift?: DashboardCacheEnvelope;
+  activeShift?: any;
   countSparkline?: any;
   dashboard?: {
     machines?: {
@@ -359,7 +360,8 @@ export class WebsocketService {
       return dashboardCache?.today || cache.today;
     }
 
-    return dashboardCache?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) || cache.currentShift;
+    return dashboardCache?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) ||
+      (cache.currentShift?.meta?.shiftId === shiftId ? cache.currentShift : undefined);
   }
 
   private resolveDailyAnalyticsEnvelope(
