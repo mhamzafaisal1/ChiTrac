@@ -14,7 +14,7 @@ import { MatButtonModule } from "@angular/material/button";
 import { MatIconModule } from "@angular/material/icon";
 import { MatDialog } from "@angular/material/dialog";
 import { CdkDragDrop, DragDropModule, moveItemInArray } from "@angular/cdk/drag-drop";
-import { catchError, debounceTime, distinctUntilChanged, forkJoin, of, Subject, switchMap, takeUntil, tap } from "rxjs";
+import { catchError, debounceTime, distinctUntilChanged, forkJoin, Observable, of, Subject, switchMap, takeUntil, tap } from "rxjs";
 
 import { BaseTableComponent } from "../components/base-table/base-table.component";
 import { MachineService, ShiftProjectionWindow } from "../services/machine.service";
@@ -26,6 +26,7 @@ import { PercentBreakpointService } from "../services/percent-breakpoint.service
 import { SettingsService } from "../services/settings.service";
 import { LayoutEditService } from "../services/layout-edit.service";
 import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
+import { ShiftListItem, ShiftService } from "../services/shift.service";
 import { UserService } from "../user.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
 import {
@@ -150,6 +151,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private readonly handleResize = this.updateChartDimensions.bind(this);
   private readonly summaryCardOrderKey = "chitrac-machine-dashboard-summary-card-order";
   private readonly summaryCardVisibilityKey = "chitrac-machine-dashboard-summary-card-visibility";
+  private readonly allDayProjectedCountLabel = "Projected County (All Day)";
+  private readonly legacyAllDayProjectedCountLabel = "Projected Count";
+  private readonly shiftProjectedCountLabel = "Projected Count (Shift)";
   private readonly machineSummaryCardLabels = [
     "Machines",
     "Running",
@@ -167,7 +171,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Down Operators",
     "Total Count",
     "Current Pace",
-    "Projected Count",
+    "Projected County (All Day)",
     "Projected Count (Shift)",
     "Avg OEE",
   ];
@@ -178,6 +182,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private layoutSnapshot: MachineDashboardLayoutSnapshot | null = null;
   private readonly summaryCardOrderSave$ = new Subject<string[]>();
   private shiftProjectionWindow: ShiftProjectionWindow | null = null;
+  private allDayProjectionWindow: ShiftProjectionWindow | null = null;
+  private allDayProjectionResponses: any[] | null = null;
+  private currentShiftProjectionWindow: ShiftProjectionWindow | null = null;
+  private currentShiftProjectionResponses: any[] | null = null;
+  private currentShiftProjectionShiftId: string | null = null;
   private operatorStatusCounts: OperatorStatusCounts = EMPTY_OPERATOR_STATUS_COUNTS;
 
   chartWidth: number = 1200;
@@ -212,7 +221,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private websocketService: WebsocketService,
     private settingsService: SettingsService,
     private userService: UserService,
-    private layoutEditService: LayoutEditService
+    private layoutEditService: LayoutEditService,
+    private shiftService: ShiftService
   ) {}
 
   ngOnInit(): void {
@@ -394,9 +404,26 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               projection: this.machineService
                 .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
                 .pipe(catchError(() => of(null))),
+              allDayData: shiftId
+                ? this.machineService.getMachinesSummary(this.startTime, this.endTime)
+                  .pipe(catchError(() => of(null)))
+                : of(null),
+              allDayProjection: shiftId
+                ? this.machineService.getShiftProjectionWindow(this.getProjectionDate())
+                  .pipe(catchError(() => of(null)))
+                : of(null),
+              currentShiftProjection: shiftId
+                ? of(null)
+                : this.isCurrentDayView()
+                  ? this.getCurrentShiftProjectionRequest()
+                  : of(null),
             }).pipe(
-                tap(({ data, projection }: any) => {
+                tap(({ data, projection, allDayData, allDayProjection, currentShiftProjection }: any) => {
                   this.shiftProjectionWindow = projection;
+                  this.setAllDayProjectionData(shiftId ? allDayData : data, shiftId ? allDayProjection : projection);
+                  if (!shiftId) {
+                    this.setCurrentShiftProjectionData(currentShiftProjection);
+                  }
                   const responses = Array.isArray(data) ? data : [data];
                   this.machineData = responses;
                   this.updateSummaryCards(responses, this.websocketService.getDashboardCacheSnapshot());
@@ -479,10 +506,27 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         projection: this.machineService
           .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
           .pipe(catchError(() => of(null))),
+        allDayData: shiftId
+          ? this.machineService.getMachineSummaryWithTimeframe(timeframe)
+            .pipe(catchError(() => of(null)))
+          : of(null),
+        allDayProjection: shiftId
+          ? this.machineService.getShiftProjectionWindow(this.getProjectionDate())
+            .pipe(catchError(() => of(null)))
+          : of(null),
+        currentShiftProjection: shiftId
+          ? of(null)
+          : this.isCurrentDayView()
+            ? this.getCurrentShiftProjectionRequest()
+            : of(null),
       })
         .subscribe({
-          next: ({ data, projection }: any) => {
+          next: ({ data, projection, allDayData, allDayProjection, currentShiftProjection }: any) => {
             this.shiftProjectionWindow = projection;
+            this.setAllDayProjectionData(shiftId ? allDayData : data, shiftId ? allDayProjection : projection);
+            if (!shiftId) {
+              this.setCurrentShiftProjectionData(currentShiftProjection);
+            }
             this.updateDashboardData(data);
             this.isLoading = false;
           },
@@ -506,10 +550,27 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       projection: this.machineService
         .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
         .pipe(catchError(() => of(null))),
+      allDayData: shiftId
+        ? this.machineService.getMachinesSummary(this.startTime, this.endTime)
+          .pipe(catchError(() => of(null)))
+        : of(null),
+      allDayProjection: shiftId
+        ? this.machineService.getShiftProjectionWindow(this.getProjectionDate())
+          .pipe(catchError(() => of(null)))
+        : of(null),
+      currentShiftProjection: shiftId
+        ? of(null)
+        : this.isCurrentDayView()
+          ? this.getCurrentShiftProjectionRequest()
+          : of(null),
     })
       .subscribe({
-        next: ({ data, projection }: any) => {
+        next: ({ data, projection, allDayData, allDayProjection, currentShiftProjection }: any) => {
           this.shiftProjectionWindow = projection;
+          this.setAllDayProjectionData(shiftId ? allDayData : data, shiftId ? allDayProjection : projection);
+          if (!shiftId) {
+            this.setCurrentShiftProjectionData(currentShiftProjection);
+          }
           this.updateDashboardData(data);
           this.isLoading = false;
         },
@@ -548,6 +609,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const shiftId = this.dateTimeService.getShiftId();
     if (shiftId) {
       return this.isToday(this.startTime);
+    }
+
+    return this.isToday(this.startTime) && this.isToday(this.endTime);
+  }
+
+  private isCurrentDayView(): boolean {
+    if (this.dateTimeService.getLiveMode()) {
+      return true;
     }
 
     return this.isToday(this.startTime) && this.isToday(this.endTime);
@@ -630,14 +699,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return sum + Number(value || 0);
     }, 0);
     const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage ?? r.performance?.oee?.percentage));
-    const projectionWindow = this.shouldUseShiftProjectionForSummary()
-      ? this.resolveProjectionWindow(cache)
-      : null;
-    const elapsedHours = this.getProjectionElapsedHours(projectionWindow) ?? this.getElapsedHours();
-    const totalProjectionHours = this.getProjectionTotalHours(projectionWindow) ?? this.getProjectionWindowHours(elapsedHours);
+    const allDayProjection = this.getAllDayProjectionSource(responses, cache);
+    const allDayTotalCount = this.getSummaryTotalCount(allDayProjection.responses);
+    const allDayElapsedHours = this.getProjectionElapsedHours(allDayProjection.projectionWindow) ?? this.getElapsedHours();
+    const allDayTotalProjectionHours =
+      this.getProjectionTotalHours(allDayProjection.projectionWindow) ?? this.getProjectionWindowHours(allDayElapsedHours);
+    const elapsedHours = this.getSelectedDataElapsedHours(cache);
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
-    const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
+    const projectedCount = this.getProjectedCount(allDayTotalCount, allDayElapsedHours, allDayTotalProjectionHours);
     const shiftProjection = this.getShiftProjection(responses, cache);
+    const shiftProjectionValue = shiftProjection.projectedCount === null
+      ? "N/A"
+      : shiftProjection.projectedCount.toLocaleString();
+    const shiftProjectionTone = shiftProjection.projectedCount !== null && shiftProjection.projectedCount >= shiftProjection.totalCount
+      ? "good"
+      : "neutral";
 
     this.allSummaryCards = this.applySummaryCardOrder([
       { label: "Machines", value: machineCounts.total, icon: "precision_manufacturing", tone: "neutral" },
@@ -662,8 +738,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         sparklineData: this.getCountSparklineData(cache) || this.getMockCountSparklineData(totalCount, currentPph),
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
-      { label: "Projected Count", value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= totalCount ? "good" : "neutral" },
-      { label: "Projected Count (Shift)", value: shiftProjection.projectedCount.toLocaleString(), icon: "outlined_flag", tone: shiftProjection.projectedCount >= shiftProjection.totalCount ? "good" : "neutral" },
+      { label: this.allDayProjectedCountLabel, value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= allDayTotalCount ? "good" : "neutral" },
+      { label: this.shiftProjectedCountLabel, value: shiftProjectionValue, icon: "outlined_flag", tone: shiftProjectionTone },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: this.getOeeSummaryTone(avgOee) },
     ]);
     this.syncSummaryCardsFromAll();
@@ -685,11 +761,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return `${hours}h ${minutes}m`;
   }
 
-  private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): { totalCount: number; projectedCount: number } {
+  private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): { totalCount: number; projectedCount: number | null } {
+    const hasSelectedShift = Boolean(this.dateTimeService.getShiftId());
+    if (!hasSelectedShift && (!this.isCurrentDayView() || !this.isCurrentlyInShift(cache))) {
+      return { totalCount: 0, projectedCount: null };
+    }
+
     const shiftResponses = this.getShiftProjectionResponses(responses, cache);
     const totalCount = this.getSummaryTotalCount(shiftResponses);
     const projectionWindow = this.getShiftProjectionWindow(cache);
-    const elapsedHours = this.getProjectionElapsedHours(projectionWindow) ?? (this.dateTimeService.getShiftId() ? this.getElapsedHours() : 0);
+    const elapsedHours = this.getProjectionElapsedHours(projectionWindow) ?? (hasSelectedShift ? this.getElapsedHours() : 0);
     const totalHours = this.getProjectionTotalHours(projectionWindow) ?? elapsedHours;
 
     return {
@@ -703,9 +784,15 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return responses;
     }
 
+    const activeShiftId = this.getActiveCurrentShiftId(cache);
+    if (!activeShiftId) {
+      return [];
+    }
+
     const currentShiftRows =
-      cache?.currentShift?.machinesSummary ||
-      cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === cache?.currentShift?.meta?.shiftId)?.machinesSummary;
+      (cache?.currentShift?.meta?.shiftId === activeShiftId ? cache?.currentShift?.machinesSummary : null) ||
+      cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === activeShiftId)?.machinesSummary ||
+      (this.currentShiftProjectionShiftId === activeShiftId ? this.currentShiftProjectionResponses : null);
 
     return Array.isArray(currentShiftRows) ? currentShiftRows : [];
   }
@@ -866,8 +953,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       "Down Operators": "do_not_disturb_on",
       "Total Count": "tag",
       "Current Pace": "trending_up",
-      "Projected Count": "flag",
-      "Projected Count (Shift)": "outlined_flag",
+      [this.allDayProjectedCountLabel]: "flag",
+      [this.shiftProjectedCountLabel]: "outlined_flag",
       "Avg OEE": "speed",
     };
     return icons[label] || "dashboard";
@@ -1085,16 +1172,30 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private cleanSummaryCardOrder(labels: any[]): string[] {
     const allowedLabels = new Set(this.machineSummaryCardLabels);
-    return [...new Set(labels.filter((label) => typeof label === "string").map((label) => label.trim()).filter((label) => allowedLabels.has(label)))];
+    return [...new Set(labels
+      .filter((label) => typeof label === "string")
+      .map((label) => this.normalizeSummaryCardLabel(label.trim()))
+      .filter((label) => allowedLabels.has(label)))];
   }
 
   private cleanSummaryCardVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
     return this.machineSummaryCardLabels.reduce((acc, label) => {
       if (typeof visibility[label] === "boolean") {
         acc[label] = visibility[label];
+      } else if (
+        label === this.allDayProjectedCountLabel &&
+        typeof visibility[this.legacyAllDayProjectedCountLabel] === "boolean"
+      ) {
+        acc[label] = visibility[this.legacyAllDayProjectedCountLabel];
       }
       return acc;
     }, {} as Record<string, boolean>);
+  }
+
+  private normalizeSummaryCardLabel(label: string): string {
+    return label === this.legacyAllDayProjectedCountLabel
+      ? this.allDayProjectedCountLabel
+      : label;
   }
 
   private cleanTableColumnVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
@@ -1145,26 +1246,157 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
   }
 
-  private resolveProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
-    const cachedWindow = this.getCachedProjectionWindow(cache);
-    return cachedWindow || this.shiftProjectionWindow;
+  private setAllDayProjectionData(data: any, projectionWindow: ShiftProjectionWindow | null): void {
+    const responses = Array.isArray(data) ? data : data ? [data] : [];
+    this.allDayProjectionResponses = responses.length ? responses : null;
+    this.allDayProjectionWindow = projectionWindow;
+  }
+
+  private getCurrentShiftProjectionRequest(): Observable<{ shiftId: string | null; data: any; projection: ShiftProjectionWindow | null }> {
+    return this.shiftService.getActiveShifts().pipe(
+      switchMap(({ shifts }) => {
+        const shiftId = this.resolveCurrentShiftId(shifts || []);
+        if (!shiftId || !this.startTime || !this.endTime) {
+          return of({ shiftId: null, data: null, projection: null });
+        }
+
+        return forkJoin({
+          shiftId: of(shiftId),
+          data: this.machineService
+            .getMachinesSummary(this.startTime, this.endTime, shiftId)
+            .pipe(catchError(() => of(null))),
+          projection: this.machineService
+            .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
+            .pipe(catchError(() => of(null))),
+        });
+      }),
+      catchError(() => of({ shiftId: null, data: null, projection: null }))
+    );
+  }
+
+  private setCurrentShiftProjectionData(payload: { shiftId: string | null; data: any; projection: ShiftProjectionWindow | null } | null): void {
+    this.currentShiftProjectionShiftId = payload?.shiftId || null;
+    this.currentShiftProjectionWindow = payload?.projection || null;
+    const responses = Array.isArray(payload?.data) ? payload.data : payload?.data ? [payload.data] : [];
+    this.currentShiftProjectionResponses = responses.length ? responses : null;
+  }
+
+  private resolveCurrentShiftId(shifts: ShiftListItem[], now: Date = new Date()): string | null {
+    const today = this.toIsoWeekday(now);
+    const nowMinutes = this.toMinutes({ hour: now.getHours(), minute: now.getMinutes() });
+
+    const activeShift = shifts
+      .filter((shift) => shift?.active !== false)
+      .filter((shift) => this.isValidShift(shift))
+      .filter((shift) => !Array.isArray(shift.activeDays) || shift.activeDays.includes(today))
+      .find((shift) => {
+        const start = this.toMinutes(shift.startTime!);
+        const end = this.toMinutes(shift.endTime!);
+        return nowMinutes >= start && nowMinutes < end;
+      });
+
+    return activeShift?._id || null;
+  }
+
+  private isValidShift(shift: ShiftListItem): boolean {
+    if (!shift?._id || !shift.startTime || !shift.endTime) {
+      return false;
+    }
+
+    return this.toMinutes(shift.endTime) > this.toMinutes(shift.startTime);
+  }
+
+  private toIsoWeekday(date: Date): number {
+    const day = date.getDay();
+    return day === 0 ? 7 : day;
+  }
+
+  private toMinutes(time: { hour: number; minute: number }): number {
+    return (Number(time.hour) * 60) + Number(time.minute);
+  }
+
+  private getSelectedDataElapsedHours(cache?: DashboardCacheState | null): number {
+    const projectionWindow = this.getSelectedProjectionWindow(cache);
+    return this.getProjectionElapsedHours(projectionWindow) ?? this.getElapsedHours();
+  }
+
+  private getAllDayProjectionSource(
+    responses: any[],
+    cache?: DashboardCacheState | null
+  ): { responses: any[]; projectionWindow: ShiftProjectionWindow | null } {
+    const todayEnvelope = cache?.dashboard?.machines?.today || cache?.today;
+    const cachedRows = todayEnvelope?.machinesSummary;
+    const cachedWindow = todayEnvelope?.meta?.projectionWindow;
+    const usingSelectedShift = Boolean(this.dateTimeService.getShiftId());
+
+    if (!usingSelectedShift) {
+      return {
+        responses,
+        projectionWindow: cachedWindow || this.allDayProjectionWindow || this.shiftProjectionWindow,
+      };
+    }
+
+    const allDayRows = Array.isArray(cachedRows) && cachedRows.length
+      ? cachedRows
+      : this.allDayProjectionResponses;
+
+    return {
+      responses: allDayRows && allDayRows.length ? allDayRows : responses,
+      projectionWindow: cachedWindow || this.allDayProjectionWindow,
+    };
+  }
+
+  private getSelectedProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
+    const shiftId = this.dateTimeService.getShiftId();
+    if (!shiftId) {
+      const todayEnvelope = cache?.dashboard?.machines?.today || cache?.today;
+      return todayEnvelope?.meta?.projectionWindow || this.shiftProjectionWindow;
+    }
+
+    const selectedShiftEnvelope =
+      cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) ||
+      (cache?.currentShift?.meta?.shiftId === shiftId ? cache?.currentShift : null);
+
+    return selectedShiftEnvelope?.meta?.projectionWindow || this.shiftProjectionWindow;
   }
 
   private getShiftProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
     if (this.dateTimeService.getShiftId()) {
-      return this.resolveProjectionWindow(cache);
+      return this.getSelectedProjectionWindow(cache);
     }
 
-    return cache?.currentShift?.meta?.projectionWindow || null;
+    const activeShiftId = this.getActiveCurrentShiftId(cache);
+    if (!activeShiftId) {
+      return null;
+    }
+
+    const currentShiftEnvelope =
+      (cache?.currentShift?.meta?.shiftId === activeShiftId ? cache?.currentShift : null) ||
+      cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === activeShiftId);
+
+    return currentShiftEnvelope?.meta?.projectionWindow ||
+      (this.currentShiftProjectionShiftId === activeShiftId ? this.currentShiftProjectionWindow : null);
   }
 
-  private getCachedProjectionWindow(cache?: DashboardCacheState | null): ShiftProjectionWindow | null {
-    if (!cache) return null;
-    const shiftId = this.dateTimeService.getShiftId();
-    const envelope = shiftId
-      ? cache.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) || cache.currentShift
-      : cache.dashboard?.machines?.today || cache.today;
-    return envelope?.meta?.projectionWindow || null;
+  private isCurrentlyInShift(cache?: DashboardCacheState | null): boolean {
+    return Boolean(this.getActiveCurrentShiftId(cache));
+  }
+
+  private getActiveCurrentShiftId(cache?: DashboardCacheState | null): string | null {
+    const activeShift = cache?.activeShift;
+    if (activeShift?.mode === "current" && activeShift?.shiftId) {
+      return String(activeShift.shiftId);
+    }
+
+    if (cache?.currentShift?.meta?.mode === "current" && cache.currentShift.meta.shiftId) {
+      return String(cache.currentShift.meta.shiftId);
+    }
+
+    if (this.currentShiftProjectionShiftId) {
+      return this.currentShiftProjectionShiftId;
+    }
+
+    return null;
   }
 
   private getProjectionElapsedHours(projectionWindow: ShiftProjectionWindow | null): number | null {
@@ -1194,10 +1426,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const m = String(date.getMonth() + 1).padStart(2, "0");
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
-  }
-
-  private shouldUseShiftProjectionForSummary(): boolean {
-    return Boolean(this.dateTimeService.getShiftId()) || this.dateTimeService.getLiveMode() || this.isToday(this.startTime);
   }
 
   /**
@@ -1508,8 +1736,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     const dashboardCache = cache || this.websocketService.getDashboardCacheSnapshot();
-    const envelope = this.dateTimeService.getShiftId()
-      ? dashboardCache?.currentShift
+    const shiftId = this.dateTimeService.getShiftId();
+    const envelope = shiftId
+      ? dashboardCache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) ||
+        (dashboardCache?.currentShift?.meta?.shiftId === shiftId ? dashboardCache.currentShift : null)
       : dashboardCache?.today;
     const data = envelope?.machinesSummary;
 
