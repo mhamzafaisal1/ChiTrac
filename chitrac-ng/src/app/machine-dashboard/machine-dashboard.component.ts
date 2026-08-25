@@ -53,9 +53,27 @@ interface SummaryCard {
   value: string | number;
   icon: string;
   tone: string;
-  sparklineData?: number[];
+  sparklineData?: SparklineDataPoint[];
   sparklineLinePoints?: string;
   sparklineAreaPath?: string;
+  sparklineSegments?: SparklineSegment[];
+}
+
+type SparklineShiftState = "shift" | "break" | "outsideShift";
+
+interface SparklineDataPoint {
+  value: number;
+  shiftState: SparklineShiftState;
+}
+
+interface SparklineRenderPoint extends SparklineDataPoint {
+  x: number;
+  y: number;
+}
+
+interface SparklineSegment {
+  shiftState: SparklineShiftState;
+  linePoints: string;
 }
 
 interface MachineDashboardLayoutSnapshot {
@@ -843,18 +861,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       });
   }
 
-  private getMockCountSparklineData(totalCount: number, currentPph: number): number[] {
+  private getMockCountSparklineData(totalCount: number, currentPph: number): SparklineDataPoint[] {
     const baseline = Math.max(12, Math.round((currentPph || totalCount / 8 || 120) / 60));
     return Array.from({ length: 60 }, (_, index) => {
       const trend = index * 0.32;
       const wave = Math.sin(index / 4.5) * 3.8 + Math.cos(index / 8) * 2.4;
       const dip = index > 18 && index < 24 ? -8 + Math.abs(21 - index) * 1.4 : 0;
       const bump = index > 39 ? 4 : 0;
-      return Math.max(0, Math.round(baseline + trend + wave + dip + bump));
+      return {
+        value: Math.max(0, Math.round(baseline + trend + wave + dip + bump)),
+        shiftState: "shift",
+      };
     });
   }
 
-  private getCountSparklineData(cache?: DashboardCacheState | null): number[] | null {
+  private getCountSparklineData(cache?: DashboardCacheState | null): SparklineDataPoint[] | null {
     const sparkline =
       cache?.countSparkline ||
       cache?.dashboard?.counts?.sparkline ||
@@ -864,24 +885,33 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     if (!Array.isArray(points) || points.length < 2) return null;
 
     const values = points
-      .map((point) => Number(point?.count))
-      .filter((value) => Number.isFinite(value));
+      .map((point) => ({
+        value: Number(point?.count),
+        shiftState: this.normalizeSparklineShiftState(point?.shiftState),
+      }))
+      .filter((point) => Number.isFinite(point.value));
     return values.length >= 2 ? values : null;
   }
 
   private withSparkline(card: SummaryCard): SummaryCard {
-    const data = (card.sparklineData || []).map(Number).filter((value) => Number.isFinite(value));
+    const data = (card.sparklineData || [])
+      .map((point) => ({
+        value: Number(point?.value),
+        shiftState: this.normalizeSparklineShiftState(point?.shiftState),
+      }))
+      .filter((point) => Number.isFinite(point.value));
     if (data.length < 2) return card;
 
     const width = 160;
     const height = 48;
-    const min = Math.min(...data);
-    const max = Math.max(...data);
+    const values = data.map((point) => point.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
     const range = max - min || 1;
     const points = data.map((value, index) => {
       const x = (index / (data.length - 1)) * width;
-      const y = height - ((value - min) / range) * (height - 8) - 4;
-      return { x, y };
+      const y = height - ((value.value - min) / range) * (height - 8) - 4;
+      return { ...value, x, y };
     });
     const linePoints = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
     const areaPath = [
@@ -896,7 +926,34 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       sparklineData: data,
       sparklineLinePoints: linePoints,
       sparklineAreaPath: areaPath,
+      sparklineSegments: this.buildSparklineSegments(points),
     };
+  }
+
+  private normalizeSparklineShiftState(value: unknown): SparklineShiftState {
+    return value === "break" || value === "outsideShift" ? value : "shift";
+  }
+
+  private buildSparklineSegments(points: SparklineRenderPoint[]): SparklineSegment[] {
+    const segments: { shiftState: SparklineShiftState; points: SparklineRenderPoint[] }[] = [];
+
+    for (let index = 1; index < points.length; index += 1) {
+      const shiftState = points[index].shiftState;
+      const previousPoint = points[index - 1];
+      const point = points[index];
+      const currentSegment = segments[segments.length - 1];
+
+      if (currentSegment?.shiftState === shiftState) {
+        currentSegment.points.push(point);
+      } else {
+        segments.push({ shiftState, points: [previousPoint, point] });
+      }
+    }
+
+    return segments.map((segment) => ({
+      shiftState: segment.shiftState,
+      linePoints: segment.points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" "),
+    }));
   }
 
   private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
