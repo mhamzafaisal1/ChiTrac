@@ -118,7 +118,6 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
   onModeChange(newMode: string): void {
     this.mode = newMode;
     const isLive = newMode === 'live';
-    this.dateTimeService.setLiveMode(isLive);
   
     if (isLive) {
       const now = new Date();
@@ -128,7 +127,6 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
       this.endDateTime = now;
       this.selectedTimeframe = ''; // Clear timeframe selection when switching to live
       this.selectedShiftId = null;
-      this.dateTimeService.setShiftId('');
     }
   }
 
@@ -137,8 +135,6 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     this.selectedShiftId = shiftId;
     this.selectedTimeframe = '';
     this.mode = 'manual';
-    this.dateTimeService.setLiveMode(false);
-    this.dateTimeService.setTimeframe('');
     this.cdr.markForCheck();
   }
 
@@ -155,9 +151,6 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     this.selectedShiftId = null;
     this.selectedTimeframe = '';
     this.mode = 'manual';
-    this.dateTimeService.setLiveMode(false);
-    this.dateTimeService.setShiftId('');
-    this.dateTimeService.setTimeframe('');
     this.cdr.markForCheck();
   }
 
@@ -166,11 +159,6 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     this.selectedTimeframe = timeframe;
     this.selectedShiftId = null;
     this.mode = 'manual'; // Switch to manual mode when timeframe is selected
-    this.dateTimeService.setLiveMode(false);
-    this.dateTimeService.setShiftId('');
-    
-    // Store the timeframe in the service instead of calculating dates
-    this.dateTimeService.setTimeframe(timeframe);
     
     // For display purposes, we can still show approximate dates
     // but the actual API calls will use the timeframe parameter
