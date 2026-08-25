@@ -198,6 +198,15 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     vector-effect: non-scaling-stroke;
+
+    &.break,
+    &.outside-shift {
+      stroke: rgba(156, 163, 175, 0.95);
+    }
+
+    &.outside-shift {
+      stroke-dasharray: 4 5;
+    }
   }
 
   &.good {
