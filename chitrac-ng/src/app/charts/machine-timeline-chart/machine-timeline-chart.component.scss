@@ -1,0 +1,126 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.timeline-container,
+.timeline-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.timeline-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.timeline-title text {
+  fill: var(--theme-color-on-surface-variant, #333);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.timeline-grid line {
+  stroke: color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 14%, transparent);
+  stroke-width: 1;
+}
+
+.machine-label,
+.timeline-axis text {
+  fill: var(--theme-color-on-surface-variant, #333);
+  font-size: 11px;
+}
+
+.row-track {
+  stroke: color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 16%, transparent);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.session-chunk {
+  cursor: default;
+  stroke: rgba(0, 0, 0, 0.12);
+  stroke-width: 0.5;
+}
+
+.session-chunk.current {
+  stroke: var(--theme-color-primary, #1aaee8);
+  stroke-width: 1.2;
+}
+
+.timeline-axis line {
+  stroke: color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 45%, transparent);
+  stroke-width: 1;
+}
+
+.timeline-tooltip {
+  position: absolute;
+  z-index: 20;
+  max-width: 240px;
+  padding: 7px 9px;
+  border-radius: 4px;
+  background: rgba(28, 32, 36, 0.94);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  transform: none;
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+
+.timeline-tooltip.visible {
+  opacity: 1;
+}
+
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.06);
+  z-index: 10;
+}
+
+.loading-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chart-no-data {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--theme-color-on-surface-variant, #333);
+}
+
+.chart-no-data-content {
+  text-align: center;
+}
+
+.chart-no-data-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.chart-no-data-text {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+:host-context(.dark-theme) {
+  .machine-label,
+  .timeline-axis text,
+  .chart-no-data {
+    fill: var(--theme-color-on-surface-variant, #d7dde6);
+    color: var(--theme-color-on-surface-variant, #d7dde6);
+  }
+}

@@ -13,6 +13,7 @@ import { DailyCountByItemChartComponent } from '../charts/daily-count-by-item-ch
 import { DailyMachineOeeBarChartComponent } from '../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component';
 import { DailyMachineStackedBarChartComponent } from '../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component';
 import { EfficiencyByMachineGroupBarChartComponent } from '../charts/efficiency-by-machine-group-bar-chart/efficiency-by-machine-group-bar-chart.component';
+import { MachineTimelineChartComponent } from '../charts/machine-timeline-chart/machine-timeline-chart.component';
 import { RankedOperatorBarChartComponent } from '../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { DateTimeService } from '../services/date-time.service';
@@ -37,6 +38,7 @@ interface ExperimentalChartTile {
     MatIconModule,
     ChartTileComponent,
     DailyMachineStackedBarChartComponent,
+    MachineTimelineChartComponent,
     DailyMachineOeeBarChartComponent,
     DailyCountByItemChartComponent,
     DailyCountBarChartComponent,
@@ -62,6 +64,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
 
   chartTiles: ExperimentalChartTile[] = [
     { id: 'machine-status', title: 'Machine Run/Pause/Fault Time', icon: 'bar_chart' },
+    { id: 'machine-timeline', title: 'Machine Timeline', icon: 'view_timeline' },
     { id: 'machine-oee', title: 'Machine OEE', icon: 'insights' },
     { id: 'item-totals', title: 'Item Totals by Type', icon: 'stacked_bar_chart' },
     { id: 'machine-group-efficiency', title: 'Efficiency % by Machine Group', icon: 'groups' },

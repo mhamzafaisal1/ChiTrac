@@ -39,6 +39,14 @@
             [useExternalTitle]="useTileTitles"
           ></app-daily-machine-stacked-bar-chart>
 
+          <app-machine-timeline-chart
+            *ngIf="tile.id === 'machine-timeline'"
+            [chartWidth]="chartWidth"
+            [chartHeight]="chartHeight"
+            [preloadedData]="preloadedData?.machineTimeline"
+            [useExternalTitle]="useTileTitles"
+          ></app-machine-timeline-chart>
+
           <app-daily-machine-oee-bar-chart
             *ngIf="tile.id === 'machine-oee'"
             [chartWidth]="chartWidth"
