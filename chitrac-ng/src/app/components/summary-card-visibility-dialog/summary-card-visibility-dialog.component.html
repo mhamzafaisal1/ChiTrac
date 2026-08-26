@@ -1,18 +1,20 @@
 <div class="visibility-dialog">
   <header class="dialog-header">
     <div>
-      <h2 mat-dialog-title>Show/Hide Infoboxes</h2>
-      <p>Choose which dashboard infoboxes are visible in this layout.</p>
+      <h2 mat-dialog-title>{{ title }}</h2>
+      <p>{{ description }}</p>
     </div>
   </header>
 
   <mat-dialog-content>
+    <div class="limit-message" *ngIf="maxVisibleMessage">{{ maxVisibleMessage }}</div>
     <div class="list-grid">
       <section class="list-panel" aria-label="Show infoboxes">
-        <h3>Show</h3>
+        <h3>{{ showLabel }}</h3>
         <button
           type="button"
           class="infobox-row"
+          [class.compact]="compactCards"
           *ngFor="let card of showCards"
           [class.selected]="selectedShowLabel === card.label"
           (click)="selectShow(card.label)"
@@ -21,13 +23,14 @@
         >
           <article
             class="summary-card-preview"
+            [class.compact]="compactCards"
             [ngClass]="card.tone"
             [class.has-sparkline]="card.sparklineLinePoints"
           >
-            <mat-icon class="summary-icon">{{ card.icon }}</mat-icon>
+            <mat-icon class="summary-icon" *ngIf="card.icon">{{ card.icon }}</mat-icon>
             <div class="summary-copy">
               <span>{{ card.label }}</span>
-              <strong>{{ card.value }}</strong>
+              <strong *ngIf="!compactCards">{{ card.value }}</strong>
             </div>
             <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
               <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
@@ -37,23 +40,24 @@
             </div>
           </article>
         </button>
-        <div class="empty-list" *ngIf="!showCards.length">No infoboxes shown</div>
+        <div class="empty-list" *ngIf="!showCards.length">{{ emptyShownText }}</div>
       </section>
 
       <div class="transfer-actions" aria-label="Move selected infobox">
         <button mat-icon-button type="button" aria-label="Hide selected infobox" [disabled]="!selectedShowLabel" (click)="hideSelected()">
           <mat-icon>chevron_right</mat-icon>
         </button>
-        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideLabel" (click)="showSelected()">
+        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideLabel || !canShowMore" (click)="showSelected()">
           <mat-icon>chevron_left</mat-icon>
         </button>
       </div>
 
       <section class="list-panel" aria-label="Hide infoboxes">
-        <h3>Hide</h3>
+        <h3>{{ hideLabel }}</h3>
         <button
           type="button"
           class="infobox-row"
+          [class.compact]="compactCards"
           *ngFor="let card of hideCards"
           [class.selected]="selectedHideLabel === card.label"
           (click)="selectHide(card.label)"
@@ -62,13 +66,14 @@
         >
           <article
             class="summary-card-preview"
+            [class.compact]="compactCards"
             [ngClass]="card.tone"
             [class.has-sparkline]="card.sparklineLinePoints"
           >
-            <mat-icon class="summary-icon">{{ card.icon }}</mat-icon>
+            <mat-icon class="summary-icon" *ngIf="card.icon">{{ card.icon }}</mat-icon>
             <div class="summary-copy">
               <span>{{ card.label }}</span>
-              <strong>{{ card.value }}</strong>
+              <strong *ngIf="!compactCards">{{ card.value }}</strong>
             </div>
             <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
               <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
@@ -78,7 +83,7 @@
             </div>
           </article>
         </button>
-        <div class="empty-list" *ngIf="!hideCards.length">No infoboxes hidden</div>
+        <div class="empty-list" *ngIf="!hideCards.length">{{ emptyHiddenText }}</div>
       </section>
     </div>
   </mat-dialog-content>

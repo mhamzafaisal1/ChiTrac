@@ -38,6 +38,7 @@ export interface DashboardLayoutPreferences {
   };
   experimentalDailyDashboard?: {
     chartOrder?: string[];
+    chartVisibility?: Record<string, boolean>;
   };
 }
 
@@ -221,11 +222,15 @@ export class SettingsService {
     );
   }
 
-  saveExperimentalDailyDashboardChartOrder(chartOrder: string[]): Observable<UserPreferences> {
+  saveExperimentalDailyDashboardChartOrder(
+    chartOrder: string[],
+    chartVisibility: Record<string, boolean> = {}
+  ): Observable<UserPreferences> {
     const payload = {
       dashboardLayouts: {
         experimentalDailyDashboard: {
-          chartOrder
+          chartOrder,
+          chartVisibility
         }
       }
     };
@@ -237,7 +242,10 @@ export class SettingsService {
     );
   }
 
-  setExperimentalDailyDashboardChartOrder(chartOrder: string[]): void {
+  setExperimentalDailyDashboardChartOrder(
+    chartOrder: string[],
+    chartVisibility: Record<string, boolean> = {}
+  ): void {
     const current = this.userPreferencesSubject.value || {};
     this.userPreferencesSubject.next({
       ...current,
@@ -245,7 +253,8 @@ export class SettingsService {
         ...current.dashboardLayouts,
         experimentalDailyDashboard: {
           ...current.dashboardLayouts?.experimentalDailyDashboard,
-          chartOrder
+          chartOrder,
+          chartVisibility
         }
       }
     });

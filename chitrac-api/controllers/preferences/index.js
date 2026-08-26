@@ -268,6 +268,8 @@ function constructor(server) {
 
       if (experimentalDailyDashboard && typeof experimentalDailyDashboard === 'object' && !Array.isArray(experimentalDailyDashboard)) {
         const chartOrder = experimentalDailyDashboard.chartOrder;
+        const chartVisibility = experimentalDailyDashboard.chartVisibility;
+        const experimentalUpdates = {};
 
         if (chartOrder !== undefined) {
           if (!Array.isArray(chartOrder)) {
@@ -287,9 +289,34 @@ function constructor(server) {
             .filter(Boolean)
             .slice(0, 20);
 
-          dashboardLayouts.experimentalDailyDashboard = {
-            chartOrder: [...new Set(cleanedOrder)]
-          };
+          experimentalUpdates.chartOrder = [...new Set(cleanedOrder)];
+        }
+
+        if (chartVisibility !== undefined) {
+          if (!chartVisibility || typeof chartVisibility !== 'object' || Array.isArray(chartVisibility)) {
+            const error = new Error('Invalid chartVisibility. Must be an object of boolean values');
+            error.status = 400;
+            throw error;
+          }
+
+          const cleanedVisibility = {};
+          Object.entries(chartVisibility).slice(0, 40).forEach(([id, enabled]) => {
+            if (typeof enabled !== 'boolean') {
+              const error = new Error('Invalid chartVisibility. Every value must be boolean');
+              error.status = 400;
+              throw error;
+            }
+            const cleanedId = `${id}`.trim();
+            if (cleanedId) {
+              cleanedVisibility[cleanedId] = enabled;
+            }
+          });
+
+          experimentalUpdates.chartVisibility = cleanedVisibility;
+        }
+
+        if (Object.keys(experimentalUpdates).length) {
+          dashboardLayouts.experimentalDailyDashboard = experimentalUpdates;
         }
       }
 
@@ -347,6 +374,11 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.experimentalDailyDashboard?.chartOrder) {
       updates['dashboardLayouts.experimentalDailyDashboard.chartOrder'] =
         preferences.dashboardLayouts.experimentalDailyDashboard.chartOrder;
+    }
+
+    if (preferences.dashboardLayouts?.experimentalDailyDashboard?.chartVisibility) {
+      updates['dashboardLayouts.experimentalDailyDashboard.chartVisibility'] =
+        preferences.dashboardLayouts.experimentalDailyDashboard.chartVisibility;
     }
 
     updates.updatedAt = preferences.updatedAt || new Date();
