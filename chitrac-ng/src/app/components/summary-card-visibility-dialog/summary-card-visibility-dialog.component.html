@@ -7,7 +7,13 @@
   </header>
 
   <mat-dialog-content>
-    <div class="limit-message" *ngIf="maxVisibleMessage">{{ maxVisibleMessage }}</div>
+    <div
+      class="limit-message"
+      *ngIf="visibleCountMessage"
+      [class.invalid]="!canApply"
+    >
+      {{ visibleCountMessage }}
+    </div>
     <div class="list-grid">
       <section class="list-panel" aria-label="Show infoboxes">
         <h3>{{ showLabel }}</h3>
@@ -47,7 +53,7 @@
         <button mat-icon-button type="button" aria-label="Hide selected infobox" [disabled]="!selectedShowLabel" (click)="hideSelected()">
           <mat-icon>chevron_right</mat-icon>
         </button>
-        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideLabel || !canShowMore" (click)="showSelected()">
+        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideLabel" (click)="showSelected()">
           <mat-icon>chevron_left</mat-icon>
         </button>
       </div>
@@ -90,6 +96,6 @@
 
   <mat-dialog-actions align="end">
     <button mat-button type="button" (click)="cancel()">Cancel</button>
-    <button mat-flat-button color="primary" type="button" (click)="save()">Apply</button>
+    <button mat-flat-button color="primary" type="button" [disabled]="!canApply" (click)="save()">Apply</button>
   </mat-dialog-actions>
 </div>

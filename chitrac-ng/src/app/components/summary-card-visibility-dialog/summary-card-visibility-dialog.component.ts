@@ -24,6 +24,7 @@ export interface SummaryCardVisibilityDialogData {
   emptyHiddenText?: string;
   compactCards?: boolean;
   maxVisible?: number;
+  exactVisible?: number;
 }
 
 @Component({
@@ -44,6 +45,7 @@ export class SummaryCardVisibilityDialogComponent {
   emptyHiddenText = 'No infoboxes hidden';
   compactCards = false;
   maxVisible: number | null = null;
+  exactVisible: number | null = null;
   selectedShowLabel: string | null = null;
   selectedHideLabel: string | null = null;
 
@@ -61,6 +63,7 @@ export class SummaryCardVisibilityDialogComponent {
     this.emptyHiddenText = data.emptyHiddenText || this.emptyHiddenText;
     this.compactCards = data.compactCards === true;
     this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
+    this.exactVisible = typeof data.exactVisible === 'number' ? data.exactVisible : null;
   }
 
   get showCards(): SummaryCardVisibilityOption[] {
@@ -89,7 +92,6 @@ export class SummaryCardVisibilityDialogComponent {
 
   showSelected(): void {
     if (!this.selectedHideLabel) return;
-    if (!this.canShowMore) return;
     this.visibility = { ...this.visibility, [this.selectedHideLabel]: true };
     this.selectedHideLabel = null;
   }
@@ -98,7 +100,14 @@ export class SummaryCardVisibilityDialogComponent {
     return this.maxVisible == null || this.showCards.length < this.maxVisible;
   }
 
-  get maxVisibleMessage(): string | null {
+  get canApply(): boolean {
+    return this.exactVisible == null || this.showCards.length === this.exactVisible;
+  }
+
+  get visibleCountMessage(): string | null {
+    if (this.exactVisible != null) {
+      return `${this.showCards.length} selected. Exactly ${this.exactVisible} required.`;
+    }
     if (this.maxVisible == null || this.canShowMore) return null;
     return `Maximum visible: ${this.maxVisible}`;
   }
