@@ -186,6 +186,228 @@ function topOperatorsFromRecords(records) {
     .slice(0, 10);
 }
 
+function overlapRange(startInput, endInput, windowStart, windowEnd) {
+  const start = startInput ? new Date(startInput) : null;
+  const end = endInput ? new Date(endInput) : windowEnd;
+  if (!start || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const clampedStart = start > windowStart ? start : windowStart;
+  const clampedEnd = end < windowEnd ? end : windowEnd;
+  if (clampedStart >= clampedEnd) return null;
+
+  const fullMs = Math.max(0, end - start);
+  const overlapMs = clampedEnd - clampedStart;
+  return {
+    start,
+    end,
+    clampedStart,
+    clampedEnd,
+    overlapMs,
+    factor: fullMs > 0 ? overlapMs / fullMs : 1,
+  };
+}
+
+function timelineStatusFromSession(session) {
+  const status = session.startState?.status || session.status || session.endState?.status || {};
+  const code = Number(status.id ?? status.code ?? 0);
+  if (code === 1) return { key: "running", label: "Running", code };
+  if (code >= 2) return { key: "faulted", label: status.name || "Faulted", code };
+  return { key: "paused", label: status.name || "Paused", code };
+}
+
+function safeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function sessionCount(session, factor = 1) {
+  const count = session.metrics?.totals?.counts?.valid ??
+    session.totalCount ??
+    (Array.isArray(session.counts) ? session.counts.length : 0);
+  return Math.round(safeNumber(count) * factor);
+}
+
+function sessionEfficiency(session) {
+  const workedMs = safeNumber(session.metrics?.timers?.worked ?? session.workTime ?? session.runtime);
+  const timeCreditMs = safeNumber(session.metrics?.totals?.timeCredit ?? session.totalTimeCredit);
+  return workedMs > 0 ? +((timeCreditMs / workedMs) * 100).toFixed(2) : 0;
+}
+
+function timelineChunkFromSession(session, windowStart, windowEnd) {
+  const range = overlapRange(session.timestamps?.start, session.timestamps?.end, windowStart, windowEnd);
+  if (!range) return null;
+
+  const status = timelineStatusFromSession(session);
+  return {
+    id: String(session._id),
+    type: "session",
+    status: status.key,
+    statusLabel: status.label,
+    statusCode: status.code,
+    start: range.clampedStart,
+    end: range.clampedEnd,
+    sessionStart: range.start,
+    sessionEnd: session.timestamps?.end ? range.end : null,
+    durationMs: range.overlapMs,
+    totalCount: sessionCount(session, range.factor),
+    efficiency: sessionEfficiency(session),
+    current: !session.timestamps?.end,
+  };
+}
+
+function offlineChunk(machine, start, end, index) {
+  if (start >= end) return null;
+  return {
+    id: `offline-${machine.serial}-${index}`,
+    type: "offline",
+    status: "offline",
+    statusLabel: "Offline",
+    statusCode: -1,
+    start,
+    end,
+    sessionStart: start,
+    sessionEnd: end,
+    durationMs: end - start,
+    totalCount: 0,
+    efficiency: null,
+    current: false,
+  };
+}
+
+function machineIdentityFromSession(session) {
+  const serial = Number(session.machine?.serial ?? session.machine?.id);
+  if (!Number.isFinite(serial)) return null;
+  return {
+    serial,
+    name: session.machine?.name || `Serial ${serial}`,
+  };
+}
+
+async function buildMachineTimelineFromSessions(db, config, start, end) {
+  const windowStart = new Date(start);
+  const windowEnd = new Date(end);
+  if (Number.isNaN(windowStart.getTime()) || Number.isNaN(windowEnd.getTime()) || windowStart >= windowEnd) {
+    return { machines: [], completedSessions: [], currentSessions: [] };
+  }
+
+  const sessionQuery = {
+    "timestamps.start": { $lt: windowEnd },
+    $or: [
+      { "timestamps.end": { $gt: windowStart } },
+      { "timestamps.end": null },
+      { "timestamps.end": { $exists: false } },
+    ],
+  };
+
+  const [machines, sessions] = await Promise.all([
+    db.collection(config.machineCollectionName)
+      .find({})
+      .project({ id: 1, serial: 1, name: 1 })
+      .toArray(),
+    db.collection(config.machineSessionCollectionName)
+      .find(sessionQuery)
+      .project({
+        _id: 1,
+        machine: 1,
+        timestamps: 1,
+        startState: 1,
+        endState: 1,
+        status: 1,
+        runtime: 1,
+        workTime: 1,
+        totalTimeCredit: 1,
+        totalCount: 1,
+        counts: 1,
+        metrics: 1,
+      })
+      .sort({ "machine.name": 1, "machine.serial": 1, "timestamps.start": 1 })
+      .toArray(),
+  ]);
+
+  const machineMap = new Map();
+  for (const machine of machines) {
+    const serial = Number(machine.serial ?? machine.id);
+    if (!Number.isFinite(serial)) continue;
+    machineMap.set(serial, {
+      serial,
+      name: machine.name || `Serial ${serial}`,
+      sessions: [],
+    });
+  }
+
+  const completedSessions = [];
+  const currentSessions = [];
+
+  for (const session of sessions) {
+    const identity = machineIdentityFromSession(session);
+    if (!identity) continue;
+
+    if (!machineMap.has(identity.serial)) {
+      machineMap.set(identity.serial, {
+        serial: identity.serial,
+        name: identity.name,
+        sessions: [],
+      });
+    }
+
+    const chunk = timelineChunkFromSession(session, windowStart, windowEnd);
+    if (!chunk) continue;
+
+    machineMap.get(identity.serial).sessions.push(chunk);
+    const cacheSession = {
+      ...chunk,
+      machine: {
+        serial: identity.serial,
+        name: machineMap.get(identity.serial).name,
+      },
+    };
+    if (chunk.current) currentSessions.push(cacheSession);
+    else completedSessions.push(cacheSession);
+  }
+
+  const timelineMachines = Array.from(machineMap.values())
+    .map((machine) => {
+      const sessionsForMachine = machine.sessions
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+      const chunks = [];
+      let cursor = windowStart;
+      let offlineIndex = 0;
+
+      for (const session of sessionsForMachine) {
+        const sessionStart = new Date(session.start);
+        const sessionEnd = new Date(session.end);
+        const gap = offlineChunk(machine, cursor, sessionStart, offlineIndex);
+        if (gap) {
+          chunks.push(gap);
+          offlineIndex += 1;
+        }
+        chunks.push(session);
+        if (sessionEnd > cursor) cursor = sessionEnd;
+      }
+
+      const trailingGap = offlineChunk(machine, cursor, windowEnd, offlineIndex);
+      if (trailingGap) chunks.push(trailingGap);
+
+      return {
+        serial: machine.serial,
+        name: machine.name,
+        sessions: chunks,
+      };
+    })
+    .filter((machine) => machine.sessions.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  return {
+    machines: timelineMachines,
+    completedSessions,
+    currentSessions,
+    range: {
+      start: windowStart,
+      end: windowEnd,
+    },
+  };
+}
+
 function machineGroupEfficiencyFromRecords(records, previousRecords, start, end, shiftDoc, departmentLookup = new Map()) {
   const elapsedMs = computeShiftElapsedMs(shiftDoc ? [shiftDoc] : [], start, end, SYSTEM_TIMEZONE) || (end - start);
   const byDept = new Map(MACHINE_GROUP_DEPARTMENTS.map((name) => [name, []]));
@@ -308,6 +530,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     itemTotals,
     dailyCounts,
     topOperatorsInitial,
+    machineTimeline,
     groupRecords,
     previousGroupRecords,
     departmentLookup,
@@ -317,6 +540,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     buildItemTotalsFromCache(db, start, end, logger),
     buildCountTotalsFromDailyTotals(db, end, logger),
     buildTopOperatorEfficiencyFromCache(db, start, end, logger),
+    buildMachineTimelineFromSessions(db, config, start, end),
     db.collection(config.totalsDailyCollectionName)
       .find({ type: "machine", "timestamps.create": calendarRange(dateStr) }).toArray(),
     db.collection(config.totalsDailyCollectionName)
@@ -346,6 +570,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     ),
     topOperators,
     dailyCounts,
+    machineTimeline,
   };
 
   return envelope(data, {
@@ -362,6 +587,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
       machineGroupEfficiency: data.machineGroupEfficiency.length > 0,
       topOperators: topOperators.length > 0,
       dailyCounts: dailyCounts.length > 0,
+      machineTimeline: machineTimeline.machines.length > 0,
     },
   });
 }
@@ -376,7 +602,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
     ],
   };
 
-  const [machineRecords, itemRecords, operatorRecords, dailyPreviousRecords, departmentLookup] = await Promise.all([
+  const [machineRecords, itemRecords, operatorRecords, dailyPreviousRecords, departmentLookup, machineTimeline] = await Promise.all([
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "machine" }).toArray(),
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "item" }).toArray(),
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "operator-machine" }).toArray(),
@@ -386,6 +612,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
         "timestamps.create": calendarRange(previousDateStr(dateStr)),
       }).toArray(),
     buildMachineDepartmentLookup(db, config),
+    buildMachineTimelineFromSessions(db, config, start, end),
   ]);
 
   const normalizedMachines = machineRecords.map(normalizeTotalsDocument);
@@ -400,6 +627,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
     machineGroupEfficiency: machineGroupEfficiencyFromRecords(normalizedMachines, normalizedPrevious, start, end, shiftDoc, departmentLookup),
     topOperators: topOperatorsFromRecords(normalizedOperators),
     dailyCounts: await buildDailyCountsForShift(db, config, end, dateStr, normalizedMachines, logger),
+    machineTimeline,
   };
 
   return envelope(data, {
@@ -418,6 +646,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
       machineGroupEfficiency: data.machineGroupEfficiency.length > 0,
       topOperators: data.topOperators.length > 0,
       dailyCounts: data.dailyCounts.length > 0,
+      machineTimeline: data.machineTimeline.machines.length > 0,
     },
     recordCount: {
       machines: machineRecords.length,
@@ -430,4 +659,5 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
 module.exports = {
   buildTodayDailyAnalyticsCache,
   buildShiftDailyAnalyticsCache,
+  buildMachineTimelineFromSessions,
 };

@@ -1,0 +1,90 @@
+<div class="timeline-container">
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading data...</div>
+    </div>
+  </div>
+
+  <div class="timeline-content" *ngIf="hasInitialData">
+    <svg
+      class="timeline-svg"
+      [attr.viewBox]="'0 0 ' + svgWidth + ' ' + svgHeight"
+      preserveAspectRatio="none"
+      focusable="false"
+    >
+      <g class="timeline-title" *ngIf="!useExternalTitle">
+        <text [attr.x]="svgWidth / 2" y="18" text-anchor="middle">Machine Timeline</text>
+      </g>
+
+      <g class="timeline-grid">
+        <line
+          *ngFor="let tick of ticks"
+          [attr.x1]="tick.x"
+          [attr.x2]="tick.x"
+          [attr.y1]="plotTop"
+          [attr.y2]="plotTop + innerHeight"
+        ></line>
+      </g>
+
+      <g class="timeline-row" *ngFor="let machine of viewMachines; trackBy: trackMachine">
+        <text class="machine-label" [attr.x]="plotLeft - 12" [attr.y]="machine.y + 4" text-anchor="end">
+          {{ machine.name }}
+        </text>
+        <line
+          class="row-track"
+          [attr.x1]="plotLeft"
+          [attr.x2]="plotLeft + innerWidth"
+          [attr.y1]="machine.y"
+          [attr.y2]="machine.y"
+        ></line>
+        <rect
+          class="session-chunk"
+          *ngFor="let chunk of machine.chunks; trackBy: trackChunk"
+          [class.current]="chunk.current"
+          [attr.x]="chunk.x"
+          [attr.y]="machine.barY"
+          [attr.width]="chunk.width"
+          [attr.height]="barHeight"
+          [attr.fill]="chunk.color"
+          rx="2"
+          ry="2"
+          (mouseenter)="onChunkEnter($event, chunk)"
+          (mousemove)="onChunkMove($event)"
+          (mouseleave)="onChunkLeave()"
+        ></rect>
+      </g>
+
+      <g class="timeline-axis">
+        <line
+          [attr.x1]="plotLeft"
+          [attr.x2]="plotLeft + innerWidth"
+          [attr.y1]="plotTop + innerHeight"
+          [attr.y2]="plotTop + innerHeight"
+        ></line>
+        <g *ngFor="let tick of ticks">
+          <line
+            [attr.x1]="tick.x"
+            [attr.x2]="tick.x"
+            [attr.y1]="plotTop + innerHeight"
+            [attr.y2]="plotTop + innerHeight + 4"
+          ></line>
+          <text [attr.x]="tick.x" [attr.y]="plotTop + innerHeight + 18" text-anchor="middle">
+            {{ tick.label }}
+          </text>
+        </g>
+      </g>
+    </svg>
+
+    <div class="timeline-tooltip" [class.visible]="tooltip.visible" [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
+      <div *ngFor="let line of tooltip.lines">{{ line }}</div>
+    </div>
+  </div>
+
+  <div class="chart-no-data" *ngIf="!hasInitialData && !isLoading">
+    <div class="chart-no-data-content">
+      <div class="chart-no-data-icon">&#128202;</div>
+      <div class="chart-no-data-text">No timeline data available</div>
+    </div>
+  </div>
+</div>
