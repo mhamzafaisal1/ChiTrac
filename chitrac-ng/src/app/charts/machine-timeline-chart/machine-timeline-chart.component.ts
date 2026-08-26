@@ -103,12 +103,11 @@ export class MachineTimelineChartComponent implements OnChanges {
   }
 
   onChunkEnter(event: MouseEvent, chunk: TimelineViewChunk): void {
-    const target = event.currentTarget as SVGGraphicsElement | null;
-    const hostRect = target?.ownerSVGElement?.getBoundingClientRect();
+    const position = this.resolveTooltipPosition(event);
     this.tooltip = {
       visible: true,
-      x: hostRect ? event.clientX - hostRect.left + 12 : event.offsetX + 12,
-      y: hostRect ? event.clientY - hostRect.top + 12 : event.offsetY + 12,
+      x: position.x,
+      y: position.y,
       lines: chunk.tooltip,
     };
     this.cdr.markForCheck();
@@ -116,12 +115,11 @@ export class MachineTimelineChartComponent implements OnChanges {
 
   onChunkMove(event: MouseEvent): void {
     if (!this.tooltip.visible) return;
-    const target = event.currentTarget as SVGGraphicsElement | null;
-    const hostRect = target?.ownerSVGElement?.getBoundingClientRect();
+    const position = this.resolveTooltipPosition(event);
     this.tooltip = {
       ...this.tooltip,
-      x: hostRect ? event.clientX - hostRect.left + 12 : event.offsetX + 12,
-      y: hostRect ? event.clientY - hostRect.top + 12 : event.offsetY + 12,
+      x: position.x,
+      y: position.y,
     };
     this.cdr.markForCheck();
   }
@@ -253,6 +251,16 @@ export class MachineTimelineChartComponent implements OnChanges {
       `Total Count: ${chunk.totalCount ?? 0}`,
       `Eff%: ${chunk.efficiency == null ? 'N/A' : `${chunk.efficiency.toFixed(2)}%`}`,
     ];
+  }
+
+  private resolveTooltipPosition(event: MouseEvent): { x: number; y: number } {
+    const tooltipWidth = 250;
+    const tooltipHeight = 86;
+    const margin = 12;
+    return {
+      x: Math.min(event.clientX + margin, window.innerWidth - tooltipWidth - margin),
+      y: Math.min(event.clientY + margin, window.innerHeight - tooltipHeight - margin),
+    };
   }
 
   private normalizeStatus(status: unknown): TimelineStatus {
