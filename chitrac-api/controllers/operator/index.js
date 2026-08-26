@@ -23,6 +23,7 @@ const {
   buildOperatorCyclePieFromCache,
   buildDailyEfficiencyFromCache,
   buildOperatorMachineSummaryFromCache,
+  buildOperatorTimelineFromSessions,
   mergeIntervals,
   overlapsAny,
   coalesceItems,
@@ -662,12 +663,13 @@ function constructor(server) {
         .limit(1)
         .next();
 
-      const [nameDoc, itemSummary, countByItem, cyclePie, dailyEfficiency] = await Promise.all([
+      const [nameDoc, itemSummary, countByItem, cyclePie, dailyEfficiency, operatorTimeline] = await Promise.all([
         nameDocPromise,
         buildItemSummaryFromCache(db, opId, start, end, serial),
         buildItemHourlyStackFromCacheForOperator(db, logger, opId, start, end, serial),
         buildOperatorCyclePieFromCache(db, logger, opId, start, end, serial),
         buildDailyEfficiencyFromCache(db, logger, opId, `Operator ${opId}`, start, end, serial, tzParam),
+        buildOperatorTimelineFromSessions(db, config, opId, start, end),
       ]);
 
       const rawName = nameDoc?.operatorName;
@@ -698,6 +700,7 @@ function constructor(server) {
         countByItem,
         cyclePie,
         dailyEfficiency,
+        operatorTimeline,
       });
     } catch (err) {
       logger.error(`Error in ${req.method} ${req.originalUrl}:`, err);
