@@ -2415,6 +2415,241 @@ async function buildOperatorMachineSummaryFromCache(db, operatorId, start, end, 
   };
 }
 
+function operatorTimelineSafeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function operatorTimelineOverlap(startInput, endInput, windowStart, windowEnd) {
+  const start = startInput ? new Date(startInput) : null;
+  const end = endInput ? new Date(endInput) : windowEnd;
+  if (!start || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const clampedStart = start > windowStart ? start : windowStart;
+  const clampedEnd = end < windowEnd ? end : windowEnd;
+  if (clampedStart >= clampedEnd) return null;
+
+  const fullMs = Math.max(0, end - start);
+  const overlapMs = clampedEnd - clampedStart;
+  return {
+    start,
+    end,
+    clampedStart,
+    clampedEnd,
+    overlapMs,
+    factor: fullMs > 0 ? overlapMs / fullMs : 1,
+  };
+}
+
+function operatorTimelineStatusFromSession(session) {
+  const status = session.startState?.status || session.status || session.endState?.status || {};
+  const codeValue =
+    status.id ??
+    status.code ??
+    session.startState?.id ??
+    session.startState?.code ??
+    session.endState?.id ??
+    session.endState?.code;
+  const code = Number(codeValue);
+  if (Number.isFinite(code)) {
+    if (code === 1) return { key: "running", label: "Running", code };
+    if (code >= 2) return { key: "faulted", label: status.name || "Faulted", code };
+    return { key: "paused", label: status.name || "Paused", code };
+  }
+
+  const name = String(status.name || session.startState?.name || session.endState?.name || "").toLowerCase();
+  if (name === "run" || name === "running") return { key: "running", label: status.name || "Running", code: 1 };
+  if (name === "paused" || name === "timeout") return { key: "paused", label: status.name || "Paused", code: 0 };
+  if (/\b(fault|faulted|error|down|stop)\b/.test(name)) return { key: "faulted", label: status.name || "Faulted", code: 2 };
+
+  return { key: "running", label: "Running", code: 1 };
+}
+
+function operatorTimelineSessionCount(session, factor = 1) {
+  const count = session.metrics?.totals?.counts?.valid ??
+    session.totalCount ??
+    (Array.isArray(session.counts) ? session.counts.length : 0);
+  return Math.round(operatorTimelineSafeNumber(count) * factor);
+}
+
+function operatorTimelineSessionEfficiency(session) {
+  const workedSec = operatorTimelineSafeNumber(
+    session.metrics?.timers?.worked ?? session.workTime ?? session.runtime
+  );
+  const timeCreditSec = operatorTimelineSafeNumber(
+    session.metrics?.totals?.timeCredit ?? session.totalTimeCredit
+  );
+  return workedSec > 0 ? +((timeCreditSec / workedSec) * 100).toFixed(2) : 0;
+}
+
+function operatorTimelineMachineIdentity(session) {
+  const serial = Number(session.machine?.serial ?? session.machine?.id);
+  if (!Number.isFinite(serial)) return {
+    serial: "unknown",
+    name: session.machine?.name || "Unknown",
+  };
+  return {
+    serial,
+    name: session.machine?.name || `Serial ${serial}`,
+  };
+}
+
+function operatorTimelineChunkFromSession(session, windowStart, windowEnd) {
+  const range = operatorTimelineOverlap(session.timestamps?.start, session.timestamps?.end, windowStart, windowEnd);
+  if (!range) return null;
+
+  const status = operatorTimelineStatusFromSession(session);
+  return {
+    id: String(session._id),
+    type: "session",
+    status: status.key,
+    statusLabel: status.label,
+    statusCode: status.code,
+    start: range.clampedStart,
+    end: range.clampedEnd,
+    sessionStart: range.start,
+    sessionEnd: session.timestamps?.end ? range.end : null,
+    durationMs: range.overlapMs,
+    totalCount: operatorTimelineSessionCount(session, range.factor),
+    efficiency: operatorTimelineSessionEfficiency(session),
+    current: !session.timestamps?.end,
+  };
+}
+
+function operatorTimelineOfflineChunk(machine, start, end, index) {
+  if (start >= end) return null;
+  return {
+    id: `offline-${machine.serial}-${index}`,
+    type: "offline",
+    status: "offline",
+    statusLabel: "Idle",
+    statusCode: -1,
+    start,
+    end,
+    sessionStart: start,
+    sessionEnd: end,
+    durationMs: end - start,
+    totalCount: 0,
+    efficiency: null,
+    current: false,
+  };
+}
+
+async function buildOperatorTimelineFromSessions(db, config, operatorId, start, end) {
+  const opId = Number(operatorId);
+  const windowStart = new Date(start);
+  const windowEnd = new Date(end);
+  if (!opId || Number.isNaN(opId)) return { operator: null, machines: [], completedSessions: [], currentSessions: [] };
+  if (Number.isNaN(windowStart.getTime()) || Number.isNaN(windowEnd.getTime()) || windowStart >= windowEnd) {
+    return { operator: { id: opId, name: `Operator ${opId}` }, machines: [], completedSessions: [], currentSessions: [] };
+  }
+
+  const sessions = await db.collection(config.operatorSessionCollectionName)
+    .find({
+      "operator.id": opId,
+      "timestamps.start": { $lt: windowEnd },
+      $or: [
+        { "timestamps.end": { $gt: windowStart } },
+        { "timestamps.end": null },
+        { "timestamps.end": { $exists: false } },
+      ],
+    })
+    .project({
+      _id: 1,
+      operator: 1,
+      machine: 1,
+      timestamps: 1,
+      startState: 1,
+      endState: 1,
+      status: 1,
+      runtime: 1,
+      workTime: 1,
+      totalTimeCredit: 1,
+      totalCount: 1,
+      counts: 1,
+      metrics: 1,
+    })
+    .sort({ "timestamps.start": 1 })
+    .toArray();
+
+  const operatorName = formatHumanName(
+    sessions.find((session) => session.operator?.name)?.operator?.name,
+    `Operator ${opId}`
+  );
+  const machineMap = new Map();
+  const completedSessions = [];
+  const currentSessions = [];
+
+  for (const session of sessions) {
+    const identity = operatorTimelineMachineIdentity(session);
+    const key = String(identity.serial);
+    if (!machineMap.has(key)) {
+      machineMap.set(key, {
+        serial: identity.serial,
+        name: identity.name,
+        sessions: [],
+      });
+    }
+
+    const chunk = operatorTimelineChunkFromSession(session, windowStart, windowEnd);
+    if (!chunk) continue;
+
+    machineMap.get(key).sessions.push(chunk);
+    const cacheSession = {
+      ...chunk,
+      operator: { id: opId, name: operatorName },
+      machine: {
+        serial: identity.serial,
+        name: machineMap.get(key).name,
+      },
+    };
+    if (chunk.current) currentSessions.push(cacheSession);
+    else completedSessions.push(cacheSession);
+  }
+
+  const machines = Array.from(machineMap.values())
+    .map((machine) => {
+      const sessionsForMachine = machine.sessions
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+      const chunks = [];
+      let cursor = windowStart;
+      let offlineIndex = 0;
+
+      for (const session of sessionsForMachine) {
+        const sessionStart = new Date(session.start);
+        const sessionEnd = new Date(session.end);
+        const gap = operatorTimelineOfflineChunk(machine, cursor, sessionStart, offlineIndex);
+        if (gap) {
+          chunks.push(gap);
+          offlineIndex += 1;
+        }
+        chunks.push(session);
+        if (sessionEnd > cursor) cursor = sessionEnd;
+      }
+
+      const trailingGap = operatorTimelineOfflineChunk(machine, cursor, windowEnd, offlineIndex);
+      if (trailingGap) chunks.push(trailingGap);
+
+      return {
+        serial: machine.serial,
+        name: machine.name,
+        sessions: chunks,
+      };
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
+
+  return {
+    operator: { id: opId, name: operatorName },
+    machines,
+    completedSessions,
+    currentSessions,
+    range: {
+      start: windowStart,
+      end: windowEnd,
+    },
+  };
+}
+
 
 // ============================================================
 // Functions consolidated from operatorDashboardBuilder.js
@@ -3680,6 +3915,7 @@ module.exports = {
     buildItemHourlyStackFromCacheForOperator,
     buildItemSummaryFromCache,
     buildOperatorMachineSummaryFromCache,
+    buildOperatorTimelineFromSessions,
     // --- Functions consolidated from operatorDashboardBuilder.js ---
     getAllOperatorIds,
     buildOperatorPerformance,
