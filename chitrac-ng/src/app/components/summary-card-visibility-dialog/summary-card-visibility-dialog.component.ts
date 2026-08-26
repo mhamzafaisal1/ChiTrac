@@ -6,8 +6,8 @@ import { MatIconModule } from '@angular/material/icon';
 
 export interface SummaryCardVisibilityOption {
   label: string;
-  icon: string;
-  value: string | number;
+  icon?: string;
+  value?: string | number;
   tone?: string;
   sparklineLinePoints?: string;
   sparklineAreaPath?: string;
@@ -16,6 +16,14 @@ export interface SummaryCardVisibilityOption {
 export interface SummaryCardVisibilityDialogData {
   cards: SummaryCardVisibilityOption[];
   visibility: Record<string, boolean>;
+  title?: string;
+  description?: string;
+  showLabel?: string;
+  hideLabel?: string;
+  emptyShownText?: string;
+  emptyHiddenText?: string;
+  compactCards?: boolean;
+  maxVisible?: number;
 }
 
 @Component({
@@ -28,6 +36,14 @@ export interface SummaryCardVisibilityDialogData {
 export class SummaryCardVisibilityDialogComponent {
   cards: SummaryCardVisibilityOption[] = [];
   visibility: Record<string, boolean> = {};
+  title = 'Show/Hide Infoboxes';
+  description = 'Choose which dashboard infoboxes are visible in this layout.';
+  showLabel = 'Show';
+  hideLabel = 'Hide';
+  emptyShownText = 'No infoboxes shown';
+  emptyHiddenText = 'No infoboxes hidden';
+  compactCards = false;
+  maxVisible: number | null = null;
   selectedShowLabel: string | null = null;
   selectedHideLabel: string | null = null;
 
@@ -37,6 +53,14 @@ export class SummaryCardVisibilityDialogComponent {
   ) {
     this.cards = data.cards || [];
     this.visibility = { ...(data.visibility || {}) };
+    this.title = data.title || this.title;
+    this.description = data.description || this.description;
+    this.showLabel = data.showLabel || this.showLabel;
+    this.hideLabel = data.hideLabel || this.hideLabel;
+    this.emptyShownText = data.emptyShownText || this.emptyShownText;
+    this.emptyHiddenText = data.emptyHiddenText || this.emptyHiddenText;
+    this.compactCards = data.compactCards === true;
+    this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
   }
 
   get showCards(): SummaryCardVisibilityOption[] {
@@ -65,8 +89,18 @@ export class SummaryCardVisibilityDialogComponent {
 
   showSelected(): void {
     if (!this.selectedHideLabel) return;
+    if (!this.canShowMore) return;
     this.visibility = { ...this.visibility, [this.selectedHideLabel]: true };
     this.selectedHideLabel = null;
+  }
+
+  get canShowMore(): boolean {
+    return this.maxVisible == null || this.showCards.length < this.maxVisible;
+  }
+
+  get maxVisibleMessage(): string | null {
+    if (this.maxVisible == null || this.canShowMore) return null;
+    return `Maximum visible: ${this.maxVisible}`;
   }
 
   cancel(): void {

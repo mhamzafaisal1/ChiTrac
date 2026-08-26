@@ -1,5 +1,16 @@
 <div class="dashboard-container" [class.dark-mode]="isDarkTheme" [class.layout-editing]="layoutEditing">
   <div class="dashboard-wrapper">
+    <button
+      class="chart-library-button"
+      type="button"
+      *ngIf="layoutEditing"
+      (click)="openChartVisibilityDialog()"
+      aria-label="Show or hide charts"
+    >
+      <mat-icon>visibility</mat-icon>
+      <span>Show/Hide Charts</span>
+    </button>
+
     <div
       class="charts-grid"
       #chartsGrid
@@ -9,7 +20,7 @@
     >
       <div
         class="chart-shell"
-        *ngFor="let tile of chartTiles; trackBy: trackTile"
+        *ngFor="let tile of visibleChartTiles; trackBy: trackTile"
         cdkDrag
         [cdkDragDisabled]="!layoutEditing"
       >
