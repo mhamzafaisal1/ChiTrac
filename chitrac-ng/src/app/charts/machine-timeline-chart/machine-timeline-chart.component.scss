@@ -58,8 +58,8 @@
 }
 
 .timeline-tooltip {
-  position: absolute;
-  z-index: 20;
+  position: fixed;
+  z-index: 10000;
   max-width: 240px;
   padding: 7px 9px;
   border-radius: 4px;
