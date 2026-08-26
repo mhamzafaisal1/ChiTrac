@@ -34,10 +34,14 @@
 
 .limit-message {
   margin: 0.25rem 0 0.65rem;
-  color: var(--sg-color-orange, #f9a825);
+  color: var(--theme-color-on-surface-variant, #69707a);
   font-size: 0.82rem;
   font-weight: 600;
   text-align: center;
+
+  &.invalid {
+    color: var(--sg-color-orange, #f9a825);
+  }
 }
 
 .list-panel {

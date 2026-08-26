@@ -189,7 +189,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
         emptyShownText: 'No charts shown',
         emptyHiddenText: 'No charts hidden',
         compactCards: true,
-        maxVisible: this.maxVisibleCharts,
+        exactVisible: this.maxVisibleCharts,
         cards: this.getChartVisibilityOptions(),
         visibility: this.getChartVisibilityForDialog(),
       },
