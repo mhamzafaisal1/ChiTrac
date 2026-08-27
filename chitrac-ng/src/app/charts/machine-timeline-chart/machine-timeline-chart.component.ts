@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, OnChanges, SimpleChanges, ViewChild, inject } from '@angular/core';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
 
@@ -60,6 +60,8 @@ interface TimelineViewMachine {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class MachineTimelineChartComponent implements OnChanges {
+  @ViewChild('tooltipEl') tooltipEl?: ElementRef<HTMLElement>;
+
   @Input() chartWidth = 600;
   @Input() chartHeight = 450;
   @Input() preloadedData?: MachineTimelinePayload | MachineTimelineMachine[] | null;
@@ -103,12 +105,19 @@ export class MachineTimelineChartComponent implements OnChanges {
   }
 
   onChunkEnter(event: MouseEvent, chunk: TimelineViewChunk): void {
-    const position = this.resolveTooltipPosition(event);
     this.tooltip = {
       visible: true,
+      x: 0,
+      y: 0,
+      lines: chunk.tooltip,
+    };
+    this.cdr.detectChanges();
+
+    const position = this.resolveTooltipPosition(event);
+    this.tooltip = {
+      ...this.tooltip,
       x: position.x,
       y: position.y,
-      lines: chunk.tooltip,
     };
     this.cdr.markForCheck();
   }
@@ -254,12 +263,32 @@ export class MachineTimelineChartComponent implements OnChanges {
   }
 
   private resolveTooltipPosition(event: MouseEvent): { x: number; y: number } {
-    const tooltipWidth = 250;
-    const tooltipHeight = 86;
-    const margin = 12;
+    const target = event.currentTarget as SVGGraphicsElement | null;
+    const host = target?.ownerSVGElement?.parentElement;
+    const bounds = host?.getBoundingClientRect();
+    if (!bounds) {
+      return { x: event.offsetX + 12, y: event.offsetY };
+    }
+
+    const x = event.clientX - bounds.left;
+    const y = event.clientY - bounds.top;
+    const tooltipNode = this.tooltipEl?.nativeElement;
+    const tooltipWidth = tooltipNode?.offsetWidth || 0;
+    const tooltipHeight = tooltipNode?.offsetHeight || 0;
+    const gutter = 8;
+    let left = x + 12;
+    let top = y;
+
+    if (tooltipWidth && left + tooltipWidth + gutter > bounds.width) {
+      left = x - tooltipWidth - 12;
+    }
+    if (tooltipHeight && top + tooltipHeight + gutter > bounds.height) {
+      top = bounds.height - tooltipHeight - gutter;
+    }
+
     return {
-      x: Math.min(event.clientX + margin, window.innerWidth - tooltipWidth - margin),
-      y: Math.min(event.clientY + margin, window.innerHeight - tooltipHeight - margin),
+      x: Math.max(gutter, Math.min(left, bounds.width - tooltipWidth - gutter)),
+      y: Math.max(gutter, top),
     };
   }
 

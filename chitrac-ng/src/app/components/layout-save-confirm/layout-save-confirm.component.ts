@@ -24,8 +24,11 @@ import { MatIconModule } from '@angular/material/icon';
   `,
   styles: [`
     .layout-save-dialog {
-      min-width: 360px;
+      width: 100%;
+      min-width: 0;
       padding-top: 8px;
+      overflow: hidden;
+      box-sizing: border-box;
     }
 
     .layout-save-dialog > mat-icon {
@@ -45,6 +48,8 @@ import { MatIconModule } from '@angular/material/icon';
     mat-dialog-content {
       color: var(--theme-color-on-surface-variant);
       text-align: center;
+      overflow: visible;
+      white-space: normal;
     }
 
     mat-dialog-actions {
@@ -53,10 +58,13 @@ import { MatIconModule } from '@angular/material/icon';
       justify-content: center;
       gap: 12px;
       padding-top: 14px;
+      padding-inline: 0;
     }
 
     mat-dialog-actions button {
-      min-width: 112px;
+      flex: 1 1 0;
+      max-width: 132px;
+      min-width: 0;
       margin: 0;
       white-space: nowrap;
     }

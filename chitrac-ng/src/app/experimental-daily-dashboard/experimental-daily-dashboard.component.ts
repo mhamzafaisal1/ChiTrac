@@ -242,7 +242,8 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
 
   private confirmAndSaveLayout(): void {
     const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: '380px',
+      width: '460px',
+      maxWidth: 'calc(100vw - 32px)',
       autoFocus: false
     });
 

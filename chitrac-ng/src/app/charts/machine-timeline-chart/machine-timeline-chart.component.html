@@ -76,7 +76,7 @@
       </g>
     </svg>
 
-    <div class="timeline-tooltip" [class.visible]="tooltip.visible" [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
+    <div #tooltipEl class="timeline-tooltip" [class.visible]="tooltip.visible" [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
       <div *ngFor="let line of tooltip.lines">{{ line }}</div>
     </div>
   </div>

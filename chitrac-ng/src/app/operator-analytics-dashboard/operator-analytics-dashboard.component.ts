@@ -635,7 +635,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private confirmAndSaveLayout(): void {
     const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: '380px',
+      width: '460px',
+      maxWidth: 'calc(100vw - 32px)',
       autoFocus: false,
     });
 
