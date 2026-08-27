@@ -69,6 +69,7 @@ export class MachineTimelineChartComponent implements OnChanges {
 
   isLoading = false;
   hasInitialData = false;
+  dummyMode = true;
   viewMachines: TimelineViewMachine[] = [];
   ticks: TimelineTick[] = [];
   tooltip: { visible: boolean; x: number; y: number; lines: string[] } = {
@@ -93,6 +94,10 @@ export class MachineTimelineChartComponent implements OnChanges {
   private cdr = inject(ChangeDetectorRef);
 
   ngOnChanges(_changes: SimpleChanges): void {
+    if (!this.preloadedData) {
+      this.enterDummy();
+      return;
+    }
     this.buildView();
   }
 
@@ -164,6 +169,7 @@ export class MachineTimelineChartComponent implements OnChanges {
     this.ticks = this.buildTicks();
     this.hasInitialData = this.viewMachines.length > 0;
     this.isLoading = false;
+    this.dummyMode = false;
     this.tooltip = { ...this.tooltip, visible: false };
     this.cdr.markForCheck();
   }
@@ -324,5 +330,15 @@ export class MachineTimelineChartComponent implements OnChanges {
       hour: 'numeric',
       minute: '2-digit',
     });
+  }
+
+  private enterDummy(): void {
+    this.isLoading = true;
+    this.dummyMode = true;
+    this.hasInitialData = false;
+    this.viewMachines = [];
+    this.ticks = [];
+    this.tooltip = { ...this.tooltip, visible: false };
+    this.cdr.markForCheck();
   }
 }

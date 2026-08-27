@@ -81,7 +81,11 @@
     </div>
   </div>
 
-  <div class="chart-no-data" *ngIf="!hasInitialData && !isLoading">
+  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
+    <div class="loading-spinner dummy-chart">⏳</div>
+  </div>
+
+  <div class="chart-no-data" *ngIf="!hasInitialData && !dummyMode && !isLoading">
     <div class="chart-no-data-content">
       <div class="chart-no-data-icon">&#128202;</div>
       <div class="chart-no-data-text">No timeline data available</div>

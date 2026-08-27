@@ -55,16 +55,16 @@ import { MatIconModule } from '@angular/material/icon';
     mat-dialog-actions {
       display: flex;
       flex-wrap: nowrap;
-      justify-content: center;
-      gap: 12px;
+      justify-content: space-between;
+      gap: clamp(10px, 3vw, 18px);
       padding-top: 14px;
-      padding-inline: 0;
+      padding-inline: clamp(16px, 5%, 28px);
     }
 
     mat-dialog-actions button {
       flex: 1 1 0;
-      max-width: 132px;
       min-width: 0;
+      max-width: none;
       margin: 0;
       white-space: nowrap;
     }
