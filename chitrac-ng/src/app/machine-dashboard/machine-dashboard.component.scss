@@ -224,11 +224,6 @@
   &.layout-editing {
     padding-right: 2.65rem;
     cursor: grab;
-
-    .summary-sparkline {
-      right: 2.75rem;
-      width: min(38%, 8.5rem);
-    }
   }
 
   &.cdk-drag-preview {
