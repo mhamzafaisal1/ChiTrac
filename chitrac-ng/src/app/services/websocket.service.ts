@@ -350,16 +350,34 @@ export class WebsocketService {
     }
 
     if (message.scope === 'today' || message.scope === 'currentShift') {
+      const scopedEnvelope = this.resolveScopedEnvelope(message.cache, message.scope);
+      const nextCurrentShift = message.scope === 'currentShift'
+        ? scopedEnvelope
+        : current.currentShift;
+
       this.dashboardCacheSubject.next({
         ...current,
-        [message.scope]: message.cache as DashboardCacheEnvelope,
+        [message.scope]: scopedEnvelope,
         activeShift: message.scope === 'currentShift'
-          ? this.activeShiftFromCurrentShift(message.cache as DashboardCacheEnvelope)
+          ? (cache?.activeShift || this.activeShiftFromCurrentShift(nextCurrentShift))
           : current.activeShift,
         countSparkline: cache?.countSparkline || current.countSparkline,
         dashboard: message.dashboard || current.dashboard
       });
     }
+  }
+
+  private resolveScopedEnvelope(
+    cache: DashboardCacheEnvelope | DashboardCacheState | undefined,
+    scope: DashboardCacheScope
+  ): DashboardCacheEnvelope | undefined {
+    if (!cache) {
+      return undefined;
+    }
+
+    const state = cache as DashboardCacheState;
+    const envelope = cache as DashboardCacheEnvelope;
+    return state[scope] || envelope;
   }
 
   private activeShiftFromCurrentShift(currentShift?: DashboardCacheEnvelope): ActiveShiftIndicator {
