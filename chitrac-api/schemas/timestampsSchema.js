@@ -7,7 +7,8 @@ const timestampKeys = [
   'update',
   'start',
   'end',
-  'inactive'
+  'inactive',
+  'sync'
 ];
 
 const dateField = (description) => ({
@@ -29,7 +30,8 @@ const schema = {
     update: dateField('Timestamp of when the object/document was last updated. Initially this is the same as create, only changes if the object is updated/edited.'),
     start: dateField('Optional timestamp of when a session, or other period of time, started. Should never be changed once stamped.'),
     end: dateField('Optional timestamp of when a session, or other period of time, ended. Should never be changed once stamped.'),
-    inactive: dateField('Optional timestamp of when an object/document was made inactive. Should only exist if and when an object/document is made inactive.')
+    inactive: dateField('Optional timestamp of when an object/document was made inactive. Should only exist if and when an object/document is made inactive.'),
+    sync: dateField('Optional timestamp of when the object/document was last synced with a main/cloud server.')
   },
   additionalProperties: false
 };
@@ -152,7 +154,15 @@ const utils = {
    * @param {Date|string|number} inactiveTimestamp - Required timestamp to be applied to .inactive
    * @returns {object} New timestamps object with Date properties
    */
-  stampInactive: (timestampsObjectToStamp, inactiveTimestamp) => stampField(timestampsObjectToStamp, 'inactive', inactiveTimestamp)
+  stampInactive: (timestampsObjectToStamp, inactiveTimestamp) => stampField(timestampsObjectToStamp, 'inactive', inactiveTimestamp),
+
+  /**
+   * Stamp the sync timestamp on an existing timestamps object
+   * @param {object} timestampsObjectToStamp - Required existing timestamps object to update
+   * @param {Date|string|number} syncTimestamp - Required timestamp to be applied to .sync
+   * @returns {object} New timestamps object with Date properties
+   */
+  stampSync: (timestampsObjectToStamp, syncTimestamp) => stampField(timestampsObjectToStamp, 'sync', syncTimestamp)
 };
 
 module.exports = {
