@@ -241,8 +241,12 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   logout() {
-    this.userService.logout().subscribe(x => x);
-    this.router.navigate(['/']);
+    const shouldRedirect = this.isCurrentRouteProtectedForAnonymous();
+    this.userService.logout().subscribe(() => {
+      if (shouldRedirect) {
+        this.router.navigate(['/']);
+      }
+    });
   }
 
   darkModeToggle() {
@@ -304,6 +308,28 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     );
 
     return routeMatch?.menu || 'main';
+  }
+
+  private isCurrentRouteProtectedForAnonymous(): boolean {
+    const currentPath = this.router.url.split('?')[0].split('#')[0].replace(/^\/+/, '');
+    return this.router.config.some(route =>
+      Array.isArray(route.canActivate) &&
+      route.canActivate.length > 0 &&
+      this.routePatternMatchesPath(route.path, currentPath)
+    );
+  }
+
+  private routePatternMatchesPath(routePath: string | undefined, currentPath: string): boolean {
+    if (!routePath || routePath === '**') return false;
+
+    const routeSegments = routePath.split('/').filter(Boolean);
+    const currentSegments = currentPath.split('/').filter(Boolean);
+
+    if (currentSegments.length < routeSegments.length) return false;
+
+    return routeSegments.every((segment, index) =>
+      segment.startsWith(':') || segment === currentSegments[index]
+    );
   }
 
   onDateTimeModalClose(): void {

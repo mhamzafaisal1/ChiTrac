@@ -5,7 +5,8 @@
       <div class="chart-tile-text">
         <div class="chart-tile-title" *ngIf="title">{{ title }}</div>
         <div class="chart-tile-subtitle" *ngIf="subtitle || updatedAt">
-          <span *ngIf="subtitle">{{ subtitle }}</span>
+          <strong *ngIf="subtitle && subtitleStrong">{{ subtitle }}</strong>
+          <span *ngIf="subtitle && !subtitleStrong">{{ subtitle }}</span>
           <span *ngIf="subtitle && updatedAt"> &mdash; </span>
           <span *ngIf="updatedAt">{{ updatedAt }}</span>
         </div>

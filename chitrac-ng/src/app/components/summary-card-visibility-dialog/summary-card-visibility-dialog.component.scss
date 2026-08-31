@@ -32,6 +32,18 @@
   padding-top: 0.4rem;
 }
 
+.limit-message {
+  margin: 0.25rem 0 0.65rem;
+  color: var(--theme-color-on-surface-variant, #69707a);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+
+  &.invalid {
+    color: var(--sg-color-orange, #f9a825);
+  }
+}
+
 .list-panel {
   min-height: 18rem;
   padding: 0.75rem;
@@ -71,6 +83,10 @@
     outline: 2px solid var(--theme-color-primary, #1c9bd1);
     outline-offset: 2px;
   }
+
+  &.compact {
+    margin-bottom: 0.45rem;
+  }
 }
 
 .summary-card-preview {
@@ -92,6 +108,22 @@
   .summary-icon {
     flex: 0 0 auto;
     color: var(--theme-color-primary, #1c9bd1);
+  }
+
+  &.compact {
+    min-height: 2.85rem;
+    padding: 0.65rem 0.75rem;
+    border-left-width: 3px;
+
+    .summary-copy {
+      width: 100%;
+    }
+
+    span {
+      color: var(--theme-color-text, #202124);
+      font-size: 0.86rem;
+      font-weight: 600;
+    }
   }
 
   .summary-copy {

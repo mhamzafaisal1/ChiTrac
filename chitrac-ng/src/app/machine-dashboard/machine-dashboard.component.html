@@ -34,7 +34,13 @@
       <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
         <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
           <path class="sparkline-fill" [attr.d]="card.sparklineAreaPath"></path>
-          <polyline class="sparkline-line" [attr.points]="card.sparklineLinePoints"></polyline>
+          <polyline
+            class="sparkline-line"
+            *ngFor="let segment of card.sparklineSegments"
+            [class.break]="segment.shiftState === 'break'"
+            [class.outside-shift]="segment.shiftState === 'outsideShift'"
+            [attr.points]="segment.linePoints"
+          ></polyline>
         </svg>
       </div>
     </article>

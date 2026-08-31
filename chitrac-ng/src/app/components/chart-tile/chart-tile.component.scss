@@ -68,6 +68,10 @@
   line-height: 15px;
   opacity: 0.72;
   white-space: nowrap;
+
+  strong {
+    font-weight: 800;
+  }
 }
 
 .chart-content {

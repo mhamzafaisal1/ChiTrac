@@ -94,6 +94,29 @@ function buildServerSnapshot(server) {
     };
 }
 
+function activeShiftIndicatorFromCache(currentShiftCache) {
+    const meta = currentShiftCache?.meta || {};
+    const isCurrent = meta.mode === 'current' && meta.shiftId;
+
+    if (!isCurrent) {
+        return {
+            shiftId: null,
+            shift: null,
+            mode: 'none',
+            start: null,
+            end: null
+        };
+    }
+
+    return {
+        shiftId: String(meta.shiftId),
+        shift: meta.shift || null,
+        mode: 'current',
+        start: meta.start || null,
+        end: meta.end || null
+    };
+}
+
 function buildDashboardCacheSnapshot(server) {
     const cache = server.cache || {};
 
@@ -104,6 +127,7 @@ function buildDashboardCacheSnapshot(server) {
         cache: {
             today: cache.today || {},
             currentShift: cache.currentShift || {},
+            activeShift: activeShiftIndicatorFromCache(cache.currentShift),
             lastSevenDays: cache.lastSevenDays || {},
             countSparkline: cache.countSparkline || {},
             dashboard: cache.dashboard || {}

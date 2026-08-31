@@ -38,6 +38,7 @@ import { OperatorCyclePieChartComponent } from '../operator-cycle-pie-chart/oper
 import { OperatorFaultHistoryComponent } from '../operator-fault-history/operator-fault-history.component';
 import { OperatorLineChartComponent } from '../operator-line-chart/operator-line-chart.component';
 import { OperatorMachineSummaryComponent } from '../operator-machine-summary/operator-machine-summary.component';
+import { OperatorTimelineChartComponent } from '../operator-timeline-chart/operator-timeline-chart.component';
 import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
   SummaryCardVisibilityDialogComponent,
@@ -634,7 +635,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private confirmAndSaveLayout(): void {
     const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: '380px',
+      width: '460px',
+      maxWidth: 'calc(100vw - 32px)',
       autoFocus: false,
     });
 
@@ -1155,6 +1157,17 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
                     showLegend: true,
                     legendPosition: 'right',
                     legendWidthPx: 120
+                  }
+                },
+                {
+                  label: 'Operator Timeline',
+                  component: OperatorTimelineChartComponent,
+                  componentInputs: {
+                    timelineData: data.operatorTimeline,
+                    operatorId: operatorId.toString(),
+                    isModal: true,
+                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+                    chartWidth: modalChartDimensions.width + 200
                   }
                 },
                 {

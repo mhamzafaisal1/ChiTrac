@@ -16,16 +16,19 @@ import { MatIconModule } from '@angular/material/icon';
         Save these layout settings to your user preferences.
       </mat-dialog-content>
       <mat-dialog-actions align="end">
-        <button mat-button [mat-dialog-close]="'discard'">Cancel</button>
+        <button mat-stroked-button [mat-dialog-close]="'discard'">Cancel</button>
         <button mat-stroked-button [mat-dialog-close]="'keep-editing'">Keep Editing</button>
-        <button mat-flat-button color="primary" [mat-dialog-close]="'save'">Save and Lock</button>
+        <button mat-flat-button color="primary" [mat-dialog-close]="'save'">Save</button>
       </mat-dialog-actions>
     </div>
   `,
   styles: [`
     .layout-save-dialog {
-      min-width: 320px;
+      width: 100%;
+      min-width: 0;
       padding-top: 8px;
+      overflow: hidden;
+      box-sizing: border-box;
     }
 
     .layout-save-dialog > mat-icon {
@@ -45,6 +48,25 @@ import { MatIconModule } from '@angular/material/icon';
     mat-dialog-content {
       color: var(--theme-color-on-surface-variant);
       text-align: center;
+      overflow: visible;
+      white-space: normal;
+    }
+
+    mat-dialog-actions {
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: space-between;
+      gap: clamp(10px, 3vw, 18px);
+      padding-top: 14px;
+      padding-inline: clamp(16px, 5%, 28px);
+    }
+
+    mat-dialog-actions button {
+      flex: 1 1 0;
+      min-width: 0;
+      max-width: none;
+      margin: 0;
+      white-space: nowrap;
     }
   `]
 })

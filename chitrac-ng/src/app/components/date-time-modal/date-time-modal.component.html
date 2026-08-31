@@ -53,9 +53,11 @@
 
       <p class="shift-hint" *ngIf="shiftsLoadError">{{ shiftsLoadError }}</p>
       <button
-        *ngFor="let s of shifts"
+        *ngFor="let s of shifts; trackBy: trackByShiftId"
         mat-stroked-button
-        [class.selected]="selectedOption === 'shift:' + s._id"
+        [class.selected]="isSelectedShift(s)"
+        [class.current-shift]="isCurrentShift(s) && !isSelectedShift(s)"
+        [class.current-shift-selected]="isCurrentShift(s) && isSelectedShift(s)"
         (click)="selectShift(s._id)">
         {{ s.name || 'Shift' }}
       </button>
