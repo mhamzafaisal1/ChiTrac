@@ -96,7 +96,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   allSummaryCards: SummaryCard[] = [];
   layoutEditing = false;
   columnTooltips: { [column: string]: string } = {
-    Runtime: 'Amount of time operator has been running across all machines',
+    'Worked Time': 'Amount of time operator has been running across all machines',
     Downtime: 'Amount of time this operators machines have been paused, faulted, or offline.',
     'Paused Time': 'Amount of time this operator has been paused.',
     'Fault Time': 'Amount of time this operator has overlapped machine fault sessions.',
@@ -128,7 +128,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Faulted',
     'Fault Time',
     'Idle Operators',
-    'Run Time',
+    'Worked Time',
     'Paused Time',
     'Down Time',
     'Idle/Paused Operators',
@@ -447,7 +447,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Operator ID': response.operator?.id,
       'Current Machine': response.currentMachine?.name || '',
       'Current Machine Serial': response.currentMachine?.serial || '',
-      'Runtime': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
+      'Worked Time': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
       'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
       'Paused Time': this.formatDurationMetric(response.metrics.pausedTime),
       'Fault Time': this.formatDurationMetric(response.metrics.faultTime),
@@ -489,7 +489,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Faulted', value: operatorCounts.faulted, icon: 'warning', tone: operatorCounts.faulted > 0 ? 'bad' : 'neutral' },
       { label: 'Fault Time', value: this.formatMilliseconds(totalFaultTimeMs), icon: 'timer_off', tone: totalFaultTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Idle Operators', value: operatorCounts.idle, icon: 'person_off', tone: operatorCounts.idle > 0 ? 'warn' : 'good' },
-      { label: 'Run Time', value: this.formatMilliseconds(totalRunTimeMs), icon: 'timer', tone: totalRunTimeMs > 0 ? 'good' : 'neutral' },
+      { label: 'Worked Time', value: this.formatMilliseconds(totalRunTimeMs), icon: 'timer', tone: totalRunTimeMs > 0 ? 'good' : 'neutral' },
       { label: 'Paused Time', value: this.formatMilliseconds(totalPausedTimeMs), icon: 'pause_circle', tone: totalPausedTimeMs > 0 ? 'warn' : 'neutral' },
       { label: 'Down Time', value: this.formatMilliseconds(totalDownTimeMs), icon: 'timer_off', tone: totalDownTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Idle/Paused Operators', value: operatorCounts.idlePaused, icon: 'person_off', tone: operatorCounts.idlePaused > 0 ? 'warn' : 'neutral' },
@@ -600,7 +600,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       Faulted: 'warning',
       'Fault Time': 'timer_off',
       'Idle Operators': 'person_off',
-      'Run Time': 'timer',
+      'Worked Time': 'timer',
       'Paused Time': 'pause_circle',
       'Down Time': 'timer_off',
       'Idle/Paused Operators': 'person_off',
@@ -808,16 +808,25 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private cleanSummaryCardOrder(labels: any[]): string[] {
     const allowedLabels = new Set(this.operatorSummaryCardLabels);
-    return [...new Set(labels.filter((label) => typeof label === 'string').map((label) => label.trim()).filter((label) => allowedLabels.has(label)))];
+    return [...new Set(labels
+      .filter((label) => typeof label === 'string')
+      .map((label) => this.normalizeSummaryCardLabel(label))
+      .filter((label) => allowedLabels.has(label)))];
   }
 
   private cleanSummaryCardVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
-    return this.operatorSummaryCardLabels.reduce((acc, label) => {
-      if (typeof visibility[label] === 'boolean') {
-        acc[label] = visibility[label];
+    return Object.entries(visibility).reduce((acc, [rawLabel, value]) => {
+      const label = this.normalizeSummaryCardLabel(rawLabel);
+      if (this.operatorSummaryCardLabels.includes(label) && typeof value === 'boolean') {
+        acc[label] = value;
       }
       return acc;
     }, {} as Record<string, boolean>);
+  }
+
+  private normalizeSummaryCardLabel(label: string): string {
+    const trimmed = label.trim();
+    return trimmed === 'Run Time' ? 'Worked Time' : trimmed;
   }
 
   private cleanTableColumnVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
@@ -1300,7 +1309,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Operator ID': '',
         'Current Machine': '',
         'Current Machine Serial': '',
-        'Runtime': '',
+        'Worked Time': '',
         'Downtime': '',
         'Paused Time': '',
         'Fault Time': '',
@@ -1320,7 +1329,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Operator ID': '',
         'Current Machine': '',
         'Current Machine Serial': '',
-        'Runtime': '',
+        'Worked Time': '',
         'Downtime': '',
         'Paused Time': '',
         'Fault Time': '',
@@ -1340,7 +1349,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Operator ID': '',
         'Current Machine': '',
         'Current Machine Serial': '',
-        'Runtime': '',
+        'Worked Time': '',
         'Downtime': '',
         'Paused Time': '',
         'Fault Time': '',
@@ -1360,7 +1369,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Operator ID': '',
         'Current Machine': '',
         'Current Machine Serial': '',
-        'Runtime': '',
+        'Worked Time': '',
         'Downtime': '',
         'Paused Time': '',
         'Fault Time': '',
@@ -1380,7 +1389,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Operator ID': '',
         'Current Machine': '',
         'Current Machine Serial': '',
-        'Runtime': '',
+        'Worked Time': '',
         'Downtime': '',
         'Paused Time': '',
         'Fault Time': '',
@@ -1404,7 +1413,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         'Operator ID',
         'Current Machine',
         'Current Machine Serial',
-        'Runtime',
+        'Worked Time',
         'Downtime',
         'Paused Time',
         'Fault Time',

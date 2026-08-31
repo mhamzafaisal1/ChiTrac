@@ -8,7 +8,7 @@ const {
   getTodayRange,
 } = require("./machineDashboardCache");
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
-const { getOperatorFaultTimeByOperatorId } = require("./faultTimeSummary");
+const { getOperatorMachineStateTimeByOperatorId } = require("./faultTimeSummary");
 
 async function buildOperatorTickerMap(db, config) {
   const stateTickerData = await db.collection(config.stateTickerCollectionName).find({}).toArray();
@@ -64,7 +64,14 @@ function operatorNameFromRecord(record) {
 async function buildOperatorSummaryRows(db, config, records, activeShifts, requestStart, requestEnd) {
   const operatorTickerMap = await buildOperatorTickerMap(db, config);
   const operatorIds = records.map((record) => record.operatorId).filter((id) => id && id !== -1);
-  const faultTimeByOperatorId = await getOperatorFaultTimeByOperatorId(db, config, operatorIds, requestStart, requestEnd);
+  const sessionTimeByOperatorId = await getOperatorMachineStateTimeByOperatorId(
+    db,
+    config,
+    operatorIds,
+    requestStart,
+    requestEnd,
+    { activeShifts }
+  );
   const operatorMap = new Map();
 
   for (const record of records) {
@@ -137,11 +144,18 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
       }
     }
 
+    const sessionTimes = sessionTimeByOperatorId.get(Number(operatorData.operator.id));
+    if (sessionTimes) {
+      runtime.total = sessionTimes.runtime;
+      pausedTime.total = sessionTimes.pausedTime;
+      faultTime.total = sessionTimes.faultTime;
+      operatorData.workedTimeMs = sessionTimes.runtime;
+    }
+
     const shiftElapsedMs = computeShiftElapsedMs(activeShifts, rangeStart, rangeEnd);
     const productiveElapsedMs = Math.max(0, shiftElapsedMs - operatorData.breakTimeMs);
     downtime.total = Math.max(productiveElapsedMs - runtime.total, 0);
     downTime.total = downtime.total;
-    faultTime.total = faultTimeByOperatorId.get(Number(operatorData.operator.id)) || 0;
     const availability =
       productiveElapsedMs > 0 ? runtime.total / productiveElapsedMs : 0;
     const throughput =
