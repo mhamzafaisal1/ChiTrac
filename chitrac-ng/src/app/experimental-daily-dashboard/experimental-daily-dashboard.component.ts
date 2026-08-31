@@ -169,7 +169,15 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   }
 
   chartSubtitle(tile: ExperimentalChartTile): string {
+    if (tile.id === 'machine-timeline') {
+      return this.preloadedData?.machineTimeline?.meta?.subtitle || this.cacheSubtitle;
+    }
     return tile.id === 'daily-counts' ? 'Last 28 Days' : this.cacheSubtitle;
+  }
+
+  chartSubtitleStrong(tile: ExperimentalChartTile): boolean {
+    return tile.id === 'machine-timeline' &&
+      this.preloadedData?.machineTimeline?.meta?.displayDateMode === 'yesterday';
   }
 
   trackTile(index: number, tile: ExperimentalChartTile): string {

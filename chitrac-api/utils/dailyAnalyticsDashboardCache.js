@@ -1,8 +1,8 @@
 const { DateTime } = require("luxon");
 const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
-const { computeShiftElapsedMs } = require("./shiftElapsed");
+const { computeShiftElapsedMs, loadActiveShifts } = require("./shiftElapsed");
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
-const { addDerivedShiftTimeComponents } = require("./shiftTimeComponents");
+const { addDerivedShiftTimeComponents, getShiftTimeComponents } = require("./shiftTimeComponents");
 const {
   buildMachineStatusFromDailyTotals,
   buildMachineOEEFromDailyTotals,
@@ -18,6 +18,102 @@ const TOTALS_SHIFT_COLLECTION = "totals-shift";
 
 function toDateStr(date) {
   return DateTime.fromJSDate(new Date(date), { zone: SYSTEM_TIMEZONE }).toISODate();
+}
+
+function shiftMinutes(shift) {
+  const components = getShiftTimeComponents(shift);
+  if (!components) return null;
+  const startMin = (components.startTime.hour * 60) + components.startTime.minute;
+  const endMin = (components.endTime.hour * 60) + components.endTime.minute;
+  return { startMin, endMin };
+}
+
+function shiftAppliesToDay(shift, day) {
+  const activeDays = Array.isArray(shift?.activeDays) ? shift.activeDays : [];
+  return activeDays.length === 0 || activeDays.includes(day.weekday);
+}
+
+function hasMidnightSpanningShift(shifts) {
+  return (Array.isArray(shifts) ? shifts : [])
+    .some((shift) => {
+      const minutes = shiftMinutes(shift);
+      return minutes && minutes.endMin <= minutes.startMin;
+    });
+}
+
+function shiftTimelineWindowForDay(shifts, day) {
+  const applicable = (Array.isArray(shifts) ? shifts : [])
+    .filter((shift) => shiftAppliesToDay(shift, day))
+    .map(shiftMinutes)
+    .filter(Boolean)
+    .filter((minutes) => minutes.endMin > minutes.startMin);
+
+  if (!applicable.length) return null;
+
+  const earliestStartMin = Math.min(...applicable.map((shift) => shift.startMin));
+  const latestEndMin = Math.max(...applicable.map((shift) => shift.endMin));
+  const startHour = Math.max(
+    0,
+    Math.floor(earliestStartMin / 60) - (earliestStartMin % 60 === 0 ? 1 : 0)
+  );
+  const endHour = Math.min(24, Math.ceil(latestEndMin / 60));
+
+  return {
+    start: day.startOf("day").plus({ hours: startHour }),
+    end: day.startOf("day").plus({ hours: endHour }),
+    firstShiftStart: day.startOf("day").plus({ minutes: earliestStartMin }),
+    lastShiftEnd: day.startOf("day").plus({ minutes: latestEndMin }),
+  };
+}
+
+function resolveMachineTimelineWindow(shifts, now) {
+  const activeShifts = Array.isArray(shifts) ? shifts : [];
+  const today = now.startOf("day");
+  const todayEnd = today.plus({ days: 1 });
+
+  if (hasMidnightSpanningShift(activeShifts)) {
+    return {
+      label: "Today",
+      displayDateMode: "today",
+      date: today.toISODate(),
+      dataStart: today,
+      dataEnd: DateTime.min(now, todayEnd),
+      displayStart: today,
+      displayEnd: todayEnd,
+      shiftWindowMode: "fullDay",
+    };
+  }
+
+  const todayWindow = shiftTimelineWindowForDay(activeShifts, today);
+  const hasStartedToday = Boolean(todayWindow && now >= todayWindow.firstShiftStart);
+  if (hasStartedToday) {
+    return {
+      label: "Today",
+      displayDateMode: "today",
+      date: today.toISODate(),
+      dataStart: todayWindow.start,
+      dataEnd: DateTime.min(now, todayWindow.end),
+      displayStart: todayWindow.start,
+      displayEnd: now < todayWindow.end ? DateTime.min(now, todayWindow.end) : todayWindow.end,
+      shiftWindowMode: "shiftEnvelope",
+    };
+  }
+
+  const yesterday = today.minus({ days: 1 });
+  const yesterdayWindow = shiftTimelineWindowForDay(activeShifts, yesterday);
+  const fallbackStart = yesterdayWindow?.start || yesterday;
+  const fallbackEnd = yesterdayWindow?.end || yesterday.plus({ days: 1 });
+
+  return {
+    label: "Yesterday",
+    displayDateMode: "yesterday",
+    date: yesterday.toISODate(),
+    dataStart: fallbackStart,
+    dataEnd: fallbackEnd,
+    displayStart: fallbackStart,
+    displayEnd: fallbackEnd,
+    shiftWindowMode: yesterdayWindow ? "shiftEnvelope" : "fullDay",
+  };
 }
 
 function serializableShift(shiftDoc) {
@@ -283,10 +379,19 @@ function machineIdentityFromSession(session) {
   };
 }
 
-async function buildMachineTimelineFromSessions(db, config, start, end) {
+async function buildMachineTimelineFromSessions(db, config, start, end, options = {}) {
   const windowStart = new Date(start);
   const windowEnd = new Date(end);
-  if (Number.isNaN(windowStart.getTime()) || Number.isNaN(windowEnd.getTime()) || windowStart >= windowEnd) {
+  const displayStart = new Date(options.displayStart || start);
+  const displayEnd = new Date(options.displayEnd || end);
+  if (
+    Number.isNaN(windowStart.getTime()) ||
+    Number.isNaN(windowEnd.getTime()) ||
+    Number.isNaN(displayStart.getTime()) ||
+    Number.isNaN(displayEnd.getTime()) ||
+    windowStart >= windowEnd ||
+    displayStart >= displayEnd
+  ) {
     return { machines: [], completedSessions: [], currentSessions: [] };
   }
 
@@ -370,7 +475,7 @@ async function buildMachineTimelineFromSessions(db, config, start, end) {
       const sessionsForMachine = machine.sessions
         .sort((a, b) => new Date(a.start) - new Date(b.start));
       const chunks = [];
-      let cursor = windowStart;
+      let cursor = displayStart;
       let offlineIndex = 0;
 
       for (const session of sessionsForMachine) {
@@ -402,10 +507,41 @@ async function buildMachineTimelineFromSessions(db, config, start, end) {
     completedSessions,
     currentSessions,
     range: {
+      start: displayStart,
+      end: displayEnd,
+    },
+    dataRange: {
       start: windowStart,
       end: windowEnd,
     },
+    meta: options.meta || {},
   };
+}
+
+async function buildDailyMachineTimeline(db, config, now) {
+  const activeShifts = await loadActiveShifts(db, { collectionName: config.shiftCollectionName });
+  const window = resolveMachineTimelineWindow(activeShifts, now);
+  return buildMachineTimelineFromSessions(
+    db,
+    config,
+    window.dataStart.toJSDate(),
+    window.dataEnd.toJSDate(),
+    {
+      displayStart: window.displayStart.toJSDate(),
+      displayEnd: window.displayEnd.toJSDate(),
+      meta: {
+        label: window.label,
+        subtitle: window.label,
+        displayDateMode: window.displayDateMode,
+        date: window.date,
+        shiftWindowMode: window.shiftWindowMode,
+        start: window.displayStart.toJSDate(),
+        end: window.displayEnd.toJSDate(),
+        dataStart: window.dataStart.toJSDate(),
+        dataEnd: window.dataEnd.toJSDate(),
+      },
+    }
+  );
 }
 
 function machineGroupEfficiencyFromRecords(records, previousRecords, start, end, shiftDoc, departmentLookup = new Map()) {
@@ -540,7 +676,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     buildItemTotalsFromCache(db, start, end, logger),
     buildCountTotalsFromDailyTotals(db, end, logger),
     buildTopOperatorEfficiencyFromCache(db, start, end, logger),
-    buildMachineTimelineFromSessions(db, config, start, end),
+    buildDailyMachineTimeline(db, config, now),
     db.collection(config.totalsDailyCollectionName)
       .find({ type: "machine", "timestamps.create": calendarRange(dateStr) }).toArray(),
     db.collection(config.totalsDailyCollectionName)

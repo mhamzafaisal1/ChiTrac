@@ -16,5 +16,6 @@ export class ChartTileComponent {
   @Input() chartWidth: number = 600;
   @Input() chartHeight: number = 400;
   @Input() subtitle?: string | null;
+  @Input() subtitleStrong = false;
   @Input() updatedAt?: string | null;
 }
