@@ -27,7 +27,7 @@
   align-items: center;
   gap: 0.7rem;
   min-width: 0;
-  padding: 0.8rem 0.9rem 0.8rem 2.15rem;
+  padding: 0.8rem 0.9rem;
   border-radius: 4px;
   background: var(--theme-color-surface-container);
   color: var(--theme-color-text);
@@ -74,6 +74,7 @@
   }
 
   &.layout-editing {
+    padding-right: 2.65rem;
     cursor: grab;
   }
 
@@ -121,7 +122,7 @@
 
 .drag-handle {
   position: absolute;
-  left: 0.35rem;
+  right: 0.45rem;
   top: 50%;
   display: inline-flex;
   align-items: center;
@@ -130,10 +131,12 @@
   height: 1.5rem;
   padding: 0;
   color: var(--theme-color-on-surface-variant);
-  background: transparent;
-  border: 0;
+  background: color-mix(in srgb, var(--theme-color-surface-container) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color-on-surface-variant) 24%, transparent);
+  border-radius: 6px;
   transform: translateY(-50%);
   cursor: grab;
+  z-index: 2;
 
   mat-icon {
     font-size: 1.15rem;
