@@ -47,11 +47,11 @@ export class MachineService {
         );
       }
 
-      getMachineDetails(start: string, end: string, serial: number, shiftId?: string | null): Observable<any> {
+      getMachineDetails(start: string, end: string, serial?: number | null, shiftId?: string | null): Observable<any> {
         let params = new HttpParams()
           .set('start', start)
-          .set('end', end)
-          .set('serial', serial.toString());
+          .set('end', end);
+        if (serial !== undefined && serial !== null) params = params.set('serial', serial.toString());
         if (shiftId) params = params.set('shiftId', shiftId);
       
         return this.http.get(`${this.machineApiUrl}/analytics/machine-dashboard-daily-cached`, { params });

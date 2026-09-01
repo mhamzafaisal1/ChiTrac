@@ -206,6 +206,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private currentShiftProjectionResponses: any[] | null = null;
   private currentShiftProjectionShiftId: string | null = null;
   private operatorStatusCounts: OperatorStatusCounts = EMPTY_OPERATOR_STATUS_COUNTS;
+  private machineDetailCache = new Map<number, any>();
+  private machineDetailCacheKey = "";
+  private machineDetailPrefetchKey = "";
 
   chartWidth: number = 1200;
   chartHeight: number = 700;
@@ -666,6 +669,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.machineData = validResponses;
     this.updateSummaryCards(validResponses, this.websocketService.getDashboardCacheSnapshot());
     this.loadOperatorStatusCounts();
+    this.prefetchMachineDetails(validResponses);
 
     if (validResponses.length === 0) {
       this.rows = [];
@@ -1614,6 +1618,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private getCachedMachineDetails(machineSerial: number): any | null {
+    const detailCacheKey = this.getMachineDetailCacheKey();
+    if (this.machineDetailCacheKey === detailCacheKey) {
+      const cachedDetails = this.machineDetailCache.get(Number(machineSerial));
+      if (cachedDetails) return cachedDetails;
+    }
+
     const machineData = this.machineData.find(
       (machine) => Number(machine?.machine?.serial) === Number(machineSerial)
     );
@@ -1628,6 +1638,45 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       !!machineData.faultData;
 
     return hasDetailData ? machineData : null;
+  }
+
+  private getMachineDetailCacheKey(): string {
+    return [
+      this.startTime || "",
+      this.endTime || "",
+      this.dateTimeService.getShiftId() || "",
+    ].join("|");
+  }
+
+  private prefetchMachineDetails(validResponses: any[]): void {
+    if (!validResponses.length || !this.startTime || !this.endTime) return;
+
+    const cacheKey = this.getMachineDetailCacheKey();
+    if (this.machineDetailCacheKey === cacheKey || this.machineDetailPrefetchKey === cacheKey) {
+      return;
+    }
+
+    this.machineDetailPrefetchKey = cacheKey;
+    this.machineService
+      .getMachineDetails(this.startTime, this.endTime, null, this.dateTimeService.getShiftId())
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response: any) => {
+          const details = Array.isArray(response) ? response : response ? [response] : [];
+          const nextCache = new Map<number, any>();
+          details.forEach((detail) => {
+            const serial = Number(detail?.machine?.serial);
+            if (Number.isFinite(serial)) nextCache.set(serial, detail);
+          });
+          this.machineDetailCache = nextCache;
+          this.machineDetailCacheKey = cacheKey;
+          this.machineDetailPrefetchKey = "";
+        },
+        error: (error) => {
+          console.warn("Machine detail prefetch failed; modal will use REST fallback.", error);
+          this.machineDetailPrefetchKey = "";
+        },
+      });
   }
 
   private openMachineDetailsModal(
@@ -1693,6 +1742,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           endTime: this.endTime,
           serial: machineSerial.toString(),
           isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: machineData?.faultData,
         },
       },
       {
@@ -1704,6 +1755,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           endTime: this.endTime,
           serial: machineSerial.toString(),
           isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: machineData?.faultData,
         },
       },
       {
