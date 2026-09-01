@@ -14,6 +14,7 @@ const {
 } = require("../../utils/reportFunctions");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const { addDerivedShiftTimeComponents } = require("../../utils/shiftTimeComponents");
+const { normalizeTotalsDocument } = require("../../utils/totalsSchema");
 const config = require("../../modules/config");
 
 function isValidMachineReportRecipientEmail(s) {
@@ -51,6 +52,35 @@ function getConfiguredStationCount(machine) {
   return Number.isInteger(laneCount) && laneCount > 0 ? laneCount : 1;
 }
 
+function buildTotalsCacheQuery(dateStrings, entityTypes, extraConditions = []) {
+  const dateClauses = [
+    { date: { $in: dateStrings } },
+    { dateObj: { $in: dateStrings.map((str) => new Date(str + "T00:00:00.000Z")) } },
+    ...dateStrings.map((str) => {
+      const dayStart = DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE }).startOf("day");
+      return {
+        "timestamps.create": {
+          $gte: dayStart.toJSDate(),
+          $lt: dayStart.plus({ days: 1 }).toJSDate(),
+        },
+      };
+    }),
+  ];
+
+  return {
+    $and: [
+      { $or: dateClauses },
+      {
+        $or: [
+          { entityType: { $in: entityTypes } },
+          { type: { $in: entityTypes } },
+        ],
+      },
+      ...extraConditions,
+    ],
+  };
+}
+
 module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
@@ -85,22 +115,11 @@ module.exports = function (server) {
       const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
       
       const normalizedStart = startDt.startOf('day');
-      const normalizedEnd = endDt.startOf('day').plus({ days: 1 });
-      const nowLocal = DateTime.now().setZone(SYSTEM_TIMEZONE);
       
-      // Detect "today since midnight" → treat as complete day using cache
-      const isTodaySinceMidnight =
-        normalizedStart.hasSame(nowLocal, 'day') &&
-        startDt.equals(normalizedStart) &&
-        endDt <= nowLocal;
+      console.log(`[OPERATOR-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}`);
       
-      console.log(`[OPERATOR-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
-      
-      // Always use UTC timestamps corresponding to local day boundaries
-      const exactStart = normalizedStart.toUTC().toJSDate();
-      const exactEnd = isTodaySinceMidnight 
-        ? nowLocal.toUTC().toJSDate() 
-        : endDt.toUTC().toJSDate();
+      const exactStart = start;
+      const exactEnd = end;
       const activeShifts = await loadActiveShifts(db).catch(() => []);
       const shiftElapsedMs = computeShiftElapsedMs(activeShifts, exactStart, exactEnd, SYSTEM_TIMEZONE);
       
@@ -157,39 +176,25 @@ module.exports = function (server) {
 
       // ========== FIX #3: Simplified hybrid logic with full-day detection ==========
       // Determine complete vs partial days
-      let split;
-      if (isTodaySinceMidnight) {
-        // Special case: today since midnight → treat as complete day
-        split = {
-          completeDays: [{
-            dateStr: normalizedStart.toISODate(),
-            start: normalizedStart.toUTC().toJSDate(),
-            end: nowLocal.toUTC().toJSDate(),
-          }],
-          partialDays: [],
-        };
-        console.log(`[OPERATOR-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
-      } else {
-        split = splitTimeRangeForHybridReport(exactStart, exactEnd);
+      let split = splitTimeRangeForHybridReport(exactStart, exactEnd);
 
-        // FIX: handle "exact full day" or no-day edge case
-        const coversExactlyOneDay =
-          endDt.diff(startDt, "hours").hours === 24 &&
-          startDt.hour === 0 &&
-          endDt.hour === 0;
+      // FIX: handle "exact full day" or no-day edge case
+      const coversExactlyOneDay =
+        endDt.diff(startDt, "hours").hours === 24 &&
+        startDt.hour === 0 &&
+        endDt.hour === 0;
 
-        if ((split.completeDays.length === 0 && split.partialDays.length === 0) || coversExactlyOneDay) {
-          split.completeDays = [{
-            dateStr: normalizedStart.toISODate(),
-            start: normalizedStart.toUTC().toJSDate(),
-            end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
-          }];
-          split.partialDays = [];
-          console.log(`[OPERATOR-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
-        }
-
-        console.log(`[OPERATOR-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
+      if ((split.completeDays.length === 0 && split.partialDays.length === 0) || coversExactlyOneDay) {
+        split.completeDays = [{
+          dateStr: normalizedStart.toISODate(),
+          start: normalizedStart.toUTC().toJSDate(),
+          end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
+        }];
+        split.partialDays = [];
+        console.log(`[OPERATOR-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
       }
+
+      console.log(`[OPERATOR-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
       
       const { completeDays, partialDays } = split;
       
@@ -201,20 +206,18 @@ module.exports = function (server) {
       
       if (useCache) {
         const dateStrings = completeDays.map(d => d.dateStr);
-        const dateObjs = dateStrings.map(str => new Date(str + 'T00:00:00.000Z'));
         const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
         // Single query for both entity types with both date formats
-        const cacheQuery = {
-          $or: [
-            { dateObj: { $in: dateObjs } },
-            { date: { $in: dateStrings } }
-          ],
-          entityType: { $in: ['operator-machine', 'operator-item'] }
-        };
-        if (operatorId) cacheQuery.operatorId = operatorId;
+        const cacheQuery = buildTotalsCacheQuery(
+          dateStrings,
+          ['operator-machine', 'operator-item'],
+          operatorId
+            ? [{ $or: [{ operatorId }, { "operator.id": operatorId }] }]
+            : []
+        );
 
-        const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
+        const cacheDocs = (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument);
 
         // Split by entity type
         operatorMachineCache = cacheDocs.filter(d => d.entityType === 'operator-machine');
@@ -1016,10 +1019,6 @@ module.exports = function (server) {
       const activeShifts = await loadActiveShifts(db).catch(() => []);
       const shiftElapsedMs = computeShiftElapsedMs(activeShifts, start, end, SYSTEM_TIMEZONE);
 
-      // Generate date range (full days)
-      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day');
-      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day');
-
       const shiftIdRaw = req.query.shiftId;
       let machineRecords;
       let machineItemRecords;
@@ -1059,57 +1058,60 @@ module.exports = function (server) {
           });
         }
       } else {
-        const dateStrings = [];
-        let currentDate = startDt;
-        while (currentDate <= endDt) {
-          dateStrings.push(currentDate.toISODate());
-          currentDate = currentDate.plus({ days: 1 });
+        const { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
+        let cacheMachineRecords = [];
+        let cacheMachineItemRecords = [];
+        let sessionData = { machines: [], machineItems: [] };
+
+        if (completeDays.length > 0) {
+          const dateStrings = completeDays.map((day) => day.dateStr);
+          const cacheCollection = db.collection(config.totalsDailyCollectionName);
+
+          // Query cache for complete days only; partial days need session clipping.
+          const serialNumber = serial ? parseInt(serial, 10) : null;
+          const cacheQuery = buildTotalsCacheQuery(
+            dateStrings,
+            ['machine', 'machine-item'],
+            serialNumber
+              ? [{ $or: [{ machineSerial: serialNumber }, { "machine.serial": serialNumber }, { "machine.id": serialNumber }] }]
+              : []
+          );
+
+          const cacheDocs = (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument);
+          cacheMachineRecords = cacheDocs.filter(d => d.entityType === 'machine');
+          cacheMachineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
         }
 
-        const cacheCollection = db.collection(config.totalsDailyCollectionName);
+        if (partialDays.length > 0) {
+          sessionData = await getSessionDataForPartialDays(db, partialDays, serial);
+        }
 
-        // Query cache for machine and machine-item records
-        const cacheQuery = {
-          $or: [
-            { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
-            { date: { $in: dateStrings } }
-          ],
-          entityType: { $in: ['machine', 'machine-item'] }
-        };
-        if (serial) cacheQuery.machineSerial = parseInt(serial, 10);
-
-        const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
-
-        if (cacheDocs.length > 0) {
-          // Split by entity type when cache data is available
-          machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
-          machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
+        if (completeDays.length > 0 && partialDays.length > 0) {
+          const combined = combineHybridData(cacheMachineRecords, cacheMachineItemRecords, sessionData);
+          machineRecords = combined.machines;
+          machineItemRecords = combined.machineItems;
+        } else if (completeDays.length > 0) {
+          machineRecords = cacheMachineRecords;
+          machineItemRecords = cacheMachineItemRecords;
         } else {
-          // If cache is missing for the requested range, fall back to live session data
-          const partialDay = {
-            start,
-            end,
-          };
-
-          const sessionData = await getSessionDataForPartialDays(db, [partialDay], serial);
           machineRecords = sessionData.machines || [];
           machineItemRecords = sessionData.machineItems || [];
+        }
 
-          // If there is still no data, return an empty result set
-          if (!machineRecords.length && !machineItemRecords.length) {
-            return res.json({
-              timeRange: {
-                start: start.toISOString(),
-                end: end.toISOString(),
-              },
-              results: [],
-            });
-          }
+        // If there is still no data, return an empty result set
+        if (!machineRecords.length && !machineItemRecords.length) {
+          return res.json({
+            timeRange: {
+              start: start.toISOString(),
+              end: end.toISOString(),
+            },
+            results: [],
+          });
         }
 
         responseTimeRange = {
-          start: startDt.toUTC().toJSDate().toISOString(),
-          end: endDt.plus({ days: 1 }).toUTC().toJSDate().toISOString(),
+          start: start.toISOString(),
+          end: end.toISOString(),
         };
       }
 
