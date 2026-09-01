@@ -46,6 +46,40 @@ function normalizeSessionSeconds(value, session) {
   return numeric > 86400 ? numeric / 1000 : numeric;
 }
 
+function getSessionStatusCode(session) {
+  const code = Number(session?.status?.code ?? session?.type);
+  return Number.isFinite(code) ? code : null;
+}
+
+function classifySessionTime(session) {
+  const code = getSessionStatusCode(session);
+  if (code === 0) return "paused";
+  if (code === 1) return "run";
+  if (code > 1) return "fault";
+  return "unknown";
+}
+
+function getSessionOverlapMs(session, rangeStart, rangeEnd) {
+  const { ovSec } = overlap(session?.timestamps?.start, session?.timestamps?.end, rangeStart, rangeEnd);
+  return Math.round(ovSec * 1000);
+}
+
+function getSessionCountsArray(session) {
+  if (Array.isArray(session?.counts)) return session.counts;
+  if (Array.isArray(session?.counts?.valid)) return session.counts.valid;
+  if (Array.isArray(session?.counts?.all)) return session.counts.all;
+  return [];
+}
+
+function getCountTimestamp(count) {
+  return count?.timestamp || count?.timestamps?.create || count?.timestamps?.active || count?.timestamps?.update;
+}
+
+function isTimestampInRange(value, start, end) {
+  const timestamp = value ? new Date(value) : null;
+  return timestamp instanceof Date && !Number.isNaN(timestamp.getTime()) && timestamp >= start && timestamp <= end;
+}
+
 // ===========================================================================
 // Item-daily helpers  (queryItemDailyCache / queryItemSessions / combineItemData)
 // ===========================================================================
@@ -478,6 +512,8 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
         {
           $project: {
             _id: 0,
+            type: 1,
+            status: 1,
             timestamps: 1,
             machine: 1,
             operators: 1,
@@ -570,6 +606,9 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
           totalCount: 0,
           totalWorkedMs: 0,
           totalRuntimeMs: 0,
+          totalFaultMs: 0,
+          totalPausedMs: 0,
+          totalFaults: 0,
           itemAgg: new Map(),
         });
       }
@@ -577,16 +616,26 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
 
       if (!s.sliceMs || s.sliceMs <= 0) continue;
 
+      const timeClass = classifySessionTime(s);
+      if (timeClass === "paused") {
+        bucket.totalPausedMs += s.sliceMs;
+      } else if (timeClass === "fault") {
+        bucket.totalFaultMs += s.sliceMs;
+        bucket.totalFaults += 1;
+      }
+
+      const isRunning = timeClass === "run";
       const activeStations = Array.isArray(s.operators)
         ? s.operators.filter((op) => op && op.id !== -1).length
         : s.operator && s.operator.id !== -1
           ? 1
           : 0;
 
-      const workedTimeMs = Math.max(0, s.sliceMs * activeStations);
-      const runtimeMs = Math.max(0, s.sliceMs);
+      const workedTimeMs = isRunning ? Math.max(0, s.sliceMs * activeStations) : 0;
+      const runtimeMs = isRunning ? Math.max(0, s.sliceMs) : 0;
 
       bucket.totalRuntimeMs += runtimeMs;
+      if (!isRunning) continue;
 
       const rawCounts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
       const counts = rawCounts
@@ -656,9 +705,9 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
         totalCounts: bucket.totalCount,
         workedTimeMs: bucket.totalWorkedMs,
         runtimeMs: bucket.totalRuntimeMs,
-        faultTimeMs: 0, // Simplified for partial days
-        pausedTimeMs: 0,
-        totalFaults: 0,
+        faultTimeMs: bucket.totalFaultMs,
+        pausedTimeMs: bucket.totalPausedMs,
+        totalFaults: bucket.totalFaults,
         totalMisfeeds: 0,
         totalTimeCreditMs: 0
       });
@@ -905,6 +954,8 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
       .find(match)
       .project({
         _id: 0,
+        type: 1,
+        status: 1,
         operator: 1,
         machine: 1,
         totalCount: 1,
@@ -933,19 +984,29 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
           totalCounts: 0,
           runtimeMs: 0,
           workedTimeMs: 0,
+          faultTimeMs: 0,
+          pausedTimeMs: 0,
+          totalFaults: 0,
           itemCounts: new Map()
         });
       }
 
       const bucket = grouped.get(opId);
 
-      // Use the pre-calculated values from the session document
-      bucket.totalCounts += session.totalCount || 0;
-      bucket.runtimeMs += normalizeSessionSeconds(session.runtime, session) * 1000;
-      bucket.workedTimeMs += normalizeSessionSeconds(session.workTime, session) * 1000;
+      const overlapMs = getSessionOverlapMs(session, partialDay.start, partialDay.end);
+      const timeClass = classifySessionTime(session);
+      if (timeClass === "run") {
+        bucket.runtimeMs += overlapMs;
+        bucket.workedTimeMs += overlapMs;
+      } else if (timeClass === "paused") {
+        bucket.pausedTimeMs += overlapMs;
+      } else if (timeClass === "fault") {
+        bucket.faultTimeMs += overlapMs;
+        bucket.totalFaults += 1;
+      }
 
       // Track item-level counts - group by itemName (not itemId) to combine items with same name but different standards
-      if (Array.isArray(session.counts)) {
+      if (timeClass === "run") {
         // Helper to normalize item name (same as in main processing)
         const normalizeItemName = (name) => {
           if (!name) return 'Unknown';
@@ -954,7 +1015,9 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
           return normalized || 'Unknown';
         };
 
-        for (const count of session.counts) {
+        for (const count of getSessionCountsArray(session)) {
+          if (!isTimestampInRange(getCountTimestamp(count), partialDay.start, partialDay.end)) continue;
+
           const itemName = count.item?.name;
           if (!itemName) continue;
 
@@ -964,6 +1027,7 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
 
           const itemCount = count.item?.count ?? 1;
           const itemStandard = count.item?.standard || 0;
+          bucket.totalCounts += itemCount;
 
           if (!bucket.itemCounts.has(normalizedName)) {
             bucket.itemCounts.set(normalizedName, {
@@ -1009,9 +1073,9 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
         totalCounts: bucket.totalCounts,
         runtimeMs: bucket.runtimeMs,
         workedTimeMs: bucket.workedTimeMs,
-        faultTimeMs: 0,
-        pausedTimeMs: 0,
-        totalFaults: 0,
+        faultTimeMs: bucket.faultTimeMs,
+        pausedTimeMs: bucket.pausedTimeMs,
+        totalFaults: bucket.totalFaults,
         totalMisfeeds: 0,
         totalTimeCreditMs: 0,
         itemTotals: itemTotals
