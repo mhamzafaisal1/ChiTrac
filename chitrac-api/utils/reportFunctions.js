@@ -13,6 +13,7 @@ const config = require("../modules/config");
 const { SYSTEM_TIMEZONE } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
 const { DateTime } = require("luxon");
+const { normalizeTotalsDocument } = require("./totalsSchema");
 const { mergeIntervals } = require("./faultTimeSummary");
 
 // ---------------------------------------------------------------------------
@@ -1345,14 +1346,45 @@ async function getItemDailyCachedDataForDays(db, completeDays) {
   const cacheCollection = db.collection('totals-daily');
   const dateStrings = completeDays.map(day => day.dateStr);
 
-  // Get item daily totals from simulator (itemStandard already included)
+  const dateClauses = dateStrings.map((dateStr) => {
+    const dayStart = DateTime.fromISO(dateStr, { zone: SYSTEM_TIMEZONE }).startOf("day");
+    return {
+      "timestamps.create": {
+        $gte: dayStart.toJSDate(),
+        $lt: dayStart.plus({ days: 1 }).toJSDate(),
+      },
+    };
+  });
+
   const itemQuery = {
-    entityType: 'item',
-    source: 'simulator', // Only get simulator records
-    date: { $in: dateStrings }
+    $and: [
+      {
+        $or: [
+          { date: { $in: dateStrings } },
+          { dateObj: { $in: dateStrings.map((str) => new Date(str + "T00:00:00.000Z")) } },
+          ...dateClauses,
+        ],
+      },
+      {
+        $or: [
+          { entityType: "item" },
+          { type: "item" },
+        ],
+      },
+    ],
   };
 
-  const itemTotals = await cacheCollection.find(itemQuery).toArray();
+  const requestedDates = new Set(dateStrings);
+  const itemTotals = (await cacheCollection.find(itemQuery).toArray())
+    .map(normalizeTotalsDocument)
+    .filter((record) => {
+      const timestamp = record.timestamps?.create || record.lastUpdated || record.dateObj;
+      if (timestamp) {
+        const date = DateTime.fromJSDate(new Date(timestamp), { zone: SYSTEM_TIMEZONE });
+        if (date.isValid) return requestedDates.has(date.toISODate());
+      }
+      return requestedDates.has(record.date);
+    });
 
   return itemTotals;
 }
