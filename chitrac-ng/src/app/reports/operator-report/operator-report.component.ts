@@ -39,12 +39,12 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
   columns: string[] = [];
-  summaryColumns: string[] = ['Operator', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
-  detailColumns: string[] = ['Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+  summaryColumns: string[] = ['Operator', 'Worked Time', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+  detailColumns: string[] = ['Item', 'Worked Time', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
   rows: any[] = [];
   reportGroups: OperatorReportGroup[] = [];
   columnTooltips: { [column: string]: string } = {
-    'Total Time (Runtime)': 'Amount of time operator has been running across all machines',
+    'Worked Time': 'Amount of time operator has been working across all machines',
     'Total Count': 'Amount of pieces fed by operator',
     'PPH': 'Pieces Per Hour',
     'Standard': 'Pieces Per Hour Goal',
@@ -170,17 +170,17 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
       });
     });
 
-    this.columns = ['Operator', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+    this.columns = ['Operator', 'Item', 'Worked Time', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
   }
 
   private formatOperatorSummaryRow(operatorName: string, summary: any): any {
-    const runtime = summary.runtimeFormatted ?? { hours: 0, minutes: 0 };
+    const workedTime = summary.workedTimeFormatted ?? summary.runtimeFormatted ?? { hours: 0, minutes: 0 };
 
     return {
       'Operator': operatorName,
       'Item': 'TOTAL',
-      'Total Time (Runtime)': `${runtime.hours ?? 0}h ${runtime.minutes ?? 0}m`,
+      'Worked Time': `${workedTime.hours ?? 0}h ${workedTime.minutes ?? 0}m`,
       'Total Count': summary.totalCount ?? 0,
       'PPH': displayInteger(summary.pph),
       'Standard': displayInteger(summary.proratedStandard, 'N/A'),
@@ -195,7 +195,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     return {
       'Operator': operatorName,
       'Item': item.name,
-      'Total Time (Runtime)': `${workedTime.hours ?? 0}h ${workedTime.minutes ?? 0}m`,
+      'Worked Time': `${workedTime.hours ?? 0}h ${workedTime.minutes ?? 0}m`,
       'Total Count': item.countTotal,
       'PPH': displayInteger(item.pph),
       'Standard': displayInteger(item.standard, 'N/A'),
@@ -245,7 +245,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   private getSummarySortValue(summary: any, column: string): string | number {
     const value = summary?.[column];
     if (column === 'Operator') return String(value ?? '');
-    if (column === 'Total Time (Runtime)') {
+    if (column === 'Worked Time') {
       const match = String(value ?? '').match(/(\d+)h\s*(\d+)m/);
       return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
     }
@@ -286,10 +286,10 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
       doc.text(`Range: ${this.startTime} → ${this.endTime}`, margin, y); 
       y += 24;
 
-      const head = [['Operator/Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
+      const head = [['Operator/Item', 'Worked Time', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
       const body = this.displayedRows.map(row => [
         `${row['Operator']} / ${row['Item']}`,
-        row['Total Time (Runtime)'],
+        row['Worked Time'],
         row['Total Count'],
         row['PPH'],
         row['Standard'],

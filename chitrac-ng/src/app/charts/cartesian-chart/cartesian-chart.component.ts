@@ -109,6 +109,7 @@ import {
   
     ngAfterViewInit(): void {
       this.initSvg();
+      this.setupResizeObserver();
       this.render();
     }
   
@@ -121,6 +122,18 @@ import {
     ngOnDestroy(): void {
       this.clearTooltipTimer();
       this.resizeObserver?.disconnect();
+    }
+
+    private setupResizeObserver(): void {
+      if (!this.host?.nativeElement || typeof ResizeObserver === 'undefined') {
+        return;
+      }
+
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = new ResizeObserver(() => {
+        requestAnimationFrame(() => this.render());
+      });
+      this.resizeObserver.observe(this.host.nativeElement);
     }
   
     /* ===== Render ===== */

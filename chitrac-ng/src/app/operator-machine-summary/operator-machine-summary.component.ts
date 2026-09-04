@@ -45,6 +45,7 @@ import {
     @Input() startTime = '';
     @Input() endTime = '';
     @Input() isModal = false;
+    @Input() preloadedData: OperatorMachineSummaryResponse | null = null;
   
     columns: string[] = [];
     rows: any[] = [];
@@ -75,6 +76,7 @@ import {
         this.operatorId = (this.operatorId ?? data.operatorId) ?? null;
         this.startTime = this.startTime || data.startTime || '';
         this.endTime = this.endTime || data.endTime || '';
+        this.preloadedData = this.preloadedData || data.preloadedData || null;
       }
     }
   
@@ -83,9 +85,19 @@ import {
       this.observeTheme();
   
       this.fetchTrigger$.pipe(debounceTime(0), takeUntil(this.destroy$)).subscribe(() => this.checkAndFetch());
+
+      if (this.usePreloadedData()) {
+        this.applyPreloadedData();
+      }
   
       this.dateTime.liveMode$.pipe(takeUntil(this.destroy$)).subscribe((isLive: boolean) => {
         this.liveMode = isLive;
+        if (this.usePreloadedData()) {
+          this.stopPolling();
+          this.applyPreloadedData();
+          return;
+        }
+
         if (this.liveMode) {
           const start = new Date();
           start.setHours(0, 0, 0, 0);
@@ -113,6 +125,11 @@ import {
     }
   
     ngOnChanges(changes: SimpleChanges): void {
+      if (changes['preloadedData'] && this.usePreloadedData()) {
+        this.applyPreloadedData();
+        return;
+      }
+
       if (changes['operatorId'] || changes['startTime'] || changes['endTime']) {
         this.fetchTrigger$.next();
       }
@@ -165,6 +182,11 @@ import {
     }
   
     public checkAndFetch(): void {
+      if (this.usePreloadedData()) {
+        this.applyPreloadedData();
+        return;
+      }
+
       if (!this.operatorId || !this.startTime || !this.endTime) return;
   
       const nowParams = { operatorId: this.operatorId, startTime: this.startTime, endTime: this.endTime };
@@ -181,6 +203,11 @@ import {
     }
   
     private fetchData(skipLoadingFlag = false): void {
+      if (this.usePreloadedData()) {
+        this.applyPreloadedData();
+        return;
+      }
+
       if (!this.operatorId) return;
       if (!skipLoadingFlag) this.isLoading = true;
   
@@ -202,6 +229,17 @@ import {
           takeUntil(this.destroy$)
         )
         .subscribe();
+    }
+
+    private usePreloadedData(): boolean {
+      return this.isModal && !!this.preloadedData;
+    }
+
+    private applyPreloadedData(): void {
+      this.hasFetchedOnce = true;
+      this.lastData = this.preloadedData;
+      this.isLoading = false;
+      this.updateTable();
     }
   
     private updateTable(): void {

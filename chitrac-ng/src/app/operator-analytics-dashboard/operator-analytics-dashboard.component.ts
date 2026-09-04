@@ -162,6 +162,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   summaryCardVisibility: Record<string, boolean> = {};
   private idleOperatorSummary: IdleOperatorSummary | null = null;
   private machineStatusCounts: MachineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
+  private operatorDetailCache = new Map<number, any>();
+  private operatorDetailCacheKey = "";
+  private operatorDetailPrefetchKey = "";
 
   // Chart dimensions
   chartHeight = 700;
@@ -434,6 +437,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
     this.updateSummaryCards(this.operatorData);
     this.loadMachineStatusCounts();
+    this.prefetchOperatorDetails(this.operatorData);
 
     if (this.operatorData.length === 0) {
       this.rows = [];
@@ -1091,164 +1095,233 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     // Get modal-aware dimensions
     const modalChartDimensions = this.getModalAwareChartDimensions();
 
-    // Check if we have a timeframe selected
-    const timeframe = this.dateTimeService.getTimeframe();
+    const base = this.operatorData.find((operator) => Number(operator?.operator?.id) === Number(operatorId));
+    const cachedDetails = this.getCachedOperatorDetails(operatorId);
+
+    if (base && cachedDetails) {
+      this.openOperatorDetailsModal(
+        { ...base, ...cachedDetails },
+        operatorId,
+        startTimeStr,
+        endTimeStr,
+        modalChartDimensions
+      );
+      return;
+    }
 
     this.isOpeningModal = true;
-
-    // Fetch detailed operator data for the modal
-    const summaryObservable = timeframe
-      ? this.operatorService.getOperatorSummaryWithTimeframe(timeframe, this.dateTimeService.getShiftId())
-      : this.operatorService.getOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId());
-
-    summaryObservable.subscribe({
-      next: (summaryData) => {
-        const base = Array.isArray(summaryData) ? summaryData.find(d => d.operator.id === operatorId) : summaryData;
-
-        if (Array.isArray(summaryData) && base == null) {
+    this.operatorService.getOperatorDetails(this.startTime, this.endTime, operatorId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (infoData) => {
+          try {
+            this.cacheOperatorDetails(operatorId, infoData);
+            const data = { ...(base || {}), ...infoData };
+            this.openOperatorDetailsModal(data, operatorId, startTimeStr, endTimeStr, modalChartDimensions);
+          } finally {
+            this.isOpeningModal = false;
+          }
+        },
+        error: (err: unknown) => {
+          console.error('Error loading operator details for modal:', err);
           this.isOpeningModal = false;
-          return;
         }
+      });
+  }
 
-        const detailsObservable = timeframe
-          ? this.operatorService.getOperatorDetailsWithTimeFrame(this.startTime, this.endTime, operatorId)
-          : this.operatorService.getOperatorDetails(this.startTime, this.endTime, operatorId);
-
-        detailsObservable.subscribe({
-            next: (infoData) => {
-              try {
-                const data = { ...base, ...infoData }; // Merge both
-
-                const carouselTabs = [
-                {
-                  label: 'Item Summary',
-                  component: OperatorItemSummaryTableComponent,
-                  componentInputs: {
-                    mode: 'dashboard',
-                    dashboardData: [data],
-                    operatorId,
-                    isModal: true
-                  }
-                },
-                {
-                  label: 'Item Stacked Chart',
-                  component: OperatorCountbyitemChartComponent,
-                  componentInputs: {
-                    mode: 'dashboard',
-                    dashboardData: [data],
-                    operatorId,
-                    isModal: true,
-                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                    chartWidth: modalChartDimensions.width + 200,
-                    marginTop: 30,
-                    marginRight: 180,
-                    marginBottom: 80,
-                    marginLeft: 40,
-                    showLegend: true,
-                    legendPosition: 'right',
-                    legendWidthPx: 120
-                  }
-                },
-                {
-                  label: 'Running/Paused/Fault Pie Chart',
-                  component: OperatorCyclePieChartComponent,
-                  componentInputs: {
-                    mode: 'dashboard',
-                    dashboardData: [data],
-                    operatorId,
-                    isModal: true,
-                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                    chartWidth: modalChartDimensions.width + 200,
-                    marginTop: 30,
-                    marginRight: 180,
-                    marginBottom: 80,
-                    marginLeft: 40,
-                    showLegend: true,
-                    legendPosition: 'right',
-                    legendWidthPx: 120
-                  }
-                },
-                {
-                  label: 'Operator Timeline',
-                  component: OperatorTimelineChartComponent,
-                  componentInputs: {
-                    timelineData: data.operatorTimeline,
-                    operatorId: operatorId.toString(),
-                    isModal: true,
-                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                    chartWidth: modalChartDimensions.width + 200
-                  }
-                },
-                {
-                  label: 'Fault History',
-                  component: OperatorFaultHistoryComponent,
-                  componentInputs: {
-                    startTime: startTimeStr,
-                    endTime: endTimeStr,
-                    operatorId: operatorId.toString(),
-                    isModal: true
-                  }
-                },
-                {
-                  label: 'Daily Efficiency Chart',
-                  component: OperatorLineChartComponent,
-                  componentInputs: {
-                    mode: 'dashboard',
-                    dashboardData: [data],
-                    operatorId: operatorId.toString(),
-                    isModal: true,
-                    chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-                    chartWidth: modalChartDimensions.width + 200,
-                    marginTop: 30,
-                    marginRight: 180,
-                    marginBottom: 80,
-                    marginLeft: 40,
-                    showLegend: true,
-                    legendPosition: 'right',
-                    legendWidthPx: 120
-                  }
-                },
-                {
-                  label: 'Machine Summary',
-                  component: OperatorMachineSummaryComponent,
-                  componentInputs: {
-                    startTime: startTimeStr,
-                    endTime: endTimeStr,
-                    operatorId: operatorId.toString(),
-                    isModal: true
-                  }
-                }
-                ];
-
-                this.dialog.open(ModalWrapperComponent, {
-                  width: '90vw',
-                  height: '85vh',
-                  maxWidth: '95vw',
-                  maxHeight: '90vh',
-                  panelClass: 'performance-chart-dialog',
-                  data: {
-                    component: UseCarouselComponent,
-                    componentInputs: {
-                      tabData: carouselTabs
-                    }
-                  }
-                });
-              } finally {
-                this.isOpeningModal = false;
-              }
-            },
-            error: (err: unknown) => {
-              console.error('Error loading operator details for modal:', err);
-              this.isOpeningModal = false;
-            }
-          });
+  private openOperatorDetailsModal(
+    data: any,
+    operatorId: number,
+    startTimeStr: string,
+    endTimeStr: string,
+    modalChartDimensions: { width: number; height: number }
+  ): void {
+    const carouselTabs = [
+      {
+        label: 'Item Summary',
+        component: OperatorItemSummaryTableComponent,
+        componentInputs: {
+          mode: 'dashboard',
+          dashboardData: [data],
+          operatorId,
+          isModal: true
+        }
       },
-      error: (err: unknown) => {
-        console.error('Error loading operator summary for modal:', err);
-        this.isOpeningModal = false;
+      {
+        label: 'Item Stacked Chart',
+        component: OperatorCountbyitemChartComponent,
+        componentInputs: {
+          mode: 'dashboard',
+          dashboardData: [data],
+          operatorId,
+          isModal: true,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          chartWidth: modalChartDimensions.width + 200,
+          marginTop: 30,
+          marginRight: 180,
+          marginBottom: 80,
+          marginLeft: 40,
+          showLegend: true,
+          legendPosition: 'right',
+          legendWidthPx: 120
+        }
+      },
+      {
+        label: 'Running/Paused/Fault Pie Chart',
+        component: OperatorCyclePieChartComponent,
+        componentInputs: {
+          mode: 'dashboard',
+          dashboardData: [data],
+          operatorId,
+          isModal: true,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          chartWidth: modalChartDimensions.width + 200,
+          marginTop: 30,
+          marginRight: 180,
+          marginBottom: 80,
+          marginLeft: 40,
+          showLegend: true,
+          legendPosition: 'right',
+          legendWidthPx: 120
+        }
+      },
+      {
+        label: 'Operator Timeline',
+        component: OperatorTimelineChartComponent,
+        componentInputs: {
+          timelineData: data.operatorTimeline,
+          operatorId: operatorId.toString(),
+          isModal: true,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          chartWidth: modalChartDimensions.width + 200
+        }
+      },
+      {
+        label: 'Fault History',
+        component: OperatorFaultHistoryComponent,
+        componentInputs: {
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          operatorId: operatorId.toString(),
+          isModal: true,
+          mode: 'dashboard',
+          viewType: 'cycles',
+          preloadedData: data.faultHistory
+        }
+      },
+      {
+        label: 'Daily Efficiency Chart',
+        component: OperatorLineChartComponent,
+        componentInputs: {
+          mode: 'dashboard',
+          dashboardData: [data],
+          operatorId: operatorId.toString(),
+          isModal: true,
+          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
+          chartWidth: modalChartDimensions.width + 200,
+          marginTop: 30,
+          marginRight: 180,
+          marginBottom: 80,
+          marginLeft: 40,
+          showLegend: true,
+          legendPosition: 'right',
+          legendWidthPx: 120
+        }
+      },
+      {
+        label: 'Machine Summary',
+        component: OperatorMachineSummaryComponent,
+        componentInputs: {
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          operatorId,
+          isModal: true,
+          preloadedData: data.machineSummary
+        }
+      }
+    ];
+
+    this.dialog.open(ModalWrapperComponent, {
+      width: '90vw',
+      height: '85vh',
+      maxWidth: '95vw',
+      maxHeight: '90vh',
+      panelClass: 'performance-chart-dialog',
+      data: {
+        component: UseCarouselComponent,
+        componentInputs: {
+          tabData: carouselTabs
+        }
       }
     });
-  
+  }
+
+  private getOperatorDetailCacheKey(): string {
+    return [
+      this.startTime || "",
+      this.endTime || "",
+      this.dateTimeService.getShiftId() || "",
+    ].join("|");
+  }
+
+  private getCachedOperatorDetails(operatorId: number): any | null {
+    const cacheKey = this.getOperatorDetailCacheKey();
+    if (this.operatorDetailCacheKey !== cacheKey) {
+      return null;
+    }
+
+    return this.operatorDetailCache.get(Number(operatorId)) || null;
+  }
+
+  private cacheOperatorDetails(operatorId: number, details: any): void {
+    const cacheKey = this.getOperatorDetailCacheKey();
+    if (this.operatorDetailCacheKey !== cacheKey) {
+      this.operatorDetailCache = new Map<number, any>();
+      this.operatorDetailCacheKey = cacheKey;
+    }
+    this.operatorDetailCache.set(Number(operatorId), details);
+  }
+
+  private prefetchOperatorDetails(operatorRows: any[]): void {
+    if (!operatorRows.length || !this.startTime || !this.endTime) return;
+
+    const cacheKey = this.getOperatorDetailCacheKey();
+    if (this.operatorDetailCacheKey === cacheKey || this.operatorDetailPrefetchKey === cacheKey) {
+      return;
+    }
+
+    const operatorIds = operatorRows
+      .map((row) => Number(row?.operator?.id))
+      .filter((operatorId) => Number.isFinite(operatorId));
+
+    if (!operatorIds.length) return;
+
+    this.operatorDetailPrefetchKey = cacheKey;
+    const pending = new Set(operatorIds);
+
+    operatorIds.forEach((operatorId) => {
+      this.operatorService
+        .getOperatorDetails(this.startTime, this.endTime, operatorId)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: (details) => {
+            this.cacheOperatorDetails(operatorId, details);
+          },
+          error: (error) => {
+            console.warn(`Operator detail prefetch failed for ${operatorId}; modal will use REST fallback.`, error);
+            pending.delete(operatorId);
+            if (pending.size === 0) {
+              this.operatorDetailPrefetchKey = "";
+            }
+          },
+          complete: () => {
+            pending.delete(operatorId);
+            if (pending.size === 0) {
+              this.operatorDetailPrefetchKey = "";
+            }
+          },
+        });
+    });
   }
 
   getEfficiencyClass = (value: any, column: string): string => {

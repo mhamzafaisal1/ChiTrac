@@ -47,6 +47,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   @Input() serial: string = '';
   @Input() isModal: boolean = false;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
+  @Input() preloadedData: any | null = null;
 
   private _viewType: 'summary' | 'cycles' = 'summary';
   @Input()
@@ -88,6 +89,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
       this.startTime = this.startTime || data.startTime || '';
       this.endTime = this.endTime || data.endTime || '';
       this.serial = this.serial || data.machineSerial || '';
+      this.preloadedData = this.preloadedData || data.preloadedData || null;
     }
   }
 
@@ -100,12 +102,22 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
       debounceTime(0), 
       takeUntil(this.destroy$)
     ).subscribe(() => this.checkAndFetch());
+
+    if (this.usePreloadedData()) {
+      this.applyPreloadedData();
+    }
   
     // Subscribe to live mode changes
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
       .subscribe((isLive: boolean) => {
         this.liveMode = isLive;
+
+        if (this.usePreloadedData()) {
+          this.stopPolling();
+          this.applyPreloadedData();
+          return;
+        }
 
         if (this.liveMode) {
           const start = new Date();
@@ -148,6 +160,11 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   }
   
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['preloadedData'] && this.usePreloadedData()) {
+      this.applyPreloadedData();
+      return;
+    }
+
     // Handle viewType changes separately - just update table display
     if (changes['viewType'] && this.lastFetchedData) {
       console.log('ngOnChanges: viewType changed, updating table display only');
@@ -224,6 +241,11 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   }
 
   private checkAndFetch() {
+    if (this.usePreloadedData()) {
+      this.applyPreloadedData();
+      return;
+    }
+
     // Don't fetch if we don't have all required parameters
     if (!this.startTime || !this.endTime || !this.serial) {
       console.log('checkAndFetch: Missing required parameters, skipping fetch');
@@ -255,6 +277,11 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   }
 
   fetchData(): void {
+    if (this.usePreloadedData()) {
+      this.applyPreloadedData();
+      return;
+    }
+
     const serialNumber = parseInt(this.serial);
     if (isNaN(serialNumber)) return;
 
@@ -293,6 +320,17 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
           this.isLoading = false;
         }
       });
+  }
+
+  private usePreloadedData(): boolean {
+    return this.mode === 'dashboard' && !!this.preloadedData;
+  }
+
+  private applyPreloadedData(): void {
+    this.hasFetchedOnce = true;
+    this.lastFetchedData = this.preloadedData;
+    this.isLoading = false;
+    this.updateTable();
   }
 
   updateTable(): void {

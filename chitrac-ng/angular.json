@@ -55,7 +55,7 @@
                   "minify": true,
                   "inlineCritical": false
                 },
-                "fonts": true
+                "fonts": false
               },
               "budgets": [
                 {

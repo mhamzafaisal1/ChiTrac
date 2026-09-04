@@ -193,6 +193,10 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       index++;
     });
 
+    if (series.length === 0) {
+      return null;
+    }
+
     const values = series.flatMap(operatorSeries =>
       operatorSeries.data.map(point => point.y)
     ).filter(Number.isFinite);

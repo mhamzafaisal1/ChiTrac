@@ -43,6 +43,7 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   @Input() operatorId: string = '';
   @Input() isModal: boolean = false;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
+  @Input() preloadedData: any | null = null;
 
   private _viewType: 'summary' | 'cycles' = 'summary';
   @Input()
@@ -90,12 +91,22 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
       debounceTime(0), 
       takeUntil(this.destroy$)
     ).subscribe(() => this.checkAndFetch());
+
+    if (this.usePreloadedData()) {
+      this.applyPreloadedData();
+    }
   
     // Subscribe to live mode changes
     this.dateTimeService.liveMode$
       .pipe(takeUntil(this.destroy$))
       .subscribe((isLive: boolean) => {
         this.liveMode = isLive;
+
+        if (this.usePreloadedData()) {
+          this.stopPolling();
+          this.applyPreloadedData();
+          return;
+        }
 
         if (this.liveMode) {
           const start = new Date();
@@ -133,6 +144,11 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   }
   
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['preloadedData'] && this.usePreloadedData()) {
+      this.applyPreloadedData();
+      return;
+    }
+
     // Handle viewType changes separately - just update table display
     if (changes['viewType'] && this.lastFetchedData) {
       console.log('ngOnChanges: viewType changed, updating table display only');
@@ -210,6 +226,11 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   }
 
   private checkAndFetch() {
+    if (this.usePreloadedData()) {
+      this.applyPreloadedData();
+      return;
+    }
+
     // Don't fetch if we don't have all required parameters
     if (!this.startTime || !this.endTime || !this.operatorId) {
       console.log('checkAndFetch: Missing required parameters, skipping fetch');
@@ -241,6 +262,11 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   }
 
   fetchData(): void {
+    if (this.usePreloadedData()) {
+      this.applyPreloadedData();
+      return;
+    }
+
     const operatorIdNum = parseInt(this.operatorId);
     if (isNaN(operatorIdNum)) {
       this.error = 'Invalid operator ID';
@@ -290,6 +316,19 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
           this.isLoading = false;
         }
       });
+  }
+
+  private usePreloadedData(): boolean {
+    return this.mode === 'dashboard' && !!this.preloadedData;
+  }
+
+  private applyPreloadedData(): void {
+    this.hasFetchedOnce = true;
+    this.lastFetchedData = this.preloadedData;
+    this.message = this.preloadedData?.message || null;
+    this.error = null;
+    this.isLoading = false;
+    this.updateTable();
   }
 
   updateTable(): void {
