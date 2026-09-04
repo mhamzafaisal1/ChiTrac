@@ -14,6 +14,11 @@ const {
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const { addDerivedShiftTimeComponents } = require("../../utils/shiftTimeComponents");
 const { normalizeTotalsDocument } = require("../../utils/totalsSchema");
+const {
+  getOperatorMachineStateTimeByOperatorId,
+  getMachineStateTimeBySerial,
+  lookupMergedTime,
+} = require("../../utils/faultTimeSummary");
 const config = require("../../modules/config");
 
 function isValidMachineReportRecipientEmail(s) {
@@ -252,7 +257,10 @@ module.exports = function (server) {
             : []
         );
 
-        const cacheDocs = (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument);
+        const cacheDocs = filterTotalsDocsByPlantDate(
+          (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument),
+          dateStrings
+        );
 
         // Split by entity type
         operatorMachineCache = cacheDocs.filter(d => d.entityType === 'operator-machine');
@@ -390,6 +398,21 @@ module.exports = function (server) {
       }
       
       console.log(`[OPERATOR-CACHE] Aggregated ${operatorDataMap.size} operators`);
+
+      const sessionTimeByOperatorId = await getOperatorMachineStateTimeByOperatorId(
+        db,
+        config,
+        [...operatorDataMap.keys()],
+        exactStart,
+        exactEnd,
+        { activeShifts, zone: SYSTEM_TIMEZONE }
+      );
+      for (const [opId, operatorData] of operatorDataMap) {
+        const sessionTimes = lookupMergedTime(sessionTimeByOperatorId, opId);
+        if (!sessionTimes) continue;
+        operatorData.totalWorkedMs = sessionTimes.runtime;
+        operatorData.totalRuntimeMs = sessionTimes.runtime;
+      }
 
       const itemDefinitions = await db
         .collection(config.itemCollectionName)
@@ -624,13 +647,11 @@ module.exports = function (server) {
             ? item.standardWeightedSum / item.totalCountsForStandard
             : 0;
 
-          // Fallback: if item has counts but no worked time (totalTimeCreditMs was 0/missing),
-          // calculate worked time proportionally based on operator's total worked time
-          let itemWorkedMs = item.workedTimeMs;
-          if (itemWorkedMs === 0 && item.totalCounts > 0 && operatorData.totalCount > 0 && operatorData.totalWorkedMs > 0) {
-            itemWorkedMs = (item.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs;
-            console.log(`[OPERATOR-CACHE] Operator ${opId}: Item "${item.itemName}" had 0 workedTimeMs but ${item.totalCounts} counts, calculated proportionally: ${itemWorkedMs}ms`);
-          }
+          // Allocate the operator's merged wall-clock time by item counts.
+          // Cache workedTimeMs sums overlapping sessions and can exceed the window.
+          let itemWorkedMs = operatorData.totalCount > 0
+            ? (item.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs
+            : 0;
 
           const hours = itemWorkedMs / 3600000;
           const pph = hours > 0 ? item.totalCounts / hours : 0;
@@ -1048,6 +1069,8 @@ module.exports = function (server) {
       let machineRecords;
       let machineItemRecords;
       let responseTimeRange;
+      let overlayShifts = activeShifts;
+      let overlayShiftId = null;
 
       if (shiftIdRaw) {
         let shiftDoc;
@@ -1061,6 +1084,9 @@ module.exports = function (server) {
         if (!shiftDoc) {
           return res.status(404).json({ error: "Shift not found" });
         }
+
+        overlayShifts = [shiftDoc];
+        overlayShiftId = String(shiftId);
 
         const partialDay = { start, end };
 
@@ -1102,7 +1128,10 @@ module.exports = function (server) {
               : []
           );
 
-          const cacheDocs = (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument);
+          const cacheDocs = filterTotalsDocsByPlantDate(
+            (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument),
+            dateStrings
+          );
           cacheMachineRecords = cacheDocs.filter(d => d.entityType === 'machine');
           cacheMachineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
         }
@@ -1194,6 +1223,25 @@ module.exports = function (server) {
             totalCounts: record.totalCounts || 0,
           });
         }
+      }
+
+      const machineTimes = await getMachineStateTimeBySerial(
+        db,
+        config,
+        [...machineMap.keys()],
+        start,
+        end,
+        {
+          activeShifts: overlayShifts,
+          zone: SYSTEM_TIMEZONE,
+          shiftId: overlayShiftId,
+        }
+      );
+      for (const [serial, machineData] of machineMap) {
+        const sessionTimes = lookupMergedTime(machineTimes, serial);
+        if (!sessionTimes) continue;
+        machineData.runtimeMs = sessionTimes.runtime;
+        machineData.workedTimeMs = sessionTimes.runtime;
       }
 
       // Aggregate machine-items: First deduplicate by (serial, itemId, date), then sum across dates 
