@@ -1699,52 +1699,41 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
   try {
     const wStart = new Date(start);
     const wEnd = new Date(end);
-    const windowMs = wEnd - wStart;
-
-    // Get all date strings in the range in SYSTEM_TIMEZONE
-    const startDt = DateTime.fromJSDate(wStart, { zone: SYSTEM_TIMEZONE });
-    const endDt = DateTime.fromJSDate(wEnd, { zone: SYSTEM_TIMEZONE });
-    const dateStrings = [];
-    let currentDay = startDt.startOf('day');
-    const endDay = endDt.startOf('day');
-
-    while (currentDay <= endDay) {
-      dateStrings.push(currentDay.toFormat('yyyy-MM-dd'));
-      currentDay = currentDay.plus({ days: 1 });
-    }
-
-    // Query operator-machine cache records
-    const dateObjs = dateStrings.map(str => {
-      const dt = DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE });
-      return dt.toUTC().startOf('day').toJSDate();
-    });
-
-    const cacheQuery = {
+    const opId = Number(operatorId);
+    const query = {
+      "operator.id": opId,
+      "timestamps.start": { $lt: wEnd },
       $or: [
-        { dateObj: { $in: dateObjs } },
-        { date: { $in: dateStrings } }
+        { "timestamps.end": { $gt: wStart } },
+        { "timestamps.end": null },
+        { "timestamps.end": { $exists: false } },
       ],
-      entityType: 'operator-machine',
-      operatorId: Number(operatorId)
     };
 
-    if (serial) {
-      cacheQuery.machineSerial = Number(serial);
-    }
+    if (serial) query["machine.serial"] = Number(serial);
 
-    const cacheRecords = await db.collection('totals-daily').find(cacheQuery).toArray();
+    const sessions = await db.collection(config.operatorSessionCollectionName)
+      .find(query)
+      .project({ timestamps: 1, startState: 1, endState: 1, status: 1 })
+      .toArray();
 
-    // Sum runtimeMs across all records (operator working time)
     let totalRuntimeMs = 0;
-    for (const record of cacheRecords) {
-      totalRuntimeMs += safe(record.runtimeMs || record.workedTimeMs || 0);
+    let pausedMs = 0;
+    let faultMs = 0;
+
+    for (const session of sessions) {
+      const range = operatorTimelineOverlap(session.timestamps?.start, session.timestamps?.end, wStart, wEnd);
+      if (!range) continue;
+
+      const status = operatorTimelineStatusFromSession(session);
+      if (status.key === "running") {
+        totalRuntimeMs += range.overlapMs;
+      } else if (status.key === "faulted") {
+        faultMs += range.overlapMs;
+      } else {
+        pausedMs += range.overlapMs;
+      }
     }
-
-    // Calculate paused time (not running = window - runtime)
-    const pausedMs = Math.max(0, windowMs - totalRuntimeMs);
-
-    // For operators, faulted time is 0 (they don't track machine faults)
-    const faultMs = 0;
 
     // Calculate percentages
     const total = totalRuntimeMs + pausedMs + faultMs || 1; // Avoid division by zero
@@ -2532,6 +2521,102 @@ function operatorTimelineOfflineChunk(machine, start, end, index) {
     totalCount: 0,
     efficiency: null,
     current: false,
+  };
+}
+
+async function buildOperatorFaultHistoryFromSessions(db, operatorId, start, end, serial = null) {
+  const opId = Number(operatorId);
+  const windowStart = new Date(start);
+  const windowEnd = new Date(end);
+
+  if (!opId || Number.isNaN(opId) || Number.isNaN(windowStart.getTime()) || Number.isNaN(windowEnd.getTime()) || windowStart >= windowEnd) {
+    return {
+      context: { operatorId: opId, start: windowStart, end: windowEnd },
+      faultCycles: [],
+      faultSummaries: [],
+    };
+  }
+
+  const query = {
+    "operator.id": opId,
+    "timestamps.start": { $lt: windowEnd },
+    $or: [
+      { "timestamps.end": { $gt: windowStart } },
+      { "timestamps.end": null },
+      { "timestamps.end": { $exists: false } },
+    ],
+  };
+
+  if (serial) query["machine.serial"] = Number(serial);
+
+  const sessions = await db.collection(config.operatorSessionCollectionName)
+    .find(query)
+    .project({
+      _id: 1,
+      operator: 1,
+      machine: 1,
+      timestamps: 1,
+      startState: 1,
+      endState: 1,
+      status: 1,
+    })
+    .sort({ "timestamps.start": 1 })
+    .toArray();
+
+  const summaryMap = new Map();
+  const faultCycles = [];
+
+  for (const session of sessions) {
+    const status = operatorTimelineStatusFromSession(session);
+    if (status.key !== "faulted") continue;
+
+    const range = operatorTimelineOverlap(session.timestamps?.start, session.timestamps?.end, windowStart, windowEnd);
+    if (!range) continue;
+
+    const machine = operatorTimelineMachineIdentity(session);
+    const durationSeconds = Math.floor(range.overlapMs / 1000);
+    const summaryKey = `${status.code}:${status.label}`;
+
+    faultCycles.push({
+      id: String(session._id),
+      start: range.clampedStart,
+      end: range.clampedEnd,
+      durationSeconds,
+      code: status.code,
+      name: status.label,
+      machineSerial: machine.serial,
+      machineName: machine.name,
+      operatorId: opId,
+      operatorName: formatHumanName(session.operator?.name, `Operator ${opId}`),
+    });
+
+    if (!summaryMap.has(summaryKey)) {
+      summaryMap.set(summaryKey, {
+        code: status.code,
+        name: status.label,
+        count: 0,
+        totalDurationSeconds: 0,
+      });
+    }
+
+    const summary = summaryMap.get(summaryKey);
+    summary.count += 1;
+    summary.totalDurationSeconds += durationSeconds;
+  }
+
+  const faultSummaries = Array.from(summaryMap.values()).map((summary) => ({
+    ...summary,
+    formatted: {
+      hours: Math.floor(summary.totalDurationSeconds / 3600),
+      minutes: Math.floor((summary.totalDurationSeconds % 3600) / 60),
+      seconds: summary.totalDurationSeconds % 60,
+    },
+  })).sort((a, b) => b.totalDurationSeconds - a.totalDurationSeconds);
+
+  return {
+    context: { operatorId: opId, start: windowStart, end: windowEnd },
+    faultCycles,
+    faultSummaries,
   };
 }
 
@@ -3915,6 +4000,7 @@ module.exports = {
     buildItemHourlyStackFromCacheForOperator,
     buildItemSummaryFromCache,
     buildOperatorMachineSummaryFromCache,
+    buildOperatorFaultHistoryFromSessions,
     buildOperatorTimelineFromSessions,
     // --- Functions consolidated from operatorDashboardBuilder.js ---
     getAllOperatorIds,

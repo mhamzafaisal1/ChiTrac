@@ -8,12 +8,17 @@ const {
   getSessionDataForPartialDays,
   combineHybridData,
   getOperatorSessionDataForPartialDays,
-  getItemSessionDataForPartialDays,
   getItemDailyCachedDataForDays,
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const { addDerivedShiftTimeComponents } = require("../../utils/shiftTimeComponents");
+const { normalizeTotalsDocument } = require("../../utils/totalsSchema");
+const {
+  getOperatorMachineStateTimeByOperatorId,
+  getMachineStateTimeBySerial,
+  lookupMergedTime,
+} = require("../../utils/faultTimeSummary");
 const config = require("../../modules/config");
 
 function isValidMachineReportRecipientEmail(s) {
@@ -51,6 +56,71 @@ function getConfiguredStationCount(machine) {
   return Number.isInteger(laneCount) && laneCount > 0 ? laneCount : 1;
 }
 
+function buildTotalsCacheQuery(dateStrings, entityTypes, extraConditions = []) {
+  const dateClauses = [
+    { date: { $in: dateStrings } },
+    { dateObj: { $in: dateStrings.map((str) => new Date(str + "T00:00:00.000Z")) } },
+    ...dateStrings.map((str) => {
+      const dayStart = DateTime.fromISO(str, { zone: SYSTEM_TIMEZONE }).startOf("day");
+      return {
+        "timestamps.create": {
+          $gte: dayStart.toJSDate(),
+          $lt: dayStart.plus({ days: 1 }).toJSDate(),
+        },
+      };
+    }),
+  ];
+
+  return {
+    $and: [
+      { $or: dateClauses },
+      {
+        $or: [
+          { entityType: { $in: entityTypes } },
+          { type: { $in: entityTypes } },
+        ],
+      },
+      ...extraConditions,
+    ],
+  };
+}
+
+function getTotalsPlantDate(record) {
+  if (!record || typeof record !== "object") return null;
+
+  const timestamp = record.timestamps?.create || record.lastUpdated || record.dateObj;
+  if (timestamp) {
+    const date = DateTime.fromJSDate(new Date(timestamp), { zone: SYSTEM_TIMEZONE });
+    if (date.isValid) return date.toISODate();
+  }
+
+  if (typeof record.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(record.date)) {
+    return record.date;
+  }
+
+  return null;
+}
+
+function filterTotalsDocsByPlantDate(records, dateStrings) {
+  const requestedDates = new Set(dateStrings);
+  return records.filter((record) => requestedDates.has(getTotalsPlantDate(record)));
+}
+
+function getPlantDateStringsForRange(start, end) {
+  const startDt = DateTime.fromJSDate(new Date(start), { zone: SYSTEM_TIMEZONE });
+  const endDt = DateTime.fromJSDate(new Date(end), { zone: SYSTEM_TIMEZONE });
+  if (!startDt.isValid || !endDt.isValid || endDt <= startDt) return [];
+
+  const dates = [];
+  let currentDate = startDt.startOf("day");
+  const lastDate = endDt.minus({ milliseconds: 1 }).startOf("day");
+  while (currentDate <= lastDate) {
+    dates.push(currentDate.toISODate());
+    currentDate = currentDate.plus({ days: 1 });
+  }
+  return dates;
+}
+
 module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
@@ -85,22 +155,11 @@ module.exports = function (server) {
       const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE });
       
       const normalizedStart = startDt.startOf('day');
-      const normalizedEnd = endDt.startOf('day').plus({ days: 1 });
-      const nowLocal = DateTime.now().setZone(SYSTEM_TIMEZONE);
       
-      // Detect "today since midnight" → treat as complete day using cache
-      const isTodaySinceMidnight =
-        normalizedStart.hasSame(nowLocal, 'day') &&
-        startDt.equals(normalizedStart) &&
-        endDt <= nowLocal;
+      console.log(`[OPERATOR-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}`);
       
-      console.log(`[OPERATOR-CACHE] Query: start=${startDt.toISO()}, end=${endDt.toISO()}, isTodaySinceMidnight=${isTodaySinceMidnight}`);
-      
-      // Always use UTC timestamps corresponding to local day boundaries
-      const exactStart = normalizedStart.toUTC().toJSDate();
-      const exactEnd = isTodaySinceMidnight 
-        ? nowLocal.toUTC().toJSDate() 
-        : endDt.toUTC().toJSDate();
+      const exactStart = start;
+      const exactEnd = end;
       const activeShifts = await loadActiveShifts(db).catch(() => []);
       const shiftElapsedMs = computeShiftElapsedMs(activeShifts, exactStart, exactEnd, SYSTEM_TIMEZONE);
       
@@ -157,39 +216,25 @@ module.exports = function (server) {
 
       // ========== FIX #3: Simplified hybrid logic with full-day detection ==========
       // Determine complete vs partial days
-      let split;
-      if (isTodaySinceMidnight) {
-        // Special case: today since midnight → treat as complete day
-        split = {
-          completeDays: [{
-            dateStr: normalizedStart.toISODate(),
-            start: normalizedStart.toUTC().toJSDate(),
-            end: nowLocal.toUTC().toJSDate(),
-          }],
-          partialDays: [],
-        };
-        console.log(`[OPERATOR-CACHE] Today-since-midnight: using cache for ${normalizedStart.toISODate()}`);
-      } else {
-        split = splitTimeRangeForHybridReport(exactStart, exactEnd);
+      let split = splitTimeRangeForHybridReport(exactStart, exactEnd);
 
-        // FIX: handle "exact full day" or no-day edge case
-        const coversExactlyOneDay =
-          endDt.diff(startDt, "hours").hours === 24 &&
-          startDt.hour === 0 &&
-          endDt.hour === 0;
+      // FIX: handle "exact full day" or no-day edge case
+      const coversExactlyOneDay =
+        endDt.diff(startDt, "hours").hours === 24 &&
+        startDt.hour === 0 &&
+        endDt.hour === 0;
 
-        if ((split.completeDays.length === 0 && split.partialDays.length === 0) || coversExactlyOneDay) {
-          split.completeDays = [{
-            dateStr: normalizedStart.toISODate(),
-            start: normalizedStart.toUTC().toJSDate(),
-            end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
-          }];
-          split.partialDays = [];
-          console.log(`[OPERATOR-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
-        }
-
-        console.log(`[OPERATOR-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
+      if ((split.completeDays.length === 0 && split.partialDays.length === 0) || coversExactlyOneDay) {
+        split.completeDays = [{
+          dateStr: normalizedStart.toISODate(),
+          start: normalizedStart.toUTC().toJSDate(),
+          end: normalizedStart.plus({ days: 1 }).toUTC().toJSDate(),
+        }];
+        split.partialDays = [];
+        console.log(`[OPERATOR-CACHE] Forced cache mode for full-day window ${normalizedStart.toISODate()}`);
       }
+
+      console.log(`[OPERATOR-CACHE] Split: ${split.completeDays.length} complete days, ${split.partialDays.length} partial days`);
       
       const { completeDays, partialDays } = split;
       
@@ -201,20 +246,21 @@ module.exports = function (server) {
       
       if (useCache) {
         const dateStrings = completeDays.map(d => d.dateStr);
-        const dateObjs = dateStrings.map(str => new Date(str + 'T00:00:00.000Z'));
         const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
         // Single query for both entity types with both date formats
-        const cacheQuery = {
-          $or: [
-            { dateObj: { $in: dateObjs } },
-            { date: { $in: dateStrings } }
-          ],
-          entityType: { $in: ['operator-machine', 'operator-item'] }
-        };
-        if (operatorId) cacheQuery.operatorId = operatorId;
+        const cacheQuery = buildTotalsCacheQuery(
+          dateStrings,
+          ['operator-machine', 'operator-item'],
+          operatorId
+            ? [{ $or: [{ operatorId }, { "operator.id": operatorId }] }]
+            : []
+        );
 
-        const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
+        const cacheDocs = filterTotalsDocsByPlantDate(
+          (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument),
+          dateStrings
+        );
 
         // Split by entity type
         operatorMachineCache = cacheDocs.filter(d => d.entityType === 'operator-machine');
@@ -352,6 +398,21 @@ module.exports = function (server) {
       }
       
       console.log(`[OPERATOR-CACHE] Aggregated ${operatorDataMap.size} operators`);
+
+      const sessionTimeByOperatorId = await getOperatorMachineStateTimeByOperatorId(
+        db,
+        config,
+        [...operatorDataMap.keys()],
+        exactStart,
+        exactEnd,
+        { activeShifts, zone: SYSTEM_TIMEZONE }
+      );
+      for (const [opId, operatorData] of operatorDataMap) {
+        const sessionTimes = lookupMergedTime(sessionTimeByOperatorId, opId);
+        if (!sessionTimes) continue;
+        operatorData.totalWorkedMs = sessionTimes.runtime;
+        operatorData.totalRuntimeMs = sessionTimes.runtime;
+      }
 
       const itemDefinitions = await db
         .collection(config.itemCollectionName)
@@ -586,13 +647,11 @@ module.exports = function (server) {
             ? item.standardWeightedSum / item.totalCountsForStandard
             : 0;
 
-          // Fallback: if item has counts but no worked time (totalTimeCreditMs was 0/missing),
-          // calculate worked time proportionally based on operator's total worked time
-          let itemWorkedMs = item.workedTimeMs;
-          if (itemWorkedMs === 0 && item.totalCounts > 0 && operatorData.totalCount > 0 && operatorData.totalWorkedMs > 0) {
-            itemWorkedMs = (item.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs;
-            console.log(`[OPERATOR-CACHE] Operator ${opId}: Item "${item.itemName}" had 0 workedTimeMs but ${item.totalCounts} counts, calculated proportionally: ${itemWorkedMs}ms`);
-          }
+          // Allocate the operator's merged wall-clock time by item counts.
+          // Cache workedTimeMs sums overlapping sessions and can exceed the window.
+          let itemWorkedMs = operatorData.totalCount > 0
+            ? (item.totalCounts / operatorData.totalCount) * operatorData.totalWorkedMs
+            : 0;
 
           const hours = itemWorkedMs / 3600000;
           const pph = hours > 0 ? item.totalCounts / hours : 0;
@@ -829,14 +888,15 @@ module.exports = function (server) {
 
         // Fall back to session-based approach
         const partialDays = [{ start: exactStart, end: exactEnd }];
-        const sessionData = await getItemSessionDataForPartialDays(db,partialDays);
+        const sessionData = await getSessionDataForPartialDays(db, partialDays);
+        const sessionItems = sessionData.machineItems || [];
 
-        console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions`);
+        console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions`);
 
         // Process session data
         const resultsMap = new Map();
 
-        for (const item of sessionData.items) {
+        for (const item of sessionItems) {
           const itemId = String(item.itemId);
 
           if (!resultsMap.has(itemId)) {
@@ -915,9 +975,10 @@ module.exports = function (server) {
         
         // Get data from sessions for partial days
         if (partialDays.length > 0) {
-          const sessionData = await getItemSessionDataForPartialDays(db,partialDays);
-          console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions for partial days`);
-          itemTotals = combineItemDailyHybridData(itemTotals, sessionData.items);
+          const sessionData = await getSessionDataForPartialDays(db, partialDays);
+          const sessionItems = sessionData.machineItems || [];
+          console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions for partial days`);
+          itemTotals = combineItemDailyHybridData(itemTotals, sessionItems);
           console.log(`[item-sessions-summary-daily-cache] Combined to ${itemTotals.length} total item records`);
         }
         
@@ -925,27 +986,15 @@ module.exports = function (server) {
         // For same-day queries or queries including today, use cached data (same as machine report)
         const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
-        // Generate date range using normalized dates (same as machine report)
-        const dateStrings = [];
-        let currentDate = normalizedStart;
-        while (currentDate <= normalizedEnd) {
-          dateStrings.push(currentDate.toISODate());
-          currentDate = currentDate.plus({ days: 1 });
-        }
+        const dateStrings = getPlantDateStringsForRange(exactStart, exactEnd);
 
         console.log(`[item-sessions-summary-daily-cache] Querying cache for dates: ${dateStrings.join(', ')}`);
 
-        // Get item daily totals from simulator (using date strings, same as machine report)
-        const itemQuery = {
-          entityType: 'item',
-          source: 'simulator', // Only get simulator records
-          $or: [
-            { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
-            { date: { $in: dateStrings } }
-          ]
-        };
-
-        itemTotals = await cacheCollection.find(itemQuery).toArray();
+        const itemQuery = buildTotalsCacheQuery(dateStrings, ['item']);
+        itemTotals = filterTotalsDocsByPlantDate(
+          (await cacheCollection.find(itemQuery).toArray()).map(normalizeTotalsDocument),
+          dateStrings
+        );
         console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache`);
       }
 
@@ -1016,14 +1065,12 @@ module.exports = function (server) {
       const activeShifts = await loadActiveShifts(db).catch(() => []);
       const shiftElapsedMs = computeShiftElapsedMs(activeShifts, start, end, SYSTEM_TIMEZONE);
 
-      // Generate date range (full days)
-      const startDt = DateTime.fromJSDate(start, { zone: SYSTEM_TIMEZONE }).startOf('day');
-      const endDt = DateTime.fromJSDate(end, { zone: SYSTEM_TIMEZONE }).startOf('day');
-
       const shiftIdRaw = req.query.shiftId;
       let machineRecords;
       let machineItemRecords;
       let responseTimeRange;
+      let overlayShifts = activeShifts;
+      let overlayShiftId = null;
 
       if (shiftIdRaw) {
         let shiftDoc;
@@ -1037,6 +1084,9 @@ module.exports = function (server) {
         if (!shiftDoc) {
           return res.status(404).json({ error: "Shift not found" });
         }
+
+        overlayShifts = [shiftDoc];
+        overlayShiftId = String(shiftId);
 
         const partialDay = { start, end };
 
@@ -1059,57 +1109,63 @@ module.exports = function (server) {
           });
         }
       } else {
-        const dateStrings = [];
-        let currentDate = startDt;
-        while (currentDate <= endDt) {
-          dateStrings.push(currentDate.toISODate());
-          currentDate = currentDate.plus({ days: 1 });
+        const { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
+        let cacheMachineRecords = [];
+        let cacheMachineItemRecords = [];
+        let sessionData = { machines: [], machineItems: [] };
+
+        if (completeDays.length > 0) {
+          const dateStrings = completeDays.map((day) => day.dateStr);
+          const cacheCollection = db.collection(config.totalsDailyCollectionName);
+
+          // Query cache for complete days only; partial days need session clipping.
+          const serialNumber = serial ? parseInt(serial, 10) : null;
+          const cacheQuery = buildTotalsCacheQuery(
+            dateStrings,
+            ['machine', 'machine-item'],
+            serialNumber
+              ? [{ $or: [{ machineSerial: serialNumber }, { "machine.serial": serialNumber }, { "machine.id": serialNumber }] }]
+              : []
+          );
+
+          const cacheDocs = filterTotalsDocsByPlantDate(
+            (await cacheCollection.find(cacheQuery).toArray()).map(normalizeTotalsDocument),
+            dateStrings
+          );
+          cacheMachineRecords = cacheDocs.filter(d => d.entityType === 'machine');
+          cacheMachineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
         }
 
-        const cacheCollection = db.collection(config.totalsDailyCollectionName);
+        if (partialDays.length > 0) {
+          sessionData = await getSessionDataForPartialDays(db, partialDays, serial);
+        }
 
-        // Query cache for machine and machine-item records
-        const cacheQuery = {
-          $or: [
-            { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
-            { date: { $in: dateStrings } }
-          ],
-          entityType: { $in: ['machine', 'machine-item'] }
-        };
-        if (serial) cacheQuery.machineSerial = parseInt(serial, 10);
-
-        const cacheDocs = await cacheCollection.find(cacheQuery).toArray();
-
-        if (cacheDocs.length > 0) {
-          // Split by entity type when cache data is available
-          machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
-          machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
+        if (completeDays.length > 0 && partialDays.length > 0) {
+          const combined = combineHybridData(cacheMachineRecords, cacheMachineItemRecords, sessionData);
+          machineRecords = combined.machines;
+          machineItemRecords = combined.machineItems;
+        } else if (completeDays.length > 0) {
+          machineRecords = cacheMachineRecords;
+          machineItemRecords = cacheMachineItemRecords;
         } else {
-          // If cache is missing for the requested range, fall back to live session data
-          const partialDay = {
-            start,
-            end,
-          };
-
-          const sessionData = await getSessionDataForPartialDays(db, [partialDay], serial);
           machineRecords = sessionData.machines || [];
           machineItemRecords = sessionData.machineItems || [];
+        }
 
-          // If there is still no data, return an empty result set
-          if (!machineRecords.length && !machineItemRecords.length) {
-            return res.json({
-              timeRange: {
-                start: start.toISOString(),
-                end: end.toISOString(),
-              },
-              results: [],
-            });
-          }
+        // If there is still no data, return an empty result set
+        if (!machineRecords.length && !machineItemRecords.length) {
+          return res.json({
+            timeRange: {
+              start: start.toISOString(),
+              end: end.toISOString(),
+            },
+            results: [],
+          });
         }
 
         responseTimeRange = {
-          start: startDt.toUTC().toJSDate().toISOString(),
-          end: endDt.plus({ days: 1 }).toUTC().toJSDate().toISOString(),
+          start: start.toISOString(),
+          end: end.toISOString(),
         };
       }
 
@@ -1167,6 +1223,25 @@ module.exports = function (server) {
             totalCounts: record.totalCounts || 0,
           });
         }
+      }
+
+      const machineTimes = await getMachineStateTimeBySerial(
+        db,
+        config,
+        [...machineMap.keys()],
+        start,
+        end,
+        {
+          activeShifts: overlayShifts,
+          zone: SYSTEM_TIMEZONE,
+          shiftId: overlayShiftId,
+        }
+      );
+      for (const [serial, machineData] of machineMap) {
+        const sessionTimes = lookupMergedTime(machineTimes, serial);
+        if (!sessionTimes) continue;
+        machineData.runtimeMs = sessionTimes.runtime;
+        machineData.workedTimeMs = sessionTimes.runtime;
       }
 
       // Aggregate machine-items: First deduplicate by (serial, itemId, date), then sum across dates 
