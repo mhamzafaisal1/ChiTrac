@@ -8,7 +8,6 @@ const {
   getSessionDataForPartialDays,
   combineHybridData,
   getOperatorSessionDataForPartialDays,
-  getItemSessionDataForPartialDays,
   getItemDailyCachedDataForDays,
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
@@ -79,6 +78,42 @@ function buildTotalsCacheQuery(dateStrings, entityTypes, extraConditions = []) {
       ...extraConditions,
     ],
   };
+}
+
+function getTotalsPlantDate(record) {
+  if (!record || typeof record !== "object") return null;
+
+  const timestamp = record.timestamps?.create || record.lastUpdated || record.dateObj;
+  if (timestamp) {
+    const date = DateTime.fromJSDate(new Date(timestamp), { zone: SYSTEM_TIMEZONE });
+    if (date.isValid) return date.toISODate();
+  }
+
+  if (typeof record.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(record.date)) {
+    return record.date;
+  }
+
+  return null;
+}
+
+function filterTotalsDocsByPlantDate(records, dateStrings) {
+  const requestedDates = new Set(dateStrings);
+  return records.filter((record) => requestedDates.has(getTotalsPlantDate(record)));
+}
+
+function getPlantDateStringsForRange(start, end) {
+  const startDt = DateTime.fromJSDate(new Date(start), { zone: SYSTEM_TIMEZONE });
+  const endDt = DateTime.fromJSDate(new Date(end), { zone: SYSTEM_TIMEZONE });
+  if (!startDt.isValid || !endDt.isValid || endDt <= startDt) return [];
+
+  const dates = [];
+  let currentDate = startDt.startOf("day");
+  const lastDate = endDt.minus({ milliseconds: 1 }).startOf("day");
+  while (currentDate <= lastDate) {
+    dates.push(currentDate.toISODate());
+    currentDate = currentDate.plus({ days: 1 });
+  }
+  return dates;
 }
 
 module.exports = function (server) {
@@ -832,14 +867,15 @@ module.exports = function (server) {
 
         // Fall back to session-based approach
         const partialDays = [{ start: exactStart, end: exactEnd }];
-        const sessionData = await getItemSessionDataForPartialDays(db,partialDays);
+        const sessionData = await getSessionDataForPartialDays(db, partialDays);
+        const sessionItems = sessionData.machineItems || [];
 
-        console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions`);
+        console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions`);
 
         // Process session data
         const resultsMap = new Map();
 
-        for (const item of sessionData.items) {
+        for (const item of sessionItems) {
           const itemId = String(item.itemId);
 
           if (!resultsMap.has(itemId)) {
@@ -918,9 +954,10 @@ module.exports = function (server) {
         
         // Get data from sessions for partial days
         if (partialDays.length > 0) {
-          const sessionData = await getItemSessionDataForPartialDays(db,partialDays);
-          console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionData.items.length} item records from sessions for partial days`);
-          itemTotals = combineItemDailyHybridData(itemTotals, sessionData.items);
+          const sessionData = await getSessionDataForPartialDays(db, partialDays);
+          const sessionItems = sessionData.machineItems || [];
+          console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions for partial days`);
+          itemTotals = combineItemDailyHybridData(itemTotals, sessionItems);
           console.log(`[item-sessions-summary-daily-cache] Combined to ${itemTotals.length} total item records`);
         }
         
@@ -928,27 +965,15 @@ module.exports = function (server) {
         // For same-day queries or queries including today, use cached data (same as machine report)
         const cacheCollection = db.collection(config.totalsDailyCollectionName);
 
-        // Generate date range using normalized dates (same as machine report)
-        const dateStrings = [];
-        let currentDate = normalizedStart;
-        while (currentDate <= normalizedEnd) {
-          dateStrings.push(currentDate.toISODate());
-          currentDate = currentDate.plus({ days: 1 });
-        }
+        const dateStrings = getPlantDateStringsForRange(exactStart, exactEnd);
 
         console.log(`[item-sessions-summary-daily-cache] Querying cache for dates: ${dateStrings.join(', ')}`);
 
-        // Get item daily totals from simulator (using date strings, same as machine report)
-        const itemQuery = {
-          entityType: 'item',
-          source: 'simulator', // Only get simulator records
-          $or: [
-            { dateObj: { $in: dateStrings.map(str => new Date(str + 'T00:00:00.000Z')) } },
-            { date: { $in: dateStrings } }
-          ]
-        };
-
-        itemTotals = await cacheCollection.find(itemQuery).toArray();
+        const itemQuery = buildTotalsCacheQuery(dateStrings, ['item']);
+        itemTotals = filterTotalsDocsByPlantDate(
+          (await cacheCollection.find(itemQuery).toArray()).map(normalizeTotalsDocument),
+          dateStrings
+        );
         console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache`);
       }
 
