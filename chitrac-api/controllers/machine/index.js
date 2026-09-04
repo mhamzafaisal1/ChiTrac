@@ -8,6 +8,7 @@ const { ObjectId } = require("mongodb");
 const { formatDuration, parseAndValidateQueryParams, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { DateTime } = require("luxon");
 const config = require("../../modules/config");
+const { formatHumanName } = require("../../utils/humanNames");
 const {
   loadActiveShifts,
   computeShiftElapsedMs,
@@ -303,6 +304,297 @@ function constructor(server) {
         },
       },
     };
+  }
+
+  function buildLatestTickerDocumentMap(stateTickerData) {
+    const tickerMap = new Map();
+    for (const record of stateTickerData || []) {
+      const candidates = [
+        record.machine?.serial,
+        record.machine?.id,
+        record.machine?.serialNumber,
+      ];
+      const ts =
+        new Date(
+          record.status?.timestamp ||
+            record.timestamp ||
+            record.timestamps?.update ||
+            record.timestamps?.active ||
+            record.timestamps?.create ||
+            0
+        ).getTime() || 0;
+
+      for (const candidate of candidates) {
+        const serial = Number(candidate);
+        if (!Number.isFinite(serial)) continue;
+        const existing = tickerMap.get(serial);
+        if (!existing || ts > existing.timestamp) {
+          tickerMap.set(serial, { record, timestamp: ts });
+        }
+      }
+    }
+    return tickerMap;
+  }
+
+  function currentOperatorSessionKey(serial, operatorId) {
+    return `${Number(serial)}:${Number(operatorId)}`;
+  }
+
+  async function buildCurrentOperatorSessionMap(stateTickerData, machineSerials, start, end) {
+    const serialSet = new Set(machineSerials.map(Number).filter(Number.isFinite));
+    const operatorIds = [
+      ...new Set(
+        (stateTickerData || [])
+          .flatMap((ticker) => Array.isArray(ticker.operators) ? ticker.operators : [])
+          .map((operator) => Number(operator?.id))
+          .filter((operatorId) => Number.isFinite(operatorId) && operatorId !== -1)
+      ),
+    ];
+
+    if (!serialSet.size || !operatorIds.length) return new Map();
+
+    const windowStart = new Date(start);
+    const windowEnd = new Date(end);
+    const docs = await db.collection(config.operatorSessionCollectionName)
+      .find({
+        "operator.id": { $in: operatorIds },
+        $or: [
+          { "machine.serial": { $in: [...serialSet] } },
+          { "machine.id": { $in: [...serialSet] } },
+        ],
+        "timestamps.start": { $lt: windowEnd },
+        $and: [{
+          $or: [
+            { "timestamps.end": { $gt: windowStart } },
+            { "timestamps.end": { $exists: false } },
+            { "timestamps.end": null },
+          ],
+        }],
+      }, {
+        projection: {
+          _id: 0,
+          operator: 1,
+          machine: 1,
+          timestamps: 1,
+          workTime: 1,
+          totalTimeCredit: 1,
+          totalCount: 1,
+          misfeedCount: 1,
+        },
+        sort: { "timestamps.start": 1 },
+      })
+      .toArray();
+
+    const sessionMap = new Map();
+    for (const doc of docs) {
+      const serial = Number(doc.machine?.serial ?? doc.machine?.id);
+      const operatorId = Number(doc.operator?.id);
+      if (!Number.isFinite(serial) || !Number.isFinite(operatorId)) continue;
+      const key = currentOperatorSessionKey(serial, operatorId);
+      if (!sessionMap.has(key)) sessionMap.set(key, []);
+      sessionMap.get(key).push(doc);
+    }
+    return sessionMap;
+  }
+
+  function buildCurrentOperatorsFromPreloadedTicker(tickerRecord, serial, start, end, metricsByOperator, sessionMap) {
+    const safe = (n) => (typeof n === "number" && Number.isFinite(n) ? n : 0);
+    const operators = Array.isArray(tickerRecord?.operators) ? tickerRecord.operators : [];
+    const opIds = [
+      ...new Set(
+        operators
+          .map((operator) => Number(operator?.id))
+          .filter((operatorId) => Number.isFinite(operatorId) && operatorId !== -1)
+      ),
+    ];
+
+    if (!opIds.length) return [];
+
+    const windowStart = new Date(start);
+    const windowEnd = new Date(end);
+    const machineSerial = tickerRecord?.machine?.serial ?? tickerRecord?.machine?.id ?? Number(serial);
+    const machineName = tickerRecord?.machine?.name || "Unknown";
+
+    return opIds.map((opId) => {
+      const docs = sessionMap.get(currentOperatorSessionKey(serial, opId)) || [];
+      const currentDoc = docs.find((doc) => !doc.timestamps?.end) || null;
+      const sessionDoc = currentDoc || docs[docs.length - 1] || null;
+      const cachedMetrics = metricsByOperator instanceof Map ? metricsByOperator.get(opId) : null;
+
+      let workedMs = 0;
+      let creditMs = 0;
+      let valid = 0;
+      let mis = 0;
+
+      if (cachedMetrics) {
+        workedMs = Math.round(safe(cachedMetrics.workedTimeMs));
+        creditMs = safe(cachedMetrics.totalTimeCreditMs);
+        valid = safe(cachedMetrics.validCount);
+        mis = safe(cachedMetrics.misfeedCount);
+      } else {
+        let workSec = 0;
+        let creditSec = 0;
+        for (const doc of docs) {
+          const sessionStart = new Date(doc.timestamps?.start || doc.timestamps?.create || windowStart);
+          const sessionEnd = doc.timestamps?.end ? new Date(doc.timestamps.end) : windowEnd;
+          const overlapStart = sessionStart > windowStart ? sessionStart : windowStart;
+          const overlapEnd = sessionEnd < windowEnd ? sessionEnd : windowEnd;
+          const overlapMs = Math.max(0, overlapEnd - overlapStart);
+          const sessionMs = Math.max(0, sessionEnd - sessionStart);
+          const factor = sessionMs > 0 ? overlapMs / sessionMs : 0;
+          workSec += safe(doc.workTime) * factor;
+          creditSec += safe(doc.totalTimeCredit) * factor;
+          valid += safe(doc.totalCount) * factor;
+          mis += safe(doc.misfeedCount) * factor;
+        }
+        workedMs = Math.round(workSec * 1000);
+        creditMs = creditSec * 1000;
+      }
+
+      const tickerOp = operators.find((operator) => Number(operator?.id) === opId);
+      const operatorName = formatHumanName(tickerOp?.name || sessionDoc?.operator?.name, `Operator ${opId}`);
+      const eff = workedMs > 0 ? creditMs / workedMs : 0;
+
+      return {
+        operatorId: opId,
+        operatorName,
+        machineSerial,
+        machineName,
+        session: {
+          start: sessionDoc?.timestamps?.start || sessionDoc?.timestamps?.create || null,
+          end: sessionDoc?.timestamps?.end || null,
+        },
+        metrics: {
+          workedTimeMs: workedMs,
+          workedTimeFormatted: formatDuration(workedMs),
+          totalCount: Math.round(valid + mis),
+          validCount: Math.round(valid),
+          misfeedCount: Math.round(mis),
+          efficiencyPct: +(eff * 100).toFixed(2),
+        },
+      };
+    });
+  }
+
+  function machineSessionStatusFromSession(session) {
+    const status = session.startState?.status || session.status || session.endState?.status || {};
+    const codeValue =
+      status.id ??
+      status.code ??
+      session.startState?.id ??
+      session.startState?.code ??
+      session.endState?.id ??
+      session.endState?.code;
+    const code = Number(codeValue);
+    const name = status.name || session.startState?.name || session.endState?.name || "Faulted";
+    return {
+      code: Number.isFinite(code) ? code : null,
+      name,
+    };
+  }
+
+  async function buildMachineFaultSessionMap(machineSerials, start, end) {
+    const serialSet = new Set(machineSerials.map(Number).filter(Number.isFinite));
+    if (!serialSet.size) return new Map();
+
+    const windowStart = new Date(start);
+    const windowEnd = new Date(end);
+    const docs = await db.collection(config.machineSessionCollectionName)
+      .find({
+        $or: [
+          { "machine.serial": { $in: [...serialSet] } },
+          { "machine.id": { $in: [...serialSet] } },
+        ],
+        "timestamps.start": { $lt: windowEnd },
+        $and: [{
+          $or: [
+            { "timestamps.end": { $gt: windowStart } },
+            { "timestamps.end": { $exists: false } },
+            { "timestamps.end": null },
+          ],
+        }],
+      }, {
+        projection: {
+          _id: 1,
+          machine: 1,
+          timestamps: 1,
+          startState: 1,
+          endState: 1,
+          status: 1,
+        },
+        sort: { "timestamps.start": 1 },
+      })
+      .toArray();
+
+    const sessionMap = new Map();
+    for (const doc of docs) {
+      const serial = Number(doc.machine?.serial ?? doc.machine?.id);
+      if (!Number.isFinite(serial)) continue;
+      const status = machineSessionStatusFromSession(doc);
+      if (!(Number(status.code) > 1)) continue;
+      if (!sessionMap.has(serial)) sessionMap.set(serial, []);
+      sessionMap.get(serial).push(doc);
+    }
+    return sessionMap;
+  }
+
+  function buildFaultDataFromPreloadedMachineSessions(sessions, start, end) {
+    const windowStart = new Date(start);
+    const windowEnd = new Date(end);
+    const faultCycles = [];
+    const summaryMap = new Map();
+
+    for (const session of sessions || []) {
+      const status = machineSessionStatusFromSession(session);
+      if (!(Number(status.code) > 1)) continue;
+
+      const sessionStart = new Date(session.timestamps?.start || session.timestamps?.create || windowStart);
+      const sessionEnd = session.timestamps?.end ? new Date(session.timestamps.end) : windowEnd;
+      const overlapStart = sessionStart > windowStart ? sessionStart : windowStart;
+      const overlapEnd = sessionEnd < windowEnd ? sessionEnd : windowEnd;
+      const overlapMs = Math.max(0, overlapEnd - overlapStart);
+      if (overlapMs <= 0) continue;
+
+      const durationSeconds = Math.floor(overlapMs / 1000);
+      const name = status.name || "Faulted";
+      const summaryKey = `${status.code}:${name}`;
+
+      faultCycles.push({
+        id: String(session._id),
+        start: overlapStart,
+        end: overlapEnd,
+        durationSeconds,
+        code: status.code,
+        name,
+        machineSerial: session.machine?.serial ?? session.machine?.id ?? null,
+        machineName: session.machine?.name || null,
+      });
+
+      if (!summaryMap.has(summaryKey)) {
+        summaryMap.set(summaryKey, {
+          code: status.code,
+          name,
+          count: 0,
+          totalDurationSeconds: 0,
+        });
+      }
+
+      const summary = summaryMap.get(summaryKey);
+      summary.count += 1;
+      summary.totalDurationSeconds += durationSeconds;
+    }
+
+    const faultSummaries = Array.from(summaryMap.values()).map((summary) => ({
+      ...summary,
+      formatted: {
+        hours: Math.floor(summary.totalDurationSeconds / 3600),
+        minutes: Math.floor((summary.totalDurationSeconds % 3600) / 60),
+        seconds: summary.totalDurationSeconds % 60,
+      },
+    })).sort((a, b) => b.totalDurationSeconds - a.totalDurationSeconds);
+
+    faultCycles.sort((a, b) => new Date(a.start) - new Date(b.start));
+    return { faultCycles, faultSummaries };
   }
 
 	async function getMachineXML(req, res, next) {
@@ -867,6 +1159,18 @@ function constructor(server) {
         ]);
 
       const tickerMap = buildLatestTickerMap(stateTickerData);
+      const tickerDocumentMap = buildLatestTickerDocumentMap(stateTickerData);
+      const currentOperatorSessionMap = await buildCurrentOperatorSessionMap(
+        stateTickerData,
+        machineSerials,
+        requestStart,
+        requestEnd
+      );
+      const machineFaultSessionMap = await buildMachineFaultSessionMap(
+        machineSerials,
+        requestStart,
+        requestEnd
+      );
       const machineItemsBySerial = groupRecordsBySerial(machineItemRecords);
       const machineItemHourlyBySerial = groupRecordsBySerial(machineItemHourlyRecords);
       const operatorMachineHourlyBySerial = groupRecordsBySerial(operatorMachineHourlyRecords);
@@ -935,25 +1239,18 @@ function constructor(server) {
             );
           const currentOperators = record.configOnlyOffline
             ? []
-            : await buildCurrentOperators(
-                db,
+            : buildCurrentOperatorsFromPreloadedTicker(
+                tickerDocumentMap.get(serial)?.record,
                 serial,
                 sessionStart,
                 sessionEnd,
-                currentOperatorMetrics
-              );
-          const faultStateWindow = record.configOnlyOffline
-            ? null
-            : await getBookendedStatesAndTimeRange(
-                db,
-                serial,
-                sessionStart,
-                sessionEnd
+                currentOperatorMetrics,
+                currentOperatorSessionMap
               );
           const faultData = record.configOnlyOffline
             ? { faultCycles: [], faultSummaries: [] }
-            : buildFaultData(
-                faultStateWindow?.states || [],
+            : buildFaultDataFromPreloadedMachineSessions(
+                machineFaultSessionMap.get(serial) || [],
                 sessionStart,
                 sessionEnd
               );
