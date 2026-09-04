@@ -13,6 +13,7 @@ const config = require("../modules/config");
 const { SYSTEM_TIMEZONE } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
 const { DateTime } = require("luxon");
+const { mergeIntervals } = require("./faultTimeSummary");
 
 // ---------------------------------------------------------------------------
 // Internal utility – overlap calculation (same logic used in machineFunctions
@@ -47,8 +48,10 @@ function normalizeSessionSeconds(value, session) {
 }
 
 function getSessionStatusCode(session) {
-  const code = Number(session?.status?.code ?? session?.type);
-  return Number.isFinite(code) ? code : null;
+  const fromType = Number(session?.type);
+  if (Number.isFinite(fromType)) return fromType;
+  const fromStatus = Number(session?.status?.id ?? session?.status?.code);
+  return Number.isFinite(fromStatus) ? fromStatus : null;
 }
 
 function classifySessionTime(session) {
@@ -610,6 +613,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
           totalPausedMs: 0,
           totalFaults: 0,
           itemAgg: new Map(),
+          runIntervals: [],
         });
       }
       const bucket = grouped.get(key);
@@ -630,6 +634,10 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
         : s.operator && s.operator.id !== -1
           ? 1
           : 0;
+
+      if (isRunning && s.ovStart && s.ovEnd) {
+        bucket.runIntervals.push({ start: new Date(s.ovStart), end: new Date(s.ovEnd) });
+      }
 
       const workedTimeMs = isRunning ? Math.max(0, s.sliceMs * activeStations) : 0;
       const runtimeMs = isRunning ? Math.max(0, s.sliceMs) : 0;
@@ -699,12 +707,16 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
 
     // Convert grouped data to totals format
     for (const [serial, bucket] of grouped) {
+      const mergedRuntimeMs = mergeIntervals(bucket.runIntervals).reduce(
+        (sum, interval) => sum + Math.max(0, interval.end - interval.start),
+        0
+      );
       machines.push({
         machineSerial: serial,
         machineName: bucket.machine.name,
         totalCounts: bucket.totalCount,
-        workedTimeMs: bucket.totalWorkedMs,
-        runtimeMs: bucket.totalRuntimeMs,
+        workedTimeMs: mergedRuntimeMs,
+        runtimeMs: mergedRuntimeMs,
         faultTimeMs: bucket.totalFaultMs,
         pausedTimeMs: bucket.totalPausedMs,
         totalFaults: bucket.totalFaults,
@@ -987,7 +999,8 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
           faultTimeMs: 0,
           pausedTimeMs: 0,
           totalFaults: 0,
-          itemCounts: new Map()
+          itemCounts: new Map(),
+          runIntervals: []
         });
       }
 
@@ -996,8 +1009,10 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
       const overlapMs = getSessionOverlapMs(session, partialDay.start, partialDay.end);
       const timeClass = classifySessionTime(session);
       if (timeClass === "run") {
-        bucket.runtimeMs += overlapMs;
-        bucket.workedTimeMs += overlapMs;
+        const { ovStart, ovEnd } = overlap(session.timestamps?.start, session.timestamps?.end, partialDay.start, partialDay.end);
+        if (ovEnd > ovStart) {
+          bucket.runIntervals.push({ start: ovStart, end: ovEnd });
+        }
       } else if (timeClass === "paused") {
         bucket.pausedTimeMs += overlapMs;
       } else if (timeClass === "fault") {
@@ -1067,12 +1082,17 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
         });
       }
 
+      const mergedRuntimeMs = mergeIntervals(bucket.runIntervals).reduce(
+        (sum, interval) => sum + Math.max(0, interval.end - interval.start),
+        0
+      );
+
       operators.push({
         operatorId: bucket.operatorId,
         operatorName: bucket.operatorName,
         totalCounts: bucket.totalCounts,
-        runtimeMs: bucket.runtimeMs,
-        workedTimeMs: bucket.workedTimeMs,
+        runtimeMs: mergedRuntimeMs,
+        workedTimeMs: mergedRuntimeMs,
         faultTimeMs: bucket.faultTimeMs,
         pausedTimeMs: bucket.pausedTimeMs,
         totalFaults: bucket.totalFaults,
