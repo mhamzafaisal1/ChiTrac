@@ -7,7 +7,8 @@ import {
   Input,
   SimpleChanges,
   OnChanges,
-  ViewChild
+  ViewChild,
+  AfterViewInit
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -37,7 +38,7 @@ function toDateTimeLocalString(dateStr: string): string {
     templateUrl: './operator-line-chart.component.html',
     styleUrls: ['./operator-line-chart.component.scss']
 })
-export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges {
+export class OperatorLineChartComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @Input() startTime: string = '';
   @Input() endTime: string = '';
   @Input() operatorId: string = '';
@@ -76,11 +77,14 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
   ngOnInit(): void {
     this.detectTheme();
     this.observeTheme();
-    this.observeResize();
 
     if (this.mode === 'dashboard' && this.dashboardData) {
       this.processDashboardData();
     }
+  }
+
+  ngAfterViewInit(): void {
+    this.observeResize();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -90,7 +94,12 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
     if (changes['endTime'] && this.endTime) {
       this.pickerEndTime = toDateTimeLocalString(this.endTime);
     }
-    if (changes['dashboardData'] && this.mode === 'dashboard' && this.dashboardData) {
+    if (
+      (changes['dashboardData'] || changes['operatorId']) &&
+      this.mode === 'dashboard' &&
+      this.dashboardData &&
+      this.operatorId
+    ) {
       this.processDashboardData();
     }
   }
@@ -126,9 +135,11 @@ export class OperatorLineChartComponent implements OnInit, OnDestroy, OnChanges 
 
   private processDashboardData(): void {
     try {
+      this.error = null;
       const operatorData = this.dashboardData?.find(item => item.operator?.id === parseInt(this.operatorId));
       if (!operatorData?.dailyEfficiency) {
         this.error = 'No daily efficiency data available';
+        this.chartConfig = null;
         return;
       }
 
