@@ -1,5 +1,7 @@
+const { ObjectId } = require("mongodb");
 const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
+const { getShiftTimeComponents, getTimeComponentsFromTimestamp } = require("./shiftTimeComponents");
 
 function validDate(value) {
   const date = value ? new Date(value) : null;
@@ -92,6 +94,35 @@ function timeComponents(value) {
   return { hour, minute };
 }
 
+function sessionStateCode(session) {
+  const fromType = Number(session?.type);
+  if (Number.isFinite(fromType)) return fromType;
+  const fromStatus = Number(session?.status?.id ?? session?.status?.code);
+  return Number.isFinite(fromStatus) ? fromStatus : null;
+}
+
+function shiftWindowComponents(shift, zone = SYSTEM_TIMEZONE) {
+  const startTime = timeComponents(shift?.startTime);
+  const endTime = timeComponents(shift?.endTime);
+  if (startTime && endTime) return { startTime, endTime };
+  return getShiftTimeComponents(shift, zone);
+}
+
+function breakWindowComponents(breakDoc, zone = SYSTEM_TIMEZONE) {
+  const startTime = timeComponents(breakDoc?.startTime);
+  const endTime = timeComponents(breakDoc?.endTime);
+  if (startTime && endTime) return { startTime, endTime };
+  const start = getTimeComponentsFromTimestamp(breakDoc?.timestamps?.start, zone);
+  const end = getTimeComponentsFromTimestamp(breakDoc?.timestamps?.end, zone);
+  if (!start || !end) return null;
+  return { startTime: start, endTime: end };
+}
+
+function lookupMergedTime(timeById, key) {
+  if (key == null) return null;
+  return timeById.get(Number(key)) || timeById.get(key) || timeById.get(String(key)) || null;
+}
+
 function intersectInterval(interval, boundary) {
   const startMs = Math.max(interval.start.getTime(), boundary.start.getTime());
   const endMs = Math.min(interval.end.getTime(), boundary.end.getTime());
@@ -138,12 +169,11 @@ function buildShiftClipIntervals(shifts, start, end, zone = SYSTEM_TIMEZONE) {
       const activeDays = Array.isArray(shift?.activeDays) ? shift.activeDays : [];
       if (activeDays.length && !activeDays.includes(day.weekday)) continue;
 
-      const startTime = timeComponents(shift?.startTime);
-      const endTime = timeComponents(shift?.endTime);
-      if (!startTime || !endTime) continue;
+      const window = shiftWindowComponents(shift, zone);
+      if (!window?.startTime || !window?.endTime) continue;
 
-      const shiftStart = day.set({ ...startTime, second: 0, millisecond: 0 });
-      const shiftEnd = day.set({ ...endTime, second: 0, millisecond: 0 });
+      const shiftStart = day.set({ ...window.startTime, second: 0, millisecond: 0 });
+      const shiftEnd = day.set({ ...window.endTime, second: 0, millisecond: 0 });
       if (shiftEnd <= shiftStart) continue;
 
       const clippedShift = intersectInterval(
@@ -155,13 +185,12 @@ function buildShiftClipIntervals(shifts, start, end, zone = SYSTEM_TIMEZONE) {
       const breakIntervals = (Array.isArray(shift?.breaks) ? shift.breaks : [])
         .filter((breakDoc) => breakDoc?.active !== false)
         .map((breakDoc) => {
-          const breakStart = timeComponents(breakDoc?.startTime);
-          const breakEnd = timeComponents(breakDoc?.endTime);
-          if (!breakStart || !breakEnd) return null;
+          const breakWindow = breakWindowComponents(breakDoc, zone);
+          if (!breakWindow) return null;
           return intersectInterval(
             {
-              start: day.set({ ...breakStart, second: 0, millisecond: 0 }).toJSDate(),
-              end: day.set({ ...breakEnd, second: 0, millisecond: 0 }).toJSDate(),
+              start: day.set({ ...breakWindow.startTime, second: 0, millisecond: 0 }).toJSDate(),
+              end: day.set({ ...breakWindow.endTime, second: 0, millisecond: 0 }).toJSDate(),
             },
             clippedShift
           );
@@ -174,7 +203,8 @@ function buildShiftClipIntervals(shifts, start, end, zone = SYSTEM_TIMEZONE) {
     day = day.plus({ days: 1 });
   }
 
-  return mergeIntervals(intervals);
+  const merged = mergeIntervals(intervals);
+  return merged.length ? merged : null;
 }
 
 function clipInterval(interval, clipIntervals) {
@@ -342,15 +372,15 @@ async function getOperatorMachineStateTimeByOperatorId(db, config, operatorIds, 
       ...overlapQuery(start, end),
       "operators.id": { $in: ids },
     })
-    .project({ _id: 0, type: 1, operators: 1, timestamps: 1 })
+    .project({ _id: 0, type: 1, status: 1, operators: 1, timestamps: 1 })
     .toArray();
 
   const idSet = new Set(ids.map(String));
   const intervalsByOperator = new Map();
 
   for (const session of machineSessions) {
-    const type = Number(session.type);
-    if (!Number.isFinite(type)) continue;
+    const type = sessionStateCode(session);
+    if (type === null) continue;
 
     const sessionStart = validDate(session.timestamps?.start);
     const sessionEnd = validDate(session.timestamps?.end) || end;
@@ -387,8 +417,96 @@ async function getOperatorMachineStateTimeByOperatorId(db, config, operatorIds, 
   return totalsByOperator;
 }
 
+async function getMachineStateTimeBySerial(db, config, machineSerials, start, end, options = {}) {
+  const serials = idVariants(machineSerials);
+  if (!config.machineSessionCollectionName || serials.length === 0) {
+    return new Map();
+  }
+
+  const clipIntervals = buildShiftClipIntervals(options.activeShifts, start, end, options.zone);
+  const sessionMatch = {
+    $and: [
+      overlapQuery(start, end),
+      {
+        $or: [
+          { "machine.serial": { $in: serials } },
+          { "machine.id": { $in: serials } },
+          { "machine.serialNumber": { $in: serials } },
+        ],
+      },
+    ],
+  };
+
+  if (options.shiftId) {
+    const shiftId = String(options.shiftId);
+    sessionMatch.$and.push({
+      $or: ObjectId.isValid(shiftId)
+        ? [{ "shift._id": shiftId }, { "shift._id": new ObjectId(shiftId) }]
+        : [{ "shift._id": shiftId }],
+    });
+  }
+
+  const machineSessions = await db
+    .collection(config.machineSessionCollectionName)
+    .find(sessionMatch)
+    .project({ _id: 0, type: 1, status: 1, machine: 1, timestamps: 1 })
+    .toArray();
+
+  const serialSet = new Set(serials.map(String));
+  const intervalsBySerial = new Map();
+
+  for (const session of machineSessions) {
+    const serial = serialFromEntity(session.machine);
+    if (serial === null || !serialSet.has(String(serial))) continue;
+
+    const type = sessionStateCode(session);
+    if (type === null) continue;
+
+    const sessionStart = validDate(session.timestamps?.start);
+    const sessionEnd = validDate(session.timestamps?.end) || end;
+    if (!sessionStart || !sessionEnd) continue;
+
+    const interval = {
+      start: new Date(Math.max(sessionStart.getTime(), start.getTime())),
+      end: new Date(Math.min(sessionEnd.getTime(), end.getTime())),
+    };
+    if (interval.end <= interval.start) continue;
+
+    const bucket = type === 0 ? "pausedTime" : type === 1 ? "runtime" : type > 1 ? "faultTime" : null;
+    if (!bucket) continue;
+
+    if (!intervalsBySerial.has(serial)) {
+      intervalsBySerial.set(serial, {
+        runtime: [],
+        pausedTime: [],
+        faultTime: [],
+      });
+    }
+
+    for (const clipped of clipInterval(interval, clipIntervals)) {
+      intervalsBySerial.get(serial)[bucket].push(clipped);
+    }
+  }
+
+  const totalsBySerial = new Map();
+  for (const [serial, intervals] of intervalsBySerial) {
+    const faultIntervals = mergeIntervals(intervals.faultTime);
+    const runtimeIntervals = mergeIntervals(intervals.runtime);
+    totalsBySerial.set(serial, {
+      runtime: totalMergedMs(runtimeIntervals),
+      pausedTime: totalUncoveredMs(intervals.pausedTime, [...runtimeIntervals, ...faultIntervals]),
+      faultTime: totalMergedMs(faultIntervals),
+    });
+  }
+
+  return totalsBySerial;
+}
+
 module.exports = {
   getMachineFaultTimeBySerial,
   getOperatorFaultTimeByOperatorId,
   getOperatorMachineStateTimeByOperatorId,
+  getMachineStateTimeBySerial,
+  lookupMergedTime,
+  mergeIntervals,
 };
