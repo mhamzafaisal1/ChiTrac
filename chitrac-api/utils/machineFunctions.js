@@ -789,7 +789,9 @@ async function getActiveMachineSerials(db, start, end) {
     };
   }
 
-  function buildItemSummaryFromRecords(records, sessionStart, sessionEnd) {
+  function buildItemSummaryFromRecords(records, sessionStart, sessionEnd, options = {}) {
+    const stationCount = Math.max(1, Math.round(safeNumber(options.stationCount, 1)) || 1);
+
     if (!records.length) {
       return {
         sessions: [],
@@ -816,7 +818,8 @@ async function getActiveMachineSerials(db, start, end) {
         safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
       const standard = safeNumber(record.itemStandard);
       const hours = workedMs / 3600000 || 0;
-      const pph = hours > 0 ? counts / hours : 0;
+      const machinePph = hours > 0 ? counts / hours : 0;
+      const pph = machinePph / stationCount;
       const efficiency = standard > 0 ? pph / standard : 0;
       const itemId = record.itemId ?? record.itemName ?? "unknown";
       const itemKey = String(itemId);
@@ -846,12 +849,13 @@ async function getActiveMachineSerials(db, start, end) {
 
     const totalHours = totalWorkedMs / 3600000 || 0;
     const machinePph = totalHours > 0 ? totalCounts / totalHours : 0;
+    const pphPerStation = machinePph / stationCount;
     const proratedStandard = sessionItems.reduce((acc, item) => {
       const weight = totalCounts > 0 ? item.countTotal / totalCounts : 0;
       return acc + weight * (item.standard || 0);
     }, 0);
     const machineEfficiency =
-      proratedStandard > 0 ? machinePph / proratedStandard : 0;
+      proratedStandard > 0 ? pphPerStation / proratedStandard : 0;
 
     return {
       sessions: [
@@ -867,7 +871,7 @@ async function getActiveMachineSerials(db, start, end) {
         totalCount: totalCounts,
         workedTimeMs: totalWorkedMs,
         workedTimeFormatted: formatDuration(totalWorkedMs),
-        pph: Math.round(machinePph * 100) / 100,
+        pph: Math.round(pphPerStation * 100) / 100,
         proratedStandard: Math.round(proratedStandard * 100) / 100,
         efficiency: Math.round(machineEfficiency * 10000) / 100,
         itemSummaries,

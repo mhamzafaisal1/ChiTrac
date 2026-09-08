@@ -292,7 +292,7 @@ async function loadConfiguredMachines(db, config, serial = null) {
   return db
     .collection(config.machineCollectionName)
     .find(filter)
-    .project({ _id: 0, id: 1, serial: 1, name: 1, active: 1 })
+    .project({ _id: 0, id: 1, serial: 1, name: 1, active: 1, stations: 1 })
     .sort({ name: 1, id: 1, serial: 1 })
     .toArray();
 }
