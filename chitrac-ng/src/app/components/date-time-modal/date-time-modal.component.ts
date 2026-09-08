@@ -68,15 +68,7 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
   private dashboardCacheSub?: Subscription;
 
   ngOnInit(): void {
-    this.initializePickerDates();
-    this.mode = this.dateTimeService.getLiveMode() ? 'live' : 'manual';
-    const existing = this.dateTimeService.getShiftId();
-    this.selectedShiftId = existing || null;
-    const existingTimeframe = this.dateTimeService.getTimeframe();
-    this.selectedTimeframe = existingTimeframe || '';
-    this.selectedOption = existing
-      ? `shift:${existing}`
-      : existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
+    this.resetDraftFromCommittedSelection();
 
     this.shiftService.getActiveShifts().subscribe({
       next: (res) => {
@@ -109,6 +101,19 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.dashboardCacheSub?.unsubscribe();
+  }
+
+  resetDraftFromCommittedSelection(): void {
+    this.initializePickerDates();
+    this.mode = this.dateTimeService.getLiveMode() ? 'live' : 'manual';
+    const existing = this.dateTimeService.getShiftId();
+    this.selectedShiftId = existing || null;
+    const existingTimeframe = this.dateTimeService.getTimeframe();
+    this.selectedTimeframe = existingTimeframe || '';
+    this.selectedOption = existing
+      ? `shift:${existing}`
+      : existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
+    this.cdr.markForCheck();
   }
 
   isDisabled(): boolean {
