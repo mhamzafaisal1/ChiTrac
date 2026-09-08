@@ -271,6 +271,27 @@ function constructor(server) {
     };
   }
 
+  function configuredStationCount(machine) {
+    const stations = Array.isArray(machine?.stations) ? machine.stations : [];
+    const uniqueStations = new Set(
+      stations
+        .map((station) => Number(station))
+        .filter((station) => Number.isFinite(station))
+    );
+    return Math.max(1, uniqueStations.size || stations.length || 1);
+  }
+
+  function buildStationCountBySerial(machines) {
+    const stationCounts = new Map();
+    for (const machine of machines || []) {
+      const serial = machineSerialFromConfig(machine);
+      if (serial !== null) {
+        stationCounts.set(serial, configuredStationCount(machine));
+      }
+    }
+    return stationCounts;
+  }
+
   function zeroMachineDashboardPerformance() {
     return {
       runtime: {
@@ -1042,6 +1063,7 @@ function constructor(server) {
       }
 
       const configuredMachines = await loadConfiguredMachines(db, config, machineSerialFilter);
+      const stationCountBySerial = buildStationCountBySerial(configuredMachines);
       const machineTotalsSerials = new Set(
         machineTotals
           .map((record) => Number(record.machineSerial))
@@ -1214,7 +1236,8 @@ function constructor(server) {
           const itemSummary = buildItemSummaryFromRecords(
             machineItems,
             sessionStart,
-            sessionEnd
+            sessionEnd,
+            { stationCount: stationCountBySerial.get(serial) || 1 }
           );
           const machineItemHourly = machineItemHourlyBySerial.get(serial) || [];
           const itemHourlyStack = buildItemHourlyStackFromRecords(
