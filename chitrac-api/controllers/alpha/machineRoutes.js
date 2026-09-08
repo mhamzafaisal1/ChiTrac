@@ -10,7 +10,10 @@ const {
 } = require("../../utils/shiftElapsed");
 const { getSessionDataForPartialDays } = require("../../utils/reportFunctions");
 const { getValidCounts } = require("../../utils/count");
-const { getPlantDateStr } = require("../../utils/machineDashboardCache");
+const {
+  getPlantDateStr,
+  loadConfiguredMachines,
+} = require("../../utils/machineDashboardCache");
 const {
   getMachinesSummaryRealTime,
   buildLatestTickerMap,
@@ -34,6 +37,32 @@ module.exports = function (server) {
   const logger = server.logger;
 
   const getMachinesSummaryRealTimeHandler = getMachinesSummaryRealTime(db, logger, config);
+
+  function machineSerialFromConfig(machine) {
+    const serial = Number(machine?.id ?? machine?.serial);
+    return Number.isFinite(serial) ? serial : null;
+  }
+
+  function configuredStationCount(machine) {
+    const stations = Array.isArray(machine?.stations) ? machine.stations : [];
+    const uniqueStations = new Set(
+      stations
+        .map((station) => Number(station))
+        .filter((station) => Number.isFinite(station))
+    );
+    return Math.max(1, uniqueStations.size || stations.length || 1);
+  }
+
+  function buildStationCountBySerial(machines) {
+    const stationCounts = new Map();
+    for (const machine of machines || []) {
+      const serial = machineSerialFromConfig(machine);
+      if (serial !== null) {
+        stationCounts.set(serial, configuredStationCount(machine));
+      }
+    }
+    return stationCounts;
+  }
 
   function resolveDashboardDetailRange(req) {
     const hasStart = typeof req.query.start !== "undefined" || typeof req.query.startTime !== "undefined";
@@ -454,6 +483,8 @@ module.exports = function (server) {
       }
 
       const serialSet = new Set(machineSerials);
+      const configuredMachines = await loadConfiguredMachines(db, config, machineSerialFilter);
+      const stationCountBySerial = buildStationCountBySerial(configuredMachines);
       const tickerSerialFilter = [
         ...new Set([
           ...machineSerials,
@@ -577,7 +608,8 @@ module.exports = function (server) {
           const itemSummary = buildItemSummaryFromRecords(
             machineItems,
             sessionStart,
-            sessionEnd
+            sessionEnd,
+            { stationCount: stationCountBySerial.get(serial) || 1 }
           );
           const machineItemHourly = machineItemHourlyBySerial.get(serial) || [];
           const itemHourlyStack = buildItemHourlyStackFromRecords(

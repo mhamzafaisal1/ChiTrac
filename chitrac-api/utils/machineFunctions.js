@@ -707,7 +707,11 @@ async function getActiveMachineSerials(db, start, end) {
     const runtimeMs = safeNumber(record.runtimeMs);
     const pausedMs = safeNumber(record.pausedTimeMs);
     const faultMs = safeNumber(record.faultTimeMs);
-    const downtimeWallClockMs = pausedMs + faultMs;
+    const offlineMs = safeNumber(record.offlineTimeMs);
+    const cachedDownTimeMs = safeNumber(record.downTimeMs, null);
+    const downtimeWallClockMs = cachedDownTimeMs !== null
+      ? Math.max(0, cachedDownTimeMs)
+      : pausedMs + faultMs + offlineMs;
     const workedTimeMs = safeNumber(record.workedTimeMs);
     const timeCreditMs = safeNumber(record.totalTimeCreditMs);
     const totalCounts = safeNumber(record.totalCounts);
@@ -725,9 +729,15 @@ async function getActiveMachineSerials(db, start, end) {
     const totalQueryMs =
       typeof shiftElapsedMsOverride === "number" ? shiftElapsedMsOverride : windowMsWallClock;
 
-    const downtimeMs = Math.max(totalQueryMs - runtimeMs, 0);
+    const derivedDowntimeMs = Math.max(totalQueryMs - runtimeMs, 0);
+    const downtimeMs = downtimeWallClockMs > 0 ? downtimeWallClockMs : derivedDowntimeMs;
+    const availabilityDenominatorMs = downtimeMs > 0
+      ? runtimeMs + downtimeMs
+      : totalQueryMs;
     const availability =
-      totalQueryMs > 0 ? Math.min(Math.max(runtimeMs / totalQueryMs, 0), 1) : 0;
+      availabilityDenominatorMs > 0
+        ? Math.min(Math.max(runtimeMs / availabilityDenominatorMs, 0), 1)
+        : 0;
     const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
     const efficiency =
       workedTimeMs > 0 ? Math.min(Math.max(timeCreditMs / workedTimeMs, 0), 1) : 0;
@@ -741,6 +751,18 @@ async function getActiveMachineSerials(db, start, end) {
       downtime: {
         total: downtimeMs,
         formatted: formatDuration(downtimeMs),
+      },
+      pausedTime: {
+        total: pausedMs,
+        formatted: formatDuration(pausedMs),
+      },
+      downTime: {
+        total: downtimeMs,
+        formatted: formatDuration(downtimeMs),
+      },
+      faultTime: {
+        total: faultMs,
+        formatted: formatDuration(faultMs),
       },
       output: {
         totalCount: totalCounts,
@@ -767,7 +789,9 @@ async function getActiveMachineSerials(db, start, end) {
     };
   }
 
-  function buildItemSummaryFromRecords(records, sessionStart, sessionEnd) {
+  function buildItemSummaryFromRecords(records, sessionStart, sessionEnd, options = {}) {
+    const stationCount = Math.max(1, Math.round(safeNumber(options.stationCount, 1)) || 1);
+
     if (!records.length) {
       return {
         sessions: [],
@@ -794,7 +818,8 @@ async function getActiveMachineSerials(db, start, end) {
         safeNumber(record.workedTimeMs) || safeNumber(record.runtimeMs);
       const standard = safeNumber(record.itemStandard);
       const hours = workedMs / 3600000 || 0;
-      const pph = hours > 0 ? counts / hours : 0;
+      const machinePph = hours > 0 ? counts / hours : 0;
+      const pph = machinePph / stationCount;
       const efficiency = standard > 0 ? pph / standard : 0;
       const itemId = record.itemId ?? record.itemName ?? "unknown";
       const itemKey = String(itemId);
@@ -824,12 +849,13 @@ async function getActiveMachineSerials(db, start, end) {
 
     const totalHours = totalWorkedMs / 3600000 || 0;
     const machinePph = totalHours > 0 ? totalCounts / totalHours : 0;
+    const pphPerStation = machinePph / stationCount;
     const proratedStandard = sessionItems.reduce((acc, item) => {
       const weight = totalCounts > 0 ? item.countTotal / totalCounts : 0;
       return acc + weight * (item.standard || 0);
     }, 0);
     const machineEfficiency =
-      proratedStandard > 0 ? machinePph / proratedStandard : 0;
+      proratedStandard > 0 ? pphPerStation / proratedStandard : 0;
 
     return {
       sessions: [
@@ -845,7 +871,7 @@ async function getActiveMachineSerials(db, start, end) {
         totalCount: totalCounts,
         workedTimeMs: totalWorkedMs,
         workedTimeFormatted: formatDuration(totalWorkedMs),
-        pph: Math.round(machinePph * 100) / 100,
+        pph: Math.round(pphPerStation * 100) / 100,
         proratedStandard: Math.round(proratedStandard * 100) / 100,
         efficiency: Math.round(machineEfficiency * 10000) / 100,
         itemSummaries,
@@ -2057,6 +2083,8 @@ async function getActiveMachineSerials(db, start, end) {
       operator: 1,
       machine: 1,
       timestamps: 1,
+      item: 1,
+      items: 1,
       workTime: 1,
       totalTimeCredit: 1,
       totalCount: 1,
@@ -2105,6 +2133,28 @@ async function getActiveMachineSerials(db, start, end) {
 
       if (!docs.length) return null;
 
+      const operatorAssignmentFromSession = (sessionDoc, tickerOp = null) => {
+        const operator = sessionDoc?.operator || tickerOp || {};
+        const station = operator.station ?? tickerOp?.station ?? null;
+        const lane = operator.lane ?? station ?? tickerOp?.lane ?? null;
+        const items = Array.isArray(sessionDoc?.items)
+          ? sessionDoc.items
+          : sessionDoc?.item
+            ? [sessionDoc.item]
+            : [];
+        const item = items.find((candidate) =>
+          candidate && lane !== null && Number(candidate.lane) === Number(lane)
+        ) || items[0] || null;
+
+        return {
+          station,
+          lane,
+          itemId: item?.id ?? null,
+          itemName: item?.name || "",
+          standard: safe(item?.standard),
+        };
+      };
+
       const cachedMetrics = metricsByOperator instanceof Map
         ? metricsByOperator.get(opId)
         : null;
@@ -2141,8 +2191,6 @@ async function getActiveMachineSerials(db, start, end) {
         creditMs = creditSec * 1000;
       }
 
-      const eff = workedMs > 0 ? (creditMs / workedMs) : 0;
-
       let operatorName = "Unknown";
       const tickerOp = operators.find(o => o && o.id === opId);
       if (tickerOp?.name) {
@@ -2152,12 +2200,21 @@ async function getActiveMachineSerials(db, start, end) {
       }
 
       const sessionDoc = currentDoc || docs[docs.length - 1];
+      const assignment = operatorAssignmentFromSession(sessionDoc, tickerOp);
+      const workedHours = workedMs / 3600000;
+      const pph = workedHours > 0 ? valid / workedHours : 0;
+      const eff = assignment.standard > 0
+        ? pph / assignment.standard
+        : workedMs > 0
+          ? creditMs / workedMs
+          : 0;
 
       return {
         operatorId: opId,
         operatorName,
         machineSerial,
         machineName,
+        assignment,
         session: {
           start: sessionDoc.timestamps?.start || sessionDoc.timestamps?.create || null,
           end: sessionDoc.timestamps?.end || null
@@ -2168,6 +2225,8 @@ async function getActiveMachineSerials(db, start, end) {
           totalCount: Math.round(valid + mis),
           validCount: Math.round(valid),
           misfeedCount: Math.round(mis),
+          pph: +pph.toFixed(2),
+          standard: assignment.standard,
           efficiencyPct: +(eff * 100).toFixed(2)
         }
       };

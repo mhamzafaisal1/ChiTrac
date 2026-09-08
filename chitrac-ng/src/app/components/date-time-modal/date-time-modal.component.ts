@@ -68,15 +68,7 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
   private dashboardCacheSub?: Subscription;
 
   ngOnInit(): void {
-    this.initializePickerDates();
-    this.mode = this.dateTimeService.getLiveMode() ? 'live' : 'manual';
-    const existing = this.dateTimeService.getShiftId();
-    this.selectedShiftId = existing || null;
-    const existingTimeframe = this.dateTimeService.getTimeframe();
-    this.selectedTimeframe = existingTimeframe || '';
-    this.selectedOption = existing
-      ? `shift:${existing}`
-      : existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
+    this.resetDraftFromCommittedSelection();
 
     this.shiftService.getActiveShifts().subscribe({
       next: (res) => {
@@ -111,6 +103,19 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     this.dashboardCacheSub?.unsubscribe();
   }
 
+  resetDraftFromCommittedSelection(): void {
+    this.initializePickerDates();
+    this.mode = this.dateTimeService.getLiveMode() ? 'live' : 'manual';
+    const existing = this.dateTimeService.getShiftId();
+    this.selectedShiftId = existing || null;
+    const existingTimeframe = this.dateTimeService.getTimeframe();
+    this.selectedTimeframe = existingTimeframe || '';
+    this.selectedOption = existing
+      ? `shift:${existing}`
+      : existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
+    this.cdr.markForCheck();
+  }
+
   isDisabled(): boolean {
     return this.selectedOption !== 'custom';
   }
@@ -131,10 +136,19 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
   }
 
   selectShift(shiftId: string): void {
+    const selectedShift = this.shifts.find((shift) => String(shift._id) === String(shiftId));
+
     this.selectedOption = `shift:${shiftId}`;
     this.selectedShiftId = shiftId;
     this.selectedTimeframe = '';
     this.mode = 'manual';
+
+    const range = selectedShift ? this.getShiftDateRange(selectedShift) : null;
+    if (range) {
+      this.startDateTime = range.start;
+      this.endDateTime = range.end;
+    }
+
     this.cdr.markForCheck();
   }
 
@@ -260,5 +274,22 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
   private shiftStartMinutes(shift: ShiftListItem): number {
     if (!shift.startTime) return Number.MAX_SAFE_INTEGER;
     return (Number(shift.startTime.hour) * 60) + Number(shift.startTime.minute);
+  }
+
+  private getShiftDateRange(shift: ShiftListItem): { start: Date; end: Date } | null {
+    if (!shift.startTime || !shift.endTime) return null;
+
+    const reference = this.startDateTime ? new Date(this.startDateTime) : new Date();
+    const start = new Date(reference);
+    start.setHours(Number(shift.startTime.hour), Number(shift.startTime.minute), 0, 0);
+
+    const end = new Date(reference);
+    end.setHours(Number(shift.endTime.hour), Number(shift.endTime.minute), 0, 0);
+
+    if (end <= start) {
+      end.setDate(end.getDate() + 1);
+    }
+
+    return { start, end };
   }
 }

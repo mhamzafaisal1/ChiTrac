@@ -18,6 +18,8 @@ const LEGACY_PATHS = {
   faultTimeMs: "totals.faultTimeMs",
   workedTimeMs: "totals.workedTimeMs",
   pausedTimeMs: "totals.pausedTimeMs",
+  downTimeMs: "totals.downTimeMs",
+  offlineTimeMs: "totals.offlineTimeMs",
   breakTimeMs: "totals.breakTimeMs",
   totalFaults: "totals.faults",
   totalCounts: "totals.count",
@@ -214,6 +216,8 @@ function legacyAliasStage() {
       faultTimeMs: "$totals.faultTimeMs",
       workedTimeMs: "$totals.workedTimeMs",
       pausedTimeMs: "$totals.pausedTimeMs",
+      downTimeMs: "$totals.downTimeMs",
+      offlineTimeMs: "$totals.offlineTimeMs",
       breakTimeMs: "$totals.breakTimeMs",
       totalFaults: "$totals.faults",
       totalCounts: "$totals.count",
@@ -267,6 +271,8 @@ function normalizeTotalsDocument(document) {
   result.faultTimeMs ??= totals.faultTimeMs;
   result.workedTimeMs ??= totals.workedTimeMs;
   result.pausedTimeMs ??= totals.pausedTimeMs;
+  result.downTimeMs ??= totals.downTimeMs;
+  result.offlineTimeMs ??= totals.offlineTimeMs;
   result.breakTimeMs ??= totals.breakTimeMs;
   result.totalFaults ??= totals.faults;
   result.totalCounts ??= totals.count;
@@ -335,6 +341,8 @@ function toNewTotalsDocument(document) {
       faultTimeMs: document.totals?.faultTimeMs ?? document.faultTimeMs ?? 0,
       workedTimeMs: document.totals?.workedTimeMs ?? document.workedTimeMs ?? 0,
       pausedTimeMs: document.totals?.pausedTimeMs ?? document.pausedTimeMs ?? 0,
+      downTimeMs: document.totals?.downTimeMs ?? document.downTimeMs ?? 0,
+      offlineTimeMs: document.totals?.offlineTimeMs ?? document.offlineTimeMs ?? 0,
       breakTimeMs: document.totals?.breakTimeMs ?? document.breakTimeMs ?? 0,
       faults: document.totals?.faults ?? document.totalFaults ?? 0,
       count: document.totals?.count ?? document.totalCounts ?? 0,
