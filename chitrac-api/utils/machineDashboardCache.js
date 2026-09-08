@@ -9,6 +9,11 @@ const { getMachineFaultTimeBySerial } = require("./faultTimeSummary");
 
 const TOTALS_SHIFT_COLLECTION = "totals-shift";
 
+function safeNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 function plantNow() {
   return DateTime.now().setZone(SYSTEM_TIMEZONE);
 }
@@ -164,24 +169,34 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
       shiftElapsedCache.set(shiftKey, elapsedMs);
     }
 
-    const runtimeMs = record.runtimeMs || 0;
-    const pausedTimeMs = record.pausedTimeMs || 0;
+    const runtimeMs = safeNumber(record.runtimeMs);
+    const pausedTimeMs = safeNumber(record.pausedTimeMs);
+    const cachedDownTimeMs = safeNumber(record.downTimeMs, null);
+    const offlineTimeMs = safeNumber(record.offlineTimeMs);
     const faultTimeMs = faultTimeBySerial.get(Number(record.machineSerial)) ?? record.faultTimeMs ?? 0;
-    const breakTimeMs = record.breakTimeMs || 0;
+    const breakTimeMs = safeNumber(record.breakTimeMs);
     const productiveElapsedMs = Math.max(0, elapsedMs - breakTimeMs);
-    const totalCounts = record.totalCounts || 0;
-    const totalMisfeeds = record.totalMisfeeds || 0;
-    const downtimeMs = Math.max(productiveElapsedMs - runtimeMs, 0);
+    const totalCounts = safeNumber(record.totalCounts);
+    const totalMisfeeds = safeNumber(record.totalMisfeeds);
+    const observedDownTimeMs = pausedTimeMs + safeNumber(faultTimeMs) + offlineTimeMs;
+    const downtimeMs = cachedDownTimeMs !== null
+      ? Math.max(0, cachedDownTimeMs)
+      : observedDownTimeMs > 0
+        ? observedDownTimeMs
+        : Math.max(productiveElapsedMs - runtimeMs, 0);
+    const availabilityDenominatorMs = downtimeMs > 0
+      ? runtimeMs + downtimeMs
+      : productiveElapsedMs;
     const availability =
-      productiveElapsedMs > 0
-        ? Math.min(Math.max(runtimeMs / productiveElapsedMs, 0), 1)
+      availabilityDenominatorMs > 0
+        ? Math.min(Math.max(runtimeMs / availabilityDenominatorMs, 0), 1)
         : 0;
     const totalOutput = totalCounts + totalMisfeeds;
     const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
     const runtimeHours = runtimeMs / 3600000;
     const piecesPerHour = runtimeHours > 0 ? totalCounts / runtimeHours : 0;
 
-    let workTimeMs = record.workedTimeMs || 0;
+    let workTimeMs = safeNumber(record.workedTimeMs);
     if (workTimeMs === 0 && record.totalTimeCreditMs > 0 && runtimeMs > 0) {
       workTimeMs = runtimeMs;
       if (logger) {
@@ -191,7 +206,7 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
       }
     }
 
-    const efficiency = workTimeMs > 0 ? (record.totalTimeCreditMs || 0) / workTimeMs : 0;
+    const efficiency = workTimeMs > 0 ? safeNumber(record.totalTimeCreditMs) / workTimeMs : 0;
     const oee = availability * throughput * efficiency;
 
     return {
