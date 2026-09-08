@@ -231,7 +231,7 @@
         </button>
 
         <button #dateMenuTrigger="matMenuTrigger" mat-icon-button class="calendar-btn" aria-label="Open date range picker" [matMenuTriggerFor]="dateMenu"
-          (menuOpened)="closeMenu()">
+          (menuOpened)="onDateMenuOpened()">
           <mat-icon class="calendar-icon">calendar_today</mat-icon>
         </button>
 

@@ -78,6 +78,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   @Input() isDarkMode: boolean;
   @ViewChild('dateMenuTrigger') dateMenu: MatMenuTrigger;
   @ViewChild('loginMenuTrigger') loginMenu: MatMenuTrigger;
+  @ViewChild(DateTimeModalComponent) dateTimeModal?: DateTimeModalComponent;
 
 
   private breakpointObserver = inject(BreakpointObserver);
@@ -272,6 +273,11 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     this.shownMenu = '';
     this.menuIndex = 0;
     this.menuHistory = new Array();
+  }
+
+  onDateMenuOpened(): void {
+    this.closeMenu();
+    setTimeout(() => this.dateTimeModal?.resetDraftFromCommittedSelection());
   }
 
   openMenu(menu: string) {
