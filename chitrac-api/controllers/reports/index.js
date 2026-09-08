@@ -12,7 +12,10 @@ const {
   combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
-const { addDerivedShiftTimeComponents } = require("../../utils/shiftTimeComponents");
+const {
+  addDerivedShiftTimeComponents,
+  getShiftTimeComponents,
+} = require("../../utils/shiftTimeComponents");
 const { normalizeTotalsDocument } = require("../../utils/totalsSchema");
 const {
   getOperatorMachineStateTimeByOperatorId,
@@ -119,6 +122,60 @@ function getPlantDateStringsForRange(start, end) {
     currentDate = currentDate.plus({ days: 1 });
   }
   return dates;
+}
+
+function getShiftIdCandidates(shiftId) {
+  const candidates = [String(shiftId)];
+  if (ObjectId.isValid(String(shiftId))) {
+    candidates.push(new ObjectId(String(shiftId)));
+  }
+  return candidates;
+}
+
+function buildShiftScopedSessionWindows(shiftDoc, start, end) {
+  const components = getShiftTimeComponents(shiftDoc);
+  const startDt = DateTime.fromJSDate(new Date(start), { zone: SYSTEM_TIMEZONE });
+  const endDt = DateTime.fromJSDate(new Date(end), { zone: SYSTEM_TIMEZONE });
+  if (!components || !startDt.isValid || !endDt.isValid || endDt <= startDt) return [];
+
+  const activeDays = Array.isArray(shiftDoc?.activeDays) && shiftDoc.activeDays.length
+    ? shiftDoc.activeDays
+    : [1, 2, 3, 4, 5, 6, 7];
+  const windows = [];
+  let dayCursor = startDt.startOf("day");
+  const lastDay = endDt.minus({ milliseconds: 1 }).startOf("day");
+
+  while (dayCursor <= lastDay) {
+    if (activeDays.includes(dayCursor.weekday)) {
+      const shiftStart = dayCursor.set({
+        hour: components.startTime.hour,
+        minute: components.startTime.minute,
+        second: 0,
+        millisecond: 0,
+      });
+      let shiftEnd = dayCursor.set({
+        hour: components.endTime.hour,
+        minute: components.endTime.minute,
+        second: 0,
+        millisecond: 0,
+      });
+      if (shiftEnd <= shiftStart) {
+        shiftEnd = shiftEnd.plus({ days: 1 });
+      }
+
+      const windowStart = DateTime.max(startDt, shiftStart);
+      const windowEnd = DateTime.min(endDt, shiftEnd);
+      if (windowEnd > windowStart) {
+        windows.push({
+          start: windowStart.toJSDate(),
+          end: windowEnd.toJSDate(),
+        });
+      }
+    }
+    dayCursor = dayCursor.plus({ days: 1 });
+  }
+
+  return windows;
 }
 
 module.exports = function (server) {
@@ -1063,14 +1120,13 @@ module.exports = function (server) {
     try {
       const { start, end, serial } = parseAndValidateQueryParams(req);
       const activeShifts = await loadActiveShifts(db).catch(() => []);
-      const shiftElapsedMs = computeShiftElapsedMs(activeShifts, start, end, SYSTEM_TIMEZONE);
+      let shiftElapsedMs = computeShiftElapsedMs(activeShifts, start, end, SYSTEM_TIMEZONE);
 
       const shiftIdRaw = req.query.shiftId;
       let machineRecords;
       let machineItemRecords;
       let responseTimeRange;
       let overlayShifts = activeShifts;
-      let overlayShiftId = null;
 
       if (shiftIdRaw) {
         let shiftDoc;
@@ -1086,16 +1142,35 @@ module.exports = function (server) {
         }
 
         overlayShifts = [shiftDoc];
-        overlayShiftId = String(shiftId);
+        shiftElapsedMs = computeShiftElapsedMs(overlayShifts, start, end, SYSTEM_TIMEZONE);
 
-        const partialDay = { start, end };
+        const dateStrings = getPlantDateStringsForRange(start, end);
+        const shiftIdCandidates = getShiftIdCandidates(shiftId);
+        const serialNumber = serial ? parseInt(serial, 10) : null;
+        const cacheQuery = buildTotalsCacheQuery(
+          dateStrings,
+          ['machine', 'machine-item'],
+          [
+            {
+              $or: [
+                { "shift._id": { $in: shiftIdCandidates } },
+                { "shift.id": { $in: shiftIdCandidates } },
+                { shiftId: { $in: shiftIdCandidates } },
+              ],
+            },
+            ...(serialNumber
+              ? [{ $or: [{ machineSerial: serialNumber }, { "machine.serial": serialNumber }, { "machine.id": serialNumber }] }]
+              : []),
+          ]
+        );
 
-        const sessionData = await getSessionDataForPartialDays(db, [partialDay], serial, {
-          shiftId: String(shiftId),
-        });
+        const cacheDocs = filterTotalsDocsByPlantDate(
+          (await db.collection(config.totalsShiftCollectionName).find(cacheQuery).toArray()).map(normalizeTotalsDocument),
+          dateStrings
+        );
 
-        machineRecords = sessionData.machines || [];
-        machineItemRecords = sessionData.machineItems || [];
+        machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
+        machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
 
         responseTimeRange = {
           start: start.toISOString(),
@@ -1103,10 +1178,20 @@ module.exports = function (server) {
         };
 
         if (!machineRecords.length && !machineItemRecords.length) {
-          return res.json({
-            timeRange: responseTimeRange,
-            results: [],
-          });
+          const shiftWindows = buildShiftScopedSessionWindows(shiftDoc, start, end);
+          const sessionData = shiftWindows.length
+            ? await getSessionDataForPartialDays(db, shiftWindows, serial)
+            : { machines: [], machineItems: [] };
+
+          machineRecords = sessionData.machines || [];
+          machineItemRecords = sessionData.machineItems || [];
+
+          if (!machineRecords.length && !machineItemRecords.length) {
+            return res.json({
+              timeRange: responseTimeRange,
+              results: [],
+            });
+          }
         }
       } else {
         const { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
@@ -1234,7 +1319,6 @@ module.exports = function (server) {
         {
           activeShifts: overlayShifts,
           zone: SYSTEM_TIMEZONE,
-          shiftId: overlayShiftId,
         }
       );
       for (const [serial, machineData] of machineMap) {
