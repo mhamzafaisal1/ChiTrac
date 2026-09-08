@@ -2083,6 +2083,8 @@ async function getActiveMachineSerials(db, start, end) {
       operator: 1,
       machine: 1,
       timestamps: 1,
+      item: 1,
+      items: 1,
       workTime: 1,
       totalTimeCredit: 1,
       totalCount: 1,
@@ -2131,6 +2133,28 @@ async function getActiveMachineSerials(db, start, end) {
 
       if (!docs.length) return null;
 
+      const operatorAssignmentFromSession = (sessionDoc, tickerOp = null) => {
+        const operator = sessionDoc?.operator || tickerOp || {};
+        const station = operator.station ?? tickerOp?.station ?? null;
+        const lane = operator.lane ?? station ?? tickerOp?.lane ?? null;
+        const items = Array.isArray(sessionDoc?.items)
+          ? sessionDoc.items
+          : sessionDoc?.item
+            ? [sessionDoc.item]
+            : [];
+        const item = items.find((candidate) =>
+          candidate && lane !== null && Number(candidate.lane) === Number(lane)
+        ) || items[0] || null;
+
+        return {
+          station,
+          lane,
+          itemId: item?.id ?? null,
+          itemName: item?.name || "",
+          standard: safe(item?.standard),
+        };
+      };
+
       const cachedMetrics = metricsByOperator instanceof Map
         ? metricsByOperator.get(opId)
         : null;
@@ -2167,8 +2191,6 @@ async function getActiveMachineSerials(db, start, end) {
         creditMs = creditSec * 1000;
       }
 
-      const eff = workedMs > 0 ? (creditMs / workedMs) : 0;
-
       let operatorName = "Unknown";
       const tickerOp = operators.find(o => o && o.id === opId);
       if (tickerOp?.name) {
@@ -2178,12 +2200,21 @@ async function getActiveMachineSerials(db, start, end) {
       }
 
       const sessionDoc = currentDoc || docs[docs.length - 1];
+      const assignment = operatorAssignmentFromSession(sessionDoc, tickerOp);
+      const workedHours = workedMs / 3600000;
+      const pph = workedHours > 0 ? valid / workedHours : 0;
+      const eff = assignment.standard > 0
+        ? pph / assignment.standard
+        : workedMs > 0
+          ? creditMs / workedMs
+          : 0;
 
       return {
         operatorId: opId,
         operatorName,
         machineSerial,
         machineName,
+        assignment,
         session: {
           start: sessionDoc.timestamps?.start || sessionDoc.timestamps?.create || null,
           end: sessionDoc.timestamps?.end || null
@@ -2194,6 +2225,8 @@ async function getActiveMachineSerials(db, start, end) {
           totalCount: Math.round(valid + mis),
           validCount: Math.round(valid),
           misfeedCount: Math.round(mis),
+          pph: +pph.toFixed(2),
+          standard: assignment.standard,
           efficiencyPct: +(eff * 100).toFixed(2)
         }
       };

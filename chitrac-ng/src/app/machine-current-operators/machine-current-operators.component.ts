@@ -7,13 +7,18 @@ import { MatButtonModule } from '@angular/material/button';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { MachineService } from '../services/machine.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { displayInteger } from '../shared/utils/display-number';
 
 type OperatorRow = {
   'Operator': string;
+  'Station': string | number;
+  'Item': string;
   'Worked Time': string;
   'Total Count': number;
   'Valid': number;
   'Misfeed': number;
+  'PPH': string | number;
+  'Standard': string | number;
   'Efficiency': string;
   'Session Start': string;
   'Session End': string;
@@ -37,7 +42,7 @@ export class MachineCurrentOperatorsComponent implements OnInit {
   @Input() isModal: boolean = false;
 
   columns: string[] = [
-    'Operator', 'Worked Time', 'Total Count', 'Valid', 'Misfeed', 'Efficiency', 'Session Start', 'Session End'
+    'Operator', 'Station', 'Item', 'Worked Time', 'Total Count', 'Valid', 'Misfeed', 'PPH', 'Standard', 'Efficiency', 'Session Start', 'Session End'
   ];
   rows: OperatorRow[] = [];
   loading = false;
@@ -98,6 +103,8 @@ export class MachineCurrentOperatorsComponent implements OnInit {
       
       const totalCount = o?.metrics?.totalCount || 0;
       const validCount = o?.metrics?.validCount || 0;
+      const pph = Number(o?.metrics?.pph);
+      const standard = Number(o?.metrics?.standard ?? o?.assignment?.standard);
       const efficiencyPct = Number(o?.metrics?.efficiencyPct);
       const efficiency = Number.isFinite(efficiencyPct)
         ? Math.round(efficiencyPct * 100) / 100
@@ -105,10 +112,14 @@ export class MachineCurrentOperatorsComponent implements OnInit {
       
       return {
         'Operator': o?.operatorName || `Operator ${o?.operatorId || ''}`,
+        'Station': o?.assignment?.station ?? o?.assignment?.lane ?? '-',
+        'Item': o?.assignment?.itemName || '-',
         'Worked Time': workedTime,
         'Total Count': totalCount,
         'Valid': validCount,
         'Misfeed': o?.metrics?.misfeedCount || 0,
+        'PPH': displayInteger(Number.isFinite(pph) ? pph : 0),
+        'Standard': displayInteger(Number.isFinite(standard) ? standard : 0),
         'Efficiency': `${efficiency}%`,
         'Session Start': o?.session?.start ? new Date(o.session.start).toLocaleString() : '-',
         'Session End': o?.session?.end ? new Date(o.session.end).toLocaleString() : 'Open'

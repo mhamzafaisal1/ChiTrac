@@ -397,6 +397,8 @@ function constructor(server) {
           operator: 1,
           machine: 1,
           timestamps: 1,
+          item: 1,
+          items: 1,
           workTime: 1,
           totalTimeCredit: 1,
           totalCount: 1,
@@ -416,6 +418,30 @@ function constructor(server) {
       sessionMap.get(key).push(doc);
     }
     return sessionMap;
+  }
+
+  function operatorAssignmentFromSession(sessionDoc, tickerOp = null) {
+    const operator = sessionDoc?.operator || tickerOp || {};
+    const station = operator.station ?? tickerOp?.station ?? null;
+    const lane = operator.lane ?? station ?? tickerOp?.lane ?? null;
+    const items = Array.isArray(sessionDoc?.items)
+      ? sessionDoc.items
+      : sessionDoc?.item
+        ? [sessionDoc.item]
+        : [];
+    const item = items.find((candidate) =>
+      candidate && lane !== null && Number(candidate.lane) === Number(lane)
+    ) || items[0] || null;
+
+    const standard = Number(item?.standard);
+
+    return {
+      station,
+      lane,
+      itemId: item?.id ?? null,
+      itemName: item?.name || "",
+      standard: Number.isFinite(standard) ? standard : 0,
+    };
   }
 
   function buildCurrentOperatorsFromPreloadedTicker(tickerRecord, serial, start, end, metricsByOperator, sessionMap) {
@@ -474,13 +500,21 @@ function constructor(server) {
 
       const tickerOp = operators.find((operator) => Number(operator?.id) === opId);
       const operatorName = formatHumanName(tickerOp?.name || sessionDoc?.operator?.name, `Operator ${opId}`);
-      const eff = workedMs > 0 ? creditMs / workedMs : 0;
+      const assignment = operatorAssignmentFromSession(sessionDoc, tickerOp);
+      const workedHours = workedMs / 3600000;
+      const pph = workedHours > 0 ? valid / workedHours : 0;
+      const eff = assignment.standard > 0
+        ? pph / assignment.standard
+        : workedMs > 0
+          ? creditMs / workedMs
+          : 0;
 
       return {
         operatorId: opId,
         operatorName,
         machineSerial,
         machineName,
+        assignment,
         session: {
           start: sessionDoc?.timestamps?.start || sessionDoc?.timestamps?.create || null,
           end: sessionDoc?.timestamps?.end || null,
@@ -491,6 +525,8 @@ function constructor(server) {
           totalCount: Math.round(valid + mis),
           validCount: Math.round(valid),
           misfeedCount: Math.round(mis),
+          pph: +pph.toFixed(2),
+          standard: assignment.standard,
           efficiencyPct: +(eff * 100).toFixed(2),
         },
       };
