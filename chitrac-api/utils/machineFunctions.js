@@ -707,7 +707,11 @@ async function getActiveMachineSerials(db, start, end) {
     const runtimeMs = safeNumber(record.runtimeMs);
     const pausedMs = safeNumber(record.pausedTimeMs);
     const faultMs = safeNumber(record.faultTimeMs);
-    const downtimeWallClockMs = pausedMs + faultMs;
+    const offlineMs = safeNumber(record.offlineTimeMs);
+    const cachedDownTimeMs = safeNumber(record.downTimeMs, null);
+    const downtimeWallClockMs = cachedDownTimeMs !== null
+      ? Math.max(0, cachedDownTimeMs)
+      : pausedMs + faultMs + offlineMs;
     const workedTimeMs = safeNumber(record.workedTimeMs);
     const timeCreditMs = safeNumber(record.totalTimeCreditMs);
     const totalCounts = safeNumber(record.totalCounts);
@@ -725,9 +729,15 @@ async function getActiveMachineSerials(db, start, end) {
     const totalQueryMs =
       typeof shiftElapsedMsOverride === "number" ? shiftElapsedMsOverride : windowMsWallClock;
 
-    const downtimeMs = Math.max(totalQueryMs - runtimeMs, 0);
+    const derivedDowntimeMs = Math.max(totalQueryMs - runtimeMs, 0);
+    const downtimeMs = downtimeWallClockMs > 0 ? downtimeWallClockMs : derivedDowntimeMs;
+    const availabilityDenominatorMs = downtimeMs > 0
+      ? runtimeMs + downtimeMs
+      : totalQueryMs;
     const availability =
-      totalQueryMs > 0 ? Math.min(Math.max(runtimeMs / totalQueryMs, 0), 1) : 0;
+      availabilityDenominatorMs > 0
+        ? Math.min(Math.max(runtimeMs / availabilityDenominatorMs, 0), 1)
+        : 0;
     const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
     const efficiency =
       workedTimeMs > 0 ? Math.min(Math.max(timeCreditMs / workedTimeMs, 0), 1) : 0;
@@ -741,6 +751,18 @@ async function getActiveMachineSerials(db, start, end) {
       downtime: {
         total: downtimeMs,
         formatted: formatDuration(downtimeMs),
+      },
+      pausedTime: {
+        total: pausedMs,
+        formatted: formatDuration(pausedMs),
+      },
+      downTime: {
+        total: downtimeMs,
+        formatted: formatDuration(downtimeMs),
+      },
+      faultTime: {
+        total: faultMs,
+        formatted: formatDuration(faultMs),
       },
       output: {
         totalCount: totalCounts,
