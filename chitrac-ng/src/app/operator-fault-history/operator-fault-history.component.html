@@ -26,6 +26,8 @@
       [columns]="columns"
       [rows]="rows"
       [selectedRow]="selectedRow"
+      [enableSearch]="!isModal"
+      [enableCsvExport]="!isModal"
       (rowClicked)="onRowSelected($event)">
     </base-table>
   </div>
