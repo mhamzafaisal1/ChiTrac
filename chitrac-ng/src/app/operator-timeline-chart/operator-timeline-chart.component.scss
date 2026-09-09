@@ -1,26 +1,36 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .timeline-container,
 .timeline-content {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
+  min-width: 0;
   min-height: 0;
 }
 
 .timeline-svg {
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-width: 100%;
+  overflow: visible;
 }
 
 .timeline-title text {
   fill: var(--theme-color-on-surface-variant, #333);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -32,12 +42,17 @@
 .machine-label,
 .timeline-axis text {
   fill: var(--theme-color-on-surface-variant, #333);
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.machine-label {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .row-track {
   stroke: color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 16%, transparent);
-  stroke-width: 8;
+  stroke-width: 10;
   stroke-linecap: round;
 }
 

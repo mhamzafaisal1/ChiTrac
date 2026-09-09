@@ -1,5 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnChanges, SimpleChanges, inject } from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  Input,
+  OnChanges,
+  OnDestroy,
+  SimpleChanges,
+  inject,
+} from '@angular/core';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
 
@@ -63,7 +74,7 @@ interface TimelineViewMachine {
   styleUrls: ['./operator-timeline-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class OperatorTimelineChartComponent implements OnChanges {
+export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input() chartWidth = 600;
   @Input() chartHeight = 450;
   @Input() timelineData?: OperatorTimelinePayload | OperatorTimelineMachine[] | null;
@@ -94,10 +105,27 @@ export class OperatorTimelineChartComponent implements OnChanges {
 
   private rangeStart: Date | null = null;
   private rangeEnd: Date | null = null;
-  private cdr = inject(ChangeDetectorRef);
+  private measuredWidth = 0;
+  private resizeFrame = 0;
+  private resizeObserver?: ResizeObserver;
+  private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly cdr = inject(ChangeDetectorRef);
+
+  ngAfterViewInit(): void {
+    this.setupResizeObserver();
+    this.scheduleSizeSync();
+  }
 
   ngOnChanges(_changes: SimpleChanges): void {
     this.buildView();
+  }
+
+  ngOnDestroy(): void {
+    this.resizeObserver?.disconnect();
+    if (this.resizeFrame) {
+      cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = 0;
+    }
   }
 
   trackMachine(_index: number, machine: TimelineViewMachine): number | string {
@@ -144,27 +172,72 @@ export class OperatorTimelineChartComponent implements OnChanges {
 
     this.rangeStart = range.start;
     this.rangeEnd = range.end;
-    this.svgWidth = Math.max(320, Math.floor(this.chartWidth || 600));
-    this.svgHeight = Math.max(180, Math.floor(this.chartHeight || 360));
-    const maxNameLength = machines.reduce((max, machine) => Math.max(max, String(machine.name || '').length), 0);
+    this.svgWidth = this.resolveSvgWidth();
+    const visibleMachines = machines.filter((machine) => this.hasRenderableSession(machine));
+    const maxNameLength = visibleMachines.reduce(
+      (max, machine) => Math.max(max, String(machine.name || '').length),
+      0
+    );
     this.plotLeft = Math.min(170, Math.max(92, maxNameLength * 7 + 18));
     this.plotRight = 16;
-    this.plotTop = this.useExternalTitle ? 12 : 34;
-    this.plotBottom = 30;
+    this.plotTop = this.useExternalTitle ? 20 : 48;
+    this.plotBottom = 44;
     this.innerWidth = Math.max(40, this.svgWidth - this.plotLeft - this.plotRight);
-    this.innerHeight = Math.max(40, this.svgHeight - this.plotTop - this.plotBottom);
 
-    const rowHeight = machines.length ? Math.max(18, this.innerHeight / machines.length) : 24;
-    this.barHeight = Math.max(8, Math.min(18, rowHeight * 0.58));
+    const rowCount = Math.max(1, visibleMachines.length);
+    const preferredRowHeight = rowCount === 1 ? 64 : 48;
+    const maxSvgHeight = Math.max(160, Math.floor(this.chartHeight || 450));
+    const availableRowHeight = (maxSvgHeight - this.plotTop - this.plotBottom) / rowCount;
+    const rowHeight = Math.max(28, Math.min(preferredRowHeight, availableRowHeight));
+    this.innerHeight = rowCount * rowHeight;
+    this.svgHeight = this.plotTop + this.innerHeight + this.plotBottom;
+    this.barHeight = Math.max(14, Math.min(22, rowHeight * 0.36));
 
-    this.viewMachines = machines
-      .map((machine, index) => this.buildMachineView(machine, index, rowHeight))
-      .filter((machine) => machine.chunks.length > 0);
+    this.viewMachines = visibleMachines.map((machine, index) => this.buildMachineView(machine, index, rowHeight));
     this.ticks = this.buildTicks();
     this.hasInitialData = this.viewMachines.length > 0;
     this.isLoading = false;
     this.tooltip = { ...this.tooltip, visible: false };
     this.cdr.markForCheck();
+  }
+
+  private setupResizeObserver(): void {
+    if (typeof ResizeObserver === 'undefined') return;
+
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = new ResizeObserver(() => this.scheduleSizeSync());
+    this.resizeObserver.observe(this.host.nativeElement);
+  }
+
+  private scheduleSizeSync(): void {
+    if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+    this.resizeFrame = requestAnimationFrame(() => {
+      this.resizeFrame = 0;
+      if (this.syncMeasuredSize()) {
+        this.buildView();
+      }
+    });
+  }
+
+  private syncMeasuredSize(): boolean {
+    const width = Math.floor(this.host.nativeElement.clientWidth);
+    if (width < 10) return false;
+    if (width === this.measuredWidth) return false;
+    this.measuredWidth = width;
+    return true;
+  }
+
+  private resolveSvgWidth(): number {
+    if (this.measuredWidth >= 10) return this.measuredWidth;
+    return Math.max(320, Math.floor(this.chartWidth || 600));
+  }
+
+  private hasRenderableSession(machine: OperatorTimelineMachine): boolean {
+    return (machine.sessions || []).some((chunk) => {
+      const start = this.parseDate(chunk.start);
+      const end = this.parseDate(chunk.end);
+      return Boolean(start && end && start < end);
+    });
   }
 
   private normalizePayload(input: OperatorTimelinePayload | OperatorTimelineMachine[] | null | undefined): OperatorTimelinePayload {

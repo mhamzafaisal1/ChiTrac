@@ -10,11 +10,13 @@
     <svg
       class="timeline-svg"
       [attr.viewBox]="'0 0 ' + svgWidth + ' ' + svgHeight"
-      preserveAspectRatio="none"
+      [attr.width]="svgWidth"
+      [attr.height]="svgHeight"
+      preserveAspectRatio="xMidYMid meet"
       focusable="false"
     >
       <g class="timeline-title" *ngIf="!useExternalTitle">
-        <text [attr.x]="svgWidth / 2" y="18" text-anchor="middle">Operator Timeline</text>
+        <text [attr.x]="svgWidth / 2" y="24" text-anchor="middle">Operator Timeline</text>
       </g>
 
       <g class="timeline-grid">
@@ -28,7 +30,7 @@
       </g>
 
       <g class="timeline-row" *ngFor="let machine of viewMachines; trackBy: trackMachine">
-        <text class="machine-label" [attr.x]="plotLeft - 12" [attr.y]="machine.y + 4" text-anchor="end">
+        <text class="machine-label" [attr.x]="plotLeft - 12" [attr.y]="machine.y + 5" text-anchor="end">
           {{ machine.name }}
         </text>
         <line
@@ -69,7 +71,7 @@
             [attr.y1]="plotTop + innerHeight"
             [attr.y2]="plotTop + innerHeight + 4"
           ></line>
-          <text [attr.x]="tick.x" [attr.y]="plotTop + innerHeight + 18" text-anchor="middle">
+          <text [attr.x]="tick.x" [attr.y]="plotTop + innerHeight + 22" text-anchor="middle">
             {{ tick.label }}
           </text>
         </g>
