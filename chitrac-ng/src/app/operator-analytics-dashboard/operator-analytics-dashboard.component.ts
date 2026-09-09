@@ -1192,8 +1192,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           timelineData: data.operatorTimeline,
           operatorId: operatorId.toString(),
           isModal: true,
-          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-          chartWidth: modalChartDimensions.width + 200
+          chartHeight: modalChartDimensions.height,
+          chartWidth: modalChartDimensions.width
         }
       },
       {
