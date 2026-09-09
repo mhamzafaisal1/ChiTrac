@@ -279,8 +279,10 @@ function machineSerialFromConfig(machine) {
 
 async function loadConfiguredMachines(db, config, serial = null) {
   const filter = { active: { $ne: false } };
-  const serialNum = Number(serial);
-  if (Number.isFinite(serialNum)) {
+  const serialNum = serial === null || typeof serial === "undefined" || serial === ""
+    ? null
+    : Number(serial);
+  if (serialNum !== null && Number.isFinite(serialNum)) {
     filter.$or = [
       { id: serialNum },
       { serial: serialNum },
