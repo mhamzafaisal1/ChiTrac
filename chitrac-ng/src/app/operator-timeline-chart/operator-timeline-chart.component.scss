@@ -35,12 +35,8 @@
 }
 
 .timeline-svg {
-  cursor: grab;
+  cursor: default;
   touch-action: none;
-}
-
-.timeline-svg:active {
-  cursor: grabbing;
 }
 
 .zoom-surface {
