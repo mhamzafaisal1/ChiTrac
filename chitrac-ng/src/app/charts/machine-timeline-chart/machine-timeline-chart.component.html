@@ -7,77 +7,125 @@
   </div>
 
   <div class="timeline-content" *ngIf="hasInitialData">
-    <svg
-      class="timeline-svg"
-      [attr.viewBox]="'0 0 ' + svgWidth + ' ' + svgHeight"
-      preserveAspectRatio="none"
-      focusable="false"
-    >
-      <g class="timeline-title" *ngIf="!useExternalTitle">
-        <text [attr.x]="svgWidth / 2" y="18" text-anchor="middle">Machine Timeline</text>
-      </g>
+    <div class="timeline-chart-shell">
+      <svg
+        #timelineSvg
+        class="timeline-svg"
+        [class.zoomed]="isZoomed"
+        [attr.viewBox]="'0 0 ' + svgWidth + ' ' + svgHeight"
+        [attr.width]="svgWidth"
+        [attr.height]="svgHeight"
+        preserveAspectRatio="xMidYMid meet"
+        focusable="false"
+      >
+        <defs>
+          <clipPath [attr.id]="clipPathId">
+            <rect
+              [attr.x]="plotLeft"
+              [attr.y]="plotTop"
+              [attr.width]="innerWidth"
+              [attr.height]="innerHeight"
+            ></rect>
+          </clipPath>
+        </defs>
 
-      <g class="timeline-grid">
-        <line
-          *ngFor="let tick of ticks"
-          [attr.x1]="tick.x"
-          [attr.x2]="tick.x"
-          [attr.y1]="plotTop"
-          [attr.y2]="plotTop + innerHeight"
-        ></line>
-      </g>
+        <g class="timeline-title" *ngIf="!useExternalTitle">
+          <text [attr.x]="svgWidth / 2" y="18" text-anchor="middle">Machine Timeline</text>
+        </g>
 
-      <g class="timeline-row" *ngFor="let machine of viewMachines; trackBy: trackMachine">
-        <text class="machine-label" [attr.x]="plotLeft - 12" [attr.y]="machine.y + 4" text-anchor="end">
-          {{ machine.name }}
-        </text>
-        <line
-          class="row-track"
-          [attr.x1]="plotLeft"
-          [attr.x2]="plotLeft + innerWidth"
-          [attr.y1]="machine.y"
-          [attr.y2]="machine.y"
-        ></line>
-        <rect
-          class="session-chunk"
-          *ngFor="let chunk of machine.chunks; trackBy: trackChunk"
-          [class.current]="chunk.current"
-          [attr.x]="chunk.x"
-          [attr.y]="machine.barY"
-          [attr.width]="chunk.width"
-          [attr.height]="barHeight"
-          [attr.fill]="chunk.color"
-          rx="2"
-          ry="2"
-          (mouseenter)="onChunkEnter($event, chunk)"
-          (mousemove)="onChunkMove($event)"
-          (mouseleave)="onChunkLeave()"
-        ></rect>
-      </g>
+        <g class="timeline-plot" [attr.clip-path]="'url(#' + clipPathId + ')'">
+          <rect
+            class="zoom-surface"
+            [attr.x]="plotLeft"
+            [attr.y]="plotTop"
+            [attr.width]="innerWidth"
+            [attr.height]="innerHeight"
+          ></rect>
 
-      <g class="timeline-axis">
-        <line
-          [attr.x1]="plotLeft"
-          [attr.x2]="plotLeft + innerWidth"
-          [attr.y1]="plotTop + innerHeight"
-          [attr.y2]="plotTop + innerHeight"
-        ></line>
-        <g *ngFor="let tick of ticks">
-          <line
-            [attr.x1]="tick.x"
-            [attr.x2]="tick.x"
-            [attr.y1]="plotTop + innerHeight"
-            [attr.y2]="plotTop + innerHeight + 4"
-          ></line>
-          <text [attr.x]="tick.x" [attr.y]="plotTop + innerHeight + 18" text-anchor="middle">
-            {{ tick.label }}
+          <g class="timeline-grid">
+            <line
+              *ngFor="let tick of ticks"
+              [attr.x1]="tick.x"
+              [attr.x2]="tick.x"
+              [attr.y1]="plotTop"
+              [attr.y2]="plotTop + innerHeight"
+            ></line>
+          </g>
+
+          <g class="timeline-row" *ngFor="let machine of viewMachines; trackBy: trackMachine">
+            <line
+              class="row-track"
+              [attr.x1]="plotLeft"
+              [attr.x2]="plotLeft + innerWidth"
+              [attr.y1]="machine.y"
+              [attr.y2]="machine.y"
+            ></line>
+            <rect
+              class="session-chunk"
+              *ngFor="let chunk of machine.chunks; trackBy: trackChunk"
+              [class.current]="chunk.current"
+              [attr.x]="chunk.x"
+              [attr.y]="machine.barY"
+              [attr.width]="chunk.width"
+              [attr.height]="barHeight"
+              [attr.fill]="chunk.color"
+              rx="2"
+              ry="2"
+              (mouseenter)="onChunkEnter($event, chunk)"
+              (mousemove)="onChunkMove($event)"
+              (mouseleave)="onChunkLeave()"
+            ></rect>
+          </g>
+        </g>
+
+        <g class="timeline-labels">
+          <text
+            class="machine-label"
+            *ngFor="let machine of viewMachines; trackBy: trackMachine"
+            [attr.x]="plotLeft - 12"
+            [attr.y]="machine.y + 4"
+            text-anchor="end"
+          >
+            {{ machine.name }}
           </text>
         </g>
-      </g>
-    </svg>
 
-    <div #tooltipEl class="timeline-tooltip" [class.visible]="tooltip.visible" [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
-      <div *ngFor="let line of tooltip.lines">{{ line }}</div>
+        <g class="timeline-axis">
+          <line
+            [attr.x1]="plotLeft"
+            [attr.x2]="plotLeft + innerWidth"
+            [attr.y1]="plotTop + innerHeight"
+            [attr.y2]="plotTop + innerHeight"
+          ></line>
+          <g *ngFor="let tick of ticks">
+            <line
+              [attr.x1]="tick.x"
+              [attr.x2]="tick.x"
+              [attr.y1]="plotTop + innerHeight"
+              [attr.y2]="plotTop + innerHeight + 4"
+            ></line>
+            <text [attr.x]="tick.x" [attr.y]="plotTop + innerHeight + 18" text-anchor="middle">
+              {{ tick.label }}
+            </text>
+          </g>
+        </g>
+      </svg>
+
+      <div class="zoom-controls" aria-label="Timeline zoom controls">
+        <button type="button" title="Zoom in" aria-label="Zoom in" [disabled]="zoomLevel >= 31.999" (click)="zoomBy(2)">
+          <mat-icon>zoom_in</mat-icon>
+        </button>
+        <button type="button" title="Zoom out" aria-label="Zoom out" [disabled]="zoomLevel <= 1.001" (click)="zoomBy(0.5)">
+          <mat-icon>zoom_out</mat-icon>
+        </button>
+        <button type="button" title="Reset zoom" aria-label="Reset zoom" [disabled]="!isZoomed" (click)="resetZoom()">
+          <mat-icon>fit_screen</mat-icon>
+        </button>
+      </div>
+
+      <div #tooltipEl class="timeline-tooltip" [class.visible]="tooltip.visible" [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
+        <div *ngFor="let line of tooltip.lines">{{ line }}</div>
+      </div>
     </div>
   </div>
 

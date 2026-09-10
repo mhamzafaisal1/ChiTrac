@@ -6,11 +6,15 @@ import {
   Component,
   ElementRef,
   Input,
+  NgZone,
   OnChanges,
   OnDestroy,
   SimpleChanges,
+  ViewChild,
   inject,
 } from '@angular/core';
+import { MatIconModule } from '@angular/material/icon';
+import * as d3 from 'd3';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
 
@@ -69,12 +73,14 @@ interface TimelineViewMachine {
 @Component({
   selector: 'app-operator-timeline-chart',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MatIconModule],
   templateUrl: './operator-timeline-chart.component.html',
   styleUrls: ['./operator-timeline-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges, OnDestroy {
+  private static nextClipId = 0;
+
   @Input() chartWidth = 600;
   @Input() chartHeight = 450;
   @Input() timelineData?: OperatorTimelinePayload | OperatorTimelineMachine[] | null;
@@ -82,8 +88,18 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   @Input() isModal = false;
   @Input() useExternalTitle = false;
 
+  @ViewChild('timelineSvg')
+  set timelineSvg(ref: ElementRef<SVGSVGElement> | undefined) {
+    this.detachZoom();
+    this.svgElement = ref?.nativeElement;
+    this.configureZoom();
+  }
+
   isLoading = false;
   hasInitialData = false;
+  isZoomed = false;
+  zoomLevel = 1;
+  readonly clipPathId = `operator-timeline-clip-${++OperatorTimelineChartComponent.nextClipId}`;
   viewMachines: TimelineViewMachine[] = [];
   ticks: TimelineTick[] = [];
   tooltip: { visible: boolean; x: number; y: number; lines: string[] } = {
@@ -105,27 +121,53 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
 
   private rangeStart: Date | null = null;
   private rangeEnd: Date | null = null;
+  private sourceMachines: OperatorTimelineMachine[] = [];
+  private baseTimeScale = d3.scaleTime<number, number>();
+  private visibleTimeScale = d3.scaleTime<number, number>();
+  private zoomTransform = d3.zoomIdentity;
+  private pendingZoomTransform = d3.zoomIdentity;
+  private zoomBehavior?: d3.ZoomBehavior<SVGSVGElement, unknown>;
+  private svgElement?: SVGSVGElement;
   private measuredWidth = 0;
   private resizeFrame = 0;
+  private zoomFrame = 0;
   private resizeObserver?: ResizeObserver;
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly ngZone = inject(NgZone);
 
   ngAfterViewInit(): void {
     this.setupResizeObserver();
     this.scheduleSizeSync();
   }
 
-  ngOnChanges(_changes: SimpleChanges): void {
-    this.buildView();
+  ngOnChanges(changes: SimpleChanges): void {
+    const dataChanged = Boolean(changes['timelineData'] || changes['preloadedData']);
+    if (dataChanged) this.cancelPendingZoom();
+    this.buildView(dataChanged);
   }
 
   ngOnDestroy(): void {
+    this.detachZoom();
     this.resizeObserver?.disconnect();
     if (this.resizeFrame) {
       cancelAnimationFrame(this.resizeFrame);
       this.resizeFrame = 0;
     }
+    this.cancelPendingZoom();
+  }
+
+  zoomBy(factor: number): void {
+    if (!this.svgElement || !this.zoomBehavior) return;
+    d3.select(this.svgElement).call(this.zoomBehavior.scaleBy, factor);
+  }
+
+  resetZoom(): void {
+    if (!this.svgElement || !this.zoomBehavior) {
+      this.applyZoomTransform(d3.zoomIdentity);
+      return;
+    }
+    d3.select(this.svgElement).call(this.zoomBehavior.transform, d3.zoomIdentity);
   }
 
   trackMachine(_index: number, machine: TimelineViewMachine): number | string {
@@ -165,7 +207,10 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.cdr.markForCheck();
   }
 
-  private buildView(): void {
+  private buildView(resetZoom = false): void {
+    const preservedDomain = !resetZoom && this.isZoomed
+      ? this.visibleTimeScale.domain().map((date) => new Date(date))
+      : null;
     const payload = this.normalizePayload(this.timelineData ?? this.preloadedData);
     const machines = payload.machines || [];
     const range = this.resolveRange(payload, machines);
@@ -174,6 +219,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.rangeEnd = range.end;
     this.svgWidth = this.resolveSvgWidth();
     const visibleMachines = machines.filter((machine) => this.hasRenderableSession(machine));
+    this.sourceMachines = visibleMachines;
     const maxNameLength = visibleMachines.reduce(
       (max, machine) => Math.max(max, String(machine.name || '').length),
       0
@@ -193,11 +239,17 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.svgHeight = this.plotTop + this.innerHeight + this.plotBottom;
     this.barHeight = Math.max(14, Math.min(22, rowHeight * 0.36));
 
-    this.viewMachines = visibleMachines.map((machine, index) => this.buildMachineView(machine, index, rowHeight));
-    this.ticks = this.buildTicks();
-    this.hasInitialData = this.viewMachines.length > 0;
+    this.baseTimeScale = d3.scaleTime<number, number>()
+      .domain([this.rangeStart, this.rangeEnd])
+      .range([this.plotLeft, this.plotLeft + this.innerWidth]);
+    this.zoomTransform = resetZoom
+      ? d3.zoomIdentity
+      : this.transformForVisibleDomain(preservedDomain);
+    this.renderTimeline(rowHeight, this.zoomTransform);
+    this.hasInitialData = this.sourceMachines.length > 0;
     this.isLoading = false;
     this.tooltip = { ...this.tooltip, visible: false };
+    this.configureZoom();
     this.cdr.markForCheck();
   }
 
@@ -214,7 +266,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.resizeFrame = requestAnimationFrame(() => {
       this.resizeFrame = 0;
       if (this.syncMeasuredSize()) {
-        this.buildView();
+        this.buildView(false);
       }
     });
   }
@@ -230,6 +282,106 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   private resolveSvgWidth(): number {
     if (this.measuredWidth >= 10) return this.measuredWidth;
     return Math.max(320, Math.floor(this.chartWidth || 600));
+  }
+
+  private configureZoom(): void {
+    if (!this.svgElement || !this.hasInitialData) return;
+
+    const plotRight = this.plotLeft + this.innerWidth;
+    const plotBottom = this.plotTop + this.innerHeight;
+    this.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([1, 32])
+      .extent([[this.plotLeft, this.plotTop], [plotRight, plotBottom]])
+      .translateExtent([[this.plotLeft, this.plotTop], [plotRight, plotBottom]])
+      .filter((event: Event) => this.isPlotInteraction(event))
+      .on('start', () => this.hideTooltip())
+      .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+        this.scheduleZoomRender(event.transform);
+      });
+
+    const selection = d3.select(this.svgElement);
+    this.ngZone.runOutsideAngular(() => {
+      selection.call(this.zoomBehavior!);
+      selection.on('dblclick.zoom', null);
+      selection.call(this.zoomBehavior!.transform, this.zoomTransform);
+    });
+  }
+
+  private detachZoom(): void {
+    if (this.svgElement) d3.select(this.svgElement).on('.zoom', null);
+    this.zoomBehavior = undefined;
+  }
+
+  private isPlotInteraction(event: Event): boolean {
+    if (!this.svgElement) return false;
+    if (event instanceof MouseEvent && event.button !== 0 && event.type !== 'wheel') return false;
+
+    const pointerEvent = event instanceof TouchEvent && event.touches.length
+      ? event.touches[0]
+      : event;
+    const [x, y] = d3.pointer(pointerEvent, this.svgElement);
+    return x >= this.plotLeft
+      && x <= this.plotLeft + this.innerWidth
+      && y >= this.plotTop
+      && y <= this.plotTop + this.innerHeight;
+  }
+
+  private scheduleZoomRender(transform: d3.ZoomTransform): void {
+    this.pendingZoomTransform = d3.zoomIdentity.translate(transform.x, 0).scale(transform.k);
+    if (this.zoomFrame) return;
+
+    this.zoomFrame = requestAnimationFrame(() => {
+      this.zoomFrame = 0;
+      this.ngZone.run(() => this.applyZoomTransform(this.pendingZoomTransform));
+    });
+  }
+
+  private cancelPendingZoom(): void {
+    if (this.zoomFrame) cancelAnimationFrame(this.zoomFrame);
+    this.zoomFrame = 0;
+    this.pendingZoomTransform = d3.zoomIdentity;
+  }
+
+  private applyZoomTransform(transform: d3.ZoomTransform): void {
+    const rowCount = Math.max(1, this.sourceMachines.length);
+    const rowHeight = this.innerHeight / rowCount;
+    this.zoomTransform = transform;
+    this.renderTimeline(rowHeight, transform);
+    this.zoomLevel = transform.k;
+    this.isZoomed = transform.k > 1.001;
+    this.tooltip = { ...this.tooltip, visible: false };
+    this.cdr.markForCheck();
+  }
+
+  private renderTimeline(rowHeight: number, transform: d3.ZoomTransform): void {
+    this.visibleTimeScale = transform.rescaleX(this.baseTimeScale);
+    this.viewMachines = this.sourceMachines.map((machine, index) => this.buildMachineView(machine, index, rowHeight));
+    this.ticks = this.buildTicks();
+    this.zoomLevel = transform.k;
+    this.isZoomed = transform.k > 1.001;
+  }
+
+  private transformForVisibleDomain(domain: Date[] | null): d3.ZoomTransform {
+    if (!domain || domain.length !== 2 || !this.rangeStart || !this.rangeEnd) return d3.zoomIdentity;
+
+    const fullStart = this.rangeStart.getTime();
+    const fullEnd = this.rangeEnd.getTime();
+    const visibleStart = Math.max(fullStart, domain[0].getTime());
+    const visibleEnd = Math.min(fullEnd, domain[1].getTime());
+    if (visibleStart >= visibleEnd) return d3.zoomIdentity;
+
+    const scale = Math.min(32, (fullEnd - fullStart) / (visibleEnd - visibleStart));
+    if (scale <= 1.001) return d3.zoomIdentity;
+    const translateX = this.plotLeft - (scale * this.baseTimeScale(new Date(visibleStart)));
+    return d3.zoomIdentity.translate(translateX, 0).scale(scale);
+  }
+
+  private hideTooltip(): void {
+    if (!this.tooltip.visible) return;
+    this.ngZone.run(() => {
+      this.tooltip = { ...this.tooltip, visible: false };
+      this.cdr.markForCheck();
+    });
   }
 
   private hasRenderableSession(machine: OperatorTimelineMachine): boolean {
@@ -297,9 +449,8 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     const end = this.parseDate(chunk.end);
     if (!start || !end || !this.rangeStart || !this.rangeEnd || start >= end) return null;
 
-    const rangeMs = this.rangeEnd.getTime() - this.rangeStart.getTime();
-    const x = this.plotLeft + ((start.getTime() - this.rangeStart.getTime()) / rangeMs) * this.innerWidth;
-    const width = Math.max(1, ((end.getTime() - start.getTime()) / rangeMs) * this.innerWidth);
+    const x = this.visibleTimeScale(start);
+    const width = Math.max(1, this.visibleTimeScale(end) - x);
     const status = this.normalizeStatus(chunk.status);
 
     return {
@@ -316,13 +467,15 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   private buildTicks(): TimelineTick[] {
     if (!this.rangeStart || !this.rangeEnd) return [];
     const tickCount = this.svgWidth < 420 ? 3 : 5;
-    const rangeMs = this.rangeEnd.getTime() - this.rangeStart.getTime();
+    const [visibleStart, visibleEnd] = this.visibleTimeScale.domain();
+    const rangeMs = visibleEnd.getTime() - visibleStart.getTime();
+    const includeDate = visibleStart.toDateString() !== visibleEnd.toDateString();
     return Array.from({ length: tickCount }, (_, index) => {
       const ratio = index / (tickCount - 1);
-      const date = new Date(this.rangeStart!.getTime() + (rangeMs * ratio));
+      const date = new Date(visibleStart.getTime() + (rangeMs * ratio));
       return {
-        x: this.plotLeft + (this.innerWidth * ratio),
-        label: this.formatTime(date),
+        x: this.visibleTimeScale(date),
+        label: includeDate ? this.formatTickDateTime(date) : this.formatTime(date),
       };
     });
   }
@@ -365,6 +518,15 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
 
   private formatTime(date: Date): string {
     return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+
+  private formatTickDateTime(date: Date): string {
+    return date.toLocaleString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
     });
