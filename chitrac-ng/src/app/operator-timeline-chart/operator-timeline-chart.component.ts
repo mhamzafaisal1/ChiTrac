@@ -142,7 +142,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   ngOnChanges(changes: SimpleChanges): void {
     const dataChanged = Boolean(changes['timelineData'] || changes['preloadedData']);
     if (dataChanged) this.cancelPendingZoom();
-    this.buildView(dataChanged);
+    this.buildView();
   }
 
   ngOnDestroy(): void {
@@ -192,8 +192,8 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.cdr.markForCheck();
   }
 
-  private buildView(resetZoom = false): void {
-    const preservedDomain = !resetZoom && this.isZoomed
+  private buildView(): void {
+    const preservedDomain = this.isZoomed
       ? this.visibleTimeScale.domain().map((date) => new Date(date))
       : null;
     const payload = this.normalizePayload(this.timelineData ?? this.preloadedData);
@@ -227,9 +227,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.baseTimeScale = d3.scaleTime<number, number>()
       .domain([this.rangeStart, this.rangeEnd])
       .range([this.plotLeft, this.plotLeft + this.innerWidth]);
-    this.zoomTransform = resetZoom
-      ? d3.zoomIdentity
-      : this.transformForVisibleDomain(preservedDomain);
+    this.zoomTransform = this.transformForVisibleDomain(preservedDomain);
     this.renderTimeline(rowHeight, this.zoomTransform);
     this.hasInitialData = this.sourceMachines.length > 0;
     this.isLoading = false;
@@ -251,7 +249,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.resizeFrame = requestAnimationFrame(() => {
       this.resizeFrame = 0;
       if (this.syncMeasuredSize()) {
-        this.buildView(false);
+        this.buildView();
       }
     });
   }
