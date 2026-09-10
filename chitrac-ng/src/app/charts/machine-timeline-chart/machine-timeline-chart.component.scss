@@ -30,13 +30,9 @@
   height: 100%;
 }
 
-.timeline-svg {
-  cursor: grab;
-  touch-action: none;
-}
-
-.timeline-svg:active {
-  cursor: grabbing;
+.timeline-plot,
+.timeline-plot .session-chunk {
+  cursor: default;
 }
 
 .zoom-surface {
