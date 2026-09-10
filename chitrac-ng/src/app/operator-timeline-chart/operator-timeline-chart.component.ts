@@ -13,7 +13,6 @@ import {
   ViewChild,
   inject,
 } from '@angular/core';
-import { MatIconModule } from '@angular/material/icon';
 import * as d3 from 'd3';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
@@ -73,7 +72,7 @@ interface TimelineViewMachine {
 @Component({
   selector: 'app-operator-timeline-chart',
   standalone: true,
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule],
   templateUrl: './operator-timeline-chart.component.html',
   styleUrls: ['./operator-timeline-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -98,7 +97,6 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   isLoading = false;
   hasInitialData = false;
   isZoomed = false;
-  zoomLevel = 1;
   readonly clipPathId = `operator-timeline-clip-${++OperatorTimelineChartComponent.nextClipId}`;
   viewMachines: TimelineViewMachine[] = [];
   ticks: TimelineTick[] = [];
@@ -155,19 +153,6 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
       this.resizeFrame = 0;
     }
     this.cancelPendingZoom();
-  }
-
-  zoomBy(factor: number): void {
-    if (!this.svgElement || !this.zoomBehavior) return;
-    d3.select(this.svgElement).call(this.zoomBehavior.scaleBy, factor);
-  }
-
-  resetZoom(): void {
-    if (!this.svgElement || !this.zoomBehavior) {
-      this.applyZoomTransform(d3.zoomIdentity);
-      return;
-    }
-    d3.select(this.svgElement).call(this.zoomBehavior.transform, d3.zoomIdentity);
   }
 
   trackMachine(_index: number, machine: TimelineViewMachine): number | string {
@@ -288,12 +273,10 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     if (!this.svgElement || !this.hasInitialData) return;
 
     const plotRight = this.plotLeft + this.innerWidth;
-    const plotBottom = this.plotTop + this.innerHeight;
     this.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([1, 32])
-      .extent([[this.plotLeft, this.plotTop], [plotRight, plotBottom]])
-      .translateExtent([[this.plotLeft, this.plotTop], [plotRight, plotBottom]])
-      .filter((event: Event) => this.isPlotInteraction(event))
+      .extent([[this.plotLeft, 0], [plotRight, this.svgHeight]])
+      .translateExtent([[this.plotLeft, -Infinity], [plotRight, Infinity]])
       .on('start', () => this.hideTooltip())
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         this.scheduleZoomRender(event.transform);
@@ -310,20 +293,6 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   private detachZoom(): void {
     if (this.svgElement) d3.select(this.svgElement).on('.zoom', null);
     this.zoomBehavior = undefined;
-  }
-
-  private isPlotInteraction(event: Event): boolean {
-    if (!this.svgElement) return false;
-    if (event instanceof MouseEvent && event.button !== 0 && event.type !== 'wheel') return false;
-
-    const pointerEvent = event instanceof TouchEvent && event.touches.length
-      ? event.touches[0]
-      : event;
-    const [x, y] = d3.pointer(pointerEvent, this.svgElement);
-    return x >= this.plotLeft
-      && x <= this.plotLeft + this.innerWidth
-      && y >= this.plotTop
-      && y <= this.plotTop + this.innerHeight;
   }
 
   private scheduleZoomRender(transform: d3.ZoomTransform): void {
@@ -347,8 +316,6 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     const rowHeight = this.innerHeight / rowCount;
     this.zoomTransform = transform;
     this.renderTimeline(rowHeight, transform);
-    this.zoomLevel = transform.k;
-    this.isZoomed = transform.k > 1.001;
     this.tooltip = { ...this.tooltip, visible: false };
     this.cdr.markForCheck();
   }
@@ -357,7 +324,6 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.visibleTimeScale = transform.rescaleX(this.baseTimeScale);
     this.viewMachines = this.sourceMachines.map((machine, index) => this.buildMachineView(machine, index, rowHeight));
     this.ticks = this.buildTicks();
-    this.zoomLevel = transform.k;
     this.isZoomed = transform.k > 1.001;
   }
 

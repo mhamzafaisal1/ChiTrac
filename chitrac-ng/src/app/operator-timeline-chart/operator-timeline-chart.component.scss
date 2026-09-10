@@ -34,9 +34,13 @@
   overflow: visible;
 }
 
-.timeline-plot,
-.timeline-plot .session-chunk {
+.timeline-svg {
   cursor: grab;
+  touch-action: none;
+}
+
+.timeline-svg:active {
+  cursor: grabbing;
 }
 
 .zoom-surface {
@@ -85,48 +89,6 @@
 .timeline-axis line {
   stroke: color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 45%, transparent);
   stroke-width: 1;
-}
-
-.zoom-controls {
-  position: absolute;
-  top: 6px;
-  right: 16px;
-  display: flex;
-  gap: 4px;
-}
-
-.zoom-controls button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 30%, transparent);
-  border-radius: 4px;
-  place-items: center;
-  background: color-mix(in srgb, var(--theme-color-surface, #fff) 92%, transparent);
-  color: var(--theme-color-on-surface-variant, #333);
-  cursor: pointer;
-}
-
-.zoom-controls button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 12%, transparent);
-}
-
-.zoom-controls button:focus-visible {
-  outline: 2px solid var(--theme-color-primary, #1aaee8);
-  outline-offset: 1px;
-}
-
-.zoom-controls button:disabled {
-  cursor: default;
-  opacity: 0.38;
-}
-
-.zoom-controls mat-icon {
-  width: 19px;
-  height: 19px;
-  font-size: 19px;
-  line-height: 19px;
 }
 
 .timeline-tooltip {
