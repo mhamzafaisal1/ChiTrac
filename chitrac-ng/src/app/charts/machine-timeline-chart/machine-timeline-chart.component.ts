@@ -13,7 +13,6 @@ import {
   ViewChild,
   inject,
 } from '@angular/core';
-import { MatIconModule } from '@angular/material/icon';
 import * as d3 from 'd3';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
@@ -71,7 +70,7 @@ interface TimelineViewMachine {
 @Component({
   selector: 'app-machine-timeline-chart',
   standalone: true,
-  imports: [CommonModule, MatIconModule],
+  imports: [CommonModule],
   templateUrl: './machine-timeline-chart.component.html',
   styleUrls: ['./machine-timeline-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -97,7 +96,6 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
   hasInitialData = false;
   dummyMode = true;
   isZoomed = false;
-  zoomLevel = 1;
   readonly clipPathId = `machine-timeline-clip-${++MachineTimelineChartComponent.nextClipId}`;
   viewMachines: TimelineViewMachine[] = [];
   ticks: TimelineTick[] = [];
@@ -150,7 +148,7 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     }
     const dataChanged = Boolean(changes['preloadedData']);
     if (dataChanged) this.cancelPendingZoom();
-    this.buildView(dataChanged);
+    this.buildView();
   }
 
   ngOnDestroy(): void {
@@ -158,19 +156,6 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     this.resizeObserver?.disconnect();
     if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
     this.cancelPendingZoom();
-  }
-
-  zoomBy(factor: number): void {
-    if (!this.svgElement || !this.zoomBehavior) return;
-    d3.select(this.svgElement).call(this.zoomBehavior.scaleBy, factor);
-  }
-
-  resetZoom(): void {
-    if (!this.svgElement || !this.zoomBehavior) {
-      this.applyZoomTransform(d3.zoomIdentity);
-      return;
-    }
-    d3.select(this.svgElement).call(this.zoomBehavior.transform, d3.zoomIdentity);
   }
 
   trackMachine(_index: number, machine: TimelineViewMachine): number | string {
@@ -215,8 +200,8 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     this.cdr.markForCheck();
   }
 
-  private buildView(resetZoom = false): void {
-    const preservedDomain = !resetZoom && this.isZoomed
+  private buildView(): void {
+    const preservedDomain = this.isZoomed
       ? this.visibleTimeScale.domain().map((date) => new Date(date))
       : null;
     const payload = this.normalizePayload(this.preloadedData);
@@ -246,9 +231,7 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     this.baseTimeScale = d3.scaleTime<number, number>()
       .domain([this.rangeStart, this.rangeEnd])
       .range([this.plotLeft, this.plotLeft + this.innerWidth]);
-    this.zoomTransform = resetZoom
-      ? d3.zoomIdentity
-      : this.transformForVisibleDomain(preservedDomain);
+    this.zoomTransform = this.transformForVisibleDomain(preservedDomain);
     this.renderTimeline(rowHeight, this.zoomTransform);
     this.hasInitialData = this.sourceMachines.length > 0;
     this.isLoading = false;
@@ -270,7 +253,7 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = requestAnimationFrame(() => {
       this.resizeFrame = 0;
-      if (this.syncMeasuredSize() && this.preloadedData) this.buildView(false);
+      if (this.syncMeasuredSize() && this.preloadedData) this.buildView();
     });
   }
 
@@ -298,12 +281,10 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     if (!this.svgElement || !this.hasInitialData) return;
 
     const plotRight = this.plotLeft + this.innerWidth;
-    const plotBottom = this.plotTop + this.innerHeight;
     this.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([1, 32])
-      .extent([[this.plotLeft, this.plotTop], [plotRight, plotBottom]])
-      .translateExtent([[this.plotLeft, this.plotTop], [plotRight, plotBottom]])
-      .filter((event: Event) => this.isPlotInteraction(event))
+      .extent([[this.plotLeft, 0], [plotRight, this.svgHeight]])
+      .translateExtent([[this.plotLeft, -Infinity], [plotRight, Infinity]])
       .on('start', () => this.hideTooltip())
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         this.scheduleZoomRender(event.transform);
@@ -320,20 +301,6 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
   private detachZoom(): void {
     if (this.svgElement) d3.select(this.svgElement).on('.zoom', null);
     this.zoomBehavior = undefined;
-  }
-
-  private isPlotInteraction(event: Event): boolean {
-    if (!this.svgElement) return false;
-    if (event instanceof MouseEvent && event.button !== 0 && event.type !== 'wheel') return false;
-
-    const pointerEvent = event instanceof TouchEvent && event.touches.length
-      ? event.touches[0]
-      : event;
-    const [x, y] = d3.pointer(pointerEvent, this.svgElement);
-    return x >= this.plotLeft
-      && x <= this.plotLeft + this.innerWidth
-      && y >= this.plotTop
-      && y <= this.plotTop + this.innerHeight;
   }
 
   private scheduleZoomRender(transform: d3.ZoomTransform): void {
@@ -366,7 +333,6 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     this.visibleTimeScale = transform.rescaleX(this.baseTimeScale);
     this.viewMachines = this.sourceMachines.map((machine, index) => this.buildMachineView(machine, index, rowHeight));
     this.ticks = this.buildTicks();
-    this.zoomLevel = transform.k;
     this.isZoomed = transform.k > 1.001;
   }
 
@@ -594,7 +560,6 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
   private enterDummy(): void {
     this.sourceMachines = [];
     this.isZoomed = false;
-    this.zoomLevel = 1;
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;

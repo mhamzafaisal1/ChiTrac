@@ -1,7 +1,7 @@
 <div class="timeline-container">
-  <div class="loading-overlay" *ngIf="isLoading">
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
+  <div class="loading-overlay" *ngIf="isLoading || (!hasInitialData && dummyMode)">
+    <div class="loading-content" role="status" aria-live="polite">
+      <div class="loading-spinner" aria-hidden="true"></div>
       <div class="loading-text">Loading data...</div>
     </div>
   </div>
@@ -111,26 +111,10 @@
         </g>
       </svg>
 
-      <div class="zoom-controls" aria-label="Timeline zoom controls">
-        <button type="button" title="Zoom in" aria-label="Zoom in" [disabled]="zoomLevel >= 31.999" (click)="zoomBy(2)">
-          <mat-icon>zoom_in</mat-icon>
-        </button>
-        <button type="button" title="Zoom out" aria-label="Zoom out" [disabled]="zoomLevel <= 1.001" (click)="zoomBy(0.5)">
-          <mat-icon>zoom_out</mat-icon>
-        </button>
-        <button type="button" title="Reset zoom" aria-label="Reset zoom" [disabled]="!isZoomed" (click)="resetZoom()">
-          <mat-icon>fit_screen</mat-icon>
-        </button>
-      </div>
-
       <div #tooltipEl class="timeline-tooltip" [class.visible]="tooltip.visible" [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
         <div *ngFor="let line of tooltip.lines">{{ line }}</div>
       </div>
     </div>
-  </div>
-
-  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
-    <div class="loading-spinner dummy-chart">⏳</div>
   </div>
 
   <div class="chart-no-data" *ngIf="!hasInitialData && !dummyMode && !isLoading">
