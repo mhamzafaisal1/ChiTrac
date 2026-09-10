@@ -75,6 +75,7 @@
 .timeline-tooltip {
   position: absolute;
   z-index: 20;
+  width: max-content;
   max-width: 240px;
   padding: 7px 9px;
   border-radius: 4px;
@@ -86,7 +87,8 @@
   opacity: 0;
   transform: none;
   transition: opacity 120ms ease;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 

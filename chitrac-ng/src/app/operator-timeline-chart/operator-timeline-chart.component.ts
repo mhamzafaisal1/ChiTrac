@@ -18,9 +18,11 @@ interface OperatorTimelineChunk {
   id?: string;
   status?: TimelineStatus;
   statusLabel?: string;
+  statusCode?: number | string;
   start?: string | Date;
   end?: string | Date;
   durationMs?: number;
+  totalDurationMs?: number;
   totalCount?: number | null;
   efficiency?: number | null;
   current?: boolean;
@@ -328,12 +330,34 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   }
 
   private buildTooltip(chunk: OperatorTimelineChunk, start: Date, end: Date): string[] {
-    return [
+    const lines = [
       `Start Time: ${this.formatDateTime(start)}`,
       `End Time: ${this.formatDateTime(end)}`,
-      `Total Count: ${chunk.totalCount ?? 0}`,
-      `Eff%: ${chunk.efficiency == null ? 'N/A' : `${chunk.efficiency.toFixed(2)}%`}`,
     ];
+
+    const status = this.normalizeStatus(chunk.status);
+    if (status === 'faulted') {
+      lines.push(`Fault Code: ${chunk.statusCode ?? 'N/A'}`);
+      lines.push(`Fault Name: ${chunk.statusLabel || 'Faulted'}`);
+    } else if (status === 'paused') {
+      const durationMs = chunk.totalDurationMs ?? chunk.durationMs ?? Math.max(0, end.getTime() - start.getTime());
+      lines.push(`Total Duration: ${this.formatDuration(durationMs)}`);
+    } else {
+      lines.push(`Total Count: ${chunk.totalCount ?? 0}`);
+      lines.push(`Eff%: ${chunk.efficiency == null ? 'N/A' : `${chunk.efficiency.toFixed(2)}%`}`);
+    }
+
+    return lines;
+  }
+
+  private formatDuration(durationMs: number): string {
+    const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return [hours, minutes, seconds]
+      .map(value => String(value).padStart(2, '0'))
+      .join(':');
   }
 
   private normalizeStatus(status: unknown): TimelineStatus {

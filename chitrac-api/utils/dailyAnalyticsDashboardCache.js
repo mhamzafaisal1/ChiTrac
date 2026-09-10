@@ -323,10 +323,39 @@ function sessionCount(session, factor = 1) {
   return Math.round(safeNumber(count) * factor);
 }
 
+function activeStationCount(session) {
+  const explicitCount = safeNumber(session.metrics?.stations ?? session.activeStations);
+  if (explicitCount > 0) return explicitCount;
+
+  const operators = session.operators || session.states?.start?.operators;
+  if (!Array.isArray(operators)) return 0;
+  return operators.filter((operator) => operator && operator.id !== -1).length;
+}
+
 function sessionEfficiency(session) {
-  const workedMs = safeNumber(session.metrics?.timers?.worked ?? session.workTime ?? session.runtime);
-  const timeCreditMs = safeNumber(session.metrics?.totals?.timeCredit ?? session.totalTimeCredit);
-  return workedMs > 0 ? +((timeCreditMs / workedMs) * 100).toFixed(2) : 0;
+  const modernWorkedValue = session.metrics?.timers?.worked;
+  const modernTimeCreditValue = session.metrics?.totals?.timeCredit;
+  const modernWorkedMs = Number(modernWorkedValue);
+  const modernTimeCreditMs = Number(modernTimeCreditValue);
+  if (
+    modernWorkedValue != null &&
+    modernTimeCreditValue != null &&
+    Number.isFinite(modernWorkedMs) &&
+    Number.isFinite(modernTimeCreditMs)
+  ) {
+    return modernWorkedMs > 0
+      ? +((modernTimeCreditMs / modernWorkedMs) * 100).toFixed(2)
+      : 0;
+  }
+
+  const runtimeSec = safeNumber(session.runtime);
+  const storedWorkedSec = safeNumber(session.workTime);
+  const stations = activeStationCount(session);
+  const workedSec = runtimeSec > 0 && stations > 0
+    ? runtimeSec * stations
+    : storedWorkedSec || runtimeSec;
+  const timeCreditSec = safeNumber(session.totalTimeCredit);
+  return workedSec > 0 ? +((timeCreditSec / workedSec) * 100).toFixed(2) : 0;
 }
 
 function timelineChunkFromSession(session, windowStart, windowEnd) {
@@ -345,6 +374,7 @@ function timelineChunkFromSession(session, windowStart, windowEnd) {
     sessionStart: range.start,
     sessionEnd: session.timestamps?.end ? range.end : null,
     durationMs: range.overlapMs,
+    totalDurationMs: Math.max(0, range.end - range.start),
     totalCount: sessionCount(session, range.factor),
     efficiency: sessionEfficiency(session),
     current: !session.timestamps?.end,
@@ -364,6 +394,7 @@ function offlineChunk(machine, start, end, index) {
     sessionStart: start,
     sessionEnd: end,
     durationMs: end - start,
+    totalDurationMs: end - start,
     totalCount: 0,
     efficiency: null,
     current: false,
@@ -424,6 +455,9 @@ async function buildMachineTimelineFromSessions(db, config, start, end, options 
         totalCount: 1,
         counts: 1,
         metrics: 1,
+        operators: 1,
+        states: 1,
+        activeStations: 1,
       })
       .sort({ "machine.name": 1, "machine.serial": 1, "timestamps.start": 1 })
       .toArray(),
