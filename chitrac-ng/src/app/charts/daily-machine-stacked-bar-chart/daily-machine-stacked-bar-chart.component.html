@@ -1,7 +1,7 @@
 <div class="chart-container" [class.dark-mode]="isDarkTheme">
   <div class="loading-overlay" *ngIf="isLoading || (!hasInitialData && dummyMode)">
+    <div class="loading-hourglass" aria-hidden="true">&#8987;</div>
     <div class="loading-content" role="status" aria-live="polite">
-      <div class="loading-spinner" aria-hidden="true"></div>
       <div class="loading-text">Loading data...</div>
     </div>
   </div>

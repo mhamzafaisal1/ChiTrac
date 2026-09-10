@@ -8,32 +8,21 @@
     background: rgba(0, 0, 0, 0.06);
   }
 
-  .loading-content {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    white-space: nowrap;
+  .loading-hourglass {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    font-size: 16px;
+    line-height: 1;
   }
 
-  .loading-spinner {
-    width: 22px;
-    height: 22px;
-    flex: 0 0 22px;
-    box-sizing: border-box;
-    border: 3px solid rgba(66, 165, 245, 0.22);
-    border-top-color: #42a5f5;
-    border-radius: 50%;
-    animation: chart-loading-spin 0.8s linear infinite;
+  .loading-content {
+    display: grid;
+    place-items: center;
+    text-align: center;
   }
 
   .loading-text {
     line-height: 1.25;
-  }
-
-  @keyframes chart-loading-spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 }
