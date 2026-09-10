@@ -1,7 +1,7 @@
 <div class="timeline-container">
-  <div class="loading-overlay" *ngIf="isLoading">
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
+  <div class="loading-overlay" *ngIf="isLoading || (!hasInitialData && dummyMode)">
+    <div class="loading-hourglass" aria-hidden="true">&#8987;</div>
+    <div class="loading-content" role="status" aria-live="polite">
       <div class="loading-text">Loading data...</div>
     </div>
   </div>
@@ -127,10 +127,6 @@
         <div *ngFor="let line of tooltip.lines">{{ line }}</div>
       </div>
     </div>
-  </div>
-
-  <div class="dummy-chart-content" *ngIf="!hasInitialData && dummyMode">
-    <div class="loading-spinner dummy-chart">⏳</div>
   </div>
 
   <div class="chart-no-data" *ngIf="!hasInitialData && !dummyMode && !isLoading">

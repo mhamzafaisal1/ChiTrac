@@ -1,0 +1,28 @@
+@mixin styles {
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  .loading-hourglass {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .loading-content {
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+
+  .loading-text {
+    line-height: 1.25;
+  }
+}

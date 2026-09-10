@@ -1,3 +1,7 @@
+@use '../chart-loading' as chart-loading;
+
+@include chart-loading.styles;
+
 :host {
   display: block;
   width: 100%;
@@ -140,30 +144,7 @@
   opacity: 1;
 }
 
-.loading-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.06);
-  z-index: 10;
-}
-
-.loading-content {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .chart-no-data {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  color: var(--theme-color-on-surface-variant, #333);
-}
-
-.dummy-chart-content {
   display: grid;
   width: 100%;
   height: 100%;

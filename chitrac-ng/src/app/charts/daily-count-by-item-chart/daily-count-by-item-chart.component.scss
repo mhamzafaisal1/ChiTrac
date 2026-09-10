@@ -1,32 +1,11 @@
+@use '../chart-loading' as chart-loading;
+
+@include chart-loading.styles;
+
 :host { display: block; width: 100%; height: 100%; }
 .chart-container { width: 100%; height: 100%; box-sizing: border-box; /*padding: 1rem;*/ position: relative; }
 .chart-content { position: relative; width: 100%; height: 100%; min-height: 0; }
 
-.loading-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(0,0,0,0.06);
-  z-index: 10;
-}
-
-.loading-content {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-}
-
-.loading-spinner {
-  width: 22px;
-  height: 22px;
-  border: 3px solid rgba(66, 165, 245, 0.22);
-  border-top-color: #42a5f5;
-  border-radius: 50%;
-  animation: chart-spin 0.8s linear infinite;
-}
-
-.dummy-chart-content,
 .chart-no-data {
   position: absolute;
   inset: 0;
@@ -49,10 +28,4 @@
 
 .chart-no-data-text {
   font-size: 12px;
-}
-
-@keyframes chart-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
