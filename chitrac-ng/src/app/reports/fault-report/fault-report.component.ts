@@ -9,6 +9,7 @@ import autoTable from 'jspdf-autotable';
 
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { formatDurationParts } from '../../shared/utils/duration-format';
 
 interface FaultDetailRow {
   Timestamp: string;
@@ -216,15 +217,7 @@ export class FaultReportComponent implements OnInit, OnDestroy {
   private formatDuration(
     formatted: { hours?: number; minutes?: number; seconds?: number } | undefined
   ): string {
-    if (!formatted) return '0s';
-    const h = formatted.hours ?? 0;
-    const m = formatted.minutes ?? 0;
-    const s = formatted.seconds ?? 0;
-    const parts: string[] = [];
-    if (h > 0) parts.push(`${h}h`);
-    if (m > 0) parts.push(`${m}m`);
-    if (s > 0 || parts.length === 0) parts.push(`${s}s`);
-    return parts.join(' ');
+    return formatDurationParts(formatted);
   }
 
   async downloadPdf(): Promise<void> {

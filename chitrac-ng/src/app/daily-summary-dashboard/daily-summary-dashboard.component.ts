@@ -23,6 +23,7 @@ import { MachineFaultHistoryComponent } from '../machine-fault-history/machine-f
 import { OperatorPerformanceChartComponent } from '../operator-performance-chart/operator-performance-chart.component';
 import { MachineItemStackedBarChartComponent } from '../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component';
 import { BaseTableComponent } from "../components/base-table/base-table.component";
+import { formatDurationMilliseconds, formatDurationParts } from '../shared/utils/duration-format';
 import { MachineService } from '../services/machine.service';
 import { OperatorCountbyitemChartComponent } from "../operator-countbyitem-chart/operator-countbyitem-chart.component";
 import { getStatusDot } from '../../utils/status-utils';
@@ -260,7 +261,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.operatorRows = arr.map((o:any)=>({
       Status: getStatusDot(o.currentStatus),
       'Operator Name': this.formatOperatorName(o.operator?.name),
-      'Worked Time': this.formatDurationForTable(o.metrics?.workedTime?.formatted ?? o.metrics?.runtime?.formatted),
+      'Worked Time': this.formatDurationForTable(o.metrics?.workedTime ?? o.metrics?.runtime),
       'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
       operatorId: o.operator?.id
     }));
@@ -325,7 +326,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   private formatDurationForTable(duration: any): string {
-    return `${duration?.hours ?? 0}h ${duration?.minutes ?? 0}m`;
+    if (duration?.total != null) return formatDurationMilliseconds(duration.total);
+    return formatDurationParts(duration?.formatted ?? duration);
   }
 
   private formatOperatorName(name: any): string {

@@ -20,6 +20,7 @@ import { MachineService } from '../services/machine.service';
 import { OperatorService } from '../services/operator.service';
 import { PolarChartComponent, PolarChartData } from '../charts/polar-chart/polar-chart.component';
 import { ShiftListItem, ShiftService } from '../services/shift.service';
+import { formatDurationMilliseconds, formatDurationParts } from '../shared/utils/duration-format';
 
 type ComparisonEntityType = 'machines' | 'operators';
 type WizardStep = 'chooseType' | 'chooseEntities' | 'chooseTimeframes' | 'results';
@@ -591,9 +592,7 @@ export class ComparisonDashboardComponent implements OnInit {
 
   private durationValue(runtime: any): string {
     if (runtime?.formatted) {
-      const hours = runtime.formatted.hours || 0;
-      const minutes = runtime.formatted.minutes || 0;
-      return `${hours}h ${minutes}m`;
+      return formatDurationParts(runtime.formatted);
     }
     const totalMs = this.runtimeMsValue(runtime);
     return this.durationFromMs(totalMs);
@@ -604,8 +603,7 @@ export class ComparisonDashboardComponent implements OnInit {
   }
 
   private durationFromMs(totalMs: number): string {
-    const totalMinutes = Math.floor(totalMs / 60000);
-    return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
+    return formatDurationMilliseconds(totalMs);
   }
 
   private numberValue(value: any): string {

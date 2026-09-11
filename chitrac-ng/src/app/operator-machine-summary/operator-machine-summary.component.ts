@@ -21,6 +21,7 @@ import {
   import { DateTimeService } from '../services/date-time.service';
   import { OperatorService } from '../services/operator.service';
   import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+  import { formatDurationSeconds } from '../shared/utils/duration-format';
   
   type OperatorMachineSummaryResponse = {
     context: { operatorId: number; start: string; end: string };
@@ -293,13 +294,7 @@ import {
     }
   
     private formatDuration(totalSeconds: number): string {
-      const s = Math.max(0, Math.floor(totalSeconds));
-      const h = Math.floor(s / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      const sec = s % 60;
-      if (h > 0) return `${h}h ${m}m ${sec}s`;
-      if (m > 0) return `${m}m ${sec}s`;
-      return `${sec}s`;
+      return formatDurationSeconds(totalSeconds);
     }
 
     getEfficiencyClass = (value: any, column: string): string => {

@@ -13,6 +13,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSort, MatSortModule } from '@angular/material/sort';
+import { parseDurationDisplay } from '../../shared/utils/duration-format';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -111,15 +112,10 @@ export class BaseTableComponent implements OnInit, OnChanges, AfterViewInit, OnD
         // Handle all time-formatted columns (e.g., "1h 30m")
         if (sortHeaderId === 'Duration' || sortHeaderId === 'Total Duration' || 
             sortHeaderId === 'Total Time (Runtime)' || sortHeaderId === 'Runtime' ||
-            sortHeaderId === 'Worked Time' || sortHeaderId === 'Downtime') {
-          const value = data[sortHeaderId];
-          if (typeof value === 'string' && value.includes('h')) {
-            const [hours, minutes] = value.split(' ');
-            const h = parseInt(hours) || 0;
-            const m = parseInt(minutes) || 0;
-            return h * 60 + m;
-          }
-          return 0;
+            sortHeaderId === 'Worked Time' || sortHeaderId === 'Downtime' ||
+            sortHeaderId === 'Paused Time' || sortHeaderId === 'Fault Time' ||
+            sortHeaderId === 'Down Time' || sortHeaderId === 'Run Time') {
+          return parseDurationDisplay(data[sortHeaderId]);
         }
         const value = data[sortHeaderId];
         if (typeof value === 'string' && value.trim().endsWith('%')) {

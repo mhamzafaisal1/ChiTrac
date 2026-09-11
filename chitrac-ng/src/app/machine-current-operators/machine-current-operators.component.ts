@@ -8,6 +8,7 @@ import { BaseTableComponent } from '../components/base-table/base-table.componen
 import { MachineService } from '../services/machine.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 import { displayInteger } from '../shared/utils/display-number';
+import { formatDurationMilliseconds } from '../shared/utils/duration-format';
 
 type OperatorRow = {
   'Operator': string;
@@ -97,9 +98,7 @@ export class MachineCurrentOperatorsComponent implements OnInit {
     return ops.map(o => {
       // Extract worked time from milliseconds
       const workedTimeMs = o?.metrics?.workedTimeMs || 0;
-      const hours = Math.floor(workedTimeMs / (1000 * 60 * 60));
-      const minutes = Math.floor((workedTimeMs % (1000 * 60 * 60)) / (1000 * 60));
-      const workedTime = `${hours}h ${minutes}m`;
+      const workedTime = formatDurationMilliseconds(workedTimeMs);
       
       const totalCount = o?.metrics?.totalCount || 0;
       const validCount = o?.metrics?.validCount || 0;

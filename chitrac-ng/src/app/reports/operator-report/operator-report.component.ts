@@ -13,6 +13,7 @@ import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { displayInteger } from '../../shared/utils/display-number';
+import { formatDurationParts, parseDurationDisplay } from '../../shared/utils/duration-format';
 
 interface OperatorReportGroup {
   key: string;
@@ -180,7 +181,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     return {
       'Operator': operatorName,
       'Item': 'TOTAL',
-      'Worked Time': `${workedTime.hours ?? 0}h ${workedTime.minutes ?? 0}m`,
+      'Worked Time': formatDurationParts(workedTime),
       'Total Count': summary.totalCount ?? 0,
       'PPH': displayInteger(summary.pph),
       'Standard': displayInteger(summary.proratedStandard, 'N/A'),
@@ -195,7 +196,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     return {
       'Operator': operatorName,
       'Item': item.name,
-      'Worked Time': `${workedTime.hours ?? 0}h ${workedTime.minutes ?? 0}m`,
+      'Worked Time': formatDurationParts(workedTime),
       'Total Count': item.countTotal,
       'PPH': displayInteger(item.pph),
       'Standard': displayInteger(item.standard, 'N/A'),
@@ -246,8 +247,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     const value = summary?.[column];
     if (column === 'Operator') return String(value ?? '');
     if (column === 'Worked Time') {
-      const match = String(value ?? '').match(/(\d+)h\s*(\d+)m/);
-      return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+      return parseDurationDisplay(value);
     }
     return Number.parseFloat(String(value ?? '').replace(/[,%]/g, '')) || 0;
   }

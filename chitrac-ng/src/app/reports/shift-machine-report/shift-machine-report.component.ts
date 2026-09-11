@@ -17,6 +17,7 @@ import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { displayInteger } from '../../shared/utils/display-number';
+import { formatDurationParts, parseDurationDisplay } from '../../shared/utils/duration-format';
 
 interface ShiftMachineReportGroup {
   key: string;
@@ -177,13 +178,11 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
 
       sortedItems.forEach((item: any) => {
         const wt = item.workedTimeFormatted;
-        const hours = wt != null && typeof wt.hours === 'number' ? wt.hours : 0;
-        const minutes = wt != null && typeof wt.minutes === 'number' ? wt.minutes : 0;
 
         const row = {
           Machine: machineName,
           Item: item.name ?? '',
-          'Total Time (Runtime)': `${hours}h ${minutes}m`,
+          'Total Time (Runtime)': formatDurationParts(wt),
           'Total Count': item.countTotal ?? 0,
           PPH: displayInteger(item.pph),
           Standard: displayInteger(item.standard, ''),
@@ -204,7 +203,7 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
         summaryRow = {
           Machine: machineName,
           Item: 'Total',
-          'Total Time (Runtime)': `${runtime.hours ?? 0}h ${runtime.minutes ?? 0}m`,
+          'Total Time (Runtime)': formatDurationParts(runtime),
           'Total Count': summary.totalCount ?? 0,
           PPH: displayInteger(summary.pph),
           Standard: displayInteger(summary.proratedStandard, ''),
@@ -268,8 +267,7 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
     const value = summary?.[column];
     if (column === 'Machine') return String(value ?? '');
     if (column === 'Total Time (Runtime)') {
-      const match = String(value ?? '').match(/(\d+)h\s*(\d+)m/);
-      return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+      return parseDurationDisplay(value);
     }
     return Number.parseFloat(String(value ?? '').replace(/[,%]/g, '')) || 0;
   }

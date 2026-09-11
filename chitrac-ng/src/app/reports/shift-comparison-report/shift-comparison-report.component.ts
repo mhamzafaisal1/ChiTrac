@@ -16,6 +16,7 @@ import { BaseTableComponent } from '../../components/base-table/base-table.compo
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
 import { displayInteger } from '../../shared/utils/display-number';
+import { formatDurationParts } from '../../shared/utils/duration-format';
 
 @Component({
   selector: 'app-shift-comparison-report',
@@ -192,13 +193,11 @@ export class ShiftComparisonReportComponent implements OnInit, OnDestroy {
 
       sortedItems.forEach((item: any) => {
         const wt = item.workedTimeFormatted;
-        const hours = wt != null && typeof wt.hours === 'number' ? wt.hours : 0;
-        const minutes = wt != null && typeof wt.minutes === 'number' ? wt.minutes : 0;
 
         formattedData.push({
           Machine: machine.machine?.name ?? '',
           Item: item.name ?? '',
-          'Total Time (Runtime)': `${hours}h ${minutes}m`,
+          'Total Time (Runtime)': formatDurationParts(wt),
           'Total Count': item.countTotal ?? 0,
           PPH: displayInteger(item.pph),
           Standard: displayInteger(item.standard, ''),
