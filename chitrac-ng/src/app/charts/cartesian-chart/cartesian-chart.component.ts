@@ -607,8 +607,17 @@ import {
       const simpleBarsAreas = cfg.series
         .filter(s => (s.type === 'bar' || s.type === 'area') && (!s.stack))
         .reduce((m, s) => Math.max(m, ...s.data.map(p => p.y || 0)), 0);
+      const endMarkerMax = cfg.series.reduce((seriesMax, series) => {
+        const markerMax = series.data.reduce((pointMax, point) => {
+          const markerValue = Number(point.endMarkerValue);
+          return Number.isFinite(markerValue) && markerValue > 0
+            ? Math.max(pointMax, markerValue)
+            : pointMax;
+        }, 0);
+        return Math.max(seriesMax, markerMax);
+      }, 0);
   
-      max = Math.max(nonStackMax, simpleBarsAreas, ...stackedMax);
+      max = Math.max(nonStackMax, simpleBarsAreas, endMarkerMax, ...stackedMax);
       return Number.isFinite(max) ? max : 0;
     }
   
