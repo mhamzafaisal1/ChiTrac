@@ -71,6 +71,15 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   readonly useTileTitles = true;
   readonly layoutContextId = 'experimentalDailyDashboard';
   readonly maxVisibleCharts = 6;
+  private readonly defaultChartOrder = [
+    'machine-status',
+    'machine-timeline',
+    'machine-oee',
+    'item-totals',
+    'machine-group-efficiency',
+    'top-operators',
+    'daily-counts'
+  ];
 
   chartTiles: ExperimentalChartTile[] = [
     { id: 'machine-status', title: 'Machine Run/Pause/Fault Time', icon: 'bar_chart' },
@@ -239,13 +248,30 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
-        const chartOrder = preferences?.dashboardLayouts?.experimentalDailyDashboard?.chartOrder;
-        const chartVisibility = preferences?.dashboardLayouts?.experimentalDailyDashboard?.chartVisibility;
+        const dashboardLayout = preferences?.dashboardLayouts?.experimentalDailyDashboard;
+        if (!dashboardLayout) {
+          this.resetLayoutToDefault();
+          return;
+        }
+
+        const chartOrder = dashboardLayout.chartOrder;
+        const chartVisibility = dashboardLayout.chartVisibility;
         if (Array.isArray(chartOrder) && chartOrder.length) {
           this.applyChartOrder(chartOrder);
+        } else {
+          this.applyChartOrder(this.defaultChartOrder);
         }
-        this.chartVisibility = this.cleanChartVisibility(chartVisibility || this.chartVisibility);
+        this.chartVisibility = chartVisibility
+          ? this.cleanChartVisibility(chartVisibility)
+          : this.getDefaultChartVisibility();
+        this.scheduleChartDimensionUpdate();
       });
+  }
+
+  private resetLayoutToDefault(): void {
+    this.applyChartOrder(this.defaultChartOrder);
+    this.chartVisibility = this.getDefaultChartVisibility();
+    this.scheduleChartDimensionUpdate();
   }
 
   private confirmAndSaveLayout(): void {
@@ -365,10 +391,11 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   }
 
   private applyDefaultChartVisibility(): void {
-    this.chartVisibility = this.cleanChartVisibility({
-      ...this.chartVisibility,
-      'machine-timeline': false,
-    });
+    this.chartVisibility = this.getDefaultChartVisibility();
+  }
+
+  private getDefaultChartVisibility(): Record<string, boolean> {
+    return this.cleanChartVisibility({ 'machine-timeline': false });
   }
 
   private detectTheme(): void {

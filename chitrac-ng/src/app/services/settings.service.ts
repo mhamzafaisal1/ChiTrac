@@ -95,6 +95,10 @@ export class SettingsService {
   }
 
   clearUserPreferences(): void {
+    localStorage.removeItem('chitrac-machine-dashboard-summary-card-order');
+    localStorage.removeItem('chitrac-machine-dashboard-summary-card-visibility');
+    localStorage.removeItem('chitrac-operator-dashboard-summary-card-order');
+    localStorage.removeItem('chitrac-operator-dashboard-summary-card-visibility');
     this.userPreferencesSubject.next(null);
   }
 
