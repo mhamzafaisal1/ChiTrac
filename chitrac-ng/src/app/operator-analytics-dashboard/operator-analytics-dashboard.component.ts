@@ -734,28 +734,40 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
-        const operatorDashboardLayout = preferences?.dashboardLayouts?.operatorDashboard;
+        if (!preferences) {
+          this.resetLayoutToDefault();
+          return;
+        }
+
+        const hadLocalOrder = this.summaryCardOrderSource === 'local';
+        const hadLocalVisibility = this.summaryCardVisibilitySource === 'local';
+        const operatorDashboardLayout = preferences.dashboardLayouts?.operatorDashboard;
         const serverOrder = operatorDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
           this.summaryCardOrderSource = 'server';
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalOrder) {
+          this.summaryCardOrder = [];
+          this.summaryCardOrderSource = 'default';
+          this.restoreDefaultSummaryCardOrder();
         }
 
         if (operatorDashboardLayout?.summaryCardVisibility) {
           this.summaryCardVisibility = this.cleanSummaryCardVisibility(operatorDashboardLayout.summaryCardVisibility);
           this.summaryCardVisibilitySource = 'server';
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalVisibility) {
+          this.summaryCardVisibility = {};
+          this.summaryCardVisibilitySource = 'default';
+          this.syncSummaryCardsFromAll();
         }
 
-        if (operatorDashboardLayout?.tableColumnVisibility) {
-          this.tableColumnVisibility = this.cleanTableColumnVisibility(operatorDashboardLayout.tableColumnVisibility);
-        }
+        this.tableColumnVisibility = this.cleanTableColumnVisibility(operatorDashboardLayout?.tableColumnVisibility);
 
         if (
-          preferences &&
           this.userService.getToken() &&
-          (this.summaryCardOrderSource === 'local' || this.summaryCardVisibilitySource === 'local') &&
+          (hadLocalOrder || hadLocalVisibility) &&
           (this.summaryCardOrder.length || Object.keys(this.summaryCardVisibility).length)
         ) {
           this.summaryCardOrderSource = 'server';
@@ -772,6 +784,25 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           });
         }
       });
+  }
+
+  private resetLayoutToDefault(): void {
+    this.summaryCardOrder = [];
+    this.summaryCardOrderSource = 'default';
+    this.summaryCardVisibility = {};
+    this.summaryCardVisibilitySource = 'default';
+    this.tableColumnVisibility = {};
+    this.restoreDefaultSummaryCardOrder();
+    this.syncSummaryCardsFromAll();
+  }
+
+  private restoreDefaultSummaryCardOrder(): void {
+    const cardsByLabel = new Map(this.allSummaryCards.map((card) => [card.label, card]));
+    const defaultCards = this.operatorSummaryCardLabels
+      .map((label) => cardsByLabel.get(label))
+      .filter((card): card is SummaryCard => Boolean(card));
+    const additions = this.allSummaryCards.filter((card) => !this.operatorSummaryCardLabels.includes(card.label));
+    this.allSummaryCards = [...defaultCards, ...additions];
   }
 
   private loadInitialSummaryCardOrder(): void {

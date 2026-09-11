@@ -1155,28 +1155,40 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
-        const machineDashboardLayout = preferences?.dashboardLayouts?.machineDashboard;
+        if (!preferences) {
+          this.resetLayoutToDefault();
+          return;
+        }
+
+        const hadLocalOrder = this.summaryCardOrderSource === "local";
+        const hadLocalVisibility = this.summaryCardVisibilitySource === "local";
+        const machineDashboardLayout = preferences.dashboardLayouts?.machineDashboard;
         const serverOrder = machineDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
           this.summaryCardOrderSource = "server";
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalOrder) {
+          this.summaryCardOrder = [];
+          this.summaryCardOrderSource = "default";
+          this.restoreDefaultSummaryCardOrder();
         }
 
         if (machineDashboardLayout?.summaryCardVisibility) {
           this.summaryCardVisibility = this.cleanSummaryCardVisibility(machineDashboardLayout.summaryCardVisibility);
           this.summaryCardVisibilitySource = "server";
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalVisibility) {
+          this.summaryCardVisibility = {};
+          this.summaryCardVisibilitySource = "default";
+          this.syncSummaryCardsFromAll();
         }
 
-        if (machineDashboardLayout?.tableColumnVisibility) {
-          this.tableColumnVisibility = this.cleanTableColumnVisibility(machineDashboardLayout.tableColumnVisibility);
-        }
+        this.tableColumnVisibility = this.cleanTableColumnVisibility(machineDashboardLayout?.tableColumnVisibility);
 
         if (
-          preferences &&
           this.userService.getToken() &&
-          (this.summaryCardOrderSource === "local" || this.summaryCardVisibilitySource === "local") &&
+          (hadLocalOrder || hadLocalVisibility) &&
           (this.summaryCardOrder.length || Object.keys(this.summaryCardVisibility).length)
         ) {
           this.settingsService
@@ -1194,6 +1206,25 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             });
         }
       });
+  }
+
+  private resetLayoutToDefault(): void {
+    this.summaryCardOrder = [];
+    this.summaryCardOrderSource = "default";
+    this.summaryCardVisibility = {};
+    this.summaryCardVisibilitySource = "default";
+    this.tableColumnVisibility = {};
+    this.restoreDefaultSummaryCardOrder();
+    this.syncSummaryCardsFromAll();
+  }
+
+  private restoreDefaultSummaryCardOrder(): void {
+    const cardsByLabel = new Map(this.allSummaryCards.map((card) => [card.label, card]));
+    const defaultCards = this.machineSummaryCardLabels
+      .map((label) => cardsByLabel.get(label))
+      .filter((card): card is SummaryCard => Boolean(card));
+    const additions = this.allSummaryCards.filter((card) => !this.machineSummaryCardLabels.includes(card.label));
+    this.allSummaryCards = [...defaultCards, ...additions];
   }
 
   private loadInitialSummaryCardOrder(): void {
