@@ -24,6 +24,7 @@ import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-tim
 import { FaultService } from '../services/fault.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { formatDurationSeconds } from '../shared/utils/duration-format';
 
 @Component({
     selector: 'app-machine-fault-history',
@@ -353,14 +354,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
         });
 
         // Format duration to show seconds when minutes are 0
-        let duration;
-        if (hours > 0) {
-          duration = `${hours}h ${minutes}m ${seconds}s`;
-        } else if (minutes > 0) {
-          duration = `${minutes}m ${seconds}s`;
-        } else {
-          duration = `${seconds}s`;
-        }
+        const duration = formatDurationSeconds(totalSeconds);
 
         return {
           'Fault Type': summary.name,
@@ -392,14 +386,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
         const seconds = durationSeconds % 60;
         
         // Format duration to show seconds when minutes are 0
-        let duration;
-        if (hours > 0) {
-          duration = `${hours}h ${minutes}m`;
-        } else if (minutes > 0) {
-          duration = `${minutes}m ${seconds}s`;
-        } else {
-          duration = `${seconds}s`;
-        }
+        const duration = formatDurationSeconds(durationSeconds);
         
         return {
           'Fault Type': cycle.name,

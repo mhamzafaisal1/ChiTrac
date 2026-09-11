@@ -29,6 +29,7 @@ import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, We
 import { ShiftListItem, ShiftService } from "../services/shift.service";
 import { UserService } from "../user.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
+import { formatDurationMilliseconds, formatDurationParts } from "../shared/utils/duration-format";
 import {
   calculateMachineStatusCounts,
   calculateOperatorStatusCounts,
@@ -454,8 +455,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     Status: getStatusDotByCode(response.currentStatus?.code),
                     "Machine Name": response.machine.name,
                     "Serial Number": response.machine.serial,
-                    Runtime: `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
-                    Downtime: `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
+                    Runtime: this.formatDurationMetric(response.metrics.runtime),
+                    Downtime: this.formatDurationMetric(response.metrics.downtime),
                     "Paused Time": this.formatDurationMetric(response.metrics.pausedTime),
                     "Fault Time": this.formatDurationMetric(response.metrics.faultTime),
                     "Total Count": response.metrics.output.totalCount,
@@ -691,8 +692,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Status: getStatusDotByCode(response.currentStatus?.code),
         "Machine Name": response.machine?.name ?? "Unknown",
         "Serial Number": response.machine?.serial,
-        Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
-        Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        Runtime: this.formatDurationMetric(runtime),
+        Downtime: this.formatDurationMetric(downtime),
         "Paused Time": this.formatDurationMetric(pausedTime),
         "Fault Time": this.formatDurationMetric(faultTime),
         "Total Count": totalCount,
@@ -768,19 +769,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private formatDurationMetric(metric: any): string {
-    if (metric?.formatted) {
-      return `${metric.formatted.hours ?? 0}h ${metric.formatted.minutes ?? 0}m`;
-    }
-
-    return this.formatMilliseconds(Number(metric?.total || 0));
+    if (metric?.total != null) return this.formatMilliseconds(Number(metric.total));
+    return formatDurationParts(metric?.formatted);
   }
 
   private formatMilliseconds(totalMs: number): string {
-    const safeMs = Number.isFinite(totalMs) ? Math.max(0, totalMs) : 0;
-    const totalMinutes = Math.floor(safeMs / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours}h ${minutes}m`;
+    return formatDurationMilliseconds(totalMs);
   }
 
   private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): { totalCount: number; projectedCount: number | null } {
@@ -1888,8 +1882,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Status: getStatusDotByCode(response.currentStatus?.code),
         "Machine Name": response.machine?.name ?? "Unknown",
         "Serial Number": response.machine?.serial,
-        Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
-        Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        Runtime: this.formatDurationMetric(runtime),
+        Downtime: this.formatDurationMetric(downtime),
         "Paused Time": this.formatDurationMetric(pausedTime),
         "Fault Time": this.formatDurationMetric(faultTime),
         "Total Count": totalCount,

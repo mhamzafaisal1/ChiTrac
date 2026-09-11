@@ -7,6 +7,7 @@ import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-tim
 import { MachineService } from '../services/machine.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 import { displayInteger } from '../shared/utils/display-number';
+import { formatDurationMilliseconds, formatDurationParts } from '../shared/utils/duration-format';
 
 @Component({
     selector: 'app-machine-item-summary-table',
@@ -82,18 +83,12 @@ export class MachineItemSummaryTableComponent implements OnInit {
       
       // Worked time can come as formatted object or as milliseconds
       let workedTimeStr = '';
-      if (item.workedTimeFormatted) {
-        // Already formatted object from backend: { hours: 0, minutes: 6 }
-        const hours = item.workedTimeFormatted.hours ?? 0;
-        const minutes = item.workedTimeFormatted.minutes ?? 0;
-        workedTimeStr = `${hours}h ${minutes}m`;
-      } else if (item.workedTimeMs) {
-        // Raw milliseconds - convert to hours/minutes
-        const hours = Math.floor(item.workedTimeMs / (1000 * 60 * 60));
-        const minutes = Math.floor((item.workedTimeMs % (1000 * 60 * 60)) / (1000 * 60));
-        workedTimeStr = `${hours}h ${minutes}m`;
+      if (item.workedTimeMs != null) {
+        workedTimeStr = formatDurationMilliseconds(item.workedTimeMs);
+      } else if (item.workedTimeFormatted) {
+        workedTimeStr = formatDurationParts(item.workedTimeFormatted);
       } else {
-        workedTimeStr = '0h 0m';
+        workedTimeStr = '0s';
       }
       
       // Efficiency is already a percentage from backend (e.g., 59.1), not a decimal
