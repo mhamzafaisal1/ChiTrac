@@ -14,7 +14,18 @@ export interface ShiftProjectionWindow {
   elapsedShiftMs: number;
   totalShiftHours: number;
   elapsedShiftHours: number;
+  state?: 'inShift' | 'inBreak' | 'beforeFirstShift' | 'betweenShifts' | 'afterLastShift' | 'noShift' | 'unknown';
+  currentShift?: ShiftProjectionContext | null;
+  previousShift?: ShiftProjectionContext | null;
+  nextShift?: ShiftProjectionContext | null;
   fallback: boolean;
+}
+
+export interface ShiftProjectionContext {
+  shiftId: string | null;
+  name: string | null;
+  start: string | Date | null;
+  end: string | Date | null;
 }
 
 @Injectable({

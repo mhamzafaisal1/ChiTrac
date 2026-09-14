@@ -939,6 +939,10 @@ function constructor(server) {
           elapsedShiftMs: window.elapsedShiftMs,
           totalShiftHours: window.totalShiftMs / 3600000,
           elapsedShiftHours: window.elapsedShiftMs / 3600000,
+          state: window.state,
+          currentShift: window.currentShift,
+          previousShift: window.previousShift,
+          nextShift: window.nextShift,
           fallback: window.fallback,
         });
       } catch (err) {

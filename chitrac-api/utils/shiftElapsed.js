@@ -37,13 +37,126 @@ function normalizeShift(shift) {
   if (endMin <= startMin) return null;
 
   return {
+    id: shift?._id ? String(shift._id) : null,
+    name: shift?.name || shift?.description || null,
+    original: shift,
     startHour,
     startMinute,
     endHour,
     endMinute,
     activeDays,
     startMin,
+    endMin,
     breaks: Array.isArray(shift?.breaks) ? shift.breaks : [],
+  };
+}
+
+function shiftInfo(shift, start, end) {
+  if (!shift) return null;
+  return {
+    shiftId: shift.id,
+    name: shift.name,
+    start: start?.toJSDate ? start.toJSDate() : start,
+    end: end?.toJSDate ? end.toJSDate() : end,
+  };
+}
+
+function breakIntervalForDay(shiftBreak, day, shiftStartMs, shiftEndMs, zone = SYSTEM_TIMEZONE) {
+  let breakStart;
+  let breakEnd;
+  const brkSH = shiftBreak?.startTime?.hour;
+  const brkSM = shiftBreak?.startTime?.minute;
+  const brkEH = shiftBreak?.endTime?.hour;
+  const brkEM = shiftBreak?.endTime?.minute;
+
+  if (
+    typeof brkSH === "number" &&
+    typeof brkSM === "number" &&
+    typeof brkEH === "number" &&
+    typeof brkEM === "number"
+  ) {
+    breakStart = day.set({ hour: brkSH, minute: brkSM, second: 0, millisecond: 0 });
+    breakEnd = day.set({ hour: brkEH, minute: brkEM, second: 0, millisecond: 0 });
+  } else if (shiftBreak?.timestamps?.start && shiftBreak?.timestamps?.end) {
+    breakStart = toDateTime(shiftBreak.timestamps.start, zone);
+    breakEnd = toDateTime(shiftBreak.timestamps.end, zone);
+  }
+
+  if (!breakStart?.isValid || !breakEnd?.isValid || breakEnd <= breakStart) {
+    return null;
+  }
+
+  const startMs = Math.max(shiftStartMs, breakStart.toMillis());
+  const endMs = Math.min(shiftEndMs, breakEnd.toMillis());
+  return endMs > startMs ? { startMs, endMs } : null;
+}
+
+function resolveProjectionState(shifts, dayStart, nowForDay, zone = SYSTEM_TIMEZONE) {
+  const dayShifts = (Array.isArray(shifts) ? shifts : [])
+    .map(normalizeShift)
+    .filter(Boolean)
+    .filter((shift) => shift.activeDays.includes(dayStart.weekday))
+    .map((shift) => {
+      const start = dayStart.set({
+        hour: shift.startHour,
+        minute: shift.startMinute,
+        second: 0,
+        millisecond: 0,
+      });
+      const end = dayStart.set({
+        hour: shift.endHour,
+        minute: shift.endMinute,
+        second: 0,
+        millisecond: 0,
+      });
+      return { shift, start, end };
+    })
+    .filter(({ end, start }) => end > start)
+    .sort((a, b) => a.start.toMillis() - b.start.toMillis());
+
+  if (!dayShifts.length) {
+    return {
+      state: "noShift",
+      currentShift: null,
+      previousShift: null,
+      nextShift: null,
+    };
+  }
+
+  const nowMs = nowForDay.toMillis();
+  const current = dayShifts.find(({ start, end }) => nowMs >= start.toMillis() && nowMs < end.toMillis());
+  const previous = [...dayShifts].reverse().find(({ end }) => end.toMillis() <= nowMs);
+  const next = dayShifts.find(({ start }) => start.toMillis() > nowMs);
+
+  if (current) {
+    const shiftStartMs = current.start.toMillis();
+    const shiftEndMs = current.end.toMillis();
+    const inBreak = current.shift.breaks.some((shiftBreak) => {
+      const interval = breakIntervalForDay(shiftBreak, dayStart, shiftStartMs, shiftEndMs, zone);
+      return interval ? nowMs >= interval.startMs && nowMs < interval.endMs : false;
+    });
+
+    return {
+      state: inBreak ? "inBreak" : "inShift",
+      currentShift: shiftInfo(current.shift, current.start, current.end),
+      previousShift: previous ? shiftInfo(previous.shift, previous.start, previous.end) : null,
+      nextShift: next ? shiftInfo(next.shift, next.start, next.end) : null,
+    };
+  }
+
+  const first = dayShifts[0];
+  const last = dayShifts[dayShifts.length - 1];
+  const state = nowMs < first.start.toMillis()
+    ? "beforeFirstShift"
+    : nowMs >= last.end.toMillis()
+      ? "afterLastShift"
+      : "betweenShifts";
+
+  return {
+    state,
+    currentShift: null,
+    previousShift: previous ? shiftInfo(previous.shift, previous.start, previous.end) : null,
+    nextShift: next ? shiftInfo(next.shift, next.start, next.end) : null,
   };
 }
 
@@ -233,6 +346,10 @@ function resolveShiftProjectionWindow(shifts, dayInput = new Date(), nowInput = 
     return {
       totalShiftMs: 0,
       elapsedShiftMs: 0,
+      state: "unknown",
+      currentShift: null,
+      previousShift: null,
+      nextShift: null,
       fallback: true,
       start: null,
       end: null,
@@ -249,10 +366,12 @@ function resolveShiftProjectionWindow(shifts, dayInput = new Date(), nowInput = 
 
   const totalShiftMs = computeShiftElapsedMsFromShifts(shifts, dayStart.toJSDate(), dayEnd.toJSDate(), zone);
   const elapsedShiftMs = computeShiftElapsedMsFromShifts(shifts, dayStart.toJSDate(), nowForDay.toJSDate(), zone);
+  const projectionState = resolveProjectionState(shifts, dayStart, nowForDay, zone);
 
   return {
     totalShiftMs,
     elapsedShiftMs,
+    ...projectionState,
     fallback: !Array.isArray(shifts) || shifts.length === 0,
     start: dayStart.toJSDate(),
     end: dayEnd.toJSDate(),
