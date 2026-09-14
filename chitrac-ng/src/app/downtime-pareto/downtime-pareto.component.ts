@@ -9,6 +9,7 @@ import { DailyDashboardService } from '../services/daily-dashboard.service';
 import { DateTimeService } from '../services/date-time.service';
 import { FaultService } from '../services/fault.service';
 import { PollingService } from '../services/polling-service.service';
+import { DashboardCacheScope, WebsocketService } from '../services/websocket.service';
 
 interface ParetoRow {
   fault: string;
@@ -34,6 +35,8 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   @Input() isModal = false;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
   @Input() preloadedData: any | null = null;
+  @Input() cacheScope: DashboardCacheScope | null = null;
+  @Input() shiftId: string | null = null;
 
   isLoading = false;
   isDarkTheme = false;
@@ -43,6 +46,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   private observer!: MutationObserver;
   private destroy$ = new Subject<void>();
   private pollingSubscription: Subscription | null = null;
+  private cacheSubscription: Subscription | null = null;
   private readonly pollingIntervalMs = 60000;
 
   constructor(
@@ -50,7 +54,8 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
     private faultService: FaultService,
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
-    private pollingService: PollingService
+    private pollingService: PollingService,
+    private websocketService: WebsocketService
   ) {}
 
   ngOnInit(): void {
@@ -60,6 +65,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
 
     if (this.isDashboardMode()) {
       this.loadModalData();
+      this.subscribeToDashboardCache();
       return;
     }
 
@@ -74,9 +80,12 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
       changes['startTime'] ||
       changes['endTime'] ||
       changes['serial'] ||
-      changes['machineSerial']
+      changes['machineSerial'] ||
+      changes['cacheScope'] ||
+      changes['shiftId']
     ) {
       this.loadModalData();
+      this.subscribeToDashboardCache();
     }
   }
 
@@ -85,6 +94,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
+    this.stopCacheSubscription();
   }
 
   fetchData(): void {
@@ -104,7 +114,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
 
   refreshData(): void {
     if (this.isDashboardMode()) {
-      this.loadModalData(true);
+      this.loadModalData();
       return;
     }
 
@@ -112,9 +122,19 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
     this.fetchData();
   }
 
-  private loadModalData(forceFetch = false): void {
-    if (!forceFetch && this.preloadedData?.faultSummaries) {
-      this.processRows(this.preloadedData.faultSummaries);
+  get showPageHeader(): boolean {
+    return !this.isDashboardMode();
+  }
+
+  private loadModalData(): void {
+    const summaries = this.extractSummaries(this.preloadedData);
+    if (summaries) {
+      this.processRows(summaries);
+      return;
+    }
+
+    if (this.shouldUseCacheOnly()) {
+      this.clearRows();
       return;
     }
 
@@ -142,6 +162,63 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
           this.isLoading = false;
         },
       });
+  }
+
+  private subscribeToDashboardCache(): void {
+    if (!this.isDashboardMode()) return;
+
+    this.stopCacheSubscription();
+    const machineSerial = this.getMachineSerial();
+    if (machineSerial === null) return;
+
+    this.websocketService.connect();
+    const scope = this.cacheScope || (this.dateTimeService.getShiftId() ? 'currentShift' : 'today');
+    const shiftId = this.shiftId ?? this.dateTimeService.getShiftId();
+    this.cacheSubscription = this.websocketService.machineDashboardData$(scope, shiftId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((machineRows) => {
+        const machineRow = (machineRows || []).find(
+          (row) => Number(row?.machine?.serial) === machineSerial
+        );
+        const summaries = this.extractSummaries(machineRow);
+        if (!summaries) return;
+
+        this.processRows(summaries);
+        this.isLoading = false;
+      });
+  }
+
+  private stopCacheSubscription(): void {
+    this.cacheSubscription?.unsubscribe();
+    this.cacheSubscription = null;
+  }
+
+  private extractSummaries(source: any): any[] | null {
+    if (Array.isArray(source)) return source;
+    if (Array.isArray(source?.downtimePareto?.faultSummaries)) return source.downtimePareto.faultSummaries;
+    if (Array.isArray(source?.downtimePareto?.summaries)) return source.downtimePareto.summaries;
+    if (Array.isArray(source?.faultData?.faultSummaries)) return source.faultData.faultSummaries;
+    if (Array.isArray(source?.faultSummaries)) return source.faultSummaries;
+    if (Array.isArray(source?.summaries)) return source.summaries;
+    return null;
+  }
+
+  private shouldUseCacheOnly(): boolean {
+    if (!this.isDashboardMode()) return false;
+    if (this.dateTimeService.getLiveMode()) return true;
+    return Boolean(this.cacheScope && this.isToday(this.startTime) && this.isToday(this.endTime));
+  }
+
+  private isToday(value: string): boolean {
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
   }
 
   private processRows(summaries: any[]): void {

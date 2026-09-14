@@ -1661,7 +1661,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       !!machineData.itemHourlyStack ||
       !!machineData.operatorEfficiency ||
       !!machineData.currentOperators ||
-      !!machineData.faultData;
+      !!machineData.faultData ||
+      !!machineData.downtimePareto;
 
     return hasDetailData ? machineData : null;
   }
@@ -1711,6 +1712,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     machineData: any,
     modalChartDimensions: { width: number; height: number }
   ): void {
+    const dashboardCacheScope = this.getDashboardCacheScope();
+    const dashboardShiftId = this.dateTimeService.getShiftId();
     const itemSummaryData = Object.values(
       machineData?.itemSummary?.machineSummary?.itemSummaries || {}
     );
@@ -1781,7 +1784,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           machineSerial,
           isModal: this.isModal,
           mode: "dashboard",
-          preloadedData: machineData?.faultData,
+          preloadedData: machineData?.downtimePareto || machineData?.faultData,
+          cacheScope: dashboardCacheScope,
+          shiftId: dashboardShiftId,
         },
       },
       {

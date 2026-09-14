@@ -3,6 +3,9 @@ const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
 const { getShiftTimeComponents, getTimeComponentsFromTimestamp } = require("./shiftTimeComponents");
 
+const NON_FAULT_CODES = new Set([0, 1, "0", "1", null]);
+const OPEN_FAULT_SESSION_CAP_MS = 5 * 60 * 1000;
+
 function validDate(value) {
   const date = value ? new Date(value) : null;
   return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
@@ -95,10 +98,55 @@ function timeComponents(value) {
 }
 
 function sessionStateCode(session) {
-  const fromType = Number(session?.type);
-  if (Number.isFinite(fromType)) return fromType;
+  const stateStatus = session?.states?.start?.status;
+  const stateCode = Number(stateStatus?.id ?? stateStatus?.code);
+  if (Number.isFinite(stateCode)) return stateCode;
+
+  const fromStartState = Number(session?.startState?.status?.id ?? session?.startState?.status?.code);
+  if (Number.isFinite(fromStartState)) return fromStartState;
+
   const fromStatus = Number(session?.status?.id ?? session?.status?.code);
-  return Number.isFinite(fromStatus) ? fromStatus : null;
+  if (Number.isFinite(fromStatus)) return fromStatus;
+
+  const fromType = Number(session?.type);
+  return Number.isFinite(fromType) ? fromType : null;
+}
+
+function sessionStateName(session) {
+  return (
+    session?.states?.start?.status?.name ||
+    session?.startState?.status?.name ||
+    session?.status?.name ||
+    session?.endState?.status?.name ||
+    session?.startState?.name ||
+    session?.endState?.name ||
+    "Fault"
+  );
+}
+
+function realFaultSessionQuery() {
+  return {
+    $or: [
+      { type: { $exists: true, $nin: Array.from(NON_FAULT_CODES) } },
+      { "status.code": { $exists: true, $nin: Array.from(NON_FAULT_CODES) } },
+      { "status.id": { $exists: true, $nin: Array.from(NON_FAULT_CODES) } },
+      { "startState.status.code": { $exists: true, $nin: Array.from(NON_FAULT_CODES) } },
+      { "startState.status.id": { $exists: true, $nin: Array.from(NON_FAULT_CODES) } },
+      { "states.start.status.id": { $exists: true, $nin: Array.from(NON_FAULT_CODES) } },
+      { "states.start.status.code": { $exists: true, $nin: Array.from(NON_FAULT_CODES) } },
+    ],
+  };
+}
+
+function clippedFaultSessionMs(session, rangeStart, rangeEnd) {
+  const sessionStart = validDate(session?.timestamps?.start);
+  if (!sessionStart) return 0;
+
+  const storedEnd = validDate(session?.timestamps?.end);
+  const cappedOpenEnd = new Date(Math.min(sessionStart.getTime() + OPEN_FAULT_SESSION_CAP_MS, rangeEnd.getTime()));
+  const sessionEnd = storedEnd || cappedOpenEnd;
+
+  return overlapMs(sessionStart, sessionEnd, rangeStart, rangeEnd);
 }
 
 function shiftWindowComponents(shift, zone = SYSTEM_TIMEZONE) {
@@ -242,6 +290,90 @@ async function getMachineFaultTimeBySerial(db, config, machineSerials, start, en
   }
 
   return faultTimeBySerial;
+}
+
+async function getMachineFaultSummariesBySerial(db, config, machineSerials, start, end) {
+  const serials = idVariants(machineSerials);
+  if (!config.machineSessionCollectionName || serials.length === 0) return new Map();
+
+  const faultSessions = await db
+    .collection(config.machineSessionCollectionName)
+    .find({
+      $and: [
+        overlapQuery(start, end),
+        realFaultSessionQuery(),
+        {
+          $or: [
+            { "machine.serial": { $in: serials } },
+            { "machine.id": { $in: serials } },
+            { "machine.serialNumber": { $in: serials } },
+          ],
+        },
+      ],
+    })
+    .project({
+      _id: 0,
+      activeStations: 1,
+      machine: 1,
+      operators: 1,
+      startState: 1,
+      endState: 1,
+      status: 1,
+      states: 1,
+      timestamps: 1,
+      type: 1,
+    })
+    .sort({ "timestamps.start": 1 })
+    .toArray();
+
+  const summariesBySerial = new Map();
+  for (const session of faultSessions) {
+    const serial = serialFromEntity(session.machine);
+    if (serial === null) continue;
+
+    const code = sessionStateCode(session);
+    if (NON_FAULT_CODES.has(code)) continue;
+
+    const durationSeconds = Math.max(0, Math.floor(clippedFaultSessionMs(session, start, end) / 1000));
+    if (durationSeconds <= 0) continue;
+
+    if (!summariesBySerial.has(serial)) summariesBySerial.set(serial, new Map());
+    const summaryMap = summariesBySerial.get(serial);
+    const name = sessionStateName(session);
+    const key = `${code ?? ""}|${name}`;
+    const activeStations = typeof session.activeStations === "number"
+      ? session.activeStations
+      : (Array.isArray(session.operators) ? session.operators.length : 0);
+    const summary = summaryMap.get(key) || {
+      code,
+      name,
+      count: 0,
+      totalDurationSeconds: 0,
+      totalWorkTimeMissedSeconds: 0,
+    };
+
+    summary.count += 1;
+    summary.totalDurationSeconds += durationSeconds;
+    summary.totalWorkTimeMissedSeconds += activeStations * durationSeconds;
+    summaryMap.set(key, summary);
+  }
+
+  const result = new Map();
+  for (const [serial, summaryMap] of summariesBySerial) {
+    const summaries = Array.from(summaryMap.values())
+      .map((summary) => ({
+        ...summary,
+        formatted: {
+          hours: Math.floor(summary.totalDurationSeconds / 3600),
+          minutes: Math.floor((summary.totalDurationSeconds % 3600) / 60),
+          seconds: summary.totalDurationSeconds % 60,
+        },
+      }))
+      .sort((a, b) => b.totalDurationSeconds - a.totalDurationSeconds || b.count - a.count);
+    result.set(serial, summaries);
+  }
+
+  return result;
 }
 
 function mergeIntervals(intervals) {
@@ -504,6 +636,7 @@ async function getMachineStateTimeBySerial(db, config, machineSerials, start, en
 
 module.exports = {
   getMachineFaultTimeBySerial,
+  getMachineFaultSummariesBySerial,
   getOperatorFaultTimeByOperatorId,
   getOperatorMachineStateTimeByOperatorId,
   getMachineStateTimeBySerial,

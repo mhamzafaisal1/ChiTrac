@@ -1,5 +1,5 @@
 <div class="pareto-page" [class.dark-mode]="isDarkTheme">
-  <header class="page-header">
+  <header class="page-header" *ngIf="showPageHeader">
     <div>
       <h1>Downtime Pareto</h1>
       <p>Rank fault causes by lost time so the highest-impact issues surface first.</p>
