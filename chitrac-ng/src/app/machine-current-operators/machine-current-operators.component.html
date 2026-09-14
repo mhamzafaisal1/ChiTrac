@@ -4,7 +4,9 @@
     <base-table
       [columns]="columns"
       [rows]="rows"
-      [getCellClass]="getEfficiencyClass">
+      [getCellClass]="getEfficiencyClass"
+      [enableSearch]="!isModal"
+      [enableCsvExport]="!isModal">
     </base-table>
   </div>
 </div>

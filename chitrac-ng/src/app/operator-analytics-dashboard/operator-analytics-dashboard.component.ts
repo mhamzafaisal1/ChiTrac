@@ -29,6 +29,7 @@ import { SettingsService } from '../services/settings.service';
 import { LayoutEditService } from '../services/layout-edit.service';
 import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { UserService } from '../user.service';
+import { formatDurationMilliseconds, formatDurationParts } from '../shared/utils/duration-format';
 
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { UseCarouselComponent } from '../use-carousel/use-carousel.component';
@@ -451,8 +452,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Operator ID': response.operator?.id,
       'Current Machine': response.currentMachine?.name || '',
       'Current Machine Serial': response.currentMachine?.serial || '',
-      'Worked Time': `${response.metrics.runtime?.formatted?.hours ?? 0}h ${response.metrics.runtime?.formatted?.minutes ?? 0}m`,
-      'Downtime': `${response.metrics.downtime?.formatted?.hours ?? 0}h ${response.metrics.downtime?.formatted?.minutes ?? 0}m`,
+      'Worked Time': this.formatDurationMetric(response.metrics.runtime),
+      'Downtime': this.formatDurationMetric(response.metrics.downtime),
       'Paused Time': this.formatDurationMetric(response.metrics.pausedTime),
       'Fault Time': this.formatDurationMetric(response.metrics.faultTime),
       'Total Count': response.metrics.output?.totalCount ?? 0,
@@ -509,19 +510,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private formatDurationMetric(metric: any): string {
-    if (metric?.formatted) {
-      return `${metric.formatted.hours ?? 0}h ${metric.formatted.minutes ?? 0}m`;
-    }
-
-    return this.formatMilliseconds(Number(metric?.total || 0));
+    if (metric?.total != null) return this.formatMilliseconds(Number(metric.total));
+    return formatDurationParts(metric?.formatted);
   }
 
   private formatMilliseconds(totalMs: number): string {
-    const safeMs = Number.isFinite(totalMs) ? Math.max(0, totalMs) : 0;
-    const totalMinutes = Math.floor(safeMs / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours}h ${minutes}m`;
+    return formatDurationMilliseconds(totalMs);
   }
 
   private loadMachineStatusCounts(): void {
@@ -734,28 +728,40 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
-        const operatorDashboardLayout = preferences?.dashboardLayouts?.operatorDashboard;
+        if (!preferences) {
+          this.resetLayoutToDefault();
+          return;
+        }
+
+        const hadLocalOrder = this.summaryCardOrderSource === 'local';
+        const hadLocalVisibility = this.summaryCardVisibilitySource === 'local';
+        const operatorDashboardLayout = preferences.dashboardLayouts?.operatorDashboard;
         const serverOrder = operatorDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
           this.summaryCardOrderSource = 'server';
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalOrder) {
+          this.summaryCardOrder = [];
+          this.summaryCardOrderSource = 'default';
+          this.restoreDefaultSummaryCardOrder();
         }
 
         if (operatorDashboardLayout?.summaryCardVisibility) {
           this.summaryCardVisibility = this.cleanSummaryCardVisibility(operatorDashboardLayout.summaryCardVisibility);
           this.summaryCardVisibilitySource = 'server';
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalVisibility) {
+          this.summaryCardVisibility = {};
+          this.summaryCardVisibilitySource = 'default';
+          this.syncSummaryCardsFromAll();
         }
 
-        if (operatorDashboardLayout?.tableColumnVisibility) {
-          this.tableColumnVisibility = this.cleanTableColumnVisibility(operatorDashboardLayout.tableColumnVisibility);
-        }
+        this.tableColumnVisibility = this.cleanTableColumnVisibility(operatorDashboardLayout?.tableColumnVisibility);
 
         if (
-          preferences &&
           this.userService.getToken() &&
-          (this.summaryCardOrderSource === 'local' || this.summaryCardVisibilitySource === 'local') &&
+          (hadLocalOrder || hadLocalVisibility) &&
           (this.summaryCardOrder.length || Object.keys(this.summaryCardVisibility).length)
         ) {
           this.summaryCardOrderSource = 'server';
@@ -772,6 +778,25 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           });
         }
       });
+  }
+
+  private resetLayoutToDefault(): void {
+    this.summaryCardOrder = [];
+    this.summaryCardOrderSource = 'default';
+    this.summaryCardVisibility = {};
+    this.summaryCardVisibilitySource = 'default';
+    this.tableColumnVisibility = {};
+    this.restoreDefaultSummaryCardOrder();
+    this.syncSummaryCardsFromAll();
+  }
+
+  private restoreDefaultSummaryCardOrder(): void {
+    const cardsByLabel = new Map(this.allSummaryCards.map((card) => [card.label, card]));
+    const defaultCards = this.operatorSummaryCardLabels
+      .map((label) => cardsByLabel.get(label))
+      .filter((card): card is SummaryCard => Boolean(card));
+    const additions = this.allSummaryCards.filter((card) => !this.operatorSummaryCardLabels.includes(card.label));
+    this.allSummaryCards = [...defaultCards, ...additions];
   }
 
   private loadInitialSummaryCardOrder(): void {
@@ -1192,8 +1217,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           timelineData: data.operatorTimeline,
           operatorId: operatorId.toString(),
           isModal: true,
-          chartHeight: Math.max(modalChartDimensions.height - 40, 300),
-          chartWidth: modalChartDimensions.width + 200
+          chartHeight: modalChartDimensions.height,
+          chartWidth: modalChartDimensions.width
         }
       },
       {

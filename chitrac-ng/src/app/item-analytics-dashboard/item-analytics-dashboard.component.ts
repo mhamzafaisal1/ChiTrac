@@ -12,6 +12,7 @@ import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { displayInteger } from '../shared/utils/display-number';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { formatDurationParts } from '../shared/utils/duration-format';
 
 @Component({
     selector: 'app-item-analytics-dashboard',
@@ -187,10 +188,9 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private updateTableData(data: any[]): void {
     this.rows = data.map(row => {
-      const { hours = 0, minutes = 0 } = row.workedTimeFormatted || {};
       return {
         'Item Name': row.itemName,
-        'Worked Time': `${hours}h ${minutes}m`,
+        'Worked Time': formatDurationParts(row.workedTimeFormatted),
         'Count': row.count,
         'PPH': displayInteger(row.pph),
         'Standard': displayInteger(row.standard),

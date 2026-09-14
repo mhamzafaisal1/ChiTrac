@@ -13,11 +13,12 @@ import { BaseTableComponent } from '../../components/base-table/base-table.compo
 import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { displayInteger } from '../../shared/utils/display-number';
+import { formatDurationParts } from '../../shared/utils/duration-format';
 
 interface ItemSummary {
   itemId?: number | string;
   itemName: string;
-  workedTimeFormatted: { hours: number; minutes: number };
+  workedTimeFormatted: { hours: number; minutes: number; seconds?: number };
   count: number;
   pph: number;
   standard: number;
@@ -109,7 +110,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
 
         const formattedData = items.map(item => ({
           'Item Name': item.itemName,
-          'Worked Time': `${item.workedTimeFormatted.hours}h ${item.workedTimeFormatted.minutes}m`,
+          'Worked Time': formatDurationParts(item.workedTimeFormatted),
           'Count Total': item.count,
           'PPH': displayInteger(item.pph),
           'Standard': displayInteger(item.standard),

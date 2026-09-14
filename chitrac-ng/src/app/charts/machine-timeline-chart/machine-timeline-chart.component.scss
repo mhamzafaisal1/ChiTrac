@@ -1,3 +1,7 @@
+@use '../chart-loading' as chart-loading;
+
+@include chart-loading.styles;
+
 :host {
   display: block;
   width: 100%;
@@ -12,10 +16,28 @@
   min-height: 0;
 }
 
+.timeline-chart-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
 .timeline-svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.timeline-plot,
+.timeline-plot .session-chunk {
+  cursor: default;
+}
+
+.zoom-surface {
+  fill: transparent;
+  pointer-events: all;
 }
 
 .timeline-title text {
@@ -42,7 +64,6 @@
 }
 
 .session-chunk {
-  cursor: default;
   stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 0.5;
 }
@@ -60,6 +81,7 @@
 .timeline-tooltip {
   position: absolute;
   z-index: 20;
+  width: max-content;
   max-width: 220px;
   padding: 7px 9px;
   border-radius: 4px;
@@ -71,7 +93,8 @@
   opacity: 0;
   transform: none;
   transition: opacity 120ms ease;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 
@@ -79,30 +102,7 @@
   opacity: 1;
 }
 
-.loading-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.06);
-  z-index: 10;
-}
-
-.loading-content {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .chart-no-data {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  color: var(--theme-color-on-surface-variant, #333);
-}
-
-.dummy-chart-content {
   display: grid;
   width: 100%;
   height: 100%;

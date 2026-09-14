@@ -29,6 +29,7 @@ import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, We
 import { ShiftListItem, ShiftService } from "../services/shift.service";
 import { UserService } from "../user.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
+import { formatDurationMilliseconds, formatDurationParts } from "../shared/utils/duration-format";
 import {
   calculateMachineStatusCounts,
   calculateOperatorStatusCounts,
@@ -42,6 +43,7 @@ import { MachineCurrentOperatorsComponent } from "../machine-current-operators/m
 import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component";
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
+import { DowntimeParetoComponent } from "../downtime-pareto/downtime-pareto.component";
 import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
 import {
   SummaryCardVisibilityDialogComponent,
@@ -454,8 +456,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                     Status: getStatusDotByCode(response.currentStatus?.code),
                     "Machine Name": response.machine.name,
                     "Serial Number": response.machine.serial,
-                    Runtime: `${response.metrics.runtime.formatted.hours}h ${response.metrics.runtime.formatted.minutes}m`,
-                    Downtime: `${response.metrics.downtime.formatted.hours}h ${response.metrics.downtime.formatted.minutes}m`,
+                    Runtime: this.formatDurationMetric(response.metrics.runtime),
+                    Downtime: this.formatDurationMetric(response.metrics.downtime),
                     "Paused Time": this.formatDurationMetric(response.metrics.pausedTime),
                     "Fault Time": this.formatDurationMetric(response.metrics.faultTime),
                     "Total Count": response.metrics.output.totalCount,
@@ -691,8 +693,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Status: getStatusDotByCode(response.currentStatus?.code),
         "Machine Name": response.machine?.name ?? "Unknown",
         "Serial Number": response.machine?.serial,
-        Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
-        Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        Runtime: this.formatDurationMetric(runtime),
+        Downtime: this.formatDurationMetric(downtime),
         "Paused Time": this.formatDurationMetric(pausedTime),
         "Fault Time": this.formatDurationMetric(faultTime),
         "Total Count": totalCount,
@@ -768,19 +770,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private formatDurationMetric(metric: any): string {
-    if (metric?.formatted) {
-      return `${metric.formatted.hours ?? 0}h ${metric.formatted.minutes ?? 0}m`;
-    }
-
-    return this.formatMilliseconds(Number(metric?.total || 0));
+    if (metric?.total != null) return this.formatMilliseconds(Number(metric.total));
+    return formatDurationParts(metric?.formatted);
   }
 
   private formatMilliseconds(totalMs: number): string {
-    const safeMs = Number.isFinite(totalMs) ? Math.max(0, totalMs) : 0;
-    const totalMinutes = Math.floor(safeMs / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours}h ${minutes}m`;
+    return formatDurationMilliseconds(totalMs);
   }
 
   private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): { totalCount: number; projectedCount: number | null } {
@@ -1155,28 +1150,40 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
-        const machineDashboardLayout = preferences?.dashboardLayouts?.machineDashboard;
+        if (!preferences) {
+          this.resetLayoutToDefault();
+          return;
+        }
+
+        const hadLocalOrder = this.summaryCardOrderSource === "local";
+        const hadLocalVisibility = this.summaryCardVisibilitySource === "local";
+        const machineDashboardLayout = preferences.dashboardLayouts?.machineDashboard;
         const serverOrder = machineDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
           this.summaryCardOrderSource = "server";
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalOrder) {
+          this.summaryCardOrder = [];
+          this.summaryCardOrderSource = "default";
+          this.restoreDefaultSummaryCardOrder();
         }
 
         if (machineDashboardLayout?.summaryCardVisibility) {
           this.summaryCardVisibility = this.cleanSummaryCardVisibility(machineDashboardLayout.summaryCardVisibility);
           this.summaryCardVisibilitySource = "server";
           this.syncSummaryCardsFromAll();
+        } else if (!hadLocalVisibility) {
+          this.summaryCardVisibility = {};
+          this.summaryCardVisibilitySource = "default";
+          this.syncSummaryCardsFromAll();
         }
 
-        if (machineDashboardLayout?.tableColumnVisibility) {
-          this.tableColumnVisibility = this.cleanTableColumnVisibility(machineDashboardLayout.tableColumnVisibility);
-        }
+        this.tableColumnVisibility = this.cleanTableColumnVisibility(machineDashboardLayout?.tableColumnVisibility);
 
         if (
-          preferences &&
           this.userService.getToken() &&
-          (this.summaryCardOrderSource === "local" || this.summaryCardVisibilitySource === "local") &&
+          (hadLocalOrder || hadLocalVisibility) &&
           (this.summaryCardOrder.length || Object.keys(this.summaryCardVisibility).length)
         ) {
           this.settingsService
@@ -1194,6 +1201,25 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             });
         }
       });
+  }
+
+  private resetLayoutToDefault(): void {
+    this.summaryCardOrder = [];
+    this.summaryCardOrderSource = "default";
+    this.summaryCardVisibility = {};
+    this.summaryCardVisibilitySource = "default";
+    this.tableColumnVisibility = {};
+    this.restoreDefaultSummaryCardOrder();
+    this.syncSummaryCardsFromAll();
+  }
+
+  private restoreDefaultSummaryCardOrder(): void {
+    const cardsByLabel = new Map(this.allSummaryCards.map((card) => [card.label, card]));
+    const defaultCards = this.machineSummaryCardLabels
+      .map((label) => cardsByLabel.get(label))
+      .filter((card): card is SummaryCard => Boolean(card));
+    const additions = this.allSummaryCards.filter((card) => !this.machineSummaryCardLabels.includes(card.label));
+    this.allSummaryCards = [...defaultCards, ...additions];
   }
 
   private loadInitialSummaryCardOrder(): void {
@@ -1747,6 +1773,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         },
       },
       {
+        label: "Downtime Pareto",
+        component: DowntimeParetoComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
+          isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: machineData?.faultData,
+        },
+      },
+      {
         label: "Fault History",
         component: MachineFaultHistoryComponent,
         componentInputs: {
@@ -1888,8 +1926,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         Status: getStatusDotByCode(response.currentStatus?.code),
         "Machine Name": response.machine?.name ?? "Unknown",
         "Serial Number": response.machine?.serial,
-        Runtime: `${runtime?.formatted?.hours ?? 0}h ${runtime?.formatted?.minutes ?? 0}m`,
-        Downtime: `${downtime?.formatted?.hours ?? 0}h ${downtime?.formatted?.minutes ?? 0}m`,
+        Runtime: this.formatDurationMetric(runtime),
+        Downtime: this.formatDurationMetric(downtime),
         "Paused Time": this.formatDurationMetric(pausedTime),
         "Fault Time": this.formatDurationMetric(faultTime),
         "Total Count": totalCount,

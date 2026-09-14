@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { of, Subject, Subscription } from 'rxjs';
@@ -7,6 +7,7 @@ import { catchError, delay, takeUntil, tap } from 'rxjs/operators';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { DailyDashboardService } from '../services/daily-dashboard.service';
 import { DateTimeService } from '../services/date-time.service';
+import { FaultService } from '../services/fault.service';
 import { PollingService } from '../services/polling-service.service';
 
 interface ParetoRow {
@@ -25,9 +26,15 @@ interface ParetoRow {
   templateUrl: './downtime-pareto.component.html',
   styleUrl: './downtime-pareto.component.scss',
 })
-export class DowntimeParetoComponent implements OnInit, OnDestroy {
-  startTime = '';
-  endTime = '';
+export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
+  @Input() startTime = '';
+  @Input() endTime = '';
+  @Input() serial: string | number | null = null;
+  @Input() machineSerial: string | number | null = null;
+  @Input() isModal = false;
+  @Input() mode: 'standalone' | 'dashboard' = 'standalone';
+  @Input() preloadedData: any | null = null;
+
   isLoading = false;
   isDarkTheme = false;
   rows: ParetoRow[] = [];
@@ -40,6 +47,7 @@ export class DowntimeParetoComponent implements OnInit, OnDestroy {
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
+    private faultService: FaultService,
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
     private pollingService: PollingService
@@ -49,8 +57,27 @@ export class DowntimeParetoComponent implements OnInit, OnDestroy {
     this.detectTheme();
     this.observer = new MutationObserver(() => this.detectTheme());
     this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    if (this.isDashboardMode()) {
+      this.loadModalData();
+      return;
+    }
+
     this.subscribeToTimeframePicker();
     this.initializeTimeframe();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (!this.isDashboardMode()) return;
+    if (
+      changes['preloadedData'] ||
+      changes['startTime'] ||
+      changes['endTime'] ||
+      changes['serial'] ||
+      changes['machineSerial']
+    ) {
+      this.loadModalData();
+    }
   }
 
   ngOnDestroy(): void {
@@ -76,8 +103,45 @@ export class DowntimeParetoComponent implements OnInit, OnDestroy {
   }
 
   refreshData(): void {
+    if (this.isDashboardMode()) {
+      this.loadModalData(true);
+      return;
+    }
+
     if (this.dateTimeService.getLiveMode()) this.updateLiveEndTime();
     this.fetchData();
+  }
+
+  private loadModalData(forceFetch = false): void {
+    if (!forceFetch && this.preloadedData?.faultSummaries) {
+      this.processRows(this.preloadedData.faultSummaries);
+      return;
+    }
+
+    const machineSerial = this.getMachineSerial();
+    if (!this.startTime || !this.endTime || machineSerial === null) {
+      this.clearRows();
+      return;
+    }
+
+    this.isLoading = true;
+    this.faultService.getFaultHistoryBySerial(
+      new Date(this.startTime).toISOString(),
+      new Date(this.endTime).toISOString(),
+      machineSerial,
+      'summaries'
+    )
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response) => {
+          this.processRows(response?.faultSummaries || []);
+          this.isLoading = false;
+        },
+        error: () => {
+          this.clearRows();
+          this.isLoading = false;
+        },
+      });
   }
 
   private processRows(summaries: any[]): void {
@@ -175,6 +239,16 @@ export class DowntimeParetoComponent implements OnInit, OnDestroy {
   private stopPolling(): void {
     this.pollingSubscription?.unsubscribe();
     this.pollingSubscription = null;
+  }
+
+  private isDashboardMode(): boolean {
+    return this.isModal || this.mode === 'dashboard';
+  }
+
+  private getMachineSerial(): number | null {
+    const value = this.machineSerial ?? this.serial;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
   }
 
   private updateLiveEndTime(): void {

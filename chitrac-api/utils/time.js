@@ -171,12 +171,13 @@ function calculateDuration(start, end) {
  */
 function formatDuration(milliseconds) {
   if (isNaN(milliseconds)) {
-    return {hours:0, minutes: 0}
+    return { hours: 0, minutes: 0, seconds: 0 };
   } else {
     const dur = Duration.fromMillis(milliseconds);
     const hours = Math.floor(dur.as("hours"));
     const minutes = Math.floor(dur.minus({ hours }).as("minutes"));
-    return { hours, minutes };
+    const seconds = Math.floor(dur.minus({ hours, minutes }).as("seconds"));
+    return { hours, minutes, seconds };
   }
 }
 

@@ -15,6 +15,7 @@ import { ReportsService } from '../../services/reports.service';
 import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { displayInteger } from '../../shared/utils/display-number';
+import { formatDurationParts, parseDurationDisplay } from '../../shared/utils/duration-format';
 import { MachineReportEmailModalComponent } from './machine-report-email-modal.component';
 
 interface MachineReportGroup {
@@ -193,13 +194,11 @@ export class MachineReportComponent implements OnInit, OnDestroy {
 
   private formatMachineReportRow(machineName: string, machineSerial: any, item: any, isDetail: boolean): any {
     const wt = item.workedTimeFormatted;
-    const hours = wt != null && typeof wt.hours === 'number' ? wt.hours : 0;
-    const minutes = wt != null && typeof wt.minutes === 'number' ? wt.minutes : 0;
 
     return {
       'Machine': machineName,
       'Item': item.name ?? '',
-      'Total Time (Runtime)': `${hours}h ${minutes}m`,
+      'Total Time (Runtime)': formatDurationParts(wt),
       'Total Count': item.countTotal ?? 0,
       'PPH': displayInteger(item.pph),
       'Standard': displayInteger(item.standard, ''),
@@ -211,13 +210,11 @@ export class MachineReportComponent implements OnInit, OnDestroy {
 
   private formatMachineSummaryRow(machineName: string, machineSerial: any, summary: any): any {
     const rt = summary.runtimeFormatted ?? summary.workedTimeFormatted;
-    const hours = rt != null && typeof rt.hours === 'number' ? rt.hours : 0;
-    const minutes = rt != null && typeof rt.minutes === 'number' ? rt.minutes : 0;
 
     return {
       'Machine': machineName,
       'Item': 'Total',
-      'Total Time (Runtime)': `${hours}h ${minutes}m`,
+      'Total Time (Runtime)': formatDurationParts(rt),
       'Total Count': summary.totalCount ?? 0,
       'PPH': displayInteger(summary.pph),
       'Standard': displayInteger(summary.proratedStandard, ''),
@@ -269,8 +266,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     const value = summary?.[column];
     if (column === 'Machine') return String(value ?? '');
     if (column === 'Total Time (Runtime)') {
-      const match = String(value ?? '').match(/(\d+)h\s*(\d+)m/);
-      return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+      return parseDurationDisplay(value);
     }
     return Number.parseFloat(String(value ?? '').replace(/[,%]/g, '')) || 0;
   }
