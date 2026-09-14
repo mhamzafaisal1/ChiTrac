@@ -184,6 +184,7 @@ function constructor(server) {
         const summaryCardOrder = layout.summaryCardOrder;
         const summaryCardVisibility = layout.summaryCardVisibility;
         const tableColumnVisibility = layout.tableColumnVisibility;
+        const pphDisplayMode = layout.pphDisplayMode;
         const dashboardUpdates = {};
 
         if (summaryCardOrder !== undefined) {
@@ -251,6 +252,16 @@ function constructor(server) {
           });
 
           dashboardUpdates.tableColumnVisibility = cleanedVisibility;
+        }
+
+        if (pphDisplayMode !== undefined) {
+          if (!['perMachine', 'perStation'].includes(pphDisplayMode)) {
+            const error = new Error(`Invalid ${dashboardName}.pphDisplayMode. Must be 'perMachine' or 'perStation'`);
+            error.status = 400;
+            throw error;
+          }
+
+          dashboardUpdates.pphDisplayMode = pphDisplayMode;
         }
 
         return Object.keys(dashboardUpdates).length ? dashboardUpdates : null;
@@ -354,6 +365,11 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.machineDashboard?.tableColumnVisibility) {
       updates['dashboardLayouts.machineDashboard.tableColumnVisibility'] =
         preferences.dashboardLayouts.machineDashboard.tableColumnVisibility;
+    }
+
+    if (preferences.dashboardLayouts?.machineDashboard?.pphDisplayMode) {
+      updates['dashboardLayouts.machineDashboard.pphDisplayMode'] =
+        preferences.dashboardLayouts.machineDashboard.pphDisplayMode;
     }
 
     if (preferences.dashboardLayouts?.operatorDashboard?.summaryCardOrder) {

@@ -23,7 +23,7 @@ import { PollingService } from "../services/polling-service.service";
 import { DateTimeService } from "../services/date-time.service";
 import { DashboardTimeframeService } from "../services/dashboard-timeframe.service";
 import { PercentBreakpointService } from "../services/percent-breakpoint.service";
-import { SettingsService } from "../services/settings.service";
+import { MachinePphDisplayMode, SettingsService } from "../services/settings.service";
 import { LayoutEditService } from "../services/layout-edit.service";
 import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
 import { ShiftListItem, ShiftService } from "../services/shift.service";
@@ -117,7 +117,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Fault Time": "Amount of time machine has been faulted.",
     "Total Count": "Amount of pieces fed into the machine/line.",
     "Misfeed Count": "Amount of pieces misfed or rejected by the machine/line.",
-    PPH: "Pieces Per Hour",
+    PPH: "Pieces per hour per machine.",
     Availability: "Percent of time machine was running.",
     Throughput: "Percent of pieces fed which were good quality (not misfed or rejected).",
     Efficiency: "Percent of goal pace being achieved.",
@@ -198,6 +198,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private summaryCardOrder: string[] = [];
   private summaryCardOrderSource: "server" | "local" | "default" = "default";
   private summaryCardVisibilitySource: "server" | "local" | "default" = "default";
+  private pphDisplayMode: MachinePphDisplayMode = "perMachine";
   private layoutSnapshot: MachineDashboardLayoutSnapshot | null = null;
   private readonly summaryCardOrderSave$ = new Subject<string[]>();
   private shiftProjectionWindow: ShiftProjectionWindow | null = null;
@@ -1157,6 +1158,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         const hadLocalOrder = this.summaryCardOrderSource === "local";
         const hadLocalVisibility = this.summaryCardVisibilitySource === "local";
         const machineDashboardLayout = preferences.dashboardLayouts?.machineDashboard;
+        const nextPphDisplayMode: MachinePphDisplayMode =
+          machineDashboardLayout?.pphDisplayMode === "perStation" ? "perStation" : "perMachine";
+        const pphDisplayModeChanged = this.pphDisplayMode !== nextPphDisplayMode;
+        this.pphDisplayMode = nextPphDisplayMode;
+        this.updatePphTooltip();
+
         const serverOrder = machineDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
@@ -1199,6 +1206,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               },
             });
         }
+
+        if (pphDisplayModeChanged && this.machineData.length) {
+          this.updateDashboardData(this.machineData);
+        }
       });
   }
 
@@ -1208,6 +1219,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.summaryCardVisibility = {};
     this.summaryCardVisibilitySource = "default";
     this.tableColumnVisibility = {};
+    this.pphDisplayMode = "perMachine";
+    this.updatePphTooltip();
     this.restoreDefaultSummaryCardOrder();
     this.syncSummaryCardsFromAll();
   }
@@ -1846,15 +1859,33 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   };
 
   private formatPph(response: any): number {
-    const pph =
-      response?.itemSummary?.machineSummary?.pph ??
-      response?.machineSummary?.pph ??
-      response?.metrics?.performance?.piecesPerHour?.value ??
-      response?.metrics?.performance?.pph ??
-      response?.performance?.pph;
+    const performance = response?.metrics?.performance ?? response?.performance ?? {};
+    const itemSummaryPph = response?.itemSummary?.machineSummary?.pph ?? response?.machineSummary?.pph;
+    const pph = this.pphDisplayMode === "perStation"
+      ? performance?.piecesPerHourPerStation?.value ??
+        performance?.pphPerStation ??
+        itemSummaryPph ??
+        performance?.piecesPerHourPerMachine?.value ??
+        performance?.piecesPerHour?.value ??
+        performance?.pphPerMachine ??
+        performance?.pph
+      : performance?.piecesPerHourPerMachine?.value ??
+        performance?.pphPerMachine ??
+        performance?.piecesPerHour?.value ??
+        performance?.pph ??
+        itemSummaryPph;
 
     const numericPph = Number(pph);
     return Number.isFinite(numericPph) ? Math.round(numericPph) : 0;
+  }
+
+  private updatePphTooltip(): void {
+    this.columnTooltips = {
+      ...this.columnTooltips,
+      PPH: this.pphDisplayMode === "perStation"
+        ? "Pieces per hour divided by configured station count."
+        : "Pieces per hour for the full machine."
+    };
   }
 
   private formatDateForInput(date: Date): string {
