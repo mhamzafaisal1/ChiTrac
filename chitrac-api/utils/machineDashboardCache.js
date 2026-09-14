@@ -14,6 +14,27 @@ function safeNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function configuredStationCount(machine) {
+  const stations = Array.isArray(machine?.stations) ? machine.stations : [];
+  const uniqueStations = new Set(
+    stations
+      .map((station) => Number(station))
+      .filter((station) => Number.isFinite(station))
+  );
+  return Math.max(1, uniqueStations.size || stations.length || 1);
+}
+
+function buildStationCountBySerial(machines) {
+  const stationCounts = new Map();
+  for (const machine of machines || []) {
+    const serial = machineSerialFromConfig(machine);
+    if (serial !== null) {
+      stationCounts.set(serial, configuredStationCount(machine));
+    }
+  }
+  return stationCounts;
+}
+
 function plantNow() {
   return DateTime.now().setZone(SYSTEM_TIMEZONE);
 }
@@ -122,6 +143,12 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
   const shiftElapsedCache = new Map();
   const machineSerials = records.map((r) => Number(r.machineSerial)).filter(Number.isFinite);
   const faultTimeBySerial = await getMachineFaultTimeBySerial(db, config, machineSerials, requestStart, requestEnd);
+  const configuredMachines = Array.isArray(options.configuredMachines)
+    ? options.configuredMachines
+    : await loadConfiguredMachines(db, config).catch(() => []);
+  const stationCountBySerial = options.stationCountBySerial instanceof Map
+    ? options.stationCountBySerial
+    : buildStationCountBySerial(configuredMachines);
   const tickers = machineSerials.length
     ? await db
         .collection(config.stateTickerCollectionName)
@@ -194,7 +221,15 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
     const totalOutput = totalCounts + totalMisfeeds;
     const throughput = totalOutput > 0 ? totalCounts / totalOutput : 0;
     const runtimeHours = runtimeMs / 3600000;
-    const piecesPerHour = runtimeHours > 0 ? totalCounts / runtimeHours : 0;
+    const pphPerMachine = runtimeHours > 0 ? totalCounts / runtimeHours : 0;
+    const stationCount = Math.max(
+      1,
+      Math.round(
+        stationCountBySerial.get(Number(record.machineSerial)) ||
+        safeNumber(record.stationCount, 1)
+      )
+    );
+    const pphPerStation = pphPerMachine / stationCount;
 
     let workTimeMs = safeNumber(record.workedTimeMs);
     if (workTimeMs === 0 && record.totalTimeCreditMs > 0 && runtimeMs > 0) {
@@ -250,10 +285,21 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
             percentage: (throughput * 100).toFixed(2),
           },
           piecesPerHour: {
-            value: piecesPerHour,
-            formatted: Math.round(piecesPerHour).toString(),
+            value: pphPerMachine,
+            formatted: Math.round(pphPerMachine).toString(),
           },
-          pph: piecesPerHour,
+          piecesPerHourPerMachine: {
+            value: pphPerMachine,
+            formatted: Math.round(pphPerMachine).toString(),
+          },
+          piecesPerHourPerStation: {
+            value: pphPerStation,
+            formatted: Math.round(pphPerStation).toString(),
+          },
+          pph: pphPerMachine,
+          pphPerMachine,
+          pphPerStation,
+          stationCount,
           efficiency: {
             value: efficiency,
             percentage: (efficiency * 100).toFixed(2),
@@ -351,7 +397,18 @@ function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd) {
           value: 0,
           formatted: "0",
         },
+        piecesPerHourPerMachine: {
+          value: 0,
+          formatted: "0",
+        },
+        piecesPerHourPerStation: {
+          value: 0,
+          formatted: "0",
+        },
         pph: 0,
+        pphPerMachine: 0,
+        pphPerStation: 0,
+        stationCount: configuredStationCount(machine),
         efficiency: {
           value: 0,
           percentage: "0.00",
@@ -369,8 +426,10 @@ function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd) {
   };
 }
 
-async function appendConfiguredOfflineMachineRows(db, config, rows, requestStart, requestEnd, serial = null) {
-  const configuredMachines = await loadConfiguredMachines(db, config, serial);
+async function appendConfiguredOfflineMachineRows(db, config, rows, requestStart, requestEnd, serial = null, options = {}) {
+  const configuredMachines = Array.isArray(options.configuredMachines)
+    ? options.configuredMachines
+    : await loadConfiguredMachines(db, config, serial);
   if (!configuredMachines.length) return rows;
 
   const existingSerials = new Set(
@@ -390,6 +449,8 @@ async function appendConfiguredOfflineMachineRows(db, config, rows, requestStart
 }
 
 async function buildMachineSummaryFromSessions(db, logger, config, start, end, serial, shiftOid, shiftDoc) {
+  const configuredMachines = await loadConfiguredMachines(db, config, serial);
+  const stationCountBySerial = buildStationCountBySerial(configuredMachines);
   const sessionData = await getSessionDataForPartialDays(
     db,
     [{ start, end }],
@@ -410,8 +471,11 @@ async function buildMachineSummaryFromSessions(db, logger, config, start, end, s
     timeRange: { start, end },
   }));
 
-  const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end);
-  return appendConfiguredOfflineMachineRows(db, config, rows, start, end, serial);
+  const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end, {
+    configuredMachines,
+    stationCountBySerial,
+  });
+  return appendConfiguredOfflineMachineRows(db, config, rows, start, end, serial, { configuredMachines });
 }
 
 async function buildMachineSummaryFromDailyCache(db, logger, config, options = {}) {
@@ -437,10 +501,15 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
   const activeShifts = await loadActiveShifts(db, {
     collectionName: config.shiftCollectionName,
   }).catch(() => []);
+  const configuredMachines = await loadConfiguredMachines(db, config, options.serial);
+  const stationCountBySerial = buildStationCountBySerial(configuredMachines);
   const rows = records.length
-    ? await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end)
+    ? await buildMachineSummaryRows(db, logger, config, records, activeShifts, start, end, {
+        configuredMachines,
+        stationCountBySerial,
+      })
     : [];
-  const data = await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial);
+  const data = await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial, { configuredMachines });
   const projectionWindow = resolveShiftProjectionWindow(activeShifts, start, end, SYSTEM_TIMEZONE);
 
   return {
@@ -473,9 +542,14 @@ async function buildMachineSummaryFromShiftCache(db, logger, config, options) {
   const records = (await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray())
     .map(normalizeTotalsDocument);
   if (records.length > 0) {
-    const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end);
+    const configuredMachines = await loadConfiguredMachines(db, config, options.serial);
+    const stationCountBySerial = buildStationCountBySerial(configuredMachines);
+    const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end, {
+      configuredMachines,
+      stationCountBySerial,
+    });
     return {
-      data: await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial),
+      data: await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial, { configuredMachines }),
       source: TOTALS_SHIFT_COLLECTION,
       found: true,
       dateStr,
