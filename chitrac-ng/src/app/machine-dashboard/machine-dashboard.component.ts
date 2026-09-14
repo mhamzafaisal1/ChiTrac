@@ -43,6 +43,7 @@ import { MachineCurrentOperatorsComponent } from "../machine-current-operators/m
 import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar-chart/machine-item-stacked-bar-chart.component";
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
+import { DowntimeParetoComponent } from "../downtime-pareto/downtime-pareto.component";
 import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
 import {
   SummaryCardVisibilityDialogComponent,
@@ -1766,6 +1767,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           startTime: this.startTime,
           endTime: this.endTime,
           serial: machineSerial.toString(),
+          isModal: this.isModal,
+          mode: "dashboard",
+          preloadedData: machineData?.faultData,
+        },
+      },
+      {
+        label: "Downtime Pareto",
+        component: DowntimeParetoComponent,
+        componentInputs: {
+          startTime: this.startTime,
+          endTime: this.endTime,
+          machineSerial,
           isModal: this.isModal,
           mode: "dashboard",
           preloadedData: machineData?.faultData,
