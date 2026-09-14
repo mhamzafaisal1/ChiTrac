@@ -78,6 +78,14 @@ interface SparklineSegment {
   linePoints: string;
 }
 
+interface ShiftProjectionSummary {
+  label: string;
+  value: string;
+  tone: string;
+  projectedCount: number | null;
+  totalCount: number;
+}
+
 interface MachineDashboardLayoutSnapshot {
   summaryCardOrder: string[];
   tableColumnVisibility: Record<string, boolean>;
@@ -171,9 +179,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private readonly handleResize = this.updateChartDimensions.bind(this);
   private readonly summaryCardOrderKey = "chitrac-machine-dashboard-summary-card-order";
   private readonly summaryCardVisibilityKey = "chitrac-machine-dashboard-summary-card-visibility";
-  private readonly allDayProjectedCountLabel = "Projected County (All Day)";
+  private readonly allDayProjectedCountLabel = "Projected Count (All Day)";
+  private readonly typoAllDayProjectedCountLabel = "Projected County (All Day)";
   private readonly legacyAllDayProjectedCountLabel = "Projected Count";
   private readonly shiftProjectedCountLabel = "Projected Count (Shift)";
+  private readonly lastShiftTotalCountLabel = "Total Count (Last Shift)";
   private readonly machineSummaryCardLabels = [
     "Machines",
     "Running",
@@ -191,7 +201,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Down Operators",
     "Total Count",
     "Current Pace",
-    "Projected County (All Day)",
+    "Projected Count (All Day)",
     "Projected Count (Shift)",
     "Avg OEE",
   ];
@@ -733,12 +743,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const currentPph = elapsedHours > 0 ? Math.round(totalCount / elapsedHours) : 0;
     const projectedCount = this.getProjectedCount(allDayTotalCount, allDayElapsedHours, allDayTotalProjectionHours);
     const shiftProjection = this.getShiftProjection(responses, cache);
-    const shiftProjectionValue = shiftProjection.projectedCount === null
-      ? "N/A"
-      : shiftProjection.projectedCount.toLocaleString();
-    const shiftProjectionTone = shiftProjection.projectedCount !== null && shiftProjection.projectedCount >= shiftProjection.totalCount
-      ? "good"
-      : "neutral";
+    const shiftProjectionTone = shiftProjection.tone;
 
     this.allSummaryCards = this.applySummaryCardOrder([
       { label: "Machines", value: machineCounts.total, icon: "precision_manufacturing", tone: "neutral" },
@@ -764,7 +769,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       { label: this.allDayProjectedCountLabel, value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= allDayTotalCount ? "good" : "neutral" },
-      { label: this.shiftProjectedCountLabel, value: shiftProjectionValue, icon: "outlined_flag", tone: shiftProjectionTone },
+      { label: shiftProjection.label, value: shiftProjection.value, icon: "outlined_flag", tone: shiftProjectionTone },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: this.getOeeSummaryTone(avgOee) },
     ]);
     this.syncSummaryCardsFromAll();
@@ -779,21 +784,66 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return formatDurationMilliseconds(totalMs);
   }
 
-  private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): { totalCount: number; projectedCount: number | null } {
+  private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): ShiftProjectionSummary {
     const hasSelectedShift = Boolean(this.dateTimeService.getShiftId());
-    if (!hasSelectedShift && (!this.isCurrentDayView() || !this.isCurrentlyInShift(cache))) {
-      return { totalCount: 0, projectedCount: null };
+    const projectionWindow = this.getShiftProjectionWindow(cache);
+    const state = projectionWindow?.state;
+
+    if (!hasSelectedShift && !this.isCurrentDayView()) {
+      return this.emptyShiftProjectionSummary();
+    }
+
+    if (!hasSelectedShift && (state === "beforeFirstShift" || state === "noShift")) {
+      return {
+        label: this.shiftProjectedCountLabel,
+        value: "Waiting for shift start",
+        tone: "neutral",
+        projectedCount: null,
+        totalCount: 0,
+      };
+    }
+
+    if (!hasSelectedShift && (state === "betweenShifts" || state === "afterLastShift")) {
+      const lastShiftResponses = this.getLastShiftProjectionResponses(cache);
+      const lastShiftTotal = this.getSummaryTotalCount(lastShiftResponses);
+      return {
+        label: this.lastShiftTotalCountLabel,
+        value: lastShiftTotal.toLocaleString(),
+        tone: "neutral",
+        projectedCount: null,
+        totalCount: lastShiftTotal,
+      };
+    }
+
+    if (!hasSelectedShift && !this.isCurrentlyInShift(cache) && state !== "inBreak") {
+      return this.emptyShiftProjectionSummary();
     }
 
     const shiftResponses = this.getShiftProjectionResponses(responses, cache);
     const totalCount = this.getSummaryTotalCount(shiftResponses);
-    const projectionWindow = this.getShiftProjectionWindow(cache);
     const elapsedHours = this.getProjectionElapsedHours(projectionWindow) ?? (hasSelectedShift ? this.getElapsedHours() : 0);
     const totalHours = this.getProjectionTotalHours(projectionWindow) ?? elapsedHours;
+    const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalHours);
+    const value = state === "inBreak"
+      ? `${projectedCount.toLocaleString()} (In Break)`
+      : projectedCount.toLocaleString();
 
     return {
+      label: this.shiftProjectedCountLabel,
+      value,
+      tone: projectedCount >= totalCount ? "good" : "neutral",
       totalCount,
-      projectedCount: this.getProjectedCount(totalCount, elapsedHours, totalHours),
+      projectedCount,
+    };
+  }
+
+  private emptyShiftProjectionSummary(): ShiftProjectionSummary {
+    return {
+      label: this.shiftProjectedCountLabel,
+      value: "N/A",
+      tone: "neutral",
+      projectedCount: null,
+      totalCount: 0,
     };
   }
 
@@ -813,6 +863,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       (this.currentShiftProjectionShiftId === activeShiftId ? this.currentShiftProjectionResponses : null);
 
     return Array.isArray(currentShiftRows) ? currentShiftRows : [];
+  }
+
+  private getLastShiftProjectionResponses(cache?: DashboardCacheState | null): any[] {
+    const previousShiftId = this.getShiftProjectionWindow(cache)?.previousShift?.shiftId;
+    const previousShiftRows =
+      (previousShiftId && cache?.currentShift?.meta?.shiftId === previousShiftId ? cache?.currentShift?.machinesSummary : null) ||
+      (previousShiftId
+        ? cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === previousShiftId)?.machinesSummary
+        : null) ||
+      (cache?.currentShift?.meta?.mode === "previous" ? cache.currentShift.machinesSummary : null);
+
+    return Array.isArray(previousShiftRows) ? previousShiftRows : [];
   }
 
   private getSummaryTotalCount(responses: any[]): number {
@@ -959,17 +1021,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
     if (!this.summaryCardOrder.length) return cards;
 
-    const byLabel = new Map(cards.map((card) => [card.label, card]));
+    const byLabel = new Map(cards.map((card) => [this.getSummaryCardPreferenceKey(card.label), card]));
     const ordered = this.summaryCardOrder
       .map((label) => byLabel.get(label))
       .filter((card): card is SummaryCard => Boolean(card));
-    const additions = cards.filter((card) => !this.summaryCardOrder.includes(card.label));
+    const additions = cards.filter((card) => !this.summaryCardOrder.includes(this.getSummaryCardPreferenceKey(card.label)));
 
     return [...ordered, ...additions];
   }
 
   private applySummaryCardVisibility(cards: SummaryCard[]): SummaryCard[] {
-    return cards.filter((card) => this.summaryCardVisibility[card.label] !== false);
+    return cards.filter((card) => this.summaryCardVisibility[this.getSummaryCardPreferenceKey(card.label)] !== false);
   }
 
   private syncSummaryCardsFromAll(): void {
@@ -1227,11 +1289,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private restoreDefaultSummaryCardOrder(): void {
-    const cardsByLabel = new Map(this.allSummaryCards.map((card) => [card.label, card]));
+    const cardsByLabel = new Map(this.allSummaryCards.map((card) => [this.getSummaryCardPreferenceKey(card.label), card]));
     const defaultCards = this.machineSummaryCardLabels
       .map((label) => cardsByLabel.get(label))
       .filter((card): card is SummaryCard => Boolean(card));
-    const additions = this.allSummaryCards.filter((card) => !this.machineSummaryCardLabels.includes(card.label));
+    const additions = this.allSummaryCards.filter((card) => !this.machineSummaryCardLabels.includes(this.getSummaryCardPreferenceKey(card.label)));
     this.allSummaryCards = [...defaultCards, ...additions];
   }
 
@@ -1285,6 +1347,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         acc[label] = visibility[label];
       } else if (
         label === this.allDayProjectedCountLabel &&
+        typeof visibility[this.typoAllDayProjectedCountLabel] === "boolean"
+      ) {
+        acc[label] = visibility[this.typoAllDayProjectedCountLabel];
+      } else if (
+        label === this.allDayProjectedCountLabel &&
         typeof visibility[this.legacyAllDayProjectedCountLabel] === "boolean"
       ) {
         acc[label] = visibility[this.legacyAllDayProjectedCountLabel];
@@ -1294,9 +1361,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private normalizeSummaryCardLabel(label: string): string {
-    return label === this.legacyAllDayProjectedCountLabel
+    return label === this.legacyAllDayProjectedCountLabel || label === this.typoAllDayProjectedCountLabel
       ? this.allDayProjectedCountLabel
       : label;
+  }
+
+  private getSummaryCardPreferenceKey(label: string): string {
+    if (label === this.lastShiftTotalCountLabel) {
+      return this.shiftProjectedCountLabel;
+    }
+
+    return this.normalizeSummaryCardLabel(label);
   }
 
   private cleanTableColumnVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
@@ -1310,7 +1385,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private getSummaryCardOrder(): string[] {
     return this.allSummaryCards.length
-      ? this.allSummaryCards.map((card) => card.label)
+      ? this.allSummaryCards.map((card) => this.getSummaryCardPreferenceKey(card.label))
       : this.summaryCardOrder;
   }
 
@@ -1466,9 +1541,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return this.getSelectedProjectionWindow(cache);
     }
 
+    const todayProjectionWindow = (cache?.dashboard?.machines?.today || cache?.today)?.meta?.projectionWindow || this.shiftProjectionWindow;
     const activeShiftId = this.getActiveCurrentShiftId(cache);
     if (!activeShiftId) {
-      return null;
+      return todayProjectionWindow;
     }
 
     const currentShiftEnvelope =
@@ -1476,7 +1552,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       cache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === activeShiftId);
 
     return currentShiftEnvelope?.meta?.projectionWindow ||
-      (this.currentShiftProjectionShiftId === activeShiftId ? this.currentShiftProjectionWindow : null);
+      (this.currentShiftProjectionShiftId === activeShiftId ? this.currentShiftProjectionWindow : null) ||
+      todayProjectionWindow;
   }
 
   private isCurrentlyInShift(cache?: DashboardCacheState | null): boolean {
