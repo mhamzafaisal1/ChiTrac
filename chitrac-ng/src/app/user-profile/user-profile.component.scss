@@ -18,6 +18,10 @@
 .profile-form {
   display: grid;
   gap: 22px;
+
+  & + .profile-form {
+    margin-top: 22px;
+  }
 }
 
 .form-section {
@@ -39,6 +43,27 @@
   }
 }
 
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setting-copy {
+  display: grid;
+  gap: 4px;
+
+  strong {
+    font-weight: 600;
+  }
+
+  span {
+    color: var(--theme-color-on-surface-variant, #666);
+    font-size: 14px;
+  }
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;
@@ -47,5 +72,10 @@
 @media (max-width: 640px) {
   .profile-container {
     padding: 16px;
+  }
+
+  .setting-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
