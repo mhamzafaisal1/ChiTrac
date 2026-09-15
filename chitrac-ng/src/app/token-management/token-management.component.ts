@@ -55,7 +55,7 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   generatedToken: string | null = null;
   showTokenDialog: boolean = false;
 
-  displayedColumns: string[] = ['name', 'description', 'createdAt', 'lastUsed', 'usageCount', 'actions'];
+  displayedColumns: string[] = ['name', 'description', 'created', 'lastUsed', 'usageCount', 'actions'];
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort: MatSort;
@@ -75,6 +75,12 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
     } else {
       this.dataSource.data = res.tokens;
     }
+    this.dataSource.sortingDataAccessor = (token: PermanentToken, property: string) => {
+      if (property === 'created') {
+        return token.timestamps?.create ? new Date(token.timestamps.create).getTime() : 0;
+      }
+      return (token as any)[property];
+    };
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
   }
