@@ -6,7 +6,12 @@ export interface PermanentToken {
   id: string;
   name: string;
   description: string;
-  createdAt: Date;
+  timestamps: {
+    create: Date;
+    active: Date;
+    update: Date;
+    inactive?: Date;
+  };
   lastUsed: Date | null;
   usageCount: number;
 }
@@ -23,7 +28,7 @@ export interface CreateTokenResponse {
     id: string;
     name: string;
     description: string;
-    createdAt: Date;
+    timestamps: PermanentToken['timestamps'];
   };
 }
 

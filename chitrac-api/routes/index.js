@@ -1,5 +1,6 @@
 const path = require('path');
 const express = require('express');
+const { createVerifyJwtMiddleware } = require('../utils/authMiddleware');
 
 
 function init(app, server) {
@@ -26,6 +27,7 @@ function init(app, server) {
     const dashboardRoutes = require('../controllers/dashboard')(server);
     const faultRoutes = require('../controllers/fault')(server);
     const reportRoutes = require('../controllers/reports')(server);
+    const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
 
 
     app.get('/docs/api', (req, res, next) => {
@@ -283,7 +285,7 @@ function init(app, server) {
 
     // Conditionally load Milnor routes based on environment setting
     if (server.config.milnor) {
-        app.use('/api/milnor', milnorRoutes);
+        app.use('/api/milnor', verifyJwtMiddleware, milnorRoutes);
     }
 
     // Conditionally load Spindle routes based on environment setting

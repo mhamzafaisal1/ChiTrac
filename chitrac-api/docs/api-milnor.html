@@ -150,6 +150,18 @@
     <h1>ChiTrac Milnor API</h1>
     <p>Documentation for Milnor-specific ChiTrac API endpoints.</p>
 
+    <h2>Authentication</h2>
+    <p>
+      Milnor API requests require a permanent API token. Send the raw token in
+      the <code>Authorization</code> header using the Bearer scheme.
+    </p>
+    <pre><code>Authorization: Bearer &lt;token&gt;</code></pre>
+    <p>
+      API-key style headers are also accepted for clients that cannot send a
+      Bearer token.
+    </p>
+    <pre><code>X-API-Key: &lt;token&gt;</code></pre>
+
     <h2>Routes</h2>
 
     <h3>GET /api/milnor/status</h3>

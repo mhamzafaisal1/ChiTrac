@@ -4,103 +4,20 @@ const config = require("../../modules/config");
 const certificates = require("../../modules/certificates");
 const { ObjectId } = require("mongodb");
 const { assertPermissionLevel } = require("../../modules/permissions");
+const timestampsSchema = require("../../schemas/timestampsSchema");
+const {
+  createVerifyJwtMiddleware,
+  normalizeTokenUserId
+} = require("../../utils/authMiddleware");
 
 module.exports = function (server) {
   const router = express.Router();
   const logger = server.logger;
+  const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
 
-  function extractToken(req) {
-    const authHeader = req.headers["authorization"] || req.headers["Authorization"];
-    if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7).trim();
-    if (typeof req.query?.token === "string") return req.query.token;
-    if (typeof req.body?.token === "string") return req.body.token;
-    return null;
-  }
-
-  function normalizeTokenUserId(rawUserId) {
-    if (!rawUserId) return null;
-    if (typeof rawUserId === "string") return rawUserId;
-    if (typeof rawUserId === "object" && rawUserId.$oid) return rawUserId.$oid;
-    return `${rawUserId}`;
-  }
-
-  function verifyJwtMiddleware(req, res, next) {
-    // Check if API token check is disabled via environment variable
-    if (config.enableApiTokenCheck === false) {
-      logger?.debug?.("API token check is disabled - bypassing authentication");
-      req.tokenPayload = { bypassed: true };
-      return next();
-    }
-
-    try {
-      const token = extractToken(req);
-      if (!token) return res.status(401).json({ valid: false, error: "Missing token" });
-      const secret = config.jwtSecret;
-      if (!secret) {
-        logger?.warn?.("JWT secret not configured (config.jwtSecret)");
-        return res.status(500).json({ valid: false, error: "Server config error" });
-      }
-      
-      const decoded = jwt.verify(token, secret);
-      
-      // Check if it's a permanent token
-      if (decoded.type === 'permanent') {
-        // For permanent tokens, verify they exist in database and are active
-        verifyPermanentToken(req, res, next, token, decoded);
-      } else {
-        // Regular session token
-        req.tokenPayload = decoded;
-        next();
-      }
-    } catch (err) {
-      return res.status(401).json({ valid: false, error: "Invalid token" });
-    }
-  }
-
-  async function verifyPermanentToken(req, res, next, token, decoded) {
-    try {
-      const db = server.db;
-      const authTokensCollection = db.collection('auth-tokens');
-      const bcrypt = require('bcryptjs');
-
-      // Find token in database
-      const tokenDoc = await authTokensCollection.findOne({
-        name: decoded.name,
-        createdBy: decoded.createdBy,
-        isActive: true
-      });
-
-      if (!tokenDoc) {
-        return res.status(401).json({ valid: false, error: "Token not found or inactive" });
-      }
-
-      // Verify the token matches the stored hash
-      const isValidToken = await bcrypt.compare(token, tokenDoc.hashedToken);
-      if (!isValidToken) {
-        return res.status(401).json({ valid: false, error: "Invalid token" });
-      }
-
-      // Update usage statistics
-      await authTokensCollection.updateOne(
-        { _id: tokenDoc._id },
-        { 
-          $set: { lastUsed: new Date() },
-          $inc: { usageCount: 1 }
-        }
-      );
-
-      // Set token payload for the request
-      req.tokenPayload = {
-        ...decoded,
-        tokenId: tokenDoc._id,
-        tokenName: tokenDoc.name
-      };
-
-      next();
-    } catch (err) {
-      logger?.error?.("Error verifying permanent token:", err);
-      return res.status(401).json({ valid: false, error: "Token verification failed" });
-    }
+  function buildTokenTimestamps(token, fallbackDate = new Date()) {
+    if (token.timestamps) return timestampsSchema.utils.normalize(token.timestamps);
+    return timestampsSchema.utils.stampInit(token.createdAt || fallbackDate);
   }
 
   function requirePermissionLevel(requiredLevel) {
@@ -196,8 +113,7 @@ module.exports = function (server) {
         { 
           type: 'permanent',
           name: name.trim(),
-          createdBy: req.tokenPayload.userId,
-          createdAt: new Date().toISOString()
+          createdBy: req.tokenPayload.userId
         },
         config.jwtSecret
         // No expiresIn - permanent token
@@ -208,13 +124,14 @@ module.exports = function (server) {
       const hashedToken = await bcrypt.hash(token, 10);
 
       // Store token info in database
+      const now = new Date();
       const tokenDoc = {
         name: name.trim(),
         description: description.trim(),
         hashedToken: hashedToken,
         createdBy: req.tokenPayload.userId,
         createdByUsername: req.tokenPayload.username,
-        createdAt: new Date(),
+        timestamps: timestampsSchema.utils.stampInit(now),
         isActive: true,
         lastUsed: null,
         usageCount: 0
@@ -229,7 +146,7 @@ module.exports = function (server) {
           id: result.insertedId,
           name: tokenDoc.name,
           description: tokenDoc.description,
-          createdAt: tokenDoc.createdAt
+          timestamps: tokenDoc.timestamps
         }
       });
 
@@ -250,7 +167,7 @@ module.exports = function (server) {
           createdBy: req.tokenPayload.userId,
           isActive: true 
         })
-        .sort({ createdAt: -1 })
+        .sort({ "timestamps.create": -1, createdAt: -1 })
         .toArray();
 
       // Remove hashed tokens from response
@@ -258,7 +175,7 @@ module.exports = function (server) {
         id: token._id,
         name: token.name,
         description: token.description,
-        createdAt: token.createdAt,
+        timestamps: buildTokenTimestamps(token),
         lastUsed: token.lastUsed,
         usageCount: token.usageCount
       }));
@@ -278,6 +195,17 @@ module.exports = function (server) {
       const db = server.db;
       const authTokensCollection = db.collection('auth-tokens');
       const ObjectId = require('mongodb').ObjectId;
+      const now = new Date();
+      const tokenDoc = await authTokensCollection.findOne({
+        _id: new ObjectId(id),
+        createdBy: req.tokenPayload.userId
+      });
+
+      if (!tokenDoc) {
+        return res.status(404).json({ error: "Token not found" });
+      }
+
+      const timestamps = timestampsSchema.utils.stampInactive(buildTokenTimestamps(tokenDoc, now), now);
 
       const result = await authTokensCollection.updateOne(
         { 
@@ -287,8 +215,11 @@ module.exports = function (server) {
         { 
           $set: { 
             isActive: false,
-            deactivatedAt: new Date()
-          } 
+            timestamps
+          },
+          $unset: {
+            deactivatedAt: ""
+          }
         }
       );
 
