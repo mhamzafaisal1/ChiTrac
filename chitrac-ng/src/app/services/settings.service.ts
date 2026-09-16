@@ -50,8 +50,11 @@ export interface UserPreferences {
   theme?: 'light' | 'dark';
   defaultTheme?: 'light' | 'dark';
   dashboardLayouts?: DashboardLayoutPreferences;
-  createdAt?: string | Date;
-  updatedAt?: string | Date;
+  timestamps?: {
+    create: string | Date;
+    active: string | Date;
+    update: string | Date;
+  };
 }
 
 @Injectable({
