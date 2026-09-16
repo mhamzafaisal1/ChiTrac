@@ -2,7 +2,7 @@ module.exports = {
   operator: [
   {
     "active": true,
-    "code": 0,
+    "id": 0,
     "name": {
       "first": "none",
       "surname": "entered"
@@ -21,7 +21,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 117811,
+    "id": 117811,
     "name": {
       "first": "Shaun",
       "surname": "White"
@@ -40,7 +40,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 118347,
+    "id": 118347,
     "name": {
       "first": "Hannah",
       "surname": "Teter"
@@ -59,7 +59,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 119277,
+    "id": 119277,
     "name": {
       "first": "Torah",
       "surname": "Bright"
@@ -78,7 +78,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 159375,
+    "id": 159375,
     "name": {
       "first": "Jeremy",
       "surname": "Jones"
@@ -97,7 +97,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 159331,
+    "id": 159331,
     "name": {
       "first": "Jeremy",
       "surname": "Jones"
@@ -116,7 +116,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 166017,
+    "id": 166017,
     "name": {
       "first": "Torstein",
       "surname": "Horgmo"
@@ -135,7 +135,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 170623,
+    "id": 170623,
     "name": {
       "first": "Gretchen",
       "surname": "Bleiler"
@@ -154,7 +154,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 169101,
+    "id": 169101,
     "name": {
       "first": "Travis",
       "surname": "Rice"
@@ -173,7 +173,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 107999,
+    "id": 107999,
     "name": {
       "first": "Linn",
       "surname": "Haug"
@@ -192,7 +192,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 172035,
+    "id": 172035,
     "name": {
       "first": "Bryan",
       "surname": "Iguchi"
@@ -211,7 +211,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 175052,
+    "id": 175052,
     "name": {
       "first": "Alena",
       "surname": "Zavarzina"
@@ -230,7 +230,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 167120,
+    "id": 167120,
     "name": {
       "first": "Mark",
       "surname": "McMorris"
@@ -249,7 +249,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 173237,
+    "id": 173237,
     "name": {
       "first": "Silje",
       "surname": "Norendal"
@@ -268,7 +268,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 118702,
+    "id": 118702,
     "name": {
       "first": "Ina",
       "surname": "Meschik"
@@ -287,7 +287,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 175808,
+    "id": 175808,
     "name": {
       "first": "Ross",
       "surname": "Rebagliati"
@@ -306,7 +306,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 167129,
+    "id": 167129,
     "name": {
       "first": "Kaitlyn",
       "surname": "Farrington"
@@ -325,7 +325,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 171042,
+    "id": 171042,
     "name": {
       "first": "Sophie",
       "surname": "Rodriguez"
@@ -344,7 +344,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 174905,
+    "id": 174905,
     "name": {
       "first": "Scotty",
       "surname": "James"
@@ -363,7 +363,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 175948,
+    "id": 175948,
     "name": {
       "first": "Brad",
       "surname": "Martin"
@@ -382,7 +382,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 175361,
+    "id": 175361,
     "name": {
       "first": "Yekaterina",
       "surname": "Tudegesheva"
@@ -401,7 +401,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 170657,
+    "id": 170657,
     "name": {
       "first": "Yuri",
       "surname": "Podladchikov"
@@ -420,7 +420,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 105682,
+    "id": 105682,
     "name": {
       "first": "Dominique",
       "surname": "Vallee"
@@ -439,7 +439,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 173323,
+    "id": 173323,
     "name": {
       "first": "Greg",
       "surname": "Bretz"
@@ -458,7 +458,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 173431,
+    "id": 173431,
     "name": {
       "first": "Elena",
       "surname": "Hight"
@@ -477,7 +477,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 173878,
+    "id": 173878,
     "name": {
       "first": "Seppe",
       "surname": "Smits"
@@ -496,7 +496,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 179338,
+    "id": 179338,
     "name": {
       "first": "Patrizia",
       "surname": "Kummer"
@@ -515,7 +515,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 177187,
+    "id": 177187,
     "name": {
       "first": "Sarah",
       "surname": "Conrad"
@@ -534,7 +534,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 176809,
+    "id": 176809,
     "name": {
       "first": "Mike",
       "surname": "Robertson"
@@ -553,7 +553,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 176805,
+    "id": 176805,
     "name": {
       "first": "Fränzi",
       "surname": "Mägert-Kohli"
@@ -572,7 +572,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 100029,
+    "id": 100029,
     "name": {
       "first": "Sandra",
       "surname": "Frei"
@@ -591,7 +591,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 176950,
+    "id": 176950,
     "name": {
       "first": "Isabella",
       "surname": "Laböck"
@@ -610,7 +610,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 181325,
+    "id": 181325,
     "name": {
       "first": "Ben",
       "surname": "Kilner"
@@ -629,7 +629,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 183448,
+    "id": 183448,
     "name": {
       "first": "Marion",
       "surname": "Kreiner"
@@ -648,7 +648,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 182702,
+    "id": 182702,
     "name": {
       "first": "Chris",
       "surname": "Klug"
@@ -667,7 +667,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 183462,
+    "id": 183462,
     "name": {
       "first": "Holly",
       "surname": "Crawford"
@@ -686,7 +686,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 182704,
+    "id": 182704,
     "name": {
       "first": "Kimiko",
       "surname": "Zakreski"
@@ -705,7 +705,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 183416,
+    "id": 183416,
     "name": {
       "first": "Kjersti",
       "surname": "Buaas"
@@ -724,7 +724,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 180355,
+    "id": 180355,
     "name": {
       "first": "Tyler",
       "surname": "Jewell"
@@ -743,7 +743,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 198200,
+    "id": 198200,
     "name": {
       "first": "Justin",
       "surname": "Lamoureux"
@@ -762,7 +762,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 190496,
+    "id": 190496,
     "name": {
       "first": "Steve",
       "surname": "Fisher"
@@ -781,7 +781,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 194012,
+    "id": 194012,
     "name": {
       "first": "Alexandra",
       "surname": "Jekova"
@@ -800,7 +800,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 190492,
+    "id": 190492,
     "name": {
       "first": "Jamie",
       "surname": "Anderson"
@@ -819,7 +819,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 183346,
+    "id": 183346,
     "name": {
       "first": "Jonathan",
       "surname": "Cheever"
@@ -838,7 +838,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 181138,
+    "id": 181138,
     "name": {
       "first": "Alex",
       "surname": "Deibold"
@@ -857,7 +857,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 183306,
+    "id": 183306,
     "name": {
       "first": "Kelly",
       "surname": "Clark"
@@ -876,7 +876,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 189186,
+    "id": 189186,
     "name": {
       "first": "Nick",
       "surname": "Baumgartner"
@@ -895,7 +895,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 191798,
+    "id": 191798,
     "name": {
       "first": "Nadja",
       "surname": "Purtschert"
@@ -914,7 +914,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 177094,
+    "id": 177094,
     "name": {
       "first": "Janne",
       "surname": "Korpi"
@@ -933,7 +933,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990001,
+    "id": 990001,
     "name": {
       "first": "SPF1",
       "surname": "Untracked"
@@ -952,7 +952,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990002,
+    "id": 990002,
     "name": {
       "first": "SPF2",
       "surname": "Untracked"
@@ -971,7 +971,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990003,
+    "id": 990003,
     "name": {
       "first": "SPF3",
       "surname": "Untracked"
@@ -990,7 +990,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990004,
+    "id": 990004,
     "name": {
       "first": "SPF4",
       "surname": "Untracked"
@@ -1009,7 +1009,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990005,
+    "id": 990005,
     "name": {
       "first": "SPF5",
       "surname": "Untracked"
@@ -1028,7 +1028,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990006,
+    "id": 990006,
     "name": {
       "first": "SPF6",
       "surname": "Untracked"
@@ -1047,7 +1047,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990007,
+    "id": 990007,
     "name": {
       "first": "LPL1",
       "surname": "Untracked"
@@ -1066,7 +1066,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990008,
+    "id": 990008,
     "name": {
       "first": "LPL2",
       "surname": "Untracked"
@@ -1085,7 +1085,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990009,
+    "id": 990009,
     "name": {
       "first": "Blanket1",
       "surname": "Untracked"
@@ -1104,7 +1104,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990010,
+    "id": 990010,
     "name": {
       "first": "Blanket2",
       "surname": "Untracked"
@@ -1123,7 +1123,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 990011,
+    "id": 990011,
     "name": {
       "first": "SPL1",
       "surname": "Untracked"
@@ -1142,7 +1142,7 @@ module.exports = {
   },
   {
     "active": true,
-    "code": 654321,
+    "id": 654321,
     "name": {
       "first": "Chicago",
       "surname": "Test"

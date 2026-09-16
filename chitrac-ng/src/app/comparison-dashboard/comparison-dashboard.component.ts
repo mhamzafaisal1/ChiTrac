@@ -348,10 +348,10 @@ export class ComparisonDashboardComponent implements OnInit {
           .sort((a, b) => a.label.localeCompare(b.label));
 
         this.operators = operators
-          .filter(operator => operator.active !== false && operator.code !== null && operator.code !== undefined)
+          .filter(operator => operator.active !== false && operator.id !== null && operator.id !== undefined)
           .map(operator => ({
-            id: Number(operator.code),
-            label: `${this.operatorName(operator)} (${operator.code})`,
+            id: Number(operator.id),
+            label: `${this.operatorName(operator)} (${operator.id})`,
             raw: operator
           }))
           .sort((a, b) => a.label.localeCompare(b.label));

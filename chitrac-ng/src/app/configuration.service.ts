@@ -37,8 +37,8 @@ export class ConfigurationService {
     return this.http.get<OperatorConfig[]>('/api/operator/config?filterTestOperators=true');
   }
 
-  public getNewOperatorId(): Observable<{code: number}> {
-    return this.http.get<{code: number}>('/api/operator/new-id');
+  public getNewOperatorId(): Observable<{id: number}> {
+    return this.http.get<{id: number}>('/api/operator/new-id');
   }
 
   public postOperatorConfig(operator: OperatorConfig) {

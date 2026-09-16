@@ -11,6 +11,35 @@ async function getConfiguration(collection, query, projection) {
 	}
 }
 
+function normalizeConfigKeyValue(value) {
+	if (typeof value !== 'string') return value;
+
+	const trimmed = value.trim();
+	if (trimmed !== '' && /^-?\d+$/.test(trimmed)) {
+		return Number(trimmed);
+	}
+
+	return value;
+}
+
+async function resolveConfigurationIdentifier(collection, identifier, uniqueKey = 'id') {
+	const identifierString = String(identifier ?? '');
+
+	if (identifierString && ObjectId.isValid(identifierString)) {
+		const objectId = new ObjectId(identifierString);
+		const existingByObjectId = await collection.findOne(
+			{ _id: objectId },
+			{ projection: { _id: 1 } }
+		);
+
+		if (existingByObjectId) {
+			return { _id: objectId };
+		}
+	}
+
+	return { [uniqueKey]: normalizeConfigKeyValue(identifier) };
+}
+
 async function stampTimestampedUpdate(collection, filter, updateObject) {
 	const now = new Date();
 	if (updateObject.timestamps && typeof updateObject.timestamps === 'object') {
@@ -82,34 +111,41 @@ async function stampTimestampedUpdate(collection, filter, updateObject) {
 // 	}
 //   }
 
-async function upsertConfiguration(collection, updateObject, upsert, uniqueKey = 'code') {
+async function upsertConfiguration(collection, updateObject, upsert, uniqueKey = 'id') {
 	try {
-		let results, id;
+		let results, identifierFilter, existingDocument;
 
-		// Extract _id before modifying updateObject
+		// Extract route/document identifier before modifying updateObject
 		if (updateObject._id) {
-			id = new ObjectId(updateObject._id);
+			const identifier = updateObject._id;
 			delete updateObject._id; // Remove _id from update payload
+			identifierFilter = await resolveConfigurationIdentifier(collection, identifier, uniqueKey);
+			existingDocument = await collection.findOne(identifierFilter, { projection: { _id: 1 } });
 		}
 
-		if (id) {
+		if (identifierFilter) {
 			// Update existing document - check for conflicts excluding self
 			const uniqueValue = updateObject[uniqueKey];
-			if (uniqueValue) {
-				const conflict = await collection.findOne({ 
-					[uniqueKey]: uniqueValue, 
-					_id: { $ne: id } 
-				});
+			if (uniqueValue !== undefined && uniqueValue !== null) {
+				const conflictQuery = {
+					[uniqueKey]: normalizeConfigKeyValue(uniqueValue)
+				};
+
+				if (existingDocument?._id) {
+					conflictQuery._id = { $ne: existingDocument._id };
+				}
+
+				const conflict = await collection.findOne(conflictQuery);
 				if (conflict) {
 					throw { message: `${uniqueKey} Already exists` };
 				}
 			}
-			await stampTimestampedUpdate(collection, { '_id': id }, updateObject);
-			results = await collection.updateOne({ '_id': id }, { '$set': updateObject });
+			await stampTimestampedUpdate(collection, identifierFilter, updateObject);
+			results = await collection.updateOne(identifierFilter, { '$set': updateObject });
 		} else {
 			// Create new document - check for any conflicts
 			const uniqueValue = updateObject[uniqueKey];
-			const existing = await collection.find({ [uniqueKey]: uniqueValue }).toArray();
+			const existing = await collection.find({ [uniqueKey]: normalizeConfigKeyValue(uniqueValue) }).toArray();
 
 			if (existing.length) {
 				throw { message: `${uniqueKey} Already exists` };
@@ -128,9 +164,10 @@ async function upsertConfiguration(collection, updateObject, upsert, uniqueKey =
 
   
 
-async function deleteConfiguration(collection, id) {
+async function deleteConfiguration(collection, id, uniqueKey = 'id') {
 	try {
-		let results = await collection.deleteOne({ '_id': new ObjectId(id) });
+		const identifierFilter = await resolveConfigurationIdentifier(collection, id, uniqueKey);
+		let results = await collection.deleteOne(identifierFilter);
 		return results;
 	} catch (error) {
 		throw error;

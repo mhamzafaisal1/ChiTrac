@@ -39,8 +39,72 @@ function constructor(server) {
   const configService = require('../../services/mongo/');
   const logger = server.logger;
 
-  // Ensure unique index once at startup
-  collection.createIndex({ code: 1 }, { unique: true }).catch(() => {});
+  function normalizeOperatorIdValue(value) {
+    if (typeof value !== 'string') return value;
+
+    const trimmed = value.trim();
+    if (trimmed !== '' && /^-?\d+$/.test(trimmed)) {
+      return Number(trimmed);
+    }
+
+    return value;
+  }
+
+  function normalizeOperatorPayload(operator) {
+    const normalized = { ...operator };
+    if (normalized.id === undefined && normalized.code !== undefined) {
+      normalized.id = normalizeOperatorIdValue(normalized.code);
+    } else if (normalized.id !== undefined) {
+      normalized.id = normalizeOperatorIdValue(normalized.id);
+    }
+    delete normalized.code;
+    return normalized;
+  }
+
+  function serializeOperator(operator) {
+    if (!operator) return operator;
+    return normalizeOperatorPayload(operator);
+  }
+
+  async function findOperatorByRouteId(id) {
+    if (!id) return null;
+
+    const idString = String(id);
+    if (ObjectId.isValid(idString)) {
+      const byObjectId = await collection.findOne({ _id: new ObjectId(idString) });
+      if (byObjectId) return byObjectId;
+    }
+
+    return collection.findOne({ id: normalizeOperatorIdValue(id) });
+  }
+
+  async function migrateOperatorCodeToId() {
+    await collection.dropIndex('code_1').catch(() => {});
+
+    let migrated = 0;
+    const cursor = collection.find(
+      { code: { $exists: true } },
+      { projection: { _id: 1, id: 1, code: 1 } }
+    );
+
+    for await (const operator of cursor) {
+      const update = { $unset: { code: "" } };
+      if (operator.id === undefined || operator.id === null) {
+        update.$set = { id: normalizeOperatorIdValue(operator.code) };
+      }
+
+      await collection.updateOne({ _id: operator._id }, update);
+      migrated += 1;
+    }
+
+    if (migrated > 0) {
+      logger?.info?.(`[operatorConfig] Migrated ${migrated} operator configs from code to id.`);
+    }
+  }
+
+  migrateOperatorCodeToId()
+    .then(() => collection.createIndex({ id: 1 }, { unique: true }))
+    .catch((error) => logger?.error?.('[operatorConfig] Failed to prepare operator id index.', error));
 
   function normalizeOperatorName(name) {
     try {
@@ -118,9 +182,9 @@ function constructor(server) {
   async function getOperatorXML(req, res, next) {
     try {
       res.set('Content-Type', 'text/xml');
-      const operators = await configService.getConfiguration(collection, {}, { code: 1, name: 1, _id: 0 });
+      const operators = await configService.getConfiguration(collection, {}, { id: 1, code: 1, name: 1, _id: 0 });
       const ops = operators.map(operator => ({
-        code: operator.code,
+        id: operator.id ?? operator.code,
         name: formatHumanName(operator.name)
       }));
       res.send(await xmlParser.xmlArrayBuilder('operator', ops, false));
@@ -132,10 +196,18 @@ function constructor(server) {
       // Check for filterTestOperators query parameter
       const filterTestOperators = req.query.filterTestOperators === 'true';
       
-      // Build query object - filter out operators with code > 500000 if requested
-      const query = filterTestOperators ? { code: { $lte: 500000 } } : {};
+      // Build query object - filter out operators with id > 500000 if requested
+      const query = filterTestOperators
+        ? {
+            $or: [
+              { id: { $lte: 500000 } },
+              { id: { $exists: false }, code: { $lte: 500000 } }
+            ]
+          }
+        : {};
       
-      res.json(await configService.getConfiguration(collection, query)); 
+      const operators = await configService.getConfiguration(collection, query);
+      res.json(operators.map(serializeOperator)); 
     }
     catch (e) { next(e); }
   }
@@ -147,10 +219,10 @@ function constructor(server) {
       if (body._id) delete body._id;           // new doc
       
       if (!body.name) throw new Error('Operator name is required');
-      const normalizedBody = stampOperatorCreate(body);
+      const normalizedBody = stampOperatorCreate(normalizeOperatorPayload(body));
       
-      // unique by 'code'
-      const out = await configService.upsertConfiguration(collection, normalizedBody, true, 'code');
+      // unique by 'id'
+      const out = await configService.upsertConfiguration(collection, normalizedBody, true, 'id');
       res.status(201).json(out);
     } catch (e) { 
       // Handle validation errors
@@ -161,25 +233,25 @@ function constructor(server) {
     }
   }
 
-  // Update by id (id-aware, preserves uniqueness on 'code' excluding self)
+  // Update by id (id-aware, preserves uniqueness on 'id' excluding self)
   async function upsertOperator(req, res, next) {
     try {
       const id = req.params.id || null;
-      const updates = { ...req.body };
+      const updates = normalizeOperatorPayload(req.body);
       if (updates._id) delete updates._id;
 
-      const existing = id ? await collection.findOne({ _id: new ObjectId(id) }) : null;
+      const existing = id ? await findOperatorByRouteId(id) : null;
       if (id && !existing) return res.status(404).json({ message: 'Operator not found' });
       if (updates.name) updates.name = normalizeOperatorName(updates.name);
       updates.timestamps = stampOperatorUpdate(existing || updates, updates);
 
       // Pass {_id:id,...updates} so configService can do:
-      // findOne({ code: updates.code, _id: { $ne: id } }) → 409 if exists
+      // findOne({ id: updates.id, _id: { $ne: existing._id } }) -> 409 if exists
       const out = await configService.upsertConfiguration(
         collection,
         id ? { _id: id, ...updates } : updates,
         true,
-        'code'
+        'id'
       );
       res.json(out);
     } catch (e) { 
@@ -192,24 +264,30 @@ function constructor(server) {
   }
 
   async function deleteOperator(req, res, next) {
-    try { res.json(await configService.deleteConfiguration(collection, req.params.id)); }
+    try { res.json(await configService.deleteConfiguration(collection, req.params.id, 'id')); }
     catch (e) { next(e); }
   }
 
   // Get next available operator ID
   async function getNewOperatorId(req, res, next) {
     try {
-      // Find the highest code value under 600000
+      // Find the highest id value under 600000
       const result = await collection
-        .find({ code: { $lt: 600000 } })
-        .sort({ code: -1 })
+        .find({
+          $or: [
+            { id: { $lt: 600000 } },
+            { id: { $exists: false }, code: { $lt: 600000 } }
+          ]
+        })
+        .project({ id: 1, code: 1 })
+        .sort({ id: -1, code: -1 })
         .limit(1)
         .toArray();
       
       // If no operators exist, start from 100000, otherwise add 1 to the highest
-      const nextId = result.length > 0 ? result[0].code + 1 : 100000;
+      const nextId = result.length > 0 ? Number(result[0].id ?? result[0].code) + 1 : 100000;
       
-      res.json({ code: nextId });
+      res.json({ id: nextId });
     } catch (e) { next(e); }
   }
 
