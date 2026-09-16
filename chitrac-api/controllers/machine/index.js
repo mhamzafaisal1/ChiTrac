@@ -22,6 +22,7 @@ const {
   getPlantDateStr,
   loadConfiguredMachines,
 } = require("../../utils/machineDashboardCache");
+const { buildMachineTrendReport } = require("../../utils/machineTrendReport");
 const {
   getMachinesSummaryRealTime,
   buildLatestTickerMap,
@@ -1366,6 +1367,28 @@ function constructor(server) {
         .status(500)
         .json({ error: "Failed to fetch machine dashboard daily cache" });
     }
+    }
+  );
+
+  router.get(
+    "/machine/analytics/machine-trends",
+    async (req, res) => {
+      try {
+        const report = await buildMachineTrendReport(db, config, req.query);
+        return res.json(report);
+      } catch (err) {
+        logger.error("[machineSessions] Error in machine-trends route:", err);
+        if (
+          err.message.includes("required") ||
+          err.message.includes("YYYY-MM-DD") ||
+          err.message.includes("valid date") ||
+          err.message.includes("on or after") ||
+          err.message.includes("serial must be numeric")
+        ) {
+          return res.status(400).json({ error: err.message });
+        }
+        return res.status(500).json({ error: "Failed to fetch machine trends" });
+      }
     }
   );
 
