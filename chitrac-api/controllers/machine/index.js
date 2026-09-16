@@ -35,7 +35,64 @@ const {
   getBookendedStatesAndTimeRange,
   buildCurrentOperatorsFromTicker: buildCurrentOperators,
 } = require("../../utils/machineFunctions");
+const { calendarRange, normalizeTotalsDocument } = require("../../utils/totalsSchema");
 const ipAddressSchema = require("../../schemas/ipAddress");
+
+function totalsMachineSerialCondition(machineSerials) {
+  const numericSerials = machineSerials
+    .map((serial) => Number(serial))
+    .filter(Number.isFinite);
+  const serialVariants = [
+    ...new Set([
+      ...numericSerials,
+      ...numericSerials.map((serial) => String(serial)),
+    ]),
+  ];
+
+  return {
+    $or: [
+      { "machine.id": { $in: serialVariants } },
+      { "machine.serial": { $in: serialVariants } },
+      { machineSerial: { $in: serialVariants } },
+    ],
+  };
+}
+
+function totalsShiftCondition(shiftOid) {
+  if (!shiftOid) return null;
+  return {
+    $or: [
+      { "shift.id": String(shiftOid) },
+      { "shift._id": String(shiftOid) },
+      { "shift._id": shiftOid },
+      { shiftId: String(shiftOid) },
+    ],
+  };
+}
+
+function buildTotalsLookupFilter(entityType, dateStr, machineSerials = [], options = {}) {
+  const filter = {
+    type: entityType,
+    "timestamps.create": calendarRange(dateStr),
+    ...(options.hourFilter || {}),
+  };
+
+  const and = [];
+  if (machineSerials.length) {
+    and.push(totalsMachineSerialCondition(machineSerials));
+  }
+
+  const shiftCondition = totalsShiftCondition(options.shiftOid);
+  if (shiftCondition) {
+    and.push(shiftCondition);
+  }
+
+  if (and.length) {
+    filter.$and = and;
+  }
+
+  return filter;
+}
 
 module.exports = function(server) {
 	return constructor(server);
@@ -1073,33 +1130,28 @@ function constructor(server) {
       const machineCollection = shiftOid
         ? db.collection("totals-shift")
         : cacheCollection;
-      const machineFilter = {
-        entityType: "machine",
-        date: dateStr,
-      };
-      if (shiftOid) {
-        machineFilter.shiftId = String(shiftOid);
-      }
-
-      if (machineSerialFilter !== null) {
-        machineFilter.machineSerial = machineSerialFilter;
-      }
+      const machineFilter = buildTotalsLookupFilter(
+        "machine",
+        dateStr,
+        machineSerialFilter !== null ? [machineSerialFilter] : [],
+        { shiftOid }
+      );
 
       let machineTotalsSource = shiftOid ? "totals-shift" : "totals-daily";
-      let machineTotals = await machineCollection.find(machineFilter).toArray();
+      let machineTotals = (await machineCollection.find(machineFilter).toArray())
+        .map(normalizeTotalsDocument);
       if (machineTotals.length === 0 && shiftOid) {
         logger.warn(
           `[machineSessions] No shift machine totals found in totals-shift for ${dateStr} shift ${shiftOid}; falling back to daily machine totals`
         );
-        const dailyMachineFilter = {
-          entityType: "machine",
-          date: dateStr,
-        };
-        if (machineSerialFilter !== null) {
-          dailyMachineFilter.machineSerial = machineSerialFilter;
-        }
+        const dailyMachineFilter = buildTotalsLookupFilter(
+          "machine",
+          dateStr,
+          machineSerialFilter !== null ? [machineSerialFilter] : []
+        );
         machineTotalsSource = "totals-daily";
-        machineTotals = await cacheCollection.find(dailyMachineFilter).toArray();
+        machineTotals = (await cacheCollection.find(dailyMachineFilter).toArray())
+          .map(normalizeTotalsDocument);
       }
 
       const configuredMachines = await loadConfiguredMachines(db, config, machineSerialFilter);
@@ -1167,45 +1219,23 @@ function constructor(server) {
       const detailTotalsCollection = machineTotalsSource === "totals-shift"
         ? db.collection("totals-shift")
         : cacheCollection;
-      const detailTotalsBaseFilter = machineTotalsSource === "totals-shift"
-        ? { shiftId: String(shiftOid) }
-        : {};
+      const detailShiftOid = machineTotalsSource === "totals-shift" ? shiftOid : null;
 
       const [machineItemRecords, machineItemHourlyRecords, operatorMachineRecords, operatorMachineHourlyRecords, stateTickerData] =
         await Promise.all([
           detailTotalsCollection
-            .find({
-              entityType: "machine-item",
-              date: dateStr,
-              machineSerial: { $in: machineSerials },
-              ...detailTotalsBaseFilter,
-            })
+            .find(buildTotalsLookupFilter("machine-item", dateStr, machineSerials, { shiftOid: detailShiftOid }))
             .toArray(),
           db
             .collection(config.totalsHourlyCollectionName)
-            .find({
-              entityType: "machine-item",
-              date: dateStr,
-              machineSerial: { $in: machineSerials },
-              ...chartHourFilter,
-            })
+            .find(buildTotalsLookupFilter("machine-item", dateStr, machineSerials, { hourFilter: chartHourFilter }))
             .toArray(),
           detailTotalsCollection
-            .find({
-              entityType: "operator-machine",
-              date: dateStr,
-              machineSerial: { $in: machineSerials },
-              ...detailTotalsBaseFilter,
-            })
+            .find(buildTotalsLookupFilter("operator-machine", dateStr, machineSerials, { shiftOid: detailShiftOid }))
             .toArray(),
           db
             .collection(config.totalsHourlyCollectionName)
-            .find({
-              entityType: "operator-machine",
-              date: dateStr,
-              machineSerial: { $in: machineSerials },
-              ...chartHourFilter,
-            })
+            .find(buildTotalsLookupFilter("operator-machine", dateStr, machineSerials, { hourFilter: chartHourFilter }))
             .toArray(),
           tickerSerialFilter.length
             ? db
@@ -1233,9 +1263,9 @@ function constructor(server) {
         requestStart,
         requestEnd
       );
-      const machineItemsBySerial = groupRecordsBySerial(machineItemRecords);
-      const machineItemHourlyBySerial = groupRecordsBySerial(machineItemHourlyRecords);
-      const operatorMachineHourlyBySerial = groupRecordsBySerial(operatorMachineHourlyRecords);
+      const machineItemsBySerial = groupRecordsBySerial(machineItemRecords.map(normalizeTotalsDocument));
+      const machineItemHourlyBySerial = groupRecordsBySerial(machineItemHourlyRecords.map(normalizeTotalsDocument));
+      const operatorMachineHourlyBySerial = groupRecordsBySerial(operatorMachineHourlyRecords.map(normalizeTotalsDocument));
 
       const results = await Promise.all(
         machineTotals.map(async (record) => {

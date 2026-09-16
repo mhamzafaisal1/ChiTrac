@@ -1802,13 +1802,34 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     if (!machineData) return null;
 
+    const itemSummaries = machineData.itemSummary?.machineSummary?.itemSummaries;
+    const hasItemSummaryData =
+      itemSummaries &&
+      typeof itemSummaries === "object" &&
+      Object.keys(itemSummaries).length > 0;
+    const hasItemHourlyStackData =
+      Array.isArray(machineData.itemHourlyStack?.data?.hours) &&
+      machineData.itemHourlyStack.data.hours.length > 0;
+    const hasOperatorEfficiencyData =
+      Array.isArray(machineData.operatorEfficiency) &&
+      machineData.operatorEfficiency.length > 0;
+    const hasCurrentOperatorsData =
+      Array.isArray(machineData.currentOperators) &&
+      machineData.currentOperators.length > 0;
+    const hasFaultData =
+      Array.isArray(machineData.faultData?.faultCycles) &&
+      machineData.faultData.faultCycles.length > 0;
+    const hasDowntimeParetoData =
+      Array.isArray(machineData.downtimePareto?.summaries) &&
+      machineData.downtimePareto.summaries.length > 0;
+
     const hasDetailData =
-      !!machineData.itemSummary ||
-      !!machineData.itemHourlyStack ||
-      !!machineData.operatorEfficiency ||
-      !!machineData.currentOperators ||
-      !!machineData.faultData ||
-      !!machineData.downtimePareto;
+      hasItemSummaryData ||
+      hasItemHourlyStackData ||
+      hasOperatorEfficiencyData ||
+      hasCurrentOperatorsData ||
+      hasFaultData ||
+      hasDowntimeParetoData;
 
     return hasDetailData ? machineData : null;
   }
