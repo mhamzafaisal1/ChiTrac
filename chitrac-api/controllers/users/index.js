@@ -1,12 +1,15 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
 const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
 const { getEmailValidationError } = require('../../utils/emailValidation');
 const { sendPasswordResetEmail } = require('../../modules/passwordResetEmail');
+const {
+  createVerifyJwtMiddleware,
+  normalizeTokenUserId,
+} = require('../../utils/authMiddleware');
 
 module.exports = function(server) {
   const router = express.Router();
@@ -15,14 +18,7 @@ module.exports = function(server) {
   const userCollection = db.collection(config.userCollectionName);
   const PASSWORD_MIN_LENGTH = 6;
   const PASSWORD_MAX_LENGTH = 64;
-
-  function extractToken(req) {
-    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
-    if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
-    if (typeof req.query?.token === 'string') return req.query.token;
-    if (typeof req.body?.token === 'string') return req.body.token;
-    return null;
-  }
+  const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
 
   function requirePermissionLevel(requiredLevel) {
     return async function(req, res, next) {
@@ -32,12 +28,10 @@ module.exports = function(server) {
         return next();
       }
 
-      try {
-        const token = extractToken(req);
-        if (!token) return res.status(401).json({ error: 'Missing token' });
-
-        const payload = jwt.verify(token, config.jwtSecret);
-        const tokenUserId = getTokenUserId(payload);
+      return verifyJwtMiddleware(req, res, async () => {
+        try {
+          const payload = req.tokenPayload || {};
+          const tokenUserId = getTokenUserId(payload);
         if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 
         const user = await userCollection.findOne({ _id: new ObjectId(tokenUserId) });
@@ -49,6 +43,7 @@ module.exports = function(server) {
         logger?.error?.('Permission check failed:', error);
         return res.status(error.status || 401).json({ error: error.message || 'Invalid token' });
       }
+      });
     };
   }
 
@@ -96,23 +91,11 @@ module.exports = function(server) {
       return next();
     }
 
-    try {
-      const token = extractToken(req);
-      if (!token) return res.status(401).json({ error: 'Missing token' });
-
-      req.tokenPayload = jwt.verify(token, config.jwtSecret);
-      return next();
-    } catch (error) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
+    return verifyJwtMiddleware(req, res, next);
   }
 
   function getTokenUserId(payload) {
-    const rawUserId = payload?.userId;
-    if (!rawUserId) return null;
-    if (typeof rawUserId === 'string') return rawUserId;
-    if (typeof rawUserId === 'object' && rawUserId.$oid) return rawUserId.$oid;
-    return `${rawUserId}`;
+    return normalizeTokenUserId(payload?.userId || payload?.createdBy);
   }
 
   function normalizeStringArray(value) {
