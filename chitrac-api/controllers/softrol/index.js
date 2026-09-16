@@ -5,6 +5,7 @@
 const express = require("express");
 const router = express.Router();
 const { DateTime, Duration, Interval } = require("luxon"); //For handling dates and times
+const { createVerifyJwtMiddleware } = require("../../utils/authMiddleware");
 
 const {
   parseAndValidateQueryParams,
@@ -41,6 +42,13 @@ function constructor(server) {
   const logger = server.logger;
   const xmlParser = server.xmlParser;
   const xml = xmlParser.xml;
+  const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
+
+  router.get("/status", async (req, res) => {
+    res.json({ vendor: "Softrol", status: "ok" });
+  });
+
+  router.use(verifyJwtMiddleware);
 
   // Import level-two dashboard-related routes
   const levelTwoDashboardRoutes = require("./level-twoRoutes")(server);

@@ -2,6 +2,7 @@ const express = require("express");
 const { DateTime } = require("luxon");
 
 const config = require("../../modules/config");
+const { createVerifyJwtMiddleware } = require("../../utils/authMiddleware");
 const { formatDuration, SYSTEM_TIMEZONE } = require("../../utils/time");
 const { formatHumanName } = require("../../utils/humanNames");
 const { computeShiftElapsedMs } = require("../../utils/shiftElapsed");
@@ -29,6 +30,7 @@ function constructor(server) {
   const router = express.Router();
   const db = server.db;
   const logger = server.logger;
+  const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
 
   const totalsShiftCollectionName = "totals-shift";
 
@@ -2145,6 +2147,8 @@ function constructor(server) {
   router.get("/status", async (req, res) => {
     res.json({ vendor: "Spindle", status: "ok" });
   });
+
+  router.use(verifyJwtMiddleware);
 
   router.get("/machine/overview", async (req, res) => {
     try {
