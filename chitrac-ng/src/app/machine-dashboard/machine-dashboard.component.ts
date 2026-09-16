@@ -184,6 +184,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private readonly legacyAllDayProjectedCountLabel = "Projected Count";
   private readonly shiftProjectedCountLabel = "Projected Count (Shift)";
   private readonly lastShiftTotalCountLabel = "Total Count (Last Shift)";
+  private readonly shiftInfoCardPreferenceLabel = "Shift";
   private readonly machineSummaryCardLabels = [
     "Machines",
     "Running",
@@ -201,6 +202,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Down Operators",
     "Total Count",
     "Current Pace",
+    "Shift",
     "Projected Count (All Day)",
     "Projected Count (Shift)",
     "Avg OEE",
@@ -744,8 +746,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const projectedCount = this.getProjectedCount(allDayTotalCount, allDayElapsedHours, allDayTotalProjectionHours);
     const shiftProjection = this.getShiftProjection(responses, cache);
     const shiftProjectionTone = shiftProjection.tone;
+    const shiftInfoCard = this.getShiftInfoCard(cache);
 
-    this.allSummaryCards = this.applySummaryCardOrder([
+    const summaryCards = [
       { label: "Machines", value: machineCounts.total, icon: "precision_manufacturing", tone: "neutral" },
       { label: "Running", value: machineCounts.running, icon: "play_circle", tone: "good" },
       { label: "Paused Machines", value: machineCounts.paused, icon: "pause_circle", tone: machineCounts.paused > 0 ? "warn" : "neutral" },
@@ -768,10 +771,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         sparklineData: this.getCountSparklineData(cache) || this.getMockCountSparklineData(totalCount, currentPph),
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
+      ...(shiftInfoCard ? [shiftInfoCard] : []),
       { label: this.allDayProjectedCountLabel, value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= allDayTotalCount ? "good" : "neutral" },
       { label: shiftProjection.label, value: shiftProjection.value, icon: "outlined_flag", tone: shiftProjectionTone },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: this.getOeeSummaryTone(avgOee) },
-    ]);
+    ];
+
+    this.allSummaryCards = this.applySummaryCardOrder(summaryCards);
     this.syncSummaryCardsFromAll();
   }
 
@@ -845,6 +851,51 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       projectedCount: null,
       totalCount: 0,
     };
+  }
+
+  private getShiftInfoCard(cache?: DashboardCacheState | null): SummaryCard | null {
+    if (this.dateTimeService.getShiftId() || !this.isCurrentDayView()) {
+      return null;
+    }
+
+    const projectionWindow = this.getShiftProjectionWindow(cache);
+    const shift = projectionWindow?.currentShift || projectionWindow?.nextShift;
+    if (!shift?.start || !shift?.end) {
+      return null;
+    }
+
+    const isTomorrow = this.isTomorrow(shift.start);
+    const prefix = isTomorrow ? "First Shift Tomorrow: " : "Shift: ";
+    return {
+      label: `${prefix}${shift.name || "Unnamed Shift"}`,
+      value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}`,
+      icon: "schedule",
+      tone: "neutral",
+    };
+  }
+
+  private formatShiftInfoTime(value: string | Date | null): string {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return "";
+
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
+  }
+
+  private isTomorrow(value: string | Date | null): boolean {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return false;
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return (
+      date.getFullYear() === tomorrow.getFullYear() &&
+      date.getMonth() === tomorrow.getMonth() &&
+      date.getDate() === tomorrow.getDate()
+    );
   }
 
   private getShiftProjectionResponses(responses: any[], cache?: DashboardCacheState | null): any[] {
@@ -1072,6 +1123,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       "Down Operators": "do_not_disturb_on",
       "Total Count": "tag",
       "Current Pace": "trending_up",
+      [this.shiftInfoCardPreferenceLabel]: "schedule",
       [this.allDayProjectedCountLabel]: "flag",
       [this.shiftProjectedCountLabel]: "outlined_flag",
       "Avg OEE": "speed",
@@ -1369,6 +1421,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private getSummaryCardPreferenceKey(label: string): string {
     if (label === this.lastShiftTotalCountLabel) {
       return this.shiftProjectedCountLabel;
+    }
+
+    if (label.startsWith("Shift: ") || label.startsWith("First Shift Tomorrow: ")) {
+      return this.shiftInfoCardPreferenceLabel;
     }
 
     return this.normalizeSummaryCardLabel(label);

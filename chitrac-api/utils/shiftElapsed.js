@@ -61,6 +61,39 @@ function shiftInfo(shift, start, end) {
   };
 }
 
+function shiftsForDay(shifts, dayStart) {
+  return (Array.isArray(shifts) ? shifts : [])
+    .map(normalizeShift)
+    .filter(Boolean)
+    .filter((shift) => shift.activeDays.includes(dayStart.weekday))
+    .map((shift) => {
+      const start = dayStart.set({
+        hour: shift.startHour,
+        minute: shift.startMinute,
+        second: 0,
+        millisecond: 0,
+      });
+      const end = dayStart.set({
+        hour: shift.endHour,
+        minute: shift.endMinute,
+        second: 0,
+        millisecond: 0,
+      });
+      return { shift, start, end };
+    })
+    .filter(({ end, start }) => end > start)
+    .sort((a, b) => a.start.toMillis() - b.start.toMillis());
+}
+
+function firstShiftAfterDay(shifts, dayStart, maxDays = 1) {
+  for (let offset = 1; offset <= maxDays; offset += 1) {
+    const nextDay = dayStart.plus({ days: offset });
+    const [firstShift] = shiftsForDay(shifts, nextDay);
+    if (firstShift) return firstShift;
+  }
+  return null;
+}
+
 function breakIntervalForDay(shiftBreak, day, shiftStartMs, shiftEndMs, zone = SYSTEM_TIMEZONE) {
   let breakStart;
   let breakEnd;
@@ -92,34 +125,17 @@ function breakIntervalForDay(shiftBreak, day, shiftStartMs, shiftEndMs, zone = S
 }
 
 function resolveProjectionState(shifts, dayStart, nowForDay, zone = SYSTEM_TIMEZONE) {
-  const dayShifts = (Array.isArray(shifts) ? shifts : [])
-    .map(normalizeShift)
-    .filter(Boolean)
-    .filter((shift) => shift.activeDays.includes(dayStart.weekday))
-    .map((shift) => {
-      const start = dayStart.set({
-        hour: shift.startHour,
-        minute: shift.startMinute,
-        second: 0,
-        millisecond: 0,
-      });
-      const end = dayStart.set({
-        hour: shift.endHour,
-        minute: shift.endMinute,
-        second: 0,
-        millisecond: 0,
-      });
-      return { shift, start, end };
-    })
-    .filter(({ end, start }) => end > start)
-    .sort((a, b) => a.start.toMillis() - b.start.toMillis());
+  const dayShifts = shiftsForDay(shifts, dayStart);
+  const nextFutureShift = firstShiftAfterDay(shifts, dayStart);
 
   if (!dayShifts.length) {
     return {
       state: "noShift",
       currentShift: null,
       previousShift: null,
-      nextShift: null,
+      nextShift: nextFutureShift
+        ? shiftInfo(nextFutureShift.shift, nextFutureShift.start, nextFutureShift.end)
+        : null,
     };
   }
 
@@ -156,7 +172,11 @@ function resolveProjectionState(shifts, dayStart, nowForDay, zone = SYSTEM_TIMEZ
     state,
     currentShift: null,
     previousShift: previous ? shiftInfo(previous.shift, previous.start, previous.end) : null,
-    nextShift: next ? shiftInfo(next.shift, next.start, next.end) : null,
+    nextShift: next
+      ? shiftInfo(next.shift, next.start, next.end)
+      : nextFutureShift
+        ? shiftInfo(nextFutureShift.shift, nextFutureShift.start, nextFutureShift.end)
+        : null,
   };
 }
 
