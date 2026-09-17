@@ -50,7 +50,7 @@ export class OperatorDialogCuComponent implements OnInit {
   operator: OperatorConfig;
   operatorName: string;
   error: any = null;
-  codeControl: FormControl;
+  idControl: FormControl;
   
   useComplexName: boolean = false;
   operatorFormGroup: FormGroup;
@@ -82,14 +82,14 @@ export class OperatorDialogCuComponent implements OnInit {
       this.operatorName = [nameObj.first, nameObj.surname].filter(Boolean).join(' ') || 'Unknown';
     }
     
-    this.codeControl = new FormControl();
+    this.idControl = new FormControl();
     
     // Initialize simple name form
     const simpleName = typeof this.operator.name === 'string' ? this.operator.name : '';
     // Only require name field if NOT using complex mode
     const nameValidators = this.useComplexName ? [] : [Validators.required, Validators.minLength(4)];
     this.operatorFormGroup = new FormGroup({
-      code: new FormControl(this.operator.code, [Validators.required, Validators.min(100000)]),
+      id: new FormControl(this.operator.id, [Validators.required, Validators.min(100000)]),
       name: new FormControl(simpleName, nameValidators),
       active: new FormControl(this.operator.active)
     });
@@ -119,7 +119,7 @@ export class OperatorDialogCuComponent implements OnInit {
         debounceTime(100),
         distinctUntilChanged()
       ).subscribe(res => {
-        this.operator.code = res.code;
+        this.operator.id = res.id;
         if (!this.useComplexName) {
           this.operator.name = res.name;
         }

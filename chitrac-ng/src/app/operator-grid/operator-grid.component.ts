@@ -49,9 +49,9 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
   paginationSize: number = 10;
   isDownloading: boolean = false;
 
-  displayedColumns: string[] = ['code', 'name', 'active'];
+  displayedColumns: string[] = ['id', 'name', 'active'];
 
-  emptyOperator: OperatorConfig = new OperatorConfig().deserialize({ code: null, name: '', active: true});
+  emptyOperator: OperatorConfig = new OperatorConfig().deserialize({ id: null, name: '', active: true});
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
 
@@ -78,9 +78,12 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
   readonly dialog = inject(MatDialog);
 
   private sanitize(op: any): OperatorConfig {
-    const { _id, code, name, active } = op ?? {};
+    const { _id, id, code, name, active } = op ?? {};
     return new OperatorConfig().deserialize({
-      _id, code: typeof code === 'string' ? +code : code, name, active: !!active
+      _id,
+      id: typeof (id ?? code) === 'string' ? +(id ?? code) : (id ?? code),
+      name,
+      active: !!active
     });
   }
 
@@ -121,7 +124,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
       // Creating new operator - get next available ID
       this.configurationService.getNewOperatorId().subscribe({
         next: (response) => {
-          const newOperator = { ...this.emptyOperator, code: response.code };
+          const newOperator = { ...this.emptyOperator, id: response.id };
           const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data: newOperator, disableClose: true });
           this.setupDialogHandlers(dialogRef);
         },
@@ -208,11 +211,11 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
       y += 24;
 
       // Table headers
-      const head = [['Code', 'Name', 'Status']];
+      const head = [['ID', 'Name', 'Status']];
       
       // Table body - export all operators (not just current page)
       const body = this.dataSource.data.map(operator => [
-        operator.code?.toString() || 'N/A',
+        operator.id?.toString() || 'N/A',
         this.getOperatorDisplayName(operator),
         operator.active ? 'Active' : 'Inactive'
       ]);

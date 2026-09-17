@@ -207,6 +207,18 @@ function constructor(server) {
 			.sort((a, b) => a - b);
 	}
 
+	async function findMachineByRouteId(id) {
+		if (!id) return null;
+
+		const idString = String(id);
+		if (ObjectId.isValid(idString)) {
+			const byObjectId = await collection.findOne({ _id: new ObjectId(idString) });
+			if (byObjectId) return byObjectId;
+		}
+
+		return collection.findOne({ id: Number(id) });
+	}
+
 	async function getMachineUniquenessErrors(machine, excludedId = null) {
 		const id = machineId(machine);
 		const name = String(machine.name || '').trim();
@@ -221,7 +233,10 @@ function constructor(server) {
 		};
 
 		if (excludedId) {
-			query._id = { $ne: new ObjectId(excludedId) };
+			const existingMachine = await findMachineByRouteId(excludedId);
+			if (existingMachine?._id) {
+				query._id = { $ne: existingMachine._id };
+			}
 		}
 
 		const matches = await collection
@@ -909,7 +924,7 @@ function constructor(server) {
 				timestamp: new Date().toISOString()
 			});
 
-			let results = await configService.deleteConfiguration(collection, id);
+			let results = await configService.deleteConfiguration(collection, id, 'id');
 			
 			logger.info('[deleteMachine] Machine deleted successfully:', {
 				id: id,

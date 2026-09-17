@@ -46,7 +46,12 @@ function constructor(server) {
 			if (updates._id) {
 				delete updates._id;
 			};
-			let results = await configService.upsertConfiguration(collection, updates, true, 'id');
+			let results = await configService.upsertConfiguration(
+				collection,
+				id ? { _id: id, ...updates } : updates,
+				true,
+				'id'
+			);
 			res.json(results);
 		} catch (error) {
 			next(error);
@@ -56,7 +61,7 @@ function constructor(server) {
 	async function deleteStatus(collection, req, res, next) {
 		try {
 			const id = req.params.id;
-			let results = configService.deleteConfiguration(collection, id);
+			let results = await configService.deleteConfiguration(collection, id, 'id');
 			res.json(results);
 		} catch (error) {
 			next(error);
