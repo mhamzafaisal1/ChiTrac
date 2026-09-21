@@ -5,6 +5,7 @@ const config = require('../../modules/config');
 const { assertPermissionLevel } = require('../../modules/permissions');
 const systemPreferences = require('../../modules/systemPreferences');
 const systemPreferencesSchema = require('../../schemas/system-preferences');
+const timestampsSchema = require('../../schemas/timestampsSchema');
 
 const SYSTEM_SINGLETON_ID = systemPreferences.SINGLETON_ID;
 
@@ -184,6 +185,7 @@ function constructor(server) {
         const summaryCardOrder = layout.summaryCardOrder;
         const summaryCardVisibility = layout.summaryCardVisibility;
         const tableColumnVisibility = layout.tableColumnVisibility;
+        const pphDisplayMode = layout.pphDisplayMode;
         const dashboardUpdates = {};
 
         if (summaryCardOrder !== undefined) {
@@ -251,6 +253,16 @@ function constructor(server) {
           });
 
           dashboardUpdates.tableColumnVisibility = cleanedVisibility;
+        }
+
+        if (pphDisplayMode !== undefined) {
+          if (!['perMachine', 'perStation'].includes(pphDisplayMode)) {
+            const error = new Error(`Invalid ${dashboardName}.pphDisplayMode. Must be 'perMachine' or 'perStation'`);
+            error.status = 400;
+            throw error;
+          }
+
+          dashboardUpdates.pphDisplayMode = pphDisplayMode;
         }
 
         return Object.keys(dashboardUpdates).length ? dashboardUpdates : null;
@@ -326,8 +338,19 @@ function constructor(server) {
     }
 
     preferences.userId = userId;
-    preferences.updatedAt = new Date();
     return preferences;
+  }
+
+  function buildUserPreferenceTimestamps(existing = {}, now = new Date()) {
+    if (existing.timestamps) {
+      return timestampsSchema.utils.stampUpdate(existing.timestamps, now);
+    }
+
+    const createdAt = existing.createdAt || now;
+    return timestampsSchema.utils.stampUpdate(
+      timestampsSchema.utils.stampInit(createdAt),
+      now
+    );
   }
 
   function buildUserPreferenceUpdates(preferences = {}) {
@@ -356,6 +379,11 @@ function constructor(server) {
         preferences.dashboardLayouts.machineDashboard.tableColumnVisibility;
     }
 
+    if (preferences.dashboardLayouts?.machineDashboard?.pphDisplayMode) {
+      updates['dashboardLayouts.machineDashboard.pphDisplayMode'] =
+        preferences.dashboardLayouts.machineDashboard.pphDisplayMode;
+    }
+
     if (preferences.dashboardLayouts?.operatorDashboard?.summaryCardOrder) {
       updates['dashboardLayouts.operatorDashboard.summaryCardOrder'] =
         preferences.dashboardLayouts.operatorDashboard.summaryCardOrder;
@@ -381,13 +409,12 @@ function constructor(server) {
         preferences.dashboardLayouts.experimentalDailyDashboard.chartVisibility;
     }
 
-    updates.updatedAt = preferences.updatedAt || new Date();
     return updates;
   }
 
   function mergePreferences(envPreferences, systemPrefs, userPrefs) {
-    const { _id: systemId, createdAt: systemCreatedAt, updatedAt: systemUpdatedAt, ...systemValues } = systemPrefs || {};
-    const { _id: userPreferenceId, userId, createdAt: userCreatedAt, updatedAt: userUpdatedAt, theme, ...userValues } = userPrefs || {};
+    const { _id: systemId, timestamps: systemTimestamps, ...systemValues } = systemPrefs || {};
+    const { _id: userPreferenceId, userId, timestamps: userTimestamps, theme, ...userValues } = userPrefs || {};
 
     return {
       ...envPreferences,
@@ -465,14 +492,16 @@ function constructor(server) {
 
       const preferences = sanitizeUserPreferences(req.body, req.authUserId);
       const updates = buildUserPreferenceUpdates(preferences);
+      const existing = await userPreferencesCollection.findOne({ userId: req.authUserId });
+      updates.timestamps = buildUserPreferenceTimestamps(existing || {});
       await userPreferencesCollection.updateOne(
         { userId: req.authUserId },
         {
           $set: updates,
           $setOnInsert: {
-            userId: req.authUserId,
-            createdAt: new Date()
-          }
+            userId: req.authUserId
+          },
+          $unset: { createdAt: '', updatedAt: '' }
         },
         { upsert: true }
       );
@@ -539,14 +568,16 @@ function constructor(server) {
       const { theme } = req.body;
       const preferences = sanitizeUserPreferences({ theme }, req.authUserId);
       const { userId, ...updates } = preferences;
+      const existing = await userPreferencesCollection.findOne({ userId: req.authUserId });
+      updates.timestamps = buildUserPreferenceTimestamps(existing || {});
       await userPreferencesCollection.updateOne(
         { userId: req.authUserId },
         {
           $set: updates,
           $setOnInsert: {
-            userId: req.authUserId,
-            createdAt: new Date()
-          }
+            userId: req.authUserId
+          },
+          $unset: { createdAt: '', updatedAt: '' }
         },
         { upsert: true }
       );

@@ -30,6 +30,7 @@ export interface DashboardLayoutPreferences {
     summaryCardOrder?: string[];
     summaryCardVisibility?: Record<string, boolean>;
     tableColumnVisibility?: Record<string, boolean>;
+    pphDisplayMode?: MachinePphDisplayMode;
   };
   operatorDashboard?: {
     summaryCardOrder?: string[];
@@ -42,13 +43,18 @@ export interface DashboardLayoutPreferences {
   };
 }
 
+export type MachinePphDisplayMode = 'perMachine' | 'perStation';
+
 export interface UserPreferences {
   userId?: string;
   theme?: 'light' | 'dark';
   defaultTheme?: 'light' | 'dark';
   dashboardLayouts?: DashboardLayoutPreferences;
-  createdAt?: string | Date;
-  updatedAt?: string | Date;
+  timestamps?: {
+    create: string | Date;
+    active: string | Date;
+    update: string | Date;
+  };
 }
 
 @Injectable({
@@ -185,14 +191,36 @@ export class SettingsService {
   saveMachineDashboardLayout(
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
-    summaryCardVisibility: Record<string, boolean> = {}
+    summaryCardVisibility: Record<string, boolean> = {},
+    pphDisplayMode?: MachinePphDisplayMode
   ): Observable<UserPreferences> {
+    const machineDashboard: DashboardLayoutPreferences['machineDashboard'] = {
+      summaryCardOrder,
+      summaryCardVisibility,
+      tableColumnVisibility
+    };
+    if (pphDisplayMode) {
+      machineDashboard.pphDisplayMode = pphDisplayMode;
+    }
+
+    const payload = {
+      dashboardLayouts: {
+        machineDashboard
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => {
+        this.userPreferencesSubject.next(preferences);
+      })
+    );
+  }
+
+  saveMachinePphDisplayMode(pphDisplayMode: MachinePphDisplayMode): Observable<UserPreferences> {
     const payload = {
       dashboardLayouts: {
         machineDashboard: {
-          summaryCardOrder,
-          summaryCardVisibility,
-          tableColumnVisibility
+          pphDisplayMode
         }
       }
     };
@@ -281,19 +309,25 @@ export class SettingsService {
   setMachineDashboardLayout(
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
-    summaryCardVisibility: Record<string, boolean> = {}
+    summaryCardVisibility: Record<string, boolean> = {},
+    pphDisplayMode?: MachinePphDisplayMode
   ): void {
     const current = this.userPreferencesSubject.value || {};
+    const machineDashboard = {
+      ...current.dashboardLayouts?.machineDashboard,
+      summaryCardOrder,
+      summaryCardVisibility,
+      tableColumnVisibility
+    };
+    if (pphDisplayMode) {
+      machineDashboard.pphDisplayMode = pphDisplayMode;
+    }
+
     this.userPreferencesSubject.next({
       ...current,
       dashboardLayouts: {
         ...current.dashboardLayouts,
-        machineDashboard: {
-          ...current.dashboardLayouts?.machineDashboard,
-          summaryCardOrder,
-          summaryCardVisibility,
-          tableColumnVisibility
-        }
+        machineDashboard
       }
     });
   }

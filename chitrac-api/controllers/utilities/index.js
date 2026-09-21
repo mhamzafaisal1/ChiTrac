@@ -554,7 +554,9 @@ function constructor(server) {
   // Helper function to get operator name from database
   async function getOperatorName(db, operatorId) {
     try {
-      const operator = await db.collection(config.operatorCollectionName).findOne({ code: operatorId });
+      const operator = await db.collection(config.operatorCollectionName).findOne({
+        $or: [{ id: operatorId }, { code: operatorId }]
+      });
       return operator?.name || `Operator ${operatorId}`;
     } catch (error) {
       return `Operator ${operatorId}`;

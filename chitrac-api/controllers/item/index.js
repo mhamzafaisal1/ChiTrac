@@ -131,7 +131,12 @@ function constructor(server) {
 
 	async function getExistingItem(id) {
 		if (!id) return null;
-		return collection.findOne({ _id: new ObjectId(id) });
+		const idString = String(id);
+		if (ObjectId.isValid(idString)) {
+			const byObjectId = await collection.findOne({ _id: new ObjectId(idString) });
+			if (byObjectId) return byObjectId;
+		}
+		return collection.findOne({ id: Number(id) });
 	}
 
 	async function stampItemWrite(id, updates) {
@@ -376,7 +381,7 @@ function constructor(server) {
 				timestamp: new Date().toISOString()
 			});
 
-			const results = await configService.deleteConfiguration(collection, id);
+			const results = await configService.deleteConfiguration(collection, id, 'id');
 			
 			logger.info('[deleteItem] Item deleted successfully:', {
 				id: id,

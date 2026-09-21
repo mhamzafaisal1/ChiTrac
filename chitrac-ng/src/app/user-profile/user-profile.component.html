@@ -53,4 +53,32 @@
       </button>
     </div>
   </form>
+
+  <form [formGroup]="dashboardPreferencesFormGroup" (ngSubmit)="saveDashboardPreferences()" class="profile-form">
+    <section class="form-section">
+      <h3>Dashboard</h3>
+
+      <div class="setting-row">
+        <div class="setting-copy">
+          <strong>Machine PPH</strong>
+          <span>Choose how machine dashboard PPH is displayed.</span>
+        </div>
+
+        <mat-button-toggle-group
+          formControlName="pphDisplayMode"
+          aria-label="Machine dashboard PPH display mode"
+        >
+          <mat-button-toggle value="perMachine">Per Machine</mat-button-toggle>
+          <mat-button-toggle value="perStation">Per Station</mat-button-toggle>
+        </mat-button-toggle-group>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button mat-flat-button color="primary" type="submit" [disabled]="isSavingDashboardPreferences">
+        <mat-icon>save</mat-icon>
+        {{ isSavingDashboardPreferences ? 'Saving...' : 'Save Dashboard Preferences' }}
+      </button>
+    </div>
+  </form>
 </div>
