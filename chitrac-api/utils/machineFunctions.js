@@ -31,6 +31,9 @@
   const { loadActiveShifts, resolveShiftHourEnvelopeForDisplay } = require("./shiftElapsed");
   const { getLiveProductiveWindowMs, liveDowntimeMs } = require("./availabilityLive");
 
+  const recordTimestamp = (record) => record?.timestamps?.create;
+  const tickerTimestamp = (record) => record?.timestamps?.update || record?.timestamps?.create;
+
   function safe(n) {
     return typeof n === "number" && isFinite(n) ? n : 0;
   }
@@ -163,7 +166,7 @@
       let countInWin = 0;
       if (Array.isArray(s.counts) && s.counts.length && s.counts.length <= 50000) {
         countInWin = s.counts.reduce((acc, c) => {
-          const ts = new Date(c.timestamp);
+          const ts = new Date(recordTimestamp(c));
           const sameItem = !c.item?.id || c.item.id === it.id;
           return acc + (sameItem && ts >= ovStart && ts <= ovEnd ? 1 : 0);
         }, 0);
@@ -315,7 +318,7 @@
 async function getActiveMachineSerials(db, start, end) {
     const stateCollection = getStateCollectionName(start);
     const serials = await db.collection(stateCollection).distinct("machine.serial", {
-      timestamp: { $gte: new Date(start), $lte: new Date(end) }
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
     });
     return serials;
   }
@@ -337,7 +340,7 @@ async function getActiveMachineSerials(db, start, end) {
 
     for (const state of states) {
       const code = state.status?.code;
-      const timestamp = new Date(state.timestamp);
+      const timestamp = new Date(recordTimestamp(state));
 
       // Running cycles
       if (!mode || mode === 'running') {
@@ -569,7 +572,7 @@ async function getActiveMachineSerials(db, start, end) {
 
     // Filter counts/misfeeds to window
     const inWindow = (d) => {
-      const ts = new Date(d.timestamp || d.timestamps?.create);
+      const ts = new Date(recordTimestamp(d));
       return ts >= clampedStart && ts <= clampedEnd;
     };
 
@@ -675,9 +678,7 @@ async function getActiveMachineSerials(db, start, end) {
       ];
       const ts =
         new Date(
-          record.status?.timestamp ||
-            record.timestamp ||
-            record.timestamps?.update ||
+          record.timestamps?.update ||
             record.timestamps?.active ||
             record.timestamps?.create ||
             0
@@ -1486,7 +1487,7 @@ async function getActiveMachineSerials(db, start, end) {
     const tickers = await db
       .collection(config.stateTickerCollectionName)
       .find({ "machine.serial": { $in: [...activeSerials] } })
-      .project({ _id: 0, timestamp: 1, status: 1, "machine.serial": 1 })
+      .project({ _id: 0, timestamps: 1, status: 1, "machine.serial": 1 })
       .toArray();
 
     const statusMap = new Map();
@@ -1495,7 +1496,7 @@ async function getActiveMachineSerials(db, start, end) {
       if (!serial) {
         return;
       }
-      const ts = new Date(ticker.timestamp || 0).getTime();
+      const ts = new Date(tickerTimestamp(ticker) || 0).getTime();
       const existing = statusMap.get(serial);
       if (!existing || ts > existing.timestamp) {
         // Status schema uses 'id', but legacy code used 'code' - support both
@@ -1780,7 +1781,7 @@ async function getActiveMachineSerials(db, start, end) {
     const sessionEnd = new Date(end);
 
     const countsInSession = validCounts.filter((c) => {
-      const countTime = c.timestamp || c.timestamps?.create;
+          const countTime = recordTimestamp(c);
       if (!countTime) return false;
       const ts = new Date(countTime);
       return ts >= sessionStart && ts <= sessionEnd;
@@ -1793,7 +1794,7 @@ async function getActiveMachineSerials(db, start, end) {
         cycles = [{ start: sessionStart, end: sessionEnd, duration: sessionEnd - sessionStart }];
       } else {
         const countsInCycles = countsInSession.some(c => {
-          const countTime = new Date(c.timestamp || c.timestamps?.create);
+          const countTime = new Date(recordTimestamp(c));
           return cycles.some(cycle => {
             const cycleStart = new Date(cycle.start);
             const cycleEnd = new Date(cycle.end);
@@ -1827,7 +1828,7 @@ async function getActiveMachineSerials(db, start, end) {
       const cycleMs = cycleEnd - cycleStart;
 
       const cycleCounts = countsInSession.filter((c) => {
-        const countTime = c.timestamp || c.timestamps?.create;
+        const countTime = recordTimestamp(c);
         if (!countTime) return false;
         const ts = new Date(countTime);
         return ts >= cycleStart && ts <= cycleEnd;
@@ -1913,7 +1914,7 @@ async function getActiveMachineSerials(db, start, end) {
       const itemNames = new Set();
 
       for (const count of validCounts) {
-        const countTime = count.timestamp || count.timestamps?.create;
+        const countTime = recordTimestamp(count);
         if (!countTime) continue;
         const ts = new Date(countTime);
         const hourIndex = Math.floor((ts - startDate) / (60 * 60 * 1000));
@@ -1967,14 +1968,14 @@ async function getActiveMachineSerials(db, start, end) {
       const hourlyData = await Promise.all(
         hourlyIntervals.map(async (interval) => {
           const hourStates = states.filter((s) => {
-            const stateTime = s.timestamp || s.timestamps?.create;
+            const stateTime = recordTimestamp(s);
             if (!stateTime) return false;
             const ts = new Date(stateTime);
             return ts >= interval.start && ts < interval.end;
           });
 
           const hourCounts = counts.filter((c) => {
-            const countTime = c.timestamp || c.timestamps?.create;
+            const countTime = recordTimestamp(c);
             if (!countTime) return false;
             const ts = new Date(countTime);
             return ts >= interval.start && ts < interval.end;
@@ -2273,7 +2274,7 @@ async function getActiveMachineSerials(db, start, end) {
         const tickers = await db
           .collection(config.stateTickerCollectionName)
           .find({ "machine.id": { $in: [...activeSerials] } })
-          .project({ _id: 0, "machine.id": 1, "machine.serial": 1, "machine.name": 1, status: 1, timestamp: 1 })
+          .project({ _id: 0, "machine.id": 1, "machine.serial": 1, "machine.name": 1, status: 1, timestamps: 1 })
           .toArray();
 
         logger.info(
@@ -2283,9 +2284,9 @@ async function getActiveMachineSerials(db, start, end) {
         const latestTickers = new Map();
         tickers.forEach((ticker) => {
           const id = Number(ticker.machine?.id);
-          const ts = new Date(ticker.timestamp || 0);
+          const ts = new Date(tickerTimestamp(ticker) || 0);
           const existing = latestTickers.get(id);
-          if (!existing || ts > new Date(existing.timestamp || 0)) {
+          if (!existing || ts > new Date(tickerTimestamp(existing) || 0)) {
             latestTickers.set(id, ticker);
           }
         });
@@ -2481,32 +2482,17 @@ async function getActiveMachineSerials(db, start, end) {
 
     if (endDate > now) endDate = now;
 
-    const startISO = startDate.toISOString();
-    const endISO = endDate.toISOString();
-
     const stateCollection = getStateCollectionName(startDate);
 
     const inRangeStatesQ = db.collection(stateCollection)
       .find({
         $or: [
-          {
-            $or: [
-              { "machine.id": serialNum },
-              { "machine.serial": serialNum }
-            ],
-            "timestamps.create": { $gte: startISO, $lte: endISO }
-          },
-          {
-            $or: [
-              { "machine.id": serialNum },
-              { "machine.serial": serialNum }
-            ],
-            timestamp: { $gte: startDate, $lte: endDate }
-          }
-        ]
+          { "machine.id": serialNum },
+          { "machine.serial": serialNum }
+        ],
+        "timestamps.create": { $gte: startDate, $lte: endDate }
       })
       .project({
-        timestamp: 1,
         "timestamps.create": 1,
         "machine.serial": 1,
         "machine.id": 1,
@@ -2515,29 +2501,17 @@ async function getActiveMachineSerials(db, start, end) {
         "status.code": 1,
         "status.name": 1
       })
-      .sort({ "timestamps.create": 1, timestamp: 1 });
+      .sort({ "timestamps.create": 1 });
 
     const beforeStartQ = db.collection(stateCollection)
       .find({
         $or: [
-          {
-            $or: [
-              { "machine.id": serialNum },
-              { "machine.serial": serialNum }
-            ],
-            "timestamps.create": { $lt: startISO }
-          },
-          {
-            $or: [
-              { "machine.id": serialNum },
-              { "machine.serial": serialNum }
-            ],
-            timestamp: { $lt: startDate }
-          }
-        ]
+          { "machine.id": serialNum },
+          { "machine.serial": serialNum }
+        ],
+        "timestamps.create": { $lt: startDate }
       })
       .project({
-        timestamp: 1,
         "timestamps.create": 1,
         "machine.serial": 1,
         "machine.id": 1,
@@ -2546,30 +2520,18 @@ async function getActiveMachineSerials(db, start, end) {
         "status.code": 1,
         "status.name": 1
       })
-      .sort({ "timestamps.create": -1, timestamp: -1 })
+      .sort({ "timestamps.create": -1 })
       .limit(1);
 
     const afterEndQ = db.collection(stateCollection)
       .find({
         $or: [
-          {
-            $or: [
-              { "machine.id": serialNum },
-              { "machine.serial": serialNum }
-            ],
-            "timestamps.create": { $gt: endISO }
-          },
-          {
-            $or: [
-              { "machine.id": serialNum },
-              { "machine.serial": serialNum }
-            ],
-            timestamp: { $gt: endDate }
-          }
-        ]
+          { "machine.id": serialNum },
+          { "machine.serial": serialNum }
+        ],
+        "timestamps.create": { $gt: endDate }
       })
       .project({
-        timestamp: 1,
         "timestamps.create": 1,
         "machine.serial": 1,
         "machine.id": 1,
@@ -2578,7 +2540,7 @@ async function getActiveMachineSerials(db, start, end) {
         "status.code": 1,
         "status.name": 1
       })
-      .sort({ "timestamps.create": 1, timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .limit(1);
 
     const [inRangeStates, [beforeStart], [afterEnd]] = await Promise.all([
@@ -2588,9 +2550,6 @@ async function getActiveMachineSerials(db, start, end) {
     ]);
 
     const normalizeState = (state) => {
-      if (!state.timestamp && state.timestamps?.create) {
-        state.timestamp = state.timestamps.create;
-      }
       if (!state.machine?.serial && state.machine?.id) {
         state.machine = state.machine || {};
         state.machine.serial = state.machine.id;
@@ -2603,8 +2562,8 @@ async function getActiveMachineSerials(db, start, end) {
       ...inRangeStates.map(normalizeState),
       ...(afterEnd ? [normalizeState(afterEnd)] : [])
     ].sort((a, b) => {
-      const aTime = a.timestamp || a.timestamps?.create;
-      const bTime = b.timestamp || b.timestamps?.create;
+      const aTime = recordTimestamp(a);
+      const bTime = recordTimestamp(b);
       return new Date(aTime) - new Date(bTime);
     });
 
@@ -2617,7 +2576,7 @@ async function getActiveMachineSerials(db, start, end) {
     const sessionEnd = runSessions.at(-1).end;
 
     const filteredStates = fullStates.filter(s => {
-      const stateTime = s.timestamp || s.timestamps?.create;
+      const stateTime = recordTimestamp(s);
       return new Date(stateTime) >= sessionStart &&
              new Date(stateTime) <= sessionEnd;
     });
@@ -2679,9 +2638,6 @@ async function getActiveMachineSerials(db, start, end) {
       .toArray();
 
     counts = counts.map(count => {
-      if (!count.timestamp && count.timestamps?.create) {
-        count.timestamp = count.timestamps.create;
-      }
       if (!count.machine?.serial && count.machine?.id) {
         count.machine = count.machine || {};
         count.machine.serial = count.machine.id;
@@ -2694,28 +2650,16 @@ async function getActiveMachineSerials(db, start, end) {
         new Set(counts.map(c => c.machine?.serial).filter(Boolean))
       );
       const stateQuery = {
+        "timestamps.create": { $gte: startDate, $lte: endDate },
         $or: [
-          {
-            timestamp: { $gte: startDate, $lte: endDate },
-            $or: [
-              { "machine.serial": { $in: machineSerialsUsed } },
-              { "machine.id": { $in: machineSerialsUsed } }
-            ]
-          },
-          {
-            "timestamps.create": { $gte: startDate, $lte: endDate },
-            $or: [
-              { "machine.serial": { $in: machineSerialsUsed } },
-              { "machine.id": { $in: machineSerialsUsed } }
-            ]
-          }
+          { "machine.serial": { $in: machineSerialsUsed } },
+          { "machine.id": { $in: machineSerialsUsed } }
         ]
       };
       const stateCollection = getStateCollectionName(start);
       states = await db.collection(stateCollection)
         .find(stateQuery)
         .project({
-          timestamp: 1,
           "timestamps.create": 1,
           "machine.serial": 1,
           "machine.id": 1,
@@ -2725,50 +2669,26 @@ async function getActiveMachineSerials(db, start, end) {
           "status.name": 1,
           "_tickerDoc.status": 1
         })
-        .sort({ timestamp: 1, "timestamps.create": 1 })
+        .sort({ "timestamps.create": 1 })
         .toArray();
     } else {
       const stateQuery = {
+        "timestamps.create": { $gte: startDate, $lte: endDate },
         $or: [
-          {
-            timestamp: { $gte: startDate, $lte: endDate },
-            $or: [
-              { "machine.serial": { $type: "int" } },
-              { "machine.id": { $type: "int" } }
-            ]
-          },
-          {
-            "timestamps.create": { $gte: startDate, $lte: endDate },
-            $or: [
-              { "machine.serial": { $type: "int" } },
-              { "machine.id": { $type: "int" } }
-            ]
-          }
+          { "machine.serial": { $type: "int" } },
+          { "machine.id": { $type: "int" } }
         ]
       };
       if (groupBy === 'machine' && targetSerials.length > 0) {
         stateQuery.$or = [
-          {
-            timestamp: { $gte: startDate, $lte: endDate },
-            $or: [
-              { "machine.serial": { $in: targetSerials } },
-              { "machine.id": { $in: targetSerials } }
-            ]
-          },
-          {
-            "timestamps.create": { $gte: startDate, $lte: endDate },
-            $or: [
-              { "machine.serial": { $in: targetSerials } },
-              { "machine.id": { $in: targetSerials } }
-            ]
-          }
+          { "machine.serial": { $in: targetSerials } },
+          { "machine.id": { $in: targetSerials } }
         ];
       }
       const stateCollection = getStateCollectionName(start);
       states = await db.collection(stateCollection)
         .find(stateQuery)
         .project({
-          timestamp: 1,
           "timestamps.create": 1,
           "machine.serial": 1,
           "machine.id": 1,
@@ -2778,14 +2698,11 @@ async function getActiveMachineSerials(db, start, end) {
           "status.name": 1,
           "_tickerDoc.status": 1
         })
-        .sort({ timestamp: 1, "timestamps.create": 1 })
+        .sort({ "timestamps.create": 1 })
         .toArray();
     }
 
     states = states.map(state => {
-      if (!state.timestamp && state.timestamps?.create) {
-        state.timestamp = state.timestamps.create;
-      }
       if (!state.machine?.serial && state.machine?.id) {
         state.machine = state.machine || {};
         state.machine.serial = state.machine.id;

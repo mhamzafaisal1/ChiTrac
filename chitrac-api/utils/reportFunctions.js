@@ -76,7 +76,7 @@ function getSessionCountsArray(session) {
 }
 
 function getCountTimestamp(count) {
-  return count?.timestamp || count?.timestamps?.create || count?.timestamps?.active || count?.timestamps?.update;
+  return count?.timestamps?.create || count?.timestamps?.active || count?.timestamps?.update;
 }
 
 function isTimestampInRange(value, start, end) {
@@ -124,7 +124,7 @@ async function queryItemSessions(db, partialDays) {
   for (const partialDay of partialDays) {
     // Get count data for this partial day
     const counts = await countColl.find({
-      timestamp: { $gte: partialDay.start, $lte: partialDay.end }
+      "timestamps.create": { $gte: partialDay.start, $lte: partialDay.end }
     }).toArray();
 
     // Group by item
@@ -173,15 +173,15 @@ async function queryItemSessions(db, partialDays) {
           c.operator?.id === session.operator?.id &&
           c.machine?.serial === session.machine?.serial &&
           c.item?.id === itemId &&
-          new Date(c.timestamp) >= new Date(session.timestamps?.start || partialDay.start) &&
-          new Date(c.timestamp) <= new Date(session.timestamps?.end || partialDay.end)
+          new Date(c.timestamps?.create) >= new Date(session.timestamps?.start || partialDay.start) &&
+          new Date(c.timestamps?.create) <= new Date(session.timestamps?.end || partialDay.end)
         ).length;
 
         const totalSessionCounts = counts.filter(c =>
           c.operator?.id === session.operator?.id &&
           c.machine?.serial === session.machine?.serial &&
-          new Date(c.timestamp) >= new Date(session.timestamps?.start || partialDay.start) &&
-          new Date(c.timestamp) <= new Date(session.timestamps?.end || partialDay.end)
+          new Date(c.timestamps?.create) >= new Date(session.timestamps?.start || partialDay.start) &&
+          new Date(c.timestamps?.create) <= new Date(session.timestamps?.end || partialDay.end)
         ).length;
 
         const itemProportion = totalSessionCounts > 0 ? sessionCounts / totalSessionCounts : 0;
@@ -549,15 +549,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
                       $let: {
                         vars: {
                           countTs: {
-                            $ifNull: [
-                              "$$c.timestamp",
-                              {
-                                $ifNull: [
-                                  "$$c.timestamps.create",
-                                  "$$c.timestamps.active",
-                                ],
-                              },
-                            ],
+                            $ifNull: ["$$c.timestamps.create", "$$c.timestamps.active"],
                           },
                         },
                         in: {
@@ -572,17 +564,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
                 },
                 as: "c",
                 in: {
-                  timestamp: {
-                    $ifNull: [
-                      "$$c.timestamp",
-                      {
-                        $ifNull: [
-                          "$$c.timestamps.create",
-                          "$$c.timestamps.active",
-                        ],
-                      },
-                    ],
-                  },
+                  timestamps: "$$c.timestamps",
                   item: {
                     id: "$$c.item.id",
                     name: "$$c.item.name",
@@ -649,15 +631,14 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
       const rawCounts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
       const counts = rawCounts
         .map((c) => ({
-          timestamp:
-            c.timestamp ||
+          createdAt:
             c.timestamps?.create ||
             c.timestamps?.active ||
             c.timestamps?.update,
           item: c.item,
         }))
         .filter((c) => {
-          const timestamp = c.timestamp ? new Date(c.timestamp) : null;
+          const timestamp = c.createdAt ? new Date(c.createdAt) : null;
           return (
             c.item &&
             timestamp instanceof Date &&
@@ -1278,7 +1259,7 @@ async function getItemSessionDataForPartialDays(db, partialDays) {
             countInWin = typeof s.totalCount === "number" ? Math.round(s.totalCount * (ovSec / sessSec)) : 0;
           } else {
             countInWin = s.counts.reduce((acc, c) => {
-              const t = new Date(c.timestamp);
+              const t = new Date(c.timestamps?.create);
               const sameItem = !c.item?.id || c.item.id === itm.id;
               return acc + (sameItem && t >= ovStart && t <= ovEnd ? 1 : 0);
             }, 0);

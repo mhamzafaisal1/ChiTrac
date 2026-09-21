@@ -125,7 +125,7 @@ function constructor(server) {
               { "machine.serial": { $in: serials } },
             ],
           })
-          .sort({ timestamp: -1 })
+          .sort({ "timestamps.create": -1 })
           .toArray()
       : [];
     const statusBySerial = new Map();
@@ -410,9 +410,7 @@ function constructor(server) {
       ];
       const ts =
         new Date(
-          record.status?.timestamp ||
-            record.timestamp ||
-            record.timestamps?.update ||
+          record.timestamps?.update ||
             record.timestamps?.active ||
             record.timestamps?.create ||
             0

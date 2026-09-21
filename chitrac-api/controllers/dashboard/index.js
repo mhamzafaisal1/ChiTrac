@@ -858,7 +858,7 @@ module.exports = function (server) {
         .collection(config.stateTickerCollectionName)
         .findOne(
           { "machine.id": serialNum },
-          { projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 } }
+          { projection: { timestamps: 1, machine: 1, program: 1, status: 1, operators: 1 } }
         );
 
       if (!ticker) {
@@ -1088,7 +1088,7 @@ module.exports = function (server) {
         .collection(config.stateTickerCollectionName)
         .findOne(
           { "machine.id": serialNum },
-          { projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 } }
+          { projection: { timestamps: 1, machine: 1, program: 1, status: 1, operators: 1 } }
         );
 
       if (!ticker) {
@@ -1318,7 +1318,7 @@ module.exports = function (server) {
         .collection(config.stateTickerCollectionName)
         .findOne(
           { "machine.id": serialNum },
-          { projection: { timestamp: 1, machine: 1, program: 1, status: 1, operators: 1 } }
+          { projection: { timestamps: 1, machine: 1, program: 1, status: 1, operators: 1 } }
         );
 
       if (!ticker) {

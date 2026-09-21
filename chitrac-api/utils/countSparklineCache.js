@@ -142,16 +142,16 @@ async function aggregateCountBuckets(db, config, start, end) {
   const counts = await db
     .collection(config.countCollectionName)
     .find({
-      timestamp: { $gte: start, $lt: end },
+      "timestamps.create": { $gte: start, $lt: end },
       misfeed: { $ne: true },
     })
-    .project({ _id: 0, timestamp: 1, machine: 1 })
+    .project({ _id: 0, "timestamps.create": 1, machine: 1 })
     .toArray();
 
   const buckets = new Map();
   for (const count of counts) {
     const serial = machineSerialFromCount(count);
-    const timestamp = new Date(count.timestamp);
+    const timestamp = new Date(count.timestamps?.create);
     if (serial === null || Number.isNaN(timestamp.getTime())) continue;
 
     const key = `${serial}|${minuteKey(timestamp)}`;
