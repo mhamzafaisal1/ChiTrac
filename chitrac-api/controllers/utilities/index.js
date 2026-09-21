@@ -15,6 +15,8 @@ const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
 const { hasPermissionLevel } = require("../../modules/permissions");
 
+const recordTimestamp = (record) => record?.timestamps?.create;
+
 let usbPackage = null;
 
 try {
@@ -1087,8 +1089,8 @@ function constructor(server) {
 
       // Step 3: Query all states for the day, sorted chronologically
       const allStates = await stateColl.find({
-        timestamp: { $gte: dayStart, $lte: dayEnd }
-      }).sort({ timestamp: 1 }).toArray();
+        "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+      }).sort({ "timestamps.create": 1 }).toArray();
 
       if (allStates.length === 0) {
         return res.status(404).json({ 
@@ -1103,8 +1105,8 @@ function constructor(server) {
 
       // Step 4: Query all counts for the day
       const allCounts = await countColl.find({
-        timestamp: { $gte: dayStart, $lte: dayEnd }
-      }).sort({ timestamp: 1 }).toArray();
+        "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+      }).sort({ "timestamps.create": 1 }).toArray();
 
       logger.info(`Found ${allCounts.length} count records for ${date}`);
 
@@ -1147,7 +1149,7 @@ function constructor(server) {
 
       // Helper function to end machine session
       async function endMachineSession(session, endState) {
-        session.timestamps.end = endState.timestamp;
+        session.timestamps.end = recordTimestamp(endState);
         session.endState = endState;
         session.states.push(endState);
 
@@ -1215,7 +1217,7 @@ function constructor(server) {
 
       // Helper function to end operator session
       async function endOperatorSession(session, endState) {
-        session.timestamps.end = endState.timestamp;
+        session.timestamps.end = recordTimestamp(endState);
         session.endState = endState;
         session.states.push(endState);
 
@@ -1249,7 +1251,7 @@ function constructor(server) {
 
       // Helper function to end item session
       async function endItemSession(session, endState) {
-        session.timestamps.end = endState.timestamp;
+        session.timestamps.end = recordTimestamp(endState);
         session.endState = endState;
         session.states.push(endState);
 
@@ -1328,7 +1330,7 @@ function constructor(server) {
 
               // Create machine session
               currentMachineSession = {
-                timestamps: { start: state.timestamp },
+                timestamps: { start: recordTimestamp(state) },
                 counts: [],
                 misfeeds: [],
                 states: [state],
@@ -1351,7 +1353,7 @@ function constructor(server) {
               // Start operator sessions
               for (const op of operatorsWithNames) {
                 const opSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   counts: [],
                   misfeeds: [],
                   states: [state],
@@ -1374,7 +1376,7 @@ function constructor(server) {
               // Start item sessions
               for (const item of itemsWithDetails) {
                 const itemSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   counts: [],
                   misfeeds: [],
                   states: [state],
@@ -1393,7 +1395,7 @@ function constructor(server) {
                 currentItemSessions.set(item.id, itemSession);
               }
 
-              logger.info(`Started machine session for ${serial} at ${state.timestamp.toISOString()}`);
+              logger.info(`Started machine session for ${serial} at ${recordTimestamp(state).toISOString()}`);
             } else {
               // Add state to existing session
               currentMachineSession.states.push(state);
@@ -1403,7 +1405,7 @@ function constructor(server) {
 
             // End fault session if one is active
             if (currentFaultSession) {
-              currentFaultSession.timestamps.end = state.timestamp;
+              currentFaultSession.timestamps.end = recordTimestamp(state);
               currentFaultSession.endState = state;
               currentFaultSession.states.push(state);
 
@@ -1467,7 +1469,7 @@ function constructor(server) {
               );
 
               currentFaultSession = {
-                timestamps: { start: state.timestamp },
+                timestamps: { start: recordTimestamp(state) },
                 items: itemsWithDetails,
                 operators: operatorsWithNames,
                 states: [state],
@@ -1514,7 +1516,7 @@ function constructor(server) {
 
             // End fault session if one is active
             if (currentFaultSession) {
-              currentFaultSession.timestamps.end = state.timestamp;
+              currentFaultSession.timestamps.end = recordTimestamp(state);
               currentFaultSession.endState = state;
               currentFaultSession.states.push(state);
 
@@ -1554,7 +1556,7 @@ function constructor(server) {
 
         if (currentFaultSession) {
           const endState = states[states.length - 1];
-          currentFaultSession.timestamps.end = endState.timestamp;
+          currentFaultSession.timestamps.end = recordTimestamp(endState);
           currentFaultSession.endState = endState;
           
           const faultStart = DateTime.fromJSDate(currentFaultSession.timestamps.start);
@@ -1571,7 +1573,7 @@ function constructor(server) {
 
         // Step 8: Assign counts to sessions
         for (const count of counts) {
-          const countTime = count.timestamp;
+          const countTime = recordTimestamp(count);
           let assignedToMachineSession = false;
           let assignedToOperatorSession = false;
           let assignedToItemSession = false;
@@ -1791,12 +1793,12 @@ function constructor(server) {
         const countColl = db.collection('count');
 
         const allStates = await stateColl.find({
-          timestamp: { $gte: dayStart, $lte: dayEnd }
-        }).sort({ timestamp: 1 }).toArray();
+          "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+        }).sort({ "timestamps.create": 1 }).toArray();
 
         const allCounts = await countColl.find({
-          timestamp: { $gte: dayStart, $lte: dayEnd }
-        }).sort({ timestamp: 1 }).toArray();
+          "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+        }).sort({ "timestamps.create": 1 }).toArray();
 
         if (allStates.length === 0) {
           return res.status(404).json({ 
@@ -1876,7 +1878,7 @@ function constructor(server) {
                 );
 
                 currentMachineSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   counts: [],
                   misfeeds: [],
                   states: [state],
@@ -1898,7 +1900,7 @@ function constructor(server) {
 
                 for (const op of operatorsWithNames) {
                   const opSession = {
-                    timestamps: { start: state.timestamp },
+                    timestamps: { start: recordTimestamp(state) },
                     counts: [],
                     misfeeds: [],
                     states: [state],
@@ -1920,7 +1922,7 @@ function constructor(server) {
 
                 for (const item of itemsWithDetails) {
                   const itemSession = {
-                    timestamps: { start: state.timestamp },
+                    timestamps: { start: recordTimestamp(state) },
                     counts: [],
                     misfeeds: [],
                     states: [state],
@@ -1945,7 +1947,7 @@ function constructor(server) {
               }
 
               if (currentFaultSession) {
-                currentFaultSession.timestamps.end = state.timestamp;
+                currentFaultSession.timestamps.end = recordTimestamp(state);
                 currentFaultSession.endState = state;
                 currentFaultSession.states.push(state);
 
@@ -2001,7 +2003,7 @@ function constructor(server) {
                 );
 
                 currentFaultSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   items: itemsWithDetails,
                   operators: operatorsWithNames,
                   states: [state],
@@ -2042,7 +2044,7 @@ function constructor(server) {
               }
 
               if (currentFaultSession) {
-                currentFaultSession.timestamps.end = state.timestamp;
+                currentFaultSession.timestamps.end = recordTimestamp(state);
                 currentFaultSession.endState = state;
                 currentFaultSession.states.push(state);
 
@@ -2079,7 +2081,7 @@ function constructor(server) {
 
           if (currentFaultSession) {
             const endState = states[states.length - 1];
-            currentFaultSession.timestamps.end = endState.timestamp;
+            currentFaultSession.timestamps.end = recordTimestamp(endState);
             currentFaultSession.endState = endState;
             
             const faultStart = DateTime.fromJSDate(currentFaultSession.timestamps.start);
@@ -2096,7 +2098,7 @@ function constructor(server) {
 
           // Assign counts to sessions
           for (const count of counts) {
-            const countTime = count.timestamp;
+            const countTime = recordTimestamp(count);
             
             for (const session of backfilledSessions.machineSessions) {
               if (session.machine.serial !== serialNum) continue;

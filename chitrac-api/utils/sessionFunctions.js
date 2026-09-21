@@ -139,8 +139,7 @@ function extractCountsFromSessions(sessions, windowStart, windowEnd, operatorId,
     for (const count of sessionCounts) {
       if (!count || count.misfeed === true) continue;
 
-      // Get timestamp from count (support multiple formats)
-      const ts = count.timestamps?.create || count.timestamp;
+      const ts = count.timestamps?.create;
       if (!ts) continue;
 
       const countTime = new Date(ts);
@@ -175,7 +174,7 @@ function getValidAndMisfeedCountsInWindow(sessions, windowStart, windowEnd, oper
 
   const inWindow = (c) => {
     if (!c) return false;
-    const ts = c.timestamps?.create || c.timestamp;
+    const ts = c.timestamps?.create;
     if (!ts) return false;
     const t = new Date(ts);
     if (t < windowStart || t > windowEnd) return false;
@@ -235,7 +234,7 @@ function sumWindowWithCounts(sessions, counts, windowStartDT, windowEndDT) {
   // Filter counts to only those within the window (already filtered but double-check)
   const inWindowCounts = counts.filter(c => {
     if (!c) return false;
-    const ts = c.timestamps?.create || c.timestamp;
+    const ts = c.timestamps?.create;
     if (!ts) return false;
     const t = new Date(ts);
     return t >= windowStart && t <= windowEnd;
@@ -438,7 +437,7 @@ function sumWindowMachine(sessions, windowStartDT, windowEndDT) {
     // Filter by actual window boundaries, not session boundaries
     const inWindowValid = allCounts.filter(c => {
       if (!c) return false;
-      const ts = c.timestamp || c.timestamps?.create;
+      const ts = c.timestamps?.create;
       if (!ts) return false;
       const t = new Date(ts);
       return t >= windowStart && t <= windowEnd && !c.misfeed;
@@ -450,7 +449,7 @@ function sumWindowMachine(sessions, windowStartDT, windowEndDT) {
     // Filter by actual window boundaries, not session boundaries
     const inWindowMisfeed = allCounts.filter(c => {
       if (!c) return false;
-      const ts = c.timestamp || c.timestamps?.create;
+      const ts = c.timestamps?.create;
       if (!ts) return false;
       const t = new Date(ts);
       return t >= windowStart && t <= windowEnd && !!c.misfeed;
@@ -511,24 +510,24 @@ async function buildMachineSessionAnalytics(db, machineSerial, paddedStart, padd
   const inRangeStatesQ = db.collection("state")
     .find({
       "machine.serial": machineSerial,
-      timestamp: { $gte: paddedStart, $lte: paddedEnd }
+      "timestamps.create": { $gte: paddedStart, $lte: paddedEnd }
     })
-    .sort({ timestamp: 1 });
+    .sort({ "timestamps.create": 1 });
 
   const beforeStartQ = db.collection("state")
     .find({
       "machine.serial": machineSerial,
-      timestamp: { $lt: paddedStart }
+      "timestamps.create": { $lt: paddedStart }
     })
-    .sort({ timestamp: -1 })
+    .sort({ "timestamps.create": -1 })
     .limit(1);
 
   const afterEndQ = db.collection("state")
     .find({
       "machine.serial": machineSerial,
-      timestamp: { $gt: paddedEnd }
+      "timestamps.create": { $gt: paddedEnd }
     })
-    .sort({ timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .limit(1);
 
   // Step 2: Fire all 3 queries in parallel
@@ -576,12 +575,12 @@ async function buildMachineSessionAnalytics(db, machineSerial, paddedStart, padd
     const allCounts = await db.collection("count")
       .find({
         "machine.serial": machineSerial,
-        timestamp: {
+        "timestamps.create": {
           $gte: firstSessionStart,
           $lte: lastSessionEnd
         }
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
 
     // Step 5: Distribute counts to sessions efficiently
@@ -593,11 +592,11 @@ async function buildMachineSessionAnalytics(db, machineSerial, paddedStart, padd
       // Find counts for this session
       while (countIndex < allCounts.length) {
         const count = allCounts[countIndex];
-        if (count.timestamp < sessionStart) {
+        if (count.timestamps.create < sessionStart) {
           countIndex++;
           continue;
         }
-        if (count.timestamp > sessionEnd) {
+        if (count.timestamps.create > sessionEnd) {
           break;
         }
         session.counts.push(count);

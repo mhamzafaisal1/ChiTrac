@@ -144,15 +144,15 @@ module.exports = function (server) {
           ? await db
               .collection(config.stateTickerCollectionName)
               .find({ "machine.id": { $in: machineSerials } })
-              .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
+              .project({ _id: 0, "machine.id": 1, status: 1, timestamps: 1 })
               .toArray()
           : [];
         const latestTickers = new Map();
         tickers.forEach((ticker) => {
           const id = Number(ticker.machine?.id);
-          const ts = new Date(ticker.timestamp || 0);
+          const ts = new Date(ticker.timestamps?.update || ticker.timestamps?.create || 0);
           const existing = latestTickers.get(id);
-          if (!existing || ts > new Date(existing.timestamp || 0)) {
+          if (!existing || ts > new Date(existing.timestamps?.update || existing.timestamps?.create || 0)) {
             latestTickers.set(id, ticker);
           }
         });
@@ -257,15 +257,15 @@ module.exports = function (server) {
       const tickers = await db
         .collection(config.stateTickerCollectionName)
         .find({ "machine.id": { $in: machineSerials } })
-        .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
+        .project({ _id: 0, "machine.id": 1, status: 1, timestamps: 1 })
         .toArray();
 
       const latestTickers = new Map();
       tickers.forEach((ticker) => {
         const id = Number(ticker.machine?.id);
-        const ts = new Date(ticker.timestamp || 0);
+        const ts = new Date(ticker.timestamps?.update || ticker.timestamps?.create || 0);
         const existing = latestTickers.get(id);
-        if (!existing || ts > new Date(existing.timestamp || 0)) {
+        if (!existing || ts > new Date(existing.timestamps?.update || existing.timestamps?.create || 0)) {
           latestTickers.set(id, ticker);
         }
       });
@@ -728,15 +728,15 @@ module.exports = function (server) {
           ? await db
               .collection(config.stateTickerCollectionName)
               .find({ "machine.id": { $in: machineSerials } })
-              .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
+              .project({ _id: 0, "machine.id": 1, status: 1, timestamps: 1 })
               .toArray()
           : [];
         const latestTickers = new Map();
         tickers.forEach((ticker) => {
           const id = Number(ticker.machine?.id);
-          const ts = new Date(ticker.timestamp || 0);
+          const ts = new Date(ticker.timestamps?.update || ticker.timestamps?.create || 0);
           const existing = latestTickers.get(id);
-          if (!existing || ts > new Date(existing.timestamp || 0)) {
+          if (!existing || ts > new Date(existing.timestamps?.update || existing.timestamps?.create || 0)) {
             latestTickers.set(id, ticker);
           }
         });

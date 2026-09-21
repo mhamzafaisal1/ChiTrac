@@ -11,7 +11,7 @@ const {
 /**
  * Builds a detailed summary for a Softrol cycle
  * @param {Object} cycle - The cycle object containing start, end, and states
- * @param {Array} sortedCounts - Array of counts sorted by timestamp
+ * @param {Array} sortedCounts - Array of counts sorted by timestamps.create
  * @param {Object} countGroup - Group of counts with operator and machine info
  * @returns {Object|null} Detailed cycle summary or null if no counts
  */
@@ -20,7 +20,7 @@ function buildSoftrolCycleSummary(cycle, sortedCounts, countGroup) {
   const cycleEnd = new Date(cycle.end);
 
   const cycleCounts = sortedCounts.filter(c => {
-    const ts = new Date(c.timestamp);
+    const ts = new Date(c.timestamps?.create);
     return ts >= cycleStart && ts <= cycleEnd && !c.misfeed;
   });
 

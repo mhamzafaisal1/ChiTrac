@@ -76,9 +76,7 @@ module.exports = function (server) {
         const machine = stateRecord.machine || {};
         const status = stateRecord.status || {};
         const timestamp = new Date(
-          status.timestamp ||
-            stateRecord.timestamp ||
-            (stateRecord.timestamps &&
+          (stateRecord.timestamps &&
               (stateRecord.timestamps.update ||
                 stateRecord.timestamps.active ||
                 stateRecord.timestamps.create)) ||

@@ -35,6 +35,8 @@ const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftEl
 
 const { getBookendedStatesAndTimeRange } = require("../../utils/machineFunctions");
 
+const recordTimestamp = (record) => record?.timestamps?.create;
+
 module.exports = function (server) {
   const router = express.Router();
   const db = server.db;
@@ -50,12 +52,12 @@ module.exports = function (server) {
       // Get latest state timestamp if end date is in the future
       const [latestState] = await db.collection('state')
         .find()
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.create": -1 })
         .limit(1)
         .toArray();
 
       const effectiveEnd = new Date(end) > new Date() 
-        ? (latestState?.timestamp || new Date()) 
+        ? (recordTimestamp(latestState) || new Date())
         : end;
 
       const { paddedStart, paddedEnd } = createPaddedTimeRange(start, effectiveEnd);
@@ -107,7 +109,7 @@ module.exports = function (server) {
 
         // Sort counts by timestamp for efficient processing
         const sortedCounts = countGroup.counts.sort(
-          (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          (a, b) => new Date(recordTimestamp(a)) - new Date(recordTimestamp(b))
         );
 
         // Process each cycle
@@ -148,23 +150,23 @@ module.exports = function (server) {
   
       const stateRecords = await db.collection("state").find({
         "machine.serial": targetSerial,
-        timestamp: { $gte: paddedStart, $lte: paddedEnd },
+        "timestamps.create": { $gte: paddedStart, $lte: paddedEnd },
       }).toArray();
   
       const countRecords = await db.collection("count").find({
         "machine.serial": targetSerial,
-        timestamp: { $gte: paddedStart, $lte: paddedEnd },
+        "timestamps.create": { $gte: paddedStart, $lte: paddedEnd },
       }).toArray();
   
       const updatedStates = [];
   
       for (const state of stateRecords) {
-        const stateTime = new Date(state.timestamp);
+        const stateTime = new Date(recordTimestamp(state));
       
         // Find the most recent count at or before the state timestamp
         const previousCounts = countRecords
-          .filter((count) => new Date(count.timestamp) <= stateTime)
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          .filter((count) => new Date(recordTimestamp(count)) <= stateTime)
+          .sort((a, b) => new Date(recordTimestamp(b)) - new Date(recordTimestamp(a)));
       
         // Collect distinct operators from those recent counts (most recent first)
         const seenIds = new Set();
@@ -220,17 +222,17 @@ module.exports = function (server) {
       }
   
       // Ensure counts are sorted ascending by timestamp
-      counts.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      counts.sort((a, b) => new Date(recordTimestamp(a)) - new Date(recordTimestamp(b)));
   
       const updatedStates = [];
   
       for (const state of states) {
-        const stateTime = new Date(state.timestamp);
+        const stateTime = new Date(recordTimestamp(state));
   
         // Find the most recent count before or at this state timestamp
         const bestMatch = [...counts]
           .reverse()
-          .find((count) => new Date(count.timestamp) <= stateTime);
+          .find((count) => new Date(recordTimestamp(count)) <= stateTime);
   
         const operators = [];
   
@@ -274,9 +276,9 @@ module.exports = function (server) {
       // Get all valid count records for that machine
       const counts = await db.collection("count").find({
         "machine.serial": serialNum,
-        timestamp: { $gte: startDate, $lte: endDate },
+        "timestamps.create": { $gte: startDate, $lte: endDate },
         "operator.id": { $exists: true, $ne: -1 }
-      }).sort({ timestamp: 1 }).toArray();
+      }).sort({ "timestamps.create": 1 }).toArray();
   
       if (!counts.length) {
         return res.json({ serial: serialNum, operatorCycles: [] });
@@ -284,7 +286,7 @@ module.exports = function (server) {
   
       const cycles = [];
       let currentOperator = counts[0].operator;
-      let currentStart = new Date(counts[0].timestamp);
+      let currentStart = new Date(recordTimestamp(counts[0]));
   
       for (let i = 1; i < counts.length; i++) {
         const count = counts[i];
@@ -292,7 +294,7 @@ module.exports = function (server) {
   
         if (!operator || operator.id !== currentOperator.id) {
           // End the current cycle
-          const currentEnd = new Date(counts[i - 1].timestamp);
+          const currentEnd = new Date(recordTimestamp(counts[i - 1]));
           cycles.push({
             operatorId: currentOperator.id,
             name: currentOperator.name || 'Unknown',
@@ -302,12 +304,12 @@ module.exports = function (server) {
   
           // Start a new cycle
           currentOperator = operator;
-          currentStart = new Date(count.timestamp);
+          currentStart = new Date(recordTimestamp(count));
         }
       }
   
       // Push the final cycle
-      const lastTimestamp = new Date(counts.at(-1).timestamp);
+      const lastTimestamp = new Date(recordTimestamp(counts.at(-1)));
       cycles.push({
         operatorId: currentOperator.id,
         name: currentOperator.name || 'Unknown',
@@ -335,9 +337,9 @@ module.exports = function (server) {
   
       const counts = await db.collection("count").find({
         "machine.serial": serialNum,
-        timestamp: { $gte: startDate, $lte: endDate },
+        "timestamps.create": { $gte: startDate, $lte: endDate },
         "operator.id": { $exists: true, $ne: -1 }
-      }).sort({ timestamp: 1 }).toArray();
+      }).sort({ "timestamps.create": 1 }).toArray();
   
       if (counts.length === 0) {
         return res.json({ serial: serialNum, operatorCycles: [] });
@@ -345,12 +347,12 @@ module.exports = function (server) {
   
       const cycles = [];
       let currentOperator = counts[0].operator;
-      let currentStart = new Date(counts[0].timestamp);
-      let lastTimestamp = new Date(counts[0].timestamp);
+      let currentStart = new Date(recordTimestamp(counts[0]));
+      let lastTimestamp = new Date(recordTimestamp(counts[0]));
   
       for (let i = 1; i < counts.length; i++) {
         const count = counts[i];
-        const ts = new Date(count.timestamp);
+        const ts = new Date(recordTimestamp(count));
   
         if (count.operator.id !== currentOperator.id) {
           // Close previous session
@@ -422,19 +424,19 @@ router.get("/dryer/running-with-operators", async (req, res) => {
 
     const counts = await db.collection("count").find({
       "machine.serial": serialNum,
-      timestamp: { $gte: startDate, $lte: endDate },
+      "timestamps.create": { $gte: startDate, $lte: endDate },
       "operator.id": { $exists: true }
-    }).sort({ timestamp: 1 }).toArray();
+    }).sort({ "timestamps.create": 1 }).toArray();
 
     const operatorSessions = [];
     if (counts.length > 0) {
       let currentOperator = counts[0].operator;
-      let currentStart = new Date(counts[0].timestamp);
+      let currentStart = new Date(recordTimestamp(counts[0]));
       let lastTimestamp = currentStart;
 
       for (let i = 1; i < counts.length; i++) {
         const count = counts[i];
-        const ts = new Date(count.timestamp);
+        const ts = new Date(recordTimestamp(count));
         const id = count.operator?.id;
 
         if (id !== currentOperator.id) {
@@ -494,7 +496,7 @@ router.get("/dryer/running-with-operators", async (req, res) => {
 
       // Fetch all State records that fall within this cycle
       const statesInCycle = states.filter(s => {
-        const ts = new Date(s.timestamp);
+        const ts = new Date(recordTimestamp(s));
         return ts >= cycle.start && ts <= cycle.end;
       });
 
@@ -530,19 +532,19 @@ router.get("/dryer/running-with-operators-test", async (req, res) => {
 
     const counts = await db.collection("count").find({
       "machine.serial": serialNum,
-      timestamp: { $gte: startDate, $lte: endDate },
+      "timestamps.create": { $gte: startDate, $lte: endDate },
       "operator.id": { $exists: true }
-    }).sort({ timestamp: 1 }).toArray();
+    }).sort({ "timestamps.create": 1 }).toArray();
 
     const operatorSessions = [];
     if (counts.length > 0) {
       let currentOperator = counts[0].operator;
-      let currentStart = new Date(counts[0].timestamp);
+      let currentStart = new Date(recordTimestamp(counts[0]));
       let lastTimestamp = currentStart;
 
       for (let i = 1; i < counts.length; i++) {
         const count = counts[i];
-        const ts = new Date(count.timestamp);
+        const ts = new Date(recordTimestamp(count));
         const id = count.operator?.id;
 
         if (id !== currentOperator.id) {
@@ -599,7 +601,7 @@ router.get("/dryer/running-with-operators-test", async (req, res) => {
       }
 
       const statesInCycle = states.filter(s => {
-        const ts = new Date(s.timestamp);
+        const ts = new Date(recordTimestamp(s));
         return ts >= cycle.start && ts <= cycle.end;
       });
 
@@ -740,15 +742,15 @@ router.get("/analytics/machine-item-sessions-summary", async (req, res) => {
                     as: "c",
                     cond: {
                       $and: [
-                        { $gte: ["$$c.timestamp", exactStart] },
-                        { $lte: ["$$c.timestamp", exactEnd] },
+                        { $gte: ["$$c.timestamps.create", exactStart] },
+                        { $lte: ["$$c.timestamps.create", exactEnd] },
                       ],
                     },
                   },
                 },
                 as: "c",
                 in: {
-                  timestamp: "$$c.timestamp",
+                  timestamps: "$$c.timestamps",
                   item: {
                     id: "$$c.item.id",
                     name: "$$c.item.name",
@@ -1318,15 +1320,15 @@ router.get("/analytics/operator-item-sessions-summary", async (req, res) => {
                     as: "c",
                     cond: {
                       $and: [
-                        { $gte: ["$$c.timestamp", exactStart] },
-                      { $lte: ["$$c.timestamp", exactEnd] },
+                        { $gte: ["$$c.timestamps.create", exactStart] },
+                      { $lte: ["$$c.timestamps.create", exactEnd] },
                     ],
                   },
                 },
                 },
                 as: "c",
                 in: {
-                  timestamp: "$$c.timestamp",
+                  timestamps: "$$c.timestamps",
                 item: { id: "$$c.item.id", name: "$$c.item.name", standard: "$$c.item.standard" },
               },
             },
@@ -1899,7 +1901,7 @@ try {
           countInWin = typeof s.totalCount === "number" ? Math.round(s.totalCount * (ovSec / sessSec)) : 0;
         } else {
           countInWin = s.counts.reduce((acc, c) => {
-            const t = new Date(c.timestamp);
+            const t = new Date(recordTimestamp(c));
             const sameItem = !c.item?.id || c.item.id === itm.id;
             return acc + (sameItem && t >= ovStart && t <= ovEnd ? 1 : 0);
           }, 0);
@@ -3141,15 +3143,15 @@ router.get("/analytics/machine-item-sessions-summary-hybrid", async (req, res) =
                         as: "c",
                         cond: {
                           $and: [
-                            { $gte: ["$$c.timestamp", partialDay.start] },
-                            { $lte: ["$$c.timestamp", partialDay.end] },
+                            { $gte: ["$$c.timestamps.create", partialDay.start] },
+                            { $lte: ["$$c.timestamps.create", partialDay.end] },
                           ],
                         },
                       },
                     },
                     as: "c",
                     in: {
-                      timestamp: "$$c.timestamp",
+                      timestamps: "$$c.timestamps",
                       item: {
                         id: "$$c.item.id",
                         name: "$$c.item.name",
@@ -3689,15 +3691,15 @@ router.get("/analytics/operator-item-sessions-summary-hybrid", async (req, res) 
                         as: "c",
                         cond: {
                           $and: [
-                            { $gte: ["$$c.timestamp", partialDay.start] },
-                            { $lte: ["$$c.timestamp", partialDay.end] },
+                            { $gte: ["$$c.timestamps.create", partialDay.start] },
+                            { $lte: ["$$c.timestamps.create", partialDay.end] },
                           ],
                         },
                       },
                     },
                     as: "c",
                     in: {
-                      timestamp: "$$c.timestamp",
+                      timestamps: "$$c.timestamps",
                       item: {
                         id: "$$c.item.id",
                         name: "$$c.item.name",
@@ -6954,9 +6956,9 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
         .collection("count")
         .find({
           "operator.id": { $in: operatorIds },
-          timestamp: { $gte: new Date(start), $lte: new Date(end) },
+          "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
         })
-        .sort({ timestamp: 1 })
+        .sort({ "timestamps.create": 1 })
         .toArray();
 
       // Group counts by operator
@@ -7115,12 +7117,12 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
         hourlyIntervals.map(async (interval) => {
           // Filter states and counts for this hour
           const hourStates = states.filter((state) => {
-            const stateTime = new Date(state.timestamp);
+            const stateTime = new Date(recordTimestamp(state));
             return stateTime >= interval.start && stateTime <= interval.end;
           });
 
           const hourCounts = counts.filter((count) => {
-            const countTime = new Date(count.timestamp);
+            const countTime = new Date(recordTimestamp(count));
             return countTime >= interval.start && countTime <= interval.end;
           });
 
@@ -7404,14 +7406,14 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
         db
           .collection("state")
           .find()
-          .sort({ timestamp: -1 })
+          .sort({ "timestamps.create": -1 })
           .limit(1)
           .toArray(),
       ]);
 
       const finalEnd = endDate
         ? endDate.toISOString()
-        : latestState?.timestamp || new Date().toISOString();
+        : recordTimestamp(latestState) || new Date().toISOString();
       const { paddedStart, paddedEnd } = createPaddedTimeRange(
         startDate,
         new Date(finalEnd)
@@ -7463,7 +7465,7 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
         if (!countGroup) continue;
 
         const sortedCounts = countGroup.counts.sort(
-          (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          (a, b) => new Date(recordTimestamp(a)) - new Date(recordTimestamp(b))
         );
         let countIndex = 0;
 
@@ -7474,7 +7476,7 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
 
           while (countIndex < sortedCounts.length) {
             const currentCount = sortedCounts[countIndex];
-            const countTimestamp = new Date(currentCount.timestamp);
+            const countTimestamp = new Date(recordTimestamp(currentCount));
 
             if (countTimestamp < cycleStart) {
               countIndex++;
@@ -7816,7 +7818,7 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
             const cycleMs = cycleEnd - cycleStart;
 
             const cycleCounts = allCounts.filter((c) => {
-              const ts = new Date(c.timestamp);
+              const ts = new Date(recordTimestamp(c));
               return ts >= cycleStart && ts <= cycleEnd;
             });
 
@@ -8096,7 +8098,7 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
           const cycleMs = cycleEnd - cycleStart;
 
           const cycleCounts = counts.filter((c) => {
-            const ts = new Date(c.timestamp);
+            const ts = new Date(recordTimestamp(c));
             return ts >= cycleStart && ts <= cycleEnd;
           });
 
@@ -8175,7 +8177,7 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
       const hourMap = new Map(); // hourIndex => { itemName => count }
 
       for (const count of counts) {
-        const ts = new Date(count.timestamp);
+        const ts = new Date(recordTimestamp(count));
         const hourIndex = Math.floor((ts - startDate) / (60 * 60 * 1000)); // hour offset since start
         const itemName = count.item?.name || "Unknown";
 
@@ -8423,7 +8425,7 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
           const cycleMs = cycleEnd - cycleStart;
 
           const cycleCounts = counts.filter((c) => {
-            const ts = new Date(c.timestamp);
+            const ts = new Date(recordTimestamp(c));
             return ts >= cycleStart && ts <= cycleEnd;
           });
 

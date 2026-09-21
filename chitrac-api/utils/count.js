@@ -5,15 +5,15 @@ async function getCountRecords(db, serial, start, end) {
     return db.collection(countCollection)
       .find({
         'machine.serial': serial,
-        timestamp: { $gte: new Date(start), $lte: new Date(end) },
+        "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
         'operator.id': { $exists: true, $ne: -1 }
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
   async function getValidCounts(db, serial, start, end) {
     const query = {
-      timestamp: { $gte: new Date(start), $lte: new Date(end) },
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
       'operator.id': { $exists: true, $ne: -1 },
       misfeed: { $ne: true }
     };
@@ -25,7 +25,7 @@ async function getCountRecords(db, serial, start, end) {
     const countCollection = getCountCollectionName(start);
     return db.collection(countCollection)
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
   
@@ -35,11 +35,11 @@ async function getCountRecords(db, serial, start, end) {
     return db.collection(countCollection)
       .find({
         'machine.serial': serial,
-        timestamp: { $gte: new Date(start), $lte: new Date(end) },
+        "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
         'operator.id': { $exists: true, $ne: -1 },
         misfeed: true // Only misfeeds
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
   
@@ -89,10 +89,10 @@ async function getCountRecords(db, serial, start, end) {
     return db.collection(countCollection)
       .find({
         'operator.id': operatorId,
-        timestamp: { $gte: new Date(start), $lte: new Date(end) },
+        "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
         misfeed: { $ne: true } // Exclude misfeeds
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
 
@@ -101,10 +101,10 @@ async function getCountRecords(db, serial, start, end) {
     return db.collection(countCollection)
       .find({
         'operator.id': operatorId,
-        timestamp: { $gte: new Date(start), $lte: new Date(end) },
+        "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
         misfeed: true // Only misfeeds
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
 
@@ -146,9 +146,9 @@ async function getCountRecords(db, serial, start, end) {
     return db.collection(countCollection)
       .find({
         'operator.id': operatorId,
-        timestamp: { $gte: new Date(start), $lte: new Date(end) }
+        "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
 
@@ -181,13 +181,13 @@ async function getCountRecords(db, serial, start, end) {
         'operator.id': pair.operatorId,
         'machine.serial': pair.machineSerial
       })),
-      timestamp: { $gte: new Date(start), $lte: new Date(end) }
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
     };
 
     const countCollection = getCountCollectionName(start);
     return db.collection(countCollection)
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
 
@@ -200,7 +200,7 @@ async function getCountRecords(db, serial, start, end) {
         'machine.serial': pair.machineSerial,
         'station': pair.station // ✅ fixed path
       })),
-      timestamp: { $gte: new Date(start), $lte: new Date(end) }
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
     };
   
     const countCollection = getCountCollectionName(start);
@@ -211,7 +211,7 @@ async function getCountRecords(db, serial, start, end) {
     
     return db.collection(collection)
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
 
@@ -223,14 +223,14 @@ async function getCountRecords(db, serial, start, end) {
         'machine.serial': pair.machineSerial,
         'station': pair.station
       })),
-      timestamp: { $gte: new Date(start), $lte: new Date(end) }
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
     };
   
     // Debug: Querying count collection
     
     return db.collection('count')
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
   
@@ -248,7 +248,7 @@ async function getCountRecords(db, serial, start, end) {
   async function getCountsForMachine(db, machineSerial, start, end, operatorId = null) {
     const query = {
       'machine.serial': machineSerial,
-      timestamp: { $gte: new Date(start), $lte: new Date(end) }
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
     };
 
     if (operatorId) {
@@ -258,7 +258,7 @@ async function getCountRecords(db, serial, start, end) {
     const countCollection = getCountCollectionName(start);
     return db.collection(countCollection)
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
 
@@ -395,7 +395,7 @@ async function getCountRecords(db, serial, start, end) {
   async function getCountsForMachine(db, machineSerial, start, end, operatorId = null) {
     const query = {
       'machine.serial': machineSerial,
-      timestamp: { $gte: new Date(start), $lte: new Date(end) }
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
     };
   
     if (operatorId) {
@@ -404,7 +404,7 @@ async function getCountRecords(db, serial, start, end) {
   
     return db.collection('count')
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
   
@@ -477,4 +477,3 @@ async function getCountRecords(db, serial, start, end) {
     getCountsForMachineStationPairsForSoftrol,
     groupCountsByMachineAndStation
   };
-  
