@@ -27,7 +27,7 @@ import { DashboardTimeframeService } from '../services/dashboard-timeframe.servi
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 import { SettingsService } from '../services/settings.service';
 import { LayoutEditService } from '../services/layout-edit.service';
-import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
+import { DashboardCacheEnvelope, DashboardCacheScope, DashboardCacheState, IdleOperatorSummary, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { UserService } from '../user.service';
 import { formatDurationMilliseconds, formatDurationParts } from '../shared/utils/duration-format';
 
@@ -59,13 +59,6 @@ interface OperatorDashboardLayoutSnapshot {
   summaryCardVisibility: Record<string, boolean>;
   summaryCardOrderSource: 'server' | 'local' | 'default';
   summaryCardVisibilitySource: 'server' | 'local' | 'default';
-}
-
-interface IdleOperatorSummary {
-  idleOperators: number;
-  shiftOperators: number;
-  activeOperators: number;
-  idleOperatorIds?: number[];
 }
 
 @Component({
@@ -222,8 +215,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         this.websocketStatus = status;
         if (status === 'connected') {
           this.stopPolling();
-        } else if ((status === 'disconnected' || status === 'error') && this.liveMode) {
-          this.setupPolling();
+        } else if (status === 'disconnected' || status === 'error') {
+          if (this.liveMode) {
+            this.setupPolling();
+          } else if (this.shouldUseWebsocketDashboardData() && this.startTime && this.endTime) {
+            this.fetchRestDashboardData();
+          }
         }
       });
 
@@ -433,11 +430,16 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  private updateDashboardData(data: any): void {
+  private updateDashboardData(data: any, cachedInfoboxEnvelope?: DashboardCacheEnvelope): void {
     const responses = Array.isArray(data) ? data : [data];
     this.operatorData = responses.filter((response) => response?.operator && response?.metrics);
+    if (cachedInfoboxEnvelope) {
+      this.applyCachedInfoboxData(cachedInfoboxEnvelope);
+    }
     this.updateSummaryCards(this.operatorData);
-    this.loadMachineStatusCounts();
+    if (!cachedInfoboxEnvelope) {
+      this.loadMachineStatusCounts();
+    }
     this.prefetchOperatorDetails(this.operatorData);
 
     if (this.operatorData.length === 0) {
@@ -912,6 +914,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       if (this.tryApplyWebsocketDashboardData(null)) {
         return;
       }
+      this.isLoading = true;
+      this.addDummyLoadingRow();
+      return;
     }
 
     this.isLoading = true;
@@ -969,6 +974,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const shiftId = this.dateTimeService.getShiftId();
     if (shiftId) {
       return this.isToday(this.startTime);
+    }
+
+    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+      return false;
     }
 
     return this.isToday(this.startTime) && this.isToday(this.endTime);
@@ -1378,23 +1387,46 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
-    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+    if (!this.shouldUseWebsocketDashboardData()) {
       return false;
     }
 
     const dashboardCache = cache || this.websocketService.getDashboardCacheSnapshot();
-    const envelope = this.dateTimeService.getShiftId()
-      ? dashboardCache?.currentShift
-      : dashboardCache?.today;
+    const shiftId = this.dateTimeService.getShiftId();
+    const envelope = shiftId
+      ? dashboardCache?.dashboard?.operators?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) ||
+        (dashboardCache?.currentShift?.meta?.shiftId === shiftId ? dashboardCache.currentShift : null)
+      : dashboardCache?.dashboard?.operators?.today || dashboardCache?.today;
     const data = envelope?.operatorsSummary;
 
-    if (!Array.isArray(data) || data.length === 0) {
+    if (!envelope || !Array.isArray(data)) {
       return false;
     }
 
-    this.updateDashboardData(data);
+    const machineEnvelope = shiftId
+      ? dashboardCache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) ||
+        (dashboardCache?.currentShift?.meta?.shiftId === shiftId ? dashboardCache.currentShift : null)
+      : dashboardCache?.dashboard?.machines?.today || dashboardCache?.today;
+    this.updateDashboardData(data, {
+      ...machineEnvelope,
+      idleOperatorSummary: envelope.idleOperatorSummary || machineEnvelope?.idleOperatorSummary,
+    });
     this.isLoading = false;
     return true;
+  }
+
+  private applyCachedInfoboxData(envelope: DashboardCacheEnvelope): void {
+    this.idleOperatorSummary = envelope.idleOperatorSummary || null;
+    const machineData = Array.isArray(envelope.machinesSummary)
+      ? envelope.machinesSummary.filter(
+          (response) =>
+            response &&
+            (response.metrics || response.itemSummary || response.performance) &&
+            response.machine &&
+            response.currentStatus
+        )
+      : [];
+    this.machineStatusCounts = calculateMachineStatusCounts(machineData);
   }
 
   private addDummyLoadingRow(): void {

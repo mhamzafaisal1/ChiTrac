@@ -25,7 +25,7 @@ import { DashboardTimeframeService } from "../services/dashboard-timeframe.servi
 import { PercentBreakpointService } from "../services/percent-breakpoint.service";
 import { MachinePphDisplayMode, SettingsService } from "../services/settings.service";
 import { LayoutEditService } from "../services/layout-edit.service";
-import { DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
+import { DashboardCacheEnvelope, DashboardCacheScope, DashboardCacheState, WebsocketConnectionStatus, WebsocketService } from "../services/websocket.service";
 import { ShiftListItem, ShiftService } from "../services/shift.service";
 import { UserService } from "../user.service";
 import { getStatusDotByCode } from "../../utils/status-utils";
@@ -286,8 +286,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         this.websocketStatus = status;
         if (status === "connected") {
           this.stopPolling();
-        } else if ((status === "disconnected" || status === "error") && this.liveMode) {
-          this.setupPolling();
+        } else if (status === "disconnected" || status === "error") {
+          if (this.liveMode) {
+            this.setupPolling();
+          } else if (this.shouldUseWebsocketDashboardData() && this.startTime && this.endTime) {
+            this.fetchRestDashboardData();
+          }
         }
       });
 
@@ -525,6 +529,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       if (this.tryApplyWebsocketDashboardData(null)) {
         return;
       }
+      this.isLoading = true;
+      this.addDummyLoadingRow();
+      return;
     }
 
     this.isLoading = true;
@@ -645,6 +652,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const shiftId = this.dateTimeService.getShiftId();
     if (shiftId) {
       return this.isToday(this.startTime);
+    }
+
+    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+      return false;
     }
 
     return this.isToday(this.startTime) && this.isToday(this.endTime);
@@ -2070,7 +2081,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
-    if (this.dateTimeService.getTimeframe() || this.dateTimeService.getConfirmed()) {
+    if (!this.shouldUseWebsocketDashboardData()) {
       return false;
     }
 
@@ -2079,12 +2090,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const envelope = shiftId
       ? dashboardCache?.dashboard?.machines?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) ||
         (dashboardCache?.currentShift?.meta?.shiftId === shiftId ? dashboardCache.currentShift : null)
-      : dashboardCache?.today;
+      : dashboardCache?.dashboard?.machines?.today || dashboardCache?.today;
     const data = envelope?.machinesSummary;
 
-    if (!Array.isArray(data) || data.length === 0) {
+    if (!envelope || !Array.isArray(data)) {
       return false;
     }
+
+    const operatorEnvelope = shiftId
+      ? dashboardCache?.dashboard?.operators?.shifts?.find((shift) => shift?.meta?.shiftId === shiftId) ||
+        (dashboardCache?.currentShift?.meta?.shiftId === shiftId ? dashboardCache.currentShift : null)
+      : dashboardCache?.dashboard?.operators?.today || dashboardCache?.today;
+    this.applyCachedOperatorStatus(operatorEnvelope || envelope);
 
     const validResponses = data.filter(
       (response) =>
@@ -2094,13 +2111,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         response.currentStatus
     );
 
-    if (validResponses.length === 0) {
-      return false;
-    }
-
     this.machineData = validResponses;
     this.updateSummaryCards(validResponses, dashboardCache);
-    this.loadOperatorStatusCounts();
+    if (validResponses.length === 0) {
+      this.rows = [];
+      this.columns = [];
+      this.isLoading = false;
+      return true;
+    }
     const formattedData = validResponses.map((response) => {
       const totalCount = response.metrics?.output?.totalCount ??
         response.itemSummary?.machineSummary?.totalCount ?? 0;
@@ -2134,6 +2152,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.rows = formattedData;
     this.isLoading = false;
     return true;
+  }
+
+  private applyCachedOperatorStatus(envelope: DashboardCacheEnvelope): void {
+    const operatorData = Array.isArray(envelope.operatorsSummary)
+      ? envelope.operatorsSummary.filter((response) => response?.operator && response?.metrics)
+      : [];
+    this.operatorStatusCounts = calculateOperatorStatusCounts(
+      operatorData,
+      envelope.idleOperatorSummary?.idleOperators
+    );
   }
 
   private addDummyLoadingRow(): void {

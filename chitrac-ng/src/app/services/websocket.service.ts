@@ -5,13 +5,38 @@ import { distinctUntilChanged, map } from 'rxjs/operators';
 export type WebsocketConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 export type DashboardCacheScope = 'today' | 'currentShift';
 
+export interface IdleOperatorSummary {
+  idleOperators: number;
+  shiftOperators: number;
+  activeOperators: number;
+  idleOperatorIds?: number[];
+  shiftId?: string | null;
+  shiftMode?: string | null;
+  start?: string | Date | null;
+  end?: string | Date | null;
+  updatedAt?: string | Date;
+}
+
+export interface DashboardCacheMeta {
+  key?: string | null;
+  date?: string;
+  shiftId?: string;
+  shift?: any;
+  mode?: string;
+  start?: string | Date;
+  end?: string | Date;
+  projectionWindow?: any;
+  [key: string]: any;
+}
+
 export interface DashboardCacheEnvelope {
   machinesSummary?: any[];
   operatorsSummary?: any[];
+  idleOperatorSummary?: IdleOperatorSummary;
   countSparkline?: any;
   data?: any;
   updatedAt?: string | Date;
-  meta?: any;
+  meta?: DashboardCacheMeta;
 }
 
 export interface ActiveShiftIndicator {
