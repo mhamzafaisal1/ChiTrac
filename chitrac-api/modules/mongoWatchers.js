@@ -23,6 +23,10 @@ const {
   addDerivedShiftTimeComponents,
   getShiftTimeComponents,
 } = require("../utils/shiftTimeComponents");
+const {
+  buildIdleOperatorSummary,
+  emptyIdleOperatorSummary,
+} = require("../utils/idleOperatorSummary");
 
 const CACHE_POLL_INTERVAL_MS = 6_000;
 const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
@@ -81,6 +85,7 @@ function cacheEnvelope(data, meta) {
   return {
     machinesSummary: Array.isArray(payload.machinesSummary) ? payload.machinesSummary : [],
     operatorsSummary: Array.isArray(payload.operatorsSummary) ? payload.operatorsSummary : [],
+    idleOperatorSummary: payload.idleOperatorSummary || emptyIdleOperatorSummary(),
     updatedAt: new Date(),
     meta,
   };
@@ -109,17 +114,19 @@ function activeShiftIndicatorFromCache(currentShiftCache) {
   };
 }
 
-function machineDashboardEnvelope(machinesSummary, meta) {
+function machineDashboardEnvelope(machinesSummary, meta, idleOperatorSummary) {
   return {
     machinesSummary: Array.isArray(machinesSummary) ? machinesSummary : [],
+    idleOperatorSummary: idleOperatorSummary || emptyIdleOperatorSummary(),
     updatedAt: new Date(),
     meta,
   };
 }
 
-function operatorDashboardEnvelope(operatorsSummary, meta) {
+function operatorDashboardEnvelope(operatorsSummary, meta, idleOperatorSummary) {
   return {
     operatorsSummary: Array.isArray(operatorsSummary) ? operatorsSummary : [],
+    idleOperatorSummary: idleOperatorSummary || emptyIdleOperatorSummary(),
     updatedAt: new Date(),
     meta,
   };
@@ -148,13 +155,35 @@ function broadcastDashboardCache(server, scope) {
 }
 
 function buildCacheSignature(cache) {
+  const idleOperatorSummary = cache?.idleOperatorSummary;
   return JSON.stringify({
     machinesSummary: cache?.machinesSummary,
     operatorsSummary: cache?.operatorsSummary,
+    idleOperatorSummary: idleOperatorSummary ? {
+      idleOperators: idleOperatorSummary.idleOperators,
+      shiftOperators: idleOperatorSummary.shiftOperators,
+      activeOperators: idleOperatorSummary.activeOperators,
+      idleOperatorIds: idleOperatorSummary.idleOperatorIds,
+      shiftId: idleOperatorSummary.shiftId,
+      shiftMode: idleOperatorSummary.shiftMode,
+      start: idleOperatorSummary.start,
+      end: idleOperatorSummary.end,
+    } : null,
     days: cache?.days,
     dashboard: cache?.dashboard,
     meta: cache?.meta,
   });
+}
+
+async function safeBuildIdleOperatorSummary(server, shiftContext) {
+  try {
+    return await buildIdleOperatorSummary(server.db, server.config, shiftContext);
+  } catch (error) {
+    if (server.logger) {
+      server.logger.error(`[mongoWatchers] Failed to build idle operator summary: ${error.message}`);
+    }
+    return emptyIdleOperatorSummary();
+  }
 }
 
 function shouldBroadcastCacheUpdate(server, key, cache) {
@@ -189,20 +218,23 @@ function resultMeta(machineResult, operatorResult) {
 
 async function refreshTodayCache(server) {
   const { db, logger, config } = server;
-  const [machineResult, operatorResult] = await Promise.all([
+  const [machineResult, operatorResult, shiftContext] = await Promise.all([
     buildMachineSummaryFromDailyCache(db, logger, config),
     buildOperatorSummaryFromDailyCache(db, logger, config),
+    resolveCurrentShiftContext(db, config),
   ]);
+  const idleOperatorSummary = await safeBuildIdleOperatorSummary(server, shiftContext);
 
   const meta = resultMeta(machineResult, operatorResult);
   const nextCache = cacheEnvelope({
     machinesSummary: machineResult.data,
     operatorsSummary: operatorResult.data,
+    idleOperatorSummary,
   }, meta);
 
   server.cache.today = nextCache;
-  server.cache.dashboard.machines.today = machineDashboardEnvelope(machineResult.data, meta);
-  server.cache.dashboard.operators.today = operatorDashboardEnvelope(operatorResult.data, meta);
+  server.cache.dashboard.machines.today = machineDashboardEnvelope(machineResult.data, meta, idleOperatorSummary);
+  server.cache.dashboard.operators.today = operatorDashboardEnvelope(operatorResult.data, meta, idleOperatorSummary);
   if (server.cache.countSparkline) {
     server.cache.today.countSparkline = server.cache.countSparkline;
   }
@@ -302,6 +334,7 @@ async function refreshCurrentShiftCache(server) {
 
   let machineResult;
   let operatorResult;
+  let idleOperatorSummary;
   const errors = {};
 
   try {
@@ -318,6 +351,14 @@ async function refreshCurrentShiftCache(server) {
     errors.operators = error.message;
     operatorResult = { data: [], source: "error", found: false, recordCount: 0 };
     if (logger) logger.error(`[mongoWatchers] Failed to update server.cache.currentShift operators: ${error.message}`);
+  }
+
+  try {
+    idleOperatorSummary = await buildIdleOperatorSummary(db, config, context);
+  } catch (error) {
+    errors.idleOperators = error.message;
+    idleOperatorSummary = emptyIdleOperatorSummary();
+    if (logger) logger.error(`[mongoWatchers] Failed to update server.cache.currentShift idle operators: ${error.message}`);
   }
 
   const meta = {
@@ -346,16 +387,17 @@ async function refreshCurrentShiftCache(server) {
   const nextCache = cacheEnvelope({
     machinesSummary: machineResult.data,
     operatorsSummary: operatorResult.data,
+    idleOperatorSummary,
   }, meta);
 
   server.cache.currentShift = nextCache;
   server.cache.dashboard.machines.shifts = upsertShift(
     server.cache.dashboard.machines.shifts,
-    machineDashboardEnvelope(machineResult.data, meta)
+    machineDashboardEnvelope(machineResult.data, meta, idleOperatorSummary)
   );
   server.cache.dashboard.operators.shifts = upsertShift(
     server.cache.dashboard.operators.shifts,
-    operatorDashboardEnvelope(operatorResult.data, meta)
+    operatorDashboardEnvelope(operatorResult.data, meta, idleOperatorSummary)
   );
 
   if (logger) {
@@ -439,10 +481,11 @@ async function refreshTodayShiftCaches(server) {
 
   for (const context of contexts) {
     try {
-      const [machineResult, operatorResult, dailyAnalyticsResult] = await Promise.all([
+      const [machineResult, operatorResult, dailyAnalyticsResult, idleOperatorSummary] = await Promise.all([
         buildMachineSummaryFromShiftCache(db, logger, config, context),
         buildOperatorSummaryFromShiftCache(db, logger, config, context),
         buildShiftDailyAnalyticsCache(db, logger, config, context),
+        safeBuildIdleOperatorSummary(server, context),
       ]);
       const meta = {
         key: `${context.dateStr}|${String(context.shiftOid)}`,
@@ -464,10 +507,11 @@ async function refreshTodayShiftCaches(server) {
         },
         start: context.start,
         end: context.end,
+        projectionWindow: machineResult.projectionWindow,
       };
 
-      machineShifts.push(machineDashboardEnvelope(machineResult.data, meta));
-      operatorShifts.push(operatorDashboardEnvelope(operatorResult.data, meta));
+      machineShifts.push(machineDashboardEnvelope(machineResult.data, meta, idleOperatorSummary));
+      operatorShifts.push(operatorDashboardEnvelope(operatorResult.data, meta, idleOperatorSummary));
       dailyAnalyticsShifts.push(dailyAnalyticsResult);
     } catch (error) {
       if (logger) {
@@ -1077,4 +1121,7 @@ module.exports = {
   refreshDashboardCache,
   refreshLastSevenDaysCache,
   buildDashboardCacheMessage,
+  cacheEnvelope,
+  machineDashboardEnvelope,
+  operatorDashboardEnvelope,
 };
