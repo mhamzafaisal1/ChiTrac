@@ -1,6 +1,14 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  AbstractControl,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  ValidationErrors,
+  ValidatorFn,
+  Validators
+} from '@angular/forms';
 import {
   MAT_DIALOG_DATA,
   MatDialogActions,
@@ -15,6 +23,21 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 import { MachineConfig } from '../shared/models/machine.model';
+
+const ADDRESS_LIST_PATTERN = /^\s*[1-9]\d*\s*(,\s*[1-9]\d*\s*)*$/;
+
+export function addressListValidator(maxEntries = 8): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const value = String(control.value ?? '').trim();
+    if (!value) return null;
+    if (!ADDRESS_LIST_PATTERN.test(value)) return { addressList: true };
+
+    const entryCount = value.split(',').length;
+    return entryCount > maxEntries
+      ? { maxAddresses: { max: maxEntries, actual: entryCount } }
+      : null;
+  };
+}
 
 @Component({
   selector: 'app-machine-dialog-cu',
@@ -101,18 +124,18 @@ export class MachineDialogCuComponent implements OnInit {
       ]),
       lanes: new FormControl(this.formatAddresses(this.machine.lanes), [
         Validators.required,
-        Validators.pattern(/^\s*\d+\s*(,\s*\d+\s*)*$/)
+        addressListValidator()
       ]),
       stations: new FormControl(this.formatAddresses(this.machine.stations), [
         Validators.required,
-        Validators.pattern(/^\s*\d+\s*(,\s*\d+\s*)*$/)
+        addressListValidator()
       ]),
       type: new FormControl(this.machine.type, [
         Validators.required
       ]),
-      polled: new FormControl(!!this.machine.polled, [Validators.required]),
+      polled: new FormControl(!!this.machine.polled),
       simulated: new FormControl(!!this.machine.simulated),
-      active: new FormControl(this.machine.active, [Validators.required])
+      active: new FormControl(!!this.machine.active)
     });
 
     Object.keys(this.error?.fieldErrors || {}).forEach(field => {

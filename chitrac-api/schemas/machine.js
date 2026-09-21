@@ -19,6 +19,7 @@ const schema = {
     'timestamps',
     'ipAddress',
     'lanes',
+    'stations',
     'type',
     'polled'
   ],
@@ -47,6 +48,7 @@ const schema = {
     lanes: {
       type: 'array',
       minItems: 1,
+      maxItems: 8,
       items: {
         type: 'integer'
       },
@@ -71,6 +73,7 @@ const schema = {
     stations: {
       type: 'array',
       minItems: 1,
+      maxItems: 8,
       items: {
         type: 'integer'
       },

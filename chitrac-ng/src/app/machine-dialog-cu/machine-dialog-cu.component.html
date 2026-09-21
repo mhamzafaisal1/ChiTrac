@@ -51,8 +51,11 @@
       <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('required')">
         Lane addresses are required
       </mat-error>
-      <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('pattern')">
-        Enter comma-separated numbers
+      <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('addressList')">
+        Enter comma-separated positive whole numbers
+      </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('lanes')?.hasError('maxAddresses')">
+        A machine cannot have more than 8 lanes
       </mat-error>
     </mat-form-field>
 
@@ -62,8 +65,11 @@
       <mat-error *ngIf="machineFormGroup.get('stations')?.hasError('required')">
         Station addresses are required
       </mat-error>
-      <mat-error *ngIf="machineFormGroup.get('stations')?.hasError('pattern')">
-        Enter comma-separated numbers
+      <mat-error *ngIf="machineFormGroup.get('stations')?.hasError('addressList')">
+        Enter comma-separated positive whole numbers
+      </mat-error>
+      <mat-error *ngIf="machineFormGroup.get('stations')?.hasError('maxAddresses')">
+        A machine cannot have more than 8 stations
       </mat-error>
     </mat-form-field>
 
