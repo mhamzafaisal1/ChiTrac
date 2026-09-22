@@ -88,6 +88,36 @@
     </mat-card-actions>
   </mat-card>
 
+  <mat-card class="utility-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>download</mat-icon>
+      <mat-card-title>Configuration Export</mat-card-title>
+      <mat-card-subtitle>Download all configuration collections as JSON</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <p>
+        Exports machines, operators, items, faults, statuses, users, shifts, and maintenance shifts in one JSON file.
+      </p>
+    </mat-card-content>
+
+    <mat-card-actions class="config-export-actions">
+      <mat-slide-toggle [(ngModel)]="includeConfigIds" [disabled]="isConfigExportLoading">
+        Include MongoDB IDs
+      </mat-slide-toggle>
+
+      <button
+        mat-raised-button
+        color="primary"
+        (click)="downloadConfigExport()"
+        [disabled]="isConfigExportLoading || isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+        <mat-spinner *ngIf="isConfigExportLoading" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isConfigExportLoading">download</mat-icon>
+        {{ isConfigExportLoading ? 'Exporting...' : 'Download JSON' }}
+      </button>
+    </mat-card-actions>
+  </mat-card>
+
   <mat-card class="utility-card websocket-card">
     <mat-card-header>
       <mat-icon mat-card-avatar>settings_input_antenna</mat-icon>
@@ -141,7 +171,7 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading">
+        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading || isConfigExportLoading">
           <mat-spinner *ngIf="isRebootLoading" diameter="20"></mat-spinner>
           <mat-icon *ngIf="!isRebootLoading">power_settings_new</mat-icon>
           {{ isRebootLoading ? 'Scheduling...' : 'Reboot Server' }}
@@ -181,7 +211,7 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading || isConfigExportLoading">
           <mat-spinner *ngIf="isBackupLoading" diameter="20"></mat-spinner>
           <mat-icon *ngIf="!isBackupLoading">backup</mat-icon>
           {{ isBackupLoading ? 'Backing Up...' : 'Back Up to USB' }}
@@ -232,7 +262,7 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="warn" (click)="deleteOldNodeLogs()" [disabled]="isDeleteNodeLogsLoading || isRebootLoading || isBackupLoading || !nodeLogsCutoffDate">
+        <button mat-raised-button color="warn" (click)="deleteOldNodeLogs()" [disabled]="isDeleteNodeLogsLoading || isRebootLoading || isBackupLoading || isConfigExportLoading || !nodeLogsCutoffDate">
           <mat-spinner *ngIf="isDeleteNodeLogsLoading" diameter="20"></mat-spinner>
           <mat-icon *ngIf="!isDeleteNodeLogsLoading">delete</mat-icon>
           {{ isDeleteNodeLogsLoading ? 'Deleting...' : 'Delete Old Logs' }}
