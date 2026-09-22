@@ -139,19 +139,23 @@ async function loadActiveMachineSerials(db, config) {
 }
 
 async function aggregateCountBuckets(db, config, start, end) {
+  const timestampRange = { $gte: start, $lt: end };
   const counts = await db
     .collection(config.countCollectionName)
     .find({
-      "timestamps.create": { $gte: start, $lt: end },
+      $or: [
+        { "timestamps.create": timestampRange },
+        { timestamp: timestampRange },
+      ],
       misfeed: { $ne: true },
     })
-    .project({ _id: 0, "timestamps.create": 1, machine: 1 })
+    .project({ _id: 0, "timestamps.create": 1, timestamp: 1, machine: 1 })
     .toArray();
 
   const buckets = new Map();
   for (const count of counts) {
     const serial = machineSerialFromCount(count);
-    const timestamp = new Date(count.timestamps?.create);
+    const timestamp = new Date(count.timestamps?.create ?? count.timestamp);
     if (serial === null || Number.isNaN(timestamp.getTime())) continue;
 
     const key = `${serial}|${minuteKey(timestamp)}`;
@@ -214,6 +218,7 @@ async function appendCompletedMinuteCountSparklineCache(db, config, existingCach
 module.exports = {
   LOOKBACK_MINUTES,
   SPARKLINE_SHIFT_STATES,
+  aggregateCountBuckets,
   buildLastHourCountSparklineCache,
   appendCompletedMinuteCountSparklineCache,
 };
