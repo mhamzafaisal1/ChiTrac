@@ -48,7 +48,9 @@ import { TokenManagementService, PermanentToken } from '../services/token-manage
 })
 export class TokenManagementComponent implements OnInit, OnDestroy {
   tokens: PermanentToken[] = [];
+  deactivatedTokens: PermanentToken[] = [];
   dataSource: MatTableDataSource<PermanentToken>;
+  deactivatedDataSource: MatTableDataSource<PermanentToken>;
   
   sub: Subscription;
   createTokenFormGroup: FormGroup;
@@ -56,9 +58,12 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   showTokenDialog: boolean = false;
 
   displayedColumns: string[] = ['name', 'description', 'created', 'lastUsed', 'usageCount', 'actions'];
+  deactivatedDisplayedColumns: string[] = ['name', 'description', 'created', 'deactivated', 'lastUsed', 'usageCount'];
 
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort: MatSort;
+  @ViewChild('activePaginator') activePaginator!: MatPaginator;
+  @ViewChild('activeSort') activeSort!: MatSort;
+  @ViewChild('deactivatedPaginator') deactivatedPaginator!: MatPaginator;
+  @ViewChild('deactivatedSort') deactivatedSort!: MatSort;
 
   constructor(
     private tokenService: TokenManagementService,
@@ -66,24 +71,39 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
     private clipboard: Clipboard
   ) {
     this.dataSource = new MatTableDataSource<PermanentToken>([]);
+    this.deactivatedDataSource = new MatTableDataSource<PermanentToken>([]);
   }
 
-  private getTokensSubFunction = (res: { tokens: PermanentToken[] }) => {
+  private getTokensSubFunction = (res: { tokens: PermanentToken[]; deactivatedTokens?: PermanentToken[] }) => {
     this.tokens = res.tokens;
-    if (!this.dataSource) {
-      this.dataSource = new MatTableDataSource<PermanentToken>(res.tokens);
-    } else {
-      this.dataSource.data = res.tokens;
-    }
-    this.dataSource.sortingDataAccessor = (token: PermanentToken, property: string) => {
-      if (property === 'created') {
-        return token.timestamps?.create ? new Date(token.timestamps.create).getTime() : 0;
-      }
-      return (token as any)[property];
-    };
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
+    this.deactivatedTokens = res.deactivatedTokens || [];
+    this.dataSource.data = this.tokens;
+    this.deactivatedDataSource.data = this.deactivatedTokens;
+    this.configureDataSources();
   }
+
+  private configureDataSources(): void {
+    this.dataSource.sortingDataAccessor = this.tokenSortingDataAccessor;
+    this.deactivatedDataSource.sortingDataAccessor = this.tokenSortingDataAccessor;
+
+    if (this.activePaginator) this.dataSource.paginator = this.activePaginator;
+    if (this.activeSort) this.dataSource.sort = this.activeSort;
+    if (this.deactivatedPaginator) this.deactivatedDataSource.paginator = this.deactivatedPaginator;
+    if (this.deactivatedSort) this.deactivatedDataSource.sort = this.deactivatedSort;
+  }
+
+  private tokenSortingDataAccessor = (token: PermanentToken, property: string): string | number => {
+    if (property === 'created') {
+      return token.timestamps?.create ? new Date(token.timestamps.create).getTime() : 0;
+    }
+    if (property === 'deactivated') {
+      return token.timestamps?.inactive ? new Date(token.timestamps.inactive).getTime() : 0;
+    }
+    if (property === 'lastUsed') {
+      return token.lastUsed ? new Date(token.lastUsed).getTime() : 0;
+    }
+    return (token as any)[property] ?? '';
+  };
 
   ngOnInit() {
     this.createTokenFormGroup = new FormGroup({

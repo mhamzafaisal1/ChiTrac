@@ -10,15 +10,38 @@ const {
   normalizeTokenUserId
 } = require("../../utils/authMiddleware");
 
+function buildTokenTimestamps(token, fallbackDate = new Date()) {
+  if (token.timestamps) return timestampsSchema.utils.normalize(token.timestamps);
+  return timestampsSchema.utils.stampInit(token.createdAt || fallbackDate);
+}
+
+function sanitizeToken(token) {
+  return {
+    id: token._id,
+    name: token.name,
+    description: token.description,
+    timestamps: buildTokenTimestamps(token),
+    isActive: token.isActive === true,
+    lastUsed: token.lastUsed,
+    usageCount: token.usageCount
+  };
+}
+
+function partitionTokens(tokens) {
+  return tokens.reduce((result, token) => {
+    if (token.isActive === true) {
+      result.tokens.push(sanitizeToken(token));
+    } else if (token.isActive === false) {
+      result.deactivatedTokens.push(sanitizeToken(token));
+    }
+    return result;
+  }, { tokens: [], deactivatedTokens: [] });
+}
+
 module.exports = function (server) {
   const router = express.Router();
   const logger = server.logger;
   const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
-
-  function buildTokenTimestamps(token, fallbackDate = new Date()) {
-    if (token.timestamps) return timestampsSchema.utils.normalize(token.timestamps);
-    return timestampsSchema.utils.stampInit(token.createdAt || fallbackDate);
-  }
 
   function requirePermissionLevel(requiredLevel) {
     return async function(req, res, next) {
@@ -162,25 +185,12 @@ module.exports = function (server) {
       const db = server.db;
       const authTokensCollection = db.collection('auth-tokens');
 
-      const tokens = await authTokensCollection
-        .find({ 
-          createdBy: req.tokenPayload.userId,
-          isActive: true 
-        })
+      const tokenRecords = await authTokensCollection
+        .find({ createdBy: req.tokenPayload.userId })
         .sort({ "timestamps.create": -1, createdAt: -1 })
         .toArray();
 
-      // Remove hashed tokens from response
-      const sanitizedTokens = tokens.map(token => ({
-        id: token._id,
-        name: token.name,
-        description: token.description,
-        timestamps: buildTokenTimestamps(token),
-        lastUsed: token.lastUsed,
-        usageCount: token.usageCount
-      }));
-
-      res.json({ tokens: sanitizedTokens });
+      res.json(partitionTokens(tokenRecords));
 
     } catch (err) {
       logger?.error?.("Error fetching tokens:", err);
@@ -247,3 +257,5 @@ module.exports = function (server) {
 
   return router;
 };
+
+module.exports.partitionTokens = partitionTokens;
