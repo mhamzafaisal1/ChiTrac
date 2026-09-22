@@ -14,6 +14,7 @@ const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
 const { hasPermissionLevel } = require("../../modules/permissions");
+const { configExportFilename, exportConfigCollections } = require("../../utils/configExport");
 
 const recordTimestamp = (record) => record?.timestamps?.create;
 
@@ -2520,6 +2521,32 @@ function constructor(server) {
         success: false,
         error: "Failed to delete old Node.js logs",
         details: error.message
+      });
+    }
+  });
+
+  router.get("/export/config", requireRoot, async (req, res) => {
+    try {
+      const includeIds = String(req.query.includeIds || "").toLowerCase() === "true";
+      const exportedConfig = await exportConfigCollections(db, config, { includeIds });
+      const collectionCounts = Object.fromEntries(
+        Object.entries(exportedConfig.collections).map(([name, documents]) => [name, documents.length])
+      );
+
+      logger.info("Level 0 user exported configuration collections.", {
+        includeIds,
+        collectionCounts,
+      });
+
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${configExportFilename()}"`);
+      return res.send(JSON.stringify(exportedConfig, null, 2));
+    } catch (error) {
+      logger.error("Failed to export configuration collections:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to export configuration collections",
+        details: error.message,
       });
     }
   });

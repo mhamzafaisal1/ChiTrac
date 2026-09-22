@@ -9,6 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
@@ -30,6 +31,7 @@ import { Subject, takeUntil } from 'rxjs';
     MatInputModule,
     MatNativeDateModule,
     MatSelectModule,
+    MatSlideToggleModule,
     MatProgressSpinnerModule,
     MatSnackBarModule
   ],
@@ -43,6 +45,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isRebootLoading = false;
   isBackupLoading = false;
   isDeleteNodeLogsLoading = false;
+  isConfigExportLoading = false;
   isSavingDashboardTimeframe = false;
   isSavingPercentBreakpoints = false;
   isSavingOePercentBreakpoints = false;
@@ -58,6 +61,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     good: 80
   };
   nodeLogsCutoffDate: Date | null = null;
+  includeConfigIds = false;
   lastRebootResponse: RebootResponse | null = null;
   lastBackupResponse: MongoUsbBackupResponse | null = null;
   lastDeleteNodeLogsResponse: DeleteNodeLogsResponse | null = null;
@@ -305,6 +309,56 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
           panelClass: ['error-snackbar']
         });
       }
+    });
+  }
+
+  downloadConfigExport(): void {
+    this.isConfigExportLoading = true;
+
+    this.utilitiesService.exportConfigCollections(this.includeConfigIds).subscribe({
+      next: (response) => {
+        const blob = response.body;
+        if (!blob) {
+          this.handleConfigExportError('The server returned an empty configuration export.');
+          return;
+        }
+
+        const filename = this.getDownloadFilename(
+          response.headers.get('Content-Disposition'),
+          `chitrac-config-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+        );
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+
+        this.isConfigExportLoading = false;
+        this.snackBar.open('Configuration export downloaded.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to export configuration collections';
+        this.handleConfigExportError(message);
+      }
+    });
+  }
+
+  private getDownloadFilename(contentDisposition: string | null, fallback: string): string {
+    const match = contentDisposition?.match(/filename="?([^";]+)"?/i);
+    return match?.[1] || fallback;
+  }
+
+  private handleConfigExportError(message: string): void {
+    this.isConfigExportLoading = false;
+    this.snackBar.open(message, 'Close', {
+      duration: 7000,
+      panelClass: ['error-snackbar']
     });
   }
 

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface RebootResponse {
@@ -56,5 +56,13 @@ export class UtilitiesService {
 
   deleteOldNodeLogs(date: string): Observable<DeleteNodeLogsResponse> {
     return this.http.post<DeleteNodeLogsResponse>(`${this.apiUrl}/logs/delete-old-nodejs`, { date });
+  }
+
+  exportConfigCollections(includeIds: boolean): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.apiUrl}/export/config`, {
+      params: { includeIds: String(includeIds) },
+      observe: 'response',
+      responseType: 'blob'
+    });
   }
 }
