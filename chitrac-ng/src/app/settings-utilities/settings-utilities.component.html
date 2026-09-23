@@ -102,19 +102,33 @@
     </mat-card-content>
 
     <mat-card-actions class="config-export-actions">
-      <mat-slide-toggle [(ngModel)]="includeConfigIds" [disabled]="isConfigExportLoading">
-        Include MongoDB IDs
-      </mat-slide-toggle>
+      <div class="config-export-primary-row">
+        <mat-slide-toggle [(ngModel)]="includeConfigIds" [disabled]="isConfigExportLoading">
+          Include MongoDB IDs
+        </mat-slide-toggle>
 
-      <button
-        mat-raised-button
-        color="primary"
-        (click)="downloadConfigExport()"
-        [disabled]="isConfigExportLoading || isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
-        <mat-spinner *ngIf="isConfigExportLoading" diameter="20"></mat-spinner>
-        <mat-icon *ngIf="!isConfigExportLoading">download</mat-icon>
-        {{ isConfigExportLoading ? 'Exporting...' : 'Download JSON' }}
-      </button>
+        <button
+          mat-raised-button
+          color="primary"
+          (click)="downloadConfigExport()"
+          [disabled]="isConfigExportLoading || isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+          <mat-spinner *ngIf="isConfigExportLoading && !exportingConfigCollection" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isConfigExportLoading || exportingConfigCollection">download</mat-icon>
+          {{ isConfigExportLoading && !exportingConfigCollection ? 'Exporting...' : 'Download JSON' }}
+        </button>
+      </div>
+
+      <div class="config-export-collection-row">
+        <button
+          *ngFor="let collection of configExportCollections"
+          mat-stroked-button
+          (click)="downloadConfigCollection(collection)"
+          [disabled]="isConfigExportLoading || isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+          <mat-spinner *ngIf="exportingConfigCollection === collection.name" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="exportingConfigCollection !== collection.name">download</mat-icon>
+          {{ collection.label }}
+        </button>
+      </div>
     </mat-card-actions>
   </mat-card>
 

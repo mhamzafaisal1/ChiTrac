@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -16,6 +17,11 @@ import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLog
 import { PercentBreakpoints, SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { Subject, takeUntil } from 'rxjs';
+
+interface ConfigExportCollection {
+  name: string;
+  label: string;
+}
 
 @Component({
   selector: 'app-settings-utilities',
@@ -46,6 +52,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isBackupLoading = false;
   isDeleteNodeLogsLoading = false;
   isConfigExportLoading = false;
+  exportingConfigCollection: string | null = null;
   isSavingDashboardTimeframe = false;
   isSavingPercentBreakpoints = false;
   isSavingOePercentBreakpoints = false;
@@ -62,6 +69,16 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   };
   nodeLogsCutoffDate: Date | null = null;
   includeConfigIds = false;
+  readonly configExportCollections: ConfigExportCollection[] = [
+    { name: 'config-machine', label: 'Machines' },
+    { name: 'config-operator', label: 'Operators' },
+    { name: 'config-item', label: 'Items' },
+    { name: 'config-fault', label: 'Faults' },
+    { name: 'config-status', label: 'Statuses' },
+    { name: 'config-user', label: 'Users' },
+    { name: 'config-shift', label: 'Shifts' },
+    { name: 'config-shift-maintenance', label: 'Maintenance Shifts' }
+  ];
   lastRebootResponse: RebootResponse | null = null;
   lastBackupResponse: MongoUsbBackupResponse | null = null;
   lastDeleteNodeLogsResponse: DeleteNodeLogsResponse | null = null;
@@ -314,27 +331,11 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
 
   downloadConfigExport(): void {
     this.isConfigExportLoading = true;
+    this.exportingConfigCollection = null;
 
     this.utilitiesService.exportConfigCollections(this.includeConfigIds).subscribe({
       next: (response) => {
-        const blob = response.body;
-        if (!blob) {
-          this.handleConfigExportError('The server returned an empty configuration export.');
-          return;
-        }
-
-        const filename = this.getDownloadFilename(
-          response.headers.get('Content-Disposition'),
-          `chitrac-config-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
-        );
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
+        if (!this.saveConfigExport(response, `chitrac-config-${this.downloadTimestamp()}.json`)) return;
 
         this.isConfigExportLoading = false;
         this.snackBar.open('Configuration export downloaded.', 'Close', {
@@ -349,6 +350,54 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     });
   }
 
+  downloadConfigCollection(collection: ConfigExportCollection): void {
+    this.isConfigExportLoading = true;
+    this.exportingConfigCollection = collection.name;
+
+    this.utilitiesService.exportConfigCollection(collection.name, this.includeConfigIds).subscribe({
+      next: (response) => {
+        if (!this.saveConfigExport(response, `${collection.name}-${this.downloadTimestamp()}.json`)) return;
+
+        this.isConfigExportLoading = false;
+        this.exportingConfigCollection = null;
+        this.snackBar.open(`${collection.label} configuration downloaded.`, 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || `Failed to export ${collection.label.toLowerCase()} configuration`;
+        this.handleConfigExportError(message);
+      }
+    });
+  }
+
+  private saveConfigExport(response: HttpResponse<Blob>, fallbackFilename: string): boolean {
+    const blob = response.body;
+    if (!blob) {
+      this.handleConfigExportError('The server returned an empty configuration export.');
+      return false;
+    }
+
+    const filename = this.getDownloadFilename(
+      response.headers.get('Content-Disposition'),
+      fallbackFilename
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    return true;
+  }
+
+  private downloadTimestamp(): string {
+    return new Date().toISOString().replace(/[:.]/g, '-');
+  }
+
   private getDownloadFilename(contentDisposition: string | null, fallback: string): string {
     const match = contentDisposition?.match(/filename="?([^";]+)"?/i);
     return match?.[1] || fallback;
@@ -356,6 +405,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
 
   private handleConfigExportError(message: string): void {
     this.isConfigExportLoading = false;
+    this.exportingConfigCollection = null;
     this.snackBar.open(message, 'Close', {
       duration: 7000,
       panelClass: ['error-snackbar']
