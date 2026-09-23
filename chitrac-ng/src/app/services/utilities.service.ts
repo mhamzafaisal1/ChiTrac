@@ -78,4 +78,12 @@ export class UtilitiesService {
       responseType: 'blob'
     });
   }
+
+  exportConfigCollection(collectionName: string, includeIds: boolean): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.apiUrl}/export/config/${encodeURIComponent(collectionName)}`, {
+      params: { includeIds: String(includeIds) },
+      observe: 'response',
+      responseType: 'blob'
+    });
+  }
 }

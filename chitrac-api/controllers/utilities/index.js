@@ -14,7 +14,12 @@ const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
 const { hasPermissionLevel } = require("../../modules/permissions");
-const { configExportFilename, exportConfigCollections } = require("../../utils/configExport");
+const {
+  configCollectionExportFilename,
+  configExportFilename,
+  exportConfigCollection,
+  exportConfigCollections,
+} = require("../../utils/configExport");
 const { REBOOT_DELAY_SECONDS, createLinuxRebootScheduler } = require("../../utils/rebootScheduler");
 
 const recordTimestamp = (record) => record?.timestamps?.create;
@@ -2561,6 +2566,42 @@ function constructor(server) {
       return res.status(500).json({
         success: false,
         error: "Failed to export configuration collections",
+        details: error.message,
+      });
+    }
+  });
+
+  router.get("/export/config/:collectionName", requireRoot, async (req, res) => {
+    const collectionName = req.params.collectionName;
+
+    try {
+      const includeIds = String(req.query.includeIds || "").toLowerCase() === "true";
+      const documents = await exportConfigCollection(db, config, collectionName, { includeIds });
+
+      logger.info("Level 0 user exported a configuration collection.", {
+        collectionName,
+        includeIds,
+        documentCount: documents.length,
+      });
+
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${configCollectionExportFilename(collectionName)}"`
+      );
+      return res.send(JSON.stringify(documents, null, 2));
+    } catch (error) {
+      if (error.code === "INVALID_CONFIG_COLLECTION") {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      logger.error(`Failed to export configuration collection ${collectionName}:`, error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to export configuration collection",
         details: error.message,
       });
     }

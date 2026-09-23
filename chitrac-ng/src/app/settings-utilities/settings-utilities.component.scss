@@ -122,8 +122,25 @@
 }
 
 .config-export-actions {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.config-export-primary-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+}
+
+.config-export-collection-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+
+  button {
+    min-width: 0;
+  }
 }
 
 .reboot-countdown {
@@ -268,6 +285,21 @@
   }
 
   .percent-breakpoint-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .config-export-primary-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .config-export-collection-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .config-export-collection-row {
     grid-template-columns: 1fr;
   }
 }
