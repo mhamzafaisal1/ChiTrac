@@ -77,7 +77,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     this.startTime = this.formatDateForInput(start);
     this.endTime = this.formatDateForInput(now);
 
-    this.enterDummy();
+    if (!this.preloadedData) this.enterDummy();
     if (this.useExternalTitle) return;
 
     this.performInitialFetch(isLive, wasConfirmed);

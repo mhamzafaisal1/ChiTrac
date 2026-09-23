@@ -89,7 +89,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     this.startTime = this.formatDateForInput(start);
     this.endTime = this.formatDateForInput(now);
 
-    this.enterDummy();
+    if (!this.preloadedData) this.enterDummy();
     if (this.useExternalTitle) return;
 
     this.performInitialFetch(isLive, wasConfirmed);

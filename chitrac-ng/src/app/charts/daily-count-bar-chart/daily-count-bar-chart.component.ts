@@ -82,7 +82,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       this.endTime = this.formatDateForInput(now);
     }
 
-    this.enterDummy();
+    if (!this.preloadedData) this.enterDummy();
     if (this.useExternalTitle) return;
     
     // Consolidated initial fetch logic - only one fetch call
