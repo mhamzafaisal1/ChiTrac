@@ -15,6 +15,7 @@ const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
 const { hasPermissionLevel } = require("../../modules/permissions");
 const { configExportFilename, exportConfigCollections } = require("../../utils/configExport");
+const { REBOOT_DELAY_SECONDS, createLinuxRebootScheduler } = require("../../utils/rebootScheduler");
 
 const recordTimestamp = (record) => record?.timestamps?.create;
 
@@ -43,6 +44,7 @@ function constructor(server) {
   const passport = server.passport;
   let mountInProgress = null;
   let backupInProgress = null;
+  const rebootScheduler = createLinuxRebootScheduler({ spawn, execFile });
 
   function getBearerToken(req) {
     const authHeader = req.headers["authorization"] || req.headers["Authorization"];
@@ -82,19 +84,6 @@ function constructor(server) {
       success: false,
       error: "Level 0 user permission is required"
     });
-  }
-
-  function scheduleLinuxReboot() {
-    const child = spawn(
-      "/bin/sh",
-      ["-c", "sleep 30 && sudo /sbin/shutdown -r now"],
-      {
-        detached: true,
-        stdio: "ignore"
-      }
-    );
-
-    child.unref();
   }
 
   function normalizeLogCutoffDate(dateInput) {
@@ -2457,7 +2446,21 @@ function constructor(server) {
     }
   });
 
-  router.post("/reboot", requireRoot, (req, res) => {
+  router.get("/reboot/status", requireRoot, (req, res) => {
+    const platform = os.platform();
+    const status = platform === "linux"
+      ? rebootScheduler.getStatus()
+      : { scheduled: false, remainingSeconds: 0 };
+
+    return res.json({
+      success: true,
+      available: platform === "linux",
+      platform,
+      ...status
+    });
+  });
+
+  router.post("/reboot", requireRoot, async (req, res) => {
     const platform = os.platform();
 
     if (platform !== "linux") {
@@ -2470,17 +2473,29 @@ function constructor(server) {
     }
 
     try {
-      scheduleLinuxReboot();
-      logger.warn("Level 0 user scheduled server reboot in 30 seconds from web utilities route.");
+      const status = await rebootScheduler.schedule();
+      logger.warn(`Level 0 user scheduled server reboot in ${REBOOT_DELAY_SECONDS} seconds from web utilities route.`);
 
       return res.json({
         success: true,
         available: true,
         platform,
-        scheduledForSeconds: 30,
-        message: "Server reboot has been scheduled for 30 seconds from now."
+        scheduled: true,
+        scheduledForSeconds: REBOOT_DELAY_SECONDS,
+        ...status,
+        message: `Server reboot has been scheduled for ${REBOOT_DELAY_SECONDS} seconds from now.`
       });
     } catch (error) {
+      if (error.code === "REBOOT_ALREADY_SCHEDULED") {
+        return res.status(409).json({
+          success: false,
+          available: true,
+          platform,
+          ...rebootScheduler.getStatus(),
+          error: error.message
+        });
+      }
+
       logger.error("Failed to schedule server reboot:", error);
       return res.status(500).json({
         success: false,
@@ -2547,6 +2562,53 @@ function constructor(server) {
         success: false,
         error: "Failed to export configuration collections",
         details: error.message,
+      });
+    }
+  });
+
+  router.post("/reboot/cancel", requireRoot, async (req, res) => {
+    const platform = os.platform();
+
+    if (platform !== "linux") {
+      return res.json({
+        success: false,
+        available: false,
+        platform,
+        scheduled: false,
+        message: `Server reboot cancellation is unavailable on ${platform}.`
+      });
+    }
+
+    try {
+      const cancellation = await rebootScheduler.cancel();
+      if (!cancellation) {
+        return res.status(409).json({
+          success: false,
+          available: true,
+          platform,
+          scheduled: false,
+          error: "There is no scheduled server reboot to cancel."
+        });
+      }
+
+      logger.warn("Level 0 user cancelled the scheduled server reboot from web utilities route.");
+      return res.json({
+        success: true,
+        available: true,
+        platform,
+        scheduled: false,
+        cancelled: true,
+        message: "The scheduled server reboot has been cancelled."
+      });
+    } catch (error) {
+      logger.error("Failed to cancel scheduled server reboot:", error);
+      return res.status(500).json({
+        success: false,
+        available: true,
+        platform,
+        ...rebootScheduler.getStatus(),
+        error: "Failed to cancel scheduled server reboot",
+        details: error.details || error.message
       });
     }
   });
