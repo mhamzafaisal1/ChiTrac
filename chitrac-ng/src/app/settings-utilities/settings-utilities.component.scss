@@ -143,6 +143,13 @@
   }
 }
 
+.reboot-countdown {
+  align-self: center;
+  color: var(--theme-color-on-surface-variant);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 .result-message {
   display: flex;
   align-items: center;

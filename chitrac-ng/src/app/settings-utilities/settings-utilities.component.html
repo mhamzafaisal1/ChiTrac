@@ -185,11 +185,12 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading || isConfigExportLoading">
+        <button mat-raised-button color="warn" (click)="isRebootScheduled ? cancelReboot() : scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading || isConfigExportLoading">
           <mat-spinner *ngIf="isRebootLoading" diameter="20"></mat-spinner>
-          <mat-icon *ngIf="!isRebootLoading">power_settings_new</mat-icon>
-          {{ isRebootLoading ? 'Scheduling...' : 'Reboot Server' }}
+          <mat-icon *ngIf="!isRebootLoading">{{ isRebootScheduled ? 'cancel' : 'power_settings_new' }}</mat-icon>
+          {{ isRebootLoading ? (isRebootScheduled ? 'Cancelling...' : 'Scheduling...') : isRebootScheduled ? 'Cancel Reboot' : 'Reboot Server' }}
         </button>
+        <span class="reboot-countdown" *ngIf="isRebootScheduled">Reboot in {{ rebootRemainingSeconds }}s</span>
       </mat-card-actions>
     </mat-card>
 

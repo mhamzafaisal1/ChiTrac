@@ -870,13 +870,18 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     const projectionWindow = this.getShiftProjectionWindow(cache);
-    const shift = projectionWindow?.currentShift || projectionWindow?.nextShift;
+    const currentShift = projectionWindow?.currentShift;
+    const shift = currentShift || projectionWindow?.nextShift;
     if (!shift?.start || !shift?.end) {
       return null;
     }
 
     const isTomorrow = this.isTomorrow(shift.start);
-    const prefix = isTomorrow ? "First Shift Tomorrow: " : "Shift: ";
+    const prefix = currentShift
+      ? "Current Shift: "
+      : isTomorrow
+        ? "First Shift Tomorrow: "
+        : "Shift: ";
     return {
       label: `${prefix}${shift.name || "Unnamed Shift"}`,
       value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}`,
@@ -1434,7 +1439,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return this.shiftProjectedCountLabel;
     }
 
-    if (label.startsWith("Shift: ") || label.startsWith("First Shift Tomorrow: ")) {
+    if (
+      label.startsWith("Current Shift: ") ||
+      label.startsWith("Shift: ") ||
+      label.startsWith("First Shift Tomorrow: ")
+    ) {
       return this.shiftInfoCardPreferenceLabel;
     }
 

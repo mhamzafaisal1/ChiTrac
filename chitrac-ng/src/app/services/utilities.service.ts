@@ -6,6 +6,11 @@ export interface RebootResponse {
   success: boolean;
   available: boolean;
   platform: string;
+  scheduled?: boolean;
+  cancelled?: boolean;
+  scheduledAt?: string;
+  executesAt?: string;
+  remainingSeconds?: number;
   scheduledForSeconds?: number;
   message?: string;
   error?: string;
@@ -48,6 +53,14 @@ export class UtilitiesService {
 
   rebootServer(): Observable<RebootResponse> {
     return this.http.post<RebootResponse>(`${this.apiUrl}/reboot`, {});
+  }
+
+  getRebootStatus(): Observable<RebootResponse> {
+    return this.http.get<RebootResponse>(`${this.apiUrl}/reboot/status`);
+  }
+
+  cancelReboot(): Observable<RebootResponse> {
+    return this.http.post<RebootResponse>(`${this.apiUrl}/reboot/cancel`, {});
   }
 
   backupMongoDbToUsb(): Observable<MongoUsbBackupResponse> {

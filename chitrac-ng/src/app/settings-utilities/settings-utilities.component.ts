@@ -16,7 +16,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
 import { PercentBreakpoints, SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
-import { Subject, takeUntil } from 'rxjs';
+import { interval, Subject, Subscription, takeUntil } from 'rxjs';
 
 interface ConfigExportCollection {
   name: string;
@@ -47,8 +47,12 @@ interface ConfigExportCollection {
 })
 export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   private readonly destroy$ = new Subject<void>();
+  private rebootCountdownSubscription: Subscription | null = null;
 
   isRebootLoading = false;
+  isRebootScheduled = false;
+  rebootRemainingSeconds = 0;
+  rebootExecutesAt: string | null = null;
   isBackupLoading = false;
   isDeleteNodeLogsLoading = false;
   isConfigExportLoading = false;
@@ -94,6 +98,8 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.loadRebootStatus();
+
     this.settingsService.getSystemPreferences().subscribe({
       next: (settings) => {
         this.dashboardTimeframe = settings.dashboardTimeframe === 'shift' ? 'shift' : 'current';
@@ -131,6 +137,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopRebootCountdown();
     this.websocketService.disconnect();
     this.destroy$.next();
     this.destroy$.complete();
@@ -263,6 +270,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.lastRebootResponse = response;
         this.isRebootLoading = false;
+        this.applyRebootStatus(response);
 
         this.snackBar.open(response.message || 'Reboot request completed.', 'Close', {
           duration: 5000,
@@ -271,11 +279,13 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         const message = error.error?.error || error.error?.message || 'Failed to schedule server reboot';
+        this.applyRebootStatus(error.error || { scheduled: false });
 
         this.lastRebootResponse = {
           success: false,
           available: true,
-          platform: 'unknown',
+          platform: error.error?.platform || 'unknown',
+          scheduled: this.isRebootScheduled,
           message
         };
         this.isRebootLoading = false;
@@ -327,6 +337,84 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
         });
       }
     });
+  }
+
+  cancelReboot(): void {
+    this.isRebootLoading = true;
+    this.lastRebootResponse = null;
+
+    this.utilitiesService.cancelReboot().subscribe({
+      next: (response) => {
+        this.lastRebootResponse = response;
+        this.isRebootLoading = false;
+        this.applyRebootStatus(response);
+        this.snackBar.open(response.message || 'Scheduled reboot cancelled.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to cancel scheduled server reboot';
+        this.isRebootLoading = false;
+        this.applyRebootStatus(error.error || { scheduled: this.isRebootScheduled });
+        this.lastRebootResponse = {
+          success: false,
+          available: true,
+          platform: error.error?.platform || 'unknown',
+          scheduled: this.isRebootScheduled,
+          message
+        };
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  private loadRebootStatus(): void {
+    this.utilitiesService.getRebootStatus().subscribe({
+      next: (response) => this.applyRebootStatus(response),
+      error: () => this.applyRebootStatus({ scheduled: false })
+    });
+  }
+
+  private applyRebootStatus(response: Partial<RebootResponse>): void {
+    this.isRebootScheduled = response.scheduled === true;
+    this.rebootExecutesAt = response.executesAt || null;
+    this.rebootRemainingSeconds = response.remainingSeconds || 0;
+
+    if (this.isRebootScheduled && this.rebootExecutesAt) {
+      this.startRebootCountdown();
+    } else {
+      this.stopRebootCountdown();
+    }
+  }
+
+  private startRebootCountdown(): void {
+    this.stopRebootCountdown();
+    this.updateRebootCountdown();
+    this.rebootCountdownSubscription = interval(250)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.updateRebootCountdown());
+  }
+
+  private updateRebootCountdown(): void {
+    if (!this.rebootExecutesAt) return;
+    this.rebootRemainingSeconds = Math.max(
+      0,
+      Math.ceil((new Date(this.rebootExecutesAt).getTime() - Date.now()) / 1000)
+    );
+
+    if (this.rebootRemainingSeconds === 0) {
+      this.isRebootScheduled = false;
+      this.stopRebootCountdown();
+    }
+  }
+
+  private stopRebootCountdown(): void {
+    this.rebootCountdownSubscription?.unsubscribe();
+    this.rebootCountdownSubscription = null;
   }
 
   downloadConfigExport(): void {
