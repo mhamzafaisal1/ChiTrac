@@ -882,9 +882,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       : isTomorrow
         ? "First Shift Tomorrow: "
         : "Shift: ";
+    const breakSuffix = currentShift && projectionWindow?.state === "inBreak" ? " (In Break)" : "";
     return {
       label: `${prefix}${shift.name || "Unnamed Shift"}`,
-      value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}`,
+      value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}${breakSuffix}`,
       icon: "schedule",
       tone: "neutral",
     };
