@@ -9,6 +9,7 @@ import { takeUntil } from 'rxjs/operators';
 import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
   SummaryCardVisibilityDialogComponent,
+  SummaryCardVisibilityDialogResult,
   SummaryCardVisibilityOption
 } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { ChartTileComponent } from '../components/chart-tile/chart-tile.component';
@@ -214,10 +215,10 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
-      .subscribe((visibility: Record<string, boolean> | undefined) => {
-        if (!visibility) return;
+      .subscribe((result: SummaryCardVisibilityDialogResult | undefined) => {
+        if (!result) return;
         this.layoutEditService.markEditsMade();
-        this.chartVisibility = this.cleanChartVisibility(visibility);
+        this.chartVisibility = this.cleanChartVisibility(result.visibility);
         this.settingsService.setExperimentalDailyDashboardChartOrder(this.getChartOrder(), this.chartVisibility);
         this.scheduleChartDimensionUpdate();
       });
@@ -345,6 +346,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
 
   private getChartVisibilityOptions(): SummaryCardVisibilityOption[] {
     return this.chartTiles.map((tile) => ({
+      id: tile.id,
       label: tile.title,
       icon: tile.icon,
     }));
@@ -352,7 +354,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
 
   private getChartVisibilityForDialog(): Record<string, boolean> {
     return this.chartTiles.reduce((acc, tile) => {
-      acc[tile.title] = this.isChartVisible(tile.id);
+      acc[tile.id] = this.isChartVisible(tile.id);
       return acc;
     }, {} as Record<string, boolean>);
   }
