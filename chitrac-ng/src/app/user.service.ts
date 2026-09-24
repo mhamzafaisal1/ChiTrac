@@ -1,11 +1,10 @@
 /** Angular imports */
 import { Injectable } from '@angular/core';
-import { Router } from '@angular/router';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 /** Other module imports */
-import { map } from 'rxjs/operators';
-import { BehaviorSubject, Observable } from 'rxjs';
+import { catchError, finalize, map, shareReplay } from 'rxjs/operators';
+import { BehaviorSubject, Observable, of } from 'rxjs';
 
 export const PermissionLevels = {
   utilities: 0,
@@ -24,15 +23,15 @@ export const PermissionLevels = {
   providedIn: 'root'
 })
 export class UserService {
-  private userSubject: BehaviorSubject<any>;
-  public user: Observable<User | null>;
+  private readonly userSubject: BehaviorSubject<User | null>;
+  private currentUserRequest$: Observable<User | null> | null = null;
+  public readonly user: Observable<User | null>;
 
   constructor(
-    private router: Router,
     private http: HttpClient
   ) {
-    this.getCurrentUser().subscribe(x => x);
-    this.userSubject = new BehaviorSubject(JSON.parse(localStorage.getItem('user')!));
+    // Stored user data is display cache only; it must never authorize a route.
+    this.userSubject = new BehaviorSubject<User | null>(null);
     this.user = this.userSubject.asObservable();
   }
 
@@ -60,22 +59,36 @@ export class UserService {
     }));
   }
 
-  public getCurrentUser() {
-    return this.http.get<any>('/api/passport/user').pipe(map(x => {
-      // store user details and jwt token in local storage to keep user logged in between page refreshes
-      if (x.user) {
+  public getCurrentUser(): Observable<User | null> {
+    if (this.currentUserRequest$) {
+      return this.currentUserRequest$;
+    }
+
+    const headers = new HttpHeaders({ 'X-Skip-Error-Modal': 'true' });
+    this.currentUserRequest$ = this.http.get<{ user?: User }>('/api/passport/user', { headers }).pipe(
+      map(response => {
+        if (!response.user?.username) {
+          this.clearStoredSession();
+          return null;
+        }
+
         const token = localStorage.getItem('token');
-        const userWithToken = token ? { ...x.user, token } : x.user;
+        const userWithToken = token ? { ...response.user, token } : response.user;
         localStorage.setItem('user', JSON.stringify(userWithToken));
         this.userSubject.next(userWithToken);
         return userWithToken;
-      } else {
-        localStorage.setItem('user', JSON.stringify({ username: null }));
-        this.userSubject.next({ username: null });
-        return { username: null };
-      }
-      
-    }));
+      }),
+      catchError(() => {
+        this.clearStoredSession();
+        return of(null);
+      }),
+      finalize(() => {
+        this.currentUserRequest$ = null;
+      }),
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
+
+    return this.currentUserRequest$;
   }
 
   public logout() {
@@ -89,9 +102,9 @@ export class UserService {
   }
 
   public clearStoredSession(): void {
-    localStorage.setItem('user', JSON.stringify({ username: null }));
+    localStorage.removeItem('user');
     localStorage.removeItem('token');
-    this.userSubject.next({ username: null });
+    this.userSubject.next(null);
   }
 
   public getToken(): string | null {
