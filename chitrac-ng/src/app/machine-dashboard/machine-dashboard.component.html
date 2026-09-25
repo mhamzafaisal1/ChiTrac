@@ -33,6 +33,11 @@
       </div>
       <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
         <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
+          <polyline
+            class="sparkline-comparison-line"
+            *ngIf="card.comparisonSparklineLinePoints"
+            [attr.points]="card.comparisonSparklineLinePoints"
+          ></polyline>
           <path class="sparkline-fill" [attr.d]="card.sparklineAreaPath"></path>
           <polyline
             class="sparkline-line"

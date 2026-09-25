@@ -188,7 +188,16 @@
   }
 
   .sparkline-fill {
-    fill: rgba(132, 86, 255, 0.2);
+    fill: rgba(132, 86, 255, 0.18);
+  }
+
+  .sparkline-comparison-line {
+    fill: none;
+    stroke: rgba(156, 163, 175, 0.9);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
   }
 
   .sparkline-line {

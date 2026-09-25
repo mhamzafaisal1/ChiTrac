@@ -4,6 +4,8 @@ const { SYSTEM_TIMEZONE } = require("./time");
 const { getShiftTimeComponents } = require("./shiftTimeComponents");
 
 const LOOKBACK_MINUTES = 60;
+const RETENTION_MINUTES = 25 * 60;
+const REFRESH_OVERLAP_MINUTES = 1;
 const SPARKLINE_SHIFT_STATES = Object.freeze({
   SHIFT: "shift",
   BREAK: "break",
@@ -165,7 +167,7 @@ async function aggregateCountBuckets(db, config, start, end) {
   return buckets;
 }
 
-function buildPayload(machineSerials, startMinute, endMinuteExclusive, bucketMap, shiftStateClassifier, updatedAt = new Date()) {
+function buildSeries(machineSerials, startMinute, endMinuteExclusive, bucketMap, shiftStateClassifier) {
   const machines = {};
   const totalsByMinute = new Map();
 
@@ -186,39 +188,182 @@ function buildPayload(machineSerials, startMinute, endMinuteExclusive, bucketMap
   }));
 
   return {
-    lookbackMinutes: LOOKBACK_MINUTES,
-    updatedAt,
-    range: {
-      start: startMinute,
-      end: endMinuteExclusive,
-    },
-    machineSerials,
     machines,
     allMachines,
   };
 }
 
-async function buildLastHourCountSparklineCache(db, config, nowInput = new Date()) {
+function buildPayload(
+  machineSerials,
+  retentionStartMinute,
+  currentStartMinute,
+  endMinuteExclusive,
+  bucketMap,
+  shiftStateClassifier,
+  updatedAt = new Date()
+) {
+  const current = buildSeries(
+    machineSerials,
+    currentStartMinute,
+    endMinuteExclusive,
+    bucketMap,
+    shiftStateClassifier
+  );
+  const history = buildSeries(
+    machineSerials,
+    retentionStartMinute,
+    currentStartMinute,
+    bucketMap,
+    shiftStateClassifier
+  );
+
+  return {
+    lookbackMinutes: LOOKBACK_MINUTES,
+    retentionMinutes: RETENTION_MINUTES,
+    updatedAt,
+    range: {
+      start: currentStartMinute,
+      end: endMinuteExclusive,
+    },
+    machineSerials,
+    machines: current.machines,
+    allMachines: current.allMachines,
+    history: {
+      lookbackMinutes: RETENTION_MINUTES - LOOKBACK_MINUTES,
+      range: {
+        start: retentionStartMinute,
+        end: currentStartMinute,
+      },
+      machines: history.machines,
+      allMachines: history.allMachines,
+    },
+  };
+}
+
+function bucketMapFromCache(cache, startMinute, endMinuteExclusive) {
+  const buckets = new Map();
+  const machineGroups = [cache?.history?.machines, cache?.machines];
+  const startMs = new Date(startMinute).getTime();
+  const endMs = new Date(endMinuteExclusive).getTime();
+
+  for (const machines of machineGroups) {
+    if (!machines || typeof machines !== "object") continue;
+    for (const [serial, points] of Object.entries(machines)) {
+      if (!Array.isArray(points)) continue;
+      for (const point of points) {
+        const timestamp = new Date(point?.minuteStart).getTime();
+        const count = Number(point?.count);
+        if (!Number.isFinite(timestamp) || timestamp < startMs || timestamp >= endMs) continue;
+        buckets.set(`${serial}|${new Date(timestamp).toISOString()}`, Number.isFinite(count) ? count : 0);
+      }
+    }
+  }
+
+  return buckets;
+}
+
+function hasHistoricalSeries(cache) {
+  return Boolean(
+    cache?.history &&
+    cache.history.machines &&
+    Array.isArray(cache.history.allMachines) &&
+    cache?.range?.end
+  );
+}
+
+function retainedMachineSerials(cache, retentionStartMinute) {
+  const retentionStartMs = new Date(retentionStartMinute).getTime();
+  const retained = new Set();
+  const machineGroups = [cache?.history?.machines, cache?.machines];
+
+  for (const machines of machineGroups) {
+    if (!machines || typeof machines !== "object") continue;
+    for (const [serial, points] of Object.entries(machines)) {
+      const hasRetainedCount = Array.isArray(points) && points.some((point) => {
+        const timestamp = new Date(point?.minuteStart).getTime();
+        return Number.isFinite(timestamp) && timestamp >= retentionStartMs && Number(point?.count) > 0;
+      });
+      if (hasRetainedCount) retained.add(Number(serial));
+    }
+  }
+
+  return [...retained].filter(Number.isFinite);
+}
+
+async function buildCountSparklineCache(db, config, nowInput = new Date()) {
   const endMinute = floorToMinute(nowInput);
-  const startMinute = addMinutes(endMinute, -LOOKBACK_MINUTES);
+  const currentStartMinute = addMinutes(endMinute, -LOOKBACK_MINUTES);
+  const retentionStartMinute = addMinutes(endMinute, -RETENTION_MINUTES);
   const [machineSerials, bucketMap, activeShifts] = await Promise.all([
     loadActiveMachineSerials(db, config),
-    aggregateCountBuckets(db, config, startMinute, endMinute),
+    aggregateCountBuckets(db, config, retentionStartMinute, endMinute),
     loadActiveShifts(db, { collectionName: config.shiftCollectionName }),
   ]);
   const shiftStateClassifier = buildShiftStateClassifier(activeShifts);
 
-  return buildPayload(machineSerials, startMinute, endMinute, bucketMap, shiftStateClassifier);
+  return buildPayload(
+    machineSerials,
+    retentionStartMinute,
+    currentStartMinute,
+    endMinute,
+    bucketMap,
+    shiftStateClassifier
+  );
 }
 
 async function appendCompletedMinuteCountSparklineCache(db, config, existingCache, nowInput = new Date()) {
-  return buildLastHourCountSparklineCache(db, config, nowInput);
+  const endMinute = floorToMinute(nowInput);
+  const currentStartMinute = addMinutes(endMinute, -LOOKBACK_MINUTES);
+  const retentionStartMinute = addMinutes(endMinute, -RETENTION_MINUTES);
+  const existingEndMinute = new Date(existingCache?.range?.end);
+
+  if (
+    !hasHistoricalSeries(existingCache) ||
+    Number.isNaN(existingEndMinute.getTime()) ||
+    existingEndMinute > endMinute ||
+    existingEndMinute < retentionStartMinute
+  ) {
+    return buildCountSparklineCache(db, config, nowInput);
+  }
+
+  const refreshStartMinute = new Date(Math.max(
+    retentionStartMinute.getTime(),
+    addMinutes(existingEndMinute, -REFRESH_OVERLAP_MINUTES).getTime()
+  ));
+  const [activeMachineSerials, refreshedBuckets, activeShifts] = await Promise.all([
+    loadActiveMachineSerials(db, config),
+    refreshStartMinute < endMinute
+      ? aggregateCountBuckets(db, config, refreshStartMinute, endMinute)
+      : Promise.resolve(new Map()),
+    loadActiveShifts(db, { collectionName: config.shiftCollectionName }),
+  ]);
+  const bucketMap = bucketMapFromCache(existingCache, retentionStartMinute, endMinute);
+  for (const [key, count] of refreshedBuckets.entries()) {
+    bucketMap.set(key, count);
+  }
+  const machineSerials = [...new Set([
+    ...activeMachineSerials,
+    ...retainedMachineSerials(existingCache, retentionStartMinute),
+  ])].sort((a, b) => a - b);
+
+  return buildPayload(
+    machineSerials,
+    retentionStartMinute,
+    currentStartMinute,
+    endMinute,
+    bucketMap,
+    buildShiftStateClassifier(activeShifts)
+  );
 }
+
+const buildLastHourCountSparklineCache = buildCountSparklineCache;
 
 module.exports = {
   LOOKBACK_MINUTES,
+  RETENTION_MINUTES,
   SPARKLINE_SHIFT_STATES,
   aggregateCountBuckets,
+  buildCountSparklineCache,
   buildLastHourCountSparklineCache,
   appendCompletedMinuteCountSparklineCache,
 };

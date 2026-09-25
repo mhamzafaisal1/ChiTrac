@@ -29,11 +29,38 @@ export interface DashboardCacheMeta {
   [key: string]: any;
 }
 
+export interface CountSparklinePoint {
+  minuteStart: string | Date;
+  count: number;
+  shiftState: 'shift' | 'break' | 'outsideShift';
+}
+
+export interface CountSparklineSeries {
+  lookbackMinutes: number;
+  range: {
+    start: string | Date;
+    end: string | Date;
+  };
+  machines: Record<string, CountSparklinePoint[]>;
+  allMachines: CountSparklinePoint[];
+}
+
+export interface CountSparklineCache {
+  lookbackMinutes: number;
+  retentionMinutes: number;
+  updatedAt: string | Date;
+  range: CountSparklineSeries['range'];
+  machineSerials: number[];
+  machines: Record<string, CountSparklinePoint[]>;
+  allMachines: CountSparklinePoint[];
+  history: CountSparklineSeries;
+}
+
 export interface DashboardCacheEnvelope {
   machinesSummary?: any[];
   operatorsSummary?: any[];
   idleOperatorSummary?: IdleOperatorSummary;
-  countSparkline?: any;
+  countSparkline?: CountSparklineCache;
   data?: any;
   updatedAt?: string | Date;
   meta?: DashboardCacheMeta;
@@ -51,7 +78,7 @@ export interface DashboardCacheState {
   today?: DashboardCacheEnvelope;
   currentShift?: DashboardCacheEnvelope;
   activeShift?: ActiveShiftIndicator;
-  countSparkline?: any;
+  countSparkline?: CountSparklineCache;
   dashboard?: {
     machines?: {
       today?: DashboardCacheEnvelope;
@@ -78,7 +105,7 @@ export interface DashboardCacheState {
       shifts?: DashboardCacheEnvelope[];
     };
     counts?: {
-      sparkline?: any;
+      sparkline?: CountSparklineCache;
     };
   };
 }
