@@ -8,6 +8,17 @@ export interface SystemPreferences {
   defaultTheme?: 'light' | 'dark';
   logLevel?: string;
   httpsEnabled?: boolean;
+  dashboardTimeframe?: 'current' | 'shift' | null;
+  percentBreakpoints?: {
+    poor: number;
+    okay: number;
+    good: number;
+  };
+  oePercentBreakpoints?: {
+    poor: number;
+    okay: number;
+    good: number;
+  };
   userSessionExpirationHours: number;
   userPermissionsLevels?: string[];
   operatorPaceHandicap?: Array<{

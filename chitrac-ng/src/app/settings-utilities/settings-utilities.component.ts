@@ -9,12 +9,10 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
-import { PercentBreakpoints, SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { interval, Subject, Subscription, takeUntil } from 'rxjs';
 
@@ -36,7 +34,6 @@ interface ConfigExportCollection {
     MatIconModule,
     MatInputModule,
     MatNativeDateModule,
-    MatSelectModule,
     MatSlideToggleModule,
     MatProgressSpinnerModule,
     MatSnackBarModule
@@ -57,20 +54,6 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isDeleteNodeLogsLoading = false;
   isConfigExportLoading = false;
   exportingConfigCollection: string | null = null;
-  isSavingDashboardTimeframe = false;
-  isSavingPercentBreakpoints = false;
-  isSavingOePercentBreakpoints = false;
-  dashboardTimeframe: 'current' | 'shift' = 'current';
-  percentBreakpoints: PercentBreakpoints = {
-    poor: 0,
-    okay: 70,
-    good: 90
-  };
-  oePercentBreakpoints: PercentBreakpoints = {
-    poor: 0,
-    okay: 60,
-    good: 80
-  };
   nodeLogsCutoffDate: Date | null = null;
   includeConfigIds = false;
   readonly configExportCollections: ConfigExportCollection[] = [
@@ -92,30 +75,12 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
 
   constructor(
     private utilitiesService: UtilitiesService,
-    private settingsService: SettingsService,
     private websocketService: WebsocketService,
     private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
     this.loadRebootStatus();
-
-    this.settingsService.getSystemPreferences().subscribe({
-      next: (settings) => {
-        this.dashboardTimeframe = settings.dashboardTimeframe === 'shift' ? 'shift' : 'current';
-        this.percentBreakpoints = settings.percentBreakpoints
-          ? { ...settings.percentBreakpoints }
-          : { poor: 0, okay: 70, good: 90 };
-        this.oePercentBreakpoints = settings.oePercentBreakpoints
-          ? { ...settings.oePercentBreakpoints }
-          : { poor: 0, okay: 60, good: 80 };
-      },
-      error: () => {
-        this.dashboardTimeframe = 'current';
-        this.percentBreakpoints = { poor: 0, okay: 70, good: 90 };
-        this.oePercentBreakpoints = { poor: 0, okay: 60, good: 80 };
-      }
-    });
 
     this.websocketService.status$
       .pipe(takeUntil(this.destroy$))
@@ -150,110 +115,6 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     }
 
     this.websocketService.connect();
-  }
-
-  saveDashboardTimeframe(): void {
-    this.isSavingDashboardTimeframe = true;
-
-    this.settingsService.saveDashboardTimeframe(this.dashboardTimeframe).subscribe({
-      next: () => {
-        this.isSavingDashboardTimeframe = false;
-        this.settingsService.loadSettings().subscribe();
-        this.snackBar.open('Dashboard default timeframe saved.', 'Close', {
-          duration: 5000,
-          panelClass: ['success-snackbar']
-        });
-      },
-      error: (error) => {
-        const message = error.error?.error || error.error?.message || 'Failed to save dashboard default timeframe';
-        this.isSavingDashboardTimeframe = false;
-        this.snackBar.open(message, 'Close', {
-          duration: 5000,
-          panelClass: ['error-snackbar']
-        });
-      }
-    });
-  }
-
-  savePercentBreakpoints(): void {
-    const breakpoints = this.normalizeBreakpoints(this.percentBreakpoints);
-    if (!breakpoints) return;
-
-    this.isSavingPercentBreakpoints = true;
-
-    this.settingsService.savePercentBreakpoints(breakpoints).subscribe({
-      next: () => {
-        this.isSavingPercentBreakpoints = false;
-        this.settingsService.loadSettings().subscribe();
-        this.snackBar.open('Percent breakpoints saved.', 'Close', {
-          duration: 5000,
-          panelClass: ['success-snackbar']
-        });
-      },
-      error: (error) => {
-        const message = error.error?.error || error.error?.message || 'Failed to save percent breakpoints';
-        this.isSavingPercentBreakpoints = false;
-        this.snackBar.open(message, 'Close', {
-          duration: 5000,
-          panelClass: ['error-snackbar']
-        });
-      }
-    });
-  }
-
-  saveOePercentBreakpoints(): void {
-    const breakpoints = this.normalizeBreakpoints(this.oePercentBreakpoints);
-    if (!breakpoints) return;
-
-    this.isSavingOePercentBreakpoints = true;
-
-    this.settingsService.saveOePercentBreakpoints(breakpoints).subscribe({
-      next: () => {
-        this.isSavingOePercentBreakpoints = false;
-        this.settingsService.loadSettings().subscribe();
-        this.snackBar.open('OE percent breakpoints saved.', 'Close', {
-          duration: 5000,
-          panelClass: ['success-snackbar']
-        });
-      },
-      error: (error) => {
-        const message = error.error?.error || error.error?.message || 'Failed to save OE percent breakpoints';
-        this.isSavingOePercentBreakpoints = false;
-        this.snackBar.open(message, 'Close', {
-          duration: 5000,
-          panelClass: ['error-snackbar']
-        });
-      }
-    });
-  }
-
-  private normalizeBreakpoints(source: PercentBreakpoints): PercentBreakpoints | null {
-    const rawValues = [
-      source.poor,
-      source.okay,
-      source.good
-    ];
-    const poor = Number(source.poor);
-    const okay = Number(source.okay);
-    const good = Number(source.good);
-
-    if (rawValues.some((value) => value === null || value === undefined || `${value}`.trim() === '') || ![poor, okay, good].every(Number.isFinite)) {
-      this.snackBar.open('Enter valid percentage breakpoints.', 'Close', {
-        duration: 5000,
-        panelClass: ['warning-snackbar']
-      });
-      return null;
-    }
-
-    if (!(good > okay && okay > poor)) {
-      this.snackBar.open('Percent breakpoints must satisfy Good > Okay > Poor.', 'Close', {
-        duration: 5000,
-        panelClass: ['warning-snackbar']
-      });
-      return null;
-    }
-
-    return { poor, okay, good };
   }
 
   scheduleReboot(): void {
