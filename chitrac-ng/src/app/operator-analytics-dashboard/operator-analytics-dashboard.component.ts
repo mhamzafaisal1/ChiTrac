@@ -56,6 +56,7 @@ interface SummaryCard {
 interface OperatorDashboardLayoutSnapshot {
   summaryCardOrder: string[];
   tableColumnVisibility: Record<string, boolean>;
+  tableColumnOrder: string[];
   summaryCardVisibility: Record<string, boolean>;
   summaryCardOrderSource: 'server' | 'local' | 'default';
   summaryCardVisibilitySource: 'server' | 'local' | 'default';
@@ -152,7 +153,25 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Throughput',
     'Efficiency',
   ];
+  readonly operatorDashboardColumns = [
+    'Status',
+    'Operator Name',
+    'Current Machine',
+    'Current Machine Serial',
+    'Worked Time',
+    'Downtime',
+    'Paused Time',
+    'Fault Time',
+    'Total Count',
+    'Misfeed Count',
+    'PPH',
+    'Availability',
+    'Throughput',
+    'Efficiency',
+    'OEE',
+  ];
   tableColumnVisibility: Record<string, boolean> = {};
+  tableColumnOrder: string[] = [];
   summaryCardVisibility: Record<string, boolean> = {};
   private idleOperatorSummary: IdleOperatorSummary | null = null;
   private machineStatusCounts: MachineStatusCounts = EMPTY_MACHINE_STATUS_COUNTS;
@@ -320,7 +339,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.layoutEditService.markEditsMade();
     this.summaryCardOrder = this.mergeVisibleSummaryCardOrder(this.summaryCards.map((card) => card.label));
     this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
-    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
     if (!this.userService.getToken()) {
       this.summaryCardOrderSource = 'local';
@@ -333,7 +352,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       this.layoutEditService.markEditsMade();
     }
     this.tableColumnVisibility = this.cleanTableColumnVisibility(visibility);
-    this.settingsService.setOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
+  }
+
+  onTableColumnOrderChange(columnOrder: string[]): void {
+    if (!this.layoutEditing) return;
+    this.layoutEditService.markEditsMade();
+    this.tableColumnOrder = this.cleanTableColumnOrder(columnOrder);
+    this.settingsService.setOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
   }
 
   openSummaryCardVisibilityDialog(): void {
@@ -354,7 +380,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         this.layoutEditService.markEditsMade();
         this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
         this.syncSummaryCardsFromAll();
-        this.settingsService.setOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
+        this.settingsService.setOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
         if (!this.userService.getToken()) {
           this.summaryCardVisibilitySource = 'local';
@@ -656,8 +682,9 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   private saveLayoutPreferences(): void {
     this.summaryCardOrder = this.getSummaryCardOrder();
     this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
+    this.tableColumnOrder = this.cleanTableColumnOrder(this.tableColumnOrder);
     this.summaryCardVisibility = this.cleanSummaryCardVisibility(this.summaryCardVisibility);
-    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
     if (!this.userService.getToken()) {
       localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
@@ -666,7 +693,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.settingsService.saveOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility).subscribe({
+    this.settingsService.saveOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).subscribe({
       next: () => {
         localStorage.removeItem(this.summaryCardOrderKey);
         localStorage.removeItem(this.summaryCardVisibilityKey);
@@ -685,6 +712,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.layoutSnapshot = {
       summaryCardOrder: [...this.getSummaryCardOrder()],
       tableColumnVisibility: { ...this.tableColumnVisibility },
+      tableColumnOrder: [...this.tableColumnOrder],
       summaryCardVisibility: { ...this.summaryCardVisibility },
       summaryCardOrderSource: this.summaryCardOrderSource,
       summaryCardVisibilitySource: this.summaryCardVisibilitySource,
@@ -700,11 +728,12 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
     this.summaryCardOrder = [...snapshot.summaryCardOrder];
     this.tableColumnVisibility = { ...snapshot.tableColumnVisibility };
+    this.tableColumnOrder = [...snapshot.tableColumnOrder];
     this.summaryCardVisibility = { ...snapshot.summaryCardVisibility };
     this.summaryCardOrderSource = snapshot.summaryCardOrderSource;
     this.summaryCardVisibilitySource = snapshot.summaryCardVisibilitySource;
     this.syncSummaryCardsFromAll();
-    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
     this.summaryCardOrderSource = snapshot.summaryCardOrderSource;
     this.summaryCardVisibilitySource = snapshot.summaryCardVisibilitySource;
     this.restoreLocalLayoutStorage(snapshot);
@@ -760,6 +789,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         }
 
         this.tableColumnVisibility = this.cleanTableColumnVisibility(operatorDashboardLayout?.tableColumnVisibility);
+        this.tableColumnOrder = this.cleanTableColumnOrder(operatorDashboardLayout?.tableColumnOrder);
 
         if (
           this.userService.getToken() &&
@@ -767,7 +797,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           (this.summaryCardOrder.length || Object.keys(this.summaryCardVisibility).length)
         ) {
           this.summaryCardOrderSource = 'server';
-          this.settingsService.saveOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility).subscribe({
+          this.settingsService.saveOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).subscribe({
             next: () => {
               localStorage.removeItem(this.summaryCardOrderKey);
               localStorage.removeItem(this.summaryCardVisibilityKey);
@@ -788,6 +818,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.summaryCardVisibility = {};
     this.summaryCardVisibilitySource = 'default';
     this.tableColumnVisibility = {};
+    this.tableColumnOrder = [];
     this.restoreDefaultSummaryCardOrder();
     this.syncSummaryCardsFromAll();
   }
@@ -867,6 +898,17 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       }
       return acc;
     }, {} as Record<string, boolean>);
+  }
+
+  private cleanTableColumnOrder(columnOrder: string[] = []): string[] {
+    const allowedColumns = new Set(this.operatorDashboardColumns);
+    const seen = new Set<string>();
+    const cleanedOrder = columnOrder.filter((column) => {
+      if (typeof column !== 'string' || !allowedColumns.has(column) || seen.has(column)) return false;
+      seen.add(column);
+      return true;
+    });
+    return [...cleanedOrder, ...this.operatorDashboardColumns.filter((column) => !seen.has(column))];
   }
 
   private getSummaryCardOrder(): string[] {
@@ -1537,24 +1579,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
     // Set columns if not already set
     if (this.columns.length === 0) {
-      this.columns = [
-        'Status',
-        'Operator Name',
-        'Operator ID',
-        'Current Machine',
-        'Current Machine Serial',
-        'Worked Time',
-        'Downtime',
-        'Paused Time',
-        'Fault Time',
-        'Total Count',
-        'Misfeed Count',
-        'PPH',
-        'Availability',
-        'Throughput',
-        'Efficiency',
-        'OEE',
-      ];
+      this.columns = [...this.operatorDashboardColumns];
     }
   }
 }

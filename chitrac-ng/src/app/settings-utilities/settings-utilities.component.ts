@@ -60,6 +60,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isSavingDashboardTimeframe = false;
   isSavingPercentBreakpoints = false;
   isSavingOePercentBreakpoints = false;
+  isSavingDashboardLayouts = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
   percentBreakpoints: PercentBreakpoints = {
     poor: 0,
@@ -221,6 +222,39 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
         this.isSavingOePercentBreakpoints = false;
         this.snackBar.open(message, 'Close', {
           duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  saveCurrentUserLayoutsAsDefaults(): void {
+    const confirmed = confirm(
+      'Save your Machine, Operator, and Experimental Daily dashboard layouts as the system defaults? ' +
+      'Only layouts you have saved will be updated. Existing personal layouts will continue to override these defaults.'
+    );
+    if (!confirmed) return;
+
+    this.isSavingDashboardLayouts = true;
+    this.settingsService.promoteCurrentUserDashboardLayouts().subscribe({
+      next: (response) => {
+        this.isSavingDashboardLayouts = false;
+        const labels: Record<string, string> = {
+          machineDashboard: 'Machine',
+          operatorDashboard: 'Operator',
+          experimentalDailyDashboard: 'Experimental Daily'
+        };
+        const promoted = response.promotedLayouts.map(name => labels[name] || name).join(', ');
+        this.snackBar.open(`System layout defaults saved: ${promoted}.`, 'Close', {
+          duration: 7000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        this.isSavingDashboardLayouts = false;
+        const message = error.error?.error || error.error?.message || 'Failed to save system layout defaults';
+        this.snackBar.open(message, 'Close', {
+          duration: 7000,
           panelClass: ['error-snackbar']
         });
       }

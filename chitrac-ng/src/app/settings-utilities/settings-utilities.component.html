@@ -65,6 +65,22 @@
           </mat-form-field>
         </div>
       </div>
+
+      <div class="default-layouts">
+        <h3>Default layouts</h3>
+        <p>
+          Use your saved Machine, Operator, and Experimental Daily dashboard layouts as defaults for users who have not saved their own layouts.
+        </p>
+        <button
+          mat-stroked-button
+          color="primary"
+          (click)="saveCurrentUserLayoutsAsDefaults()"
+          [disabled]="isSavingDashboardLayouts">
+          <mat-spinner *ngIf="isSavingDashboardLayouts" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isSavingDashboardLayouts">publish</mat-icon>
+          {{ isSavingDashboardLayouts ? 'Saving Layouts...' : 'Use My Layouts as Defaults' }}
+        </button>
+      </div>
     </mat-card-content>
 
     <mat-card-actions>

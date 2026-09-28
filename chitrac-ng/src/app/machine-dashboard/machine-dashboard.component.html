@@ -73,7 +73,9 @@
         [columnEditMode]="layoutEditing"
         [toggleableColumns]="machineDashboardToggleableColumns"
         [columnVisibility]="tableColumnVisibility"
+        [columnOrder]="tableColumnOrder"
         (columnVisibilityChange)="onTableColumnVisibilityChange($event)"
+        (columnOrderChange)="onTableColumnOrderChange($event)"
       ></base-table>
       <div class="empty-state" *ngIf="!rows.length && !isLoading">
         <mat-icon>query_stats</mat-icon>
