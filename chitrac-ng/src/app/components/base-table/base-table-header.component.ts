@@ -81,6 +81,10 @@ interface BaseTableHeaderParams extends IHeaderParams {
       white-space: nowrap;
     }
 
+    .visibility-toggle + .header-label {
+      margin-left: 0.5rem;
+    }
+
     .column-disabled {
       opacity: 0.42;
     }

@@ -11,7 +11,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { PercentBreakpoints, SettingsService } from '../services/settings.service';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { interval, Subject, Subscription, takeUntil } from 'rxjs';
@@ -36,6 +38,7 @@ interface ConfigExportCollection {
     MatNativeDateModule,
     MatSlideToggleModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
     MatSnackBarModule
   ],
   providers: [provideNativeDateAdapter()],
@@ -90,6 +93,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
 
   constructor(
     private utilitiesService: UtilitiesService,
+    private settingsService: SettingsService,
     private websocketService: WebsocketService,
     private snackBar: MatSnackBar
   ) {}

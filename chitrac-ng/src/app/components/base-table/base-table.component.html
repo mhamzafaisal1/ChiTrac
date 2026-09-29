@@ -37,6 +37,7 @@
   [autoSizeStrategy]="fillAvailableWidth ? undefined : autoSizeStrategy"
   domLayout="autoHeight"
   [animateRows]="false"
+  [suppressColumnMoveAnimation]="!columnEditMode"
   [suppressCellFocus]="true"
   [suppressDragLeaveHidesColumns]="true"
   [suppressMovableColumns]="!columnEditMode"
