@@ -201,7 +201,6 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    this.userService.getCurrentUser().subscribe(x => x);
     this.subscribeToUser();
     
     // Load system name from settings
