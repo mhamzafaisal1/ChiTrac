@@ -204,7 +204,7 @@ function constructor(server) {
           const cleanedOrder = summaryCardOrder
             .map((label) => label.trim())
             .filter(Boolean)
-            .slice(0, 20);
+            .slice(0, 40);
 
           dashboardUpdates.summaryCardOrder = [...new Set(cleanedOrder)];
         }
