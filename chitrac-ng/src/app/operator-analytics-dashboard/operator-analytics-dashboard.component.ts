@@ -43,6 +43,7 @@ import { OperatorTimelineChartComponent } from '../operator-timeline-chart/opera
 import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
   SummaryCardVisibilityDialogComponent,
+  SummaryCardVisibilityDialogResult,
   SummaryCardVisibilityOption,
 } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 
@@ -344,20 +345,24 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       data: {
         cards: this.getSummaryCardVisibilityOptions(),
         visibility: this.summaryCardVisibility,
+        dragDropEnabled: true,
       },
     });
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
-      .subscribe((visibility: Record<string, boolean> | undefined) => {
-        if (!visibility) return;
+      .subscribe((result: SummaryCardVisibilityDialogResult | undefined) => {
+        if (!result) return;
         this.layoutEditService.markEditsMade();
-        this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
+        this.summaryCardOrder = this.cleanSummaryCardOrder(result.order);
+        this.summaryCardVisibility = this.cleanSummaryCardVisibility(result.visibility);
         this.syncSummaryCardsFromAll();
-        this.settingsService.setOperatorDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
+        this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
 
         if (!this.userService.getToken()) {
+          this.summaryCardOrderSource = 'local';
           this.summaryCardVisibilitySource = 'local';
+          localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
           localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
         }
       });
@@ -584,6 +589,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       : this.operatorSummaryCardLabels.map((label) => ({ label, value: '', icon: this.getSummaryCardFallbackIcon(label), tone: 'neutral' }));
 
     return cards.map((card) => ({
+      id: card.label,
       label: card.label,
       icon: card.icon,
       value: card.value,
