@@ -12,6 +12,7 @@ export interface AppSettings {
   dashboardTimeframe?: 'current' | 'shift' | null;
   percentBreakpoints?: PercentBreakpoints;
   oePercentBreakpoints?: PercentBreakpoints;
+  dashboardLayouts?: DashboardLayoutPreferences;
 }
 
 export interface PercentBreakpoints {
@@ -30,12 +31,14 @@ export interface DashboardLayoutPreferences {
     summaryCardOrder?: string[];
     summaryCardVisibility?: Record<string, boolean>;
     tableColumnVisibility?: Record<string, boolean>;
+    tableColumnOrder?: string[];
     pphDisplayMode?: MachinePphDisplayMode;
   };
   operatorDashboard?: {
     summaryCardOrder?: string[];
     summaryCardVisibility?: Record<string, boolean>;
     tableColumnVisibility?: Record<string, boolean>;
+    tableColumnOrder?: string[];
   };
   experimentalDailyDashboard?: {
     chartOrder?: string[];
@@ -57,6 +60,11 @@ export interface UserPreferences {
   };
 }
 
+export interface PromoteDashboardLayoutsResponse {
+  preferences: AppSettings;
+  promotedLayouts: Array<keyof DashboardLayoutPreferences>;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -68,6 +76,7 @@ export class SettingsService {
   public currentTheme$ = this.currentThemeSubject.asObservable();
   private userPreferencesSubject = new BehaviorSubject<UserPreferences | null>(null);
   public userPreferences$ = this.userPreferencesSubject.asObservable();
+  private rawUserPreferences: UserPreferences | null = null;
   private readonly preferenceRequestOptions = {
     headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' })
   };
@@ -81,6 +90,7 @@ export class SettingsService {
     return this.http.get<AppSettings>('/api/utilities/settings').pipe(
       tap(settings => {
         this.settingsSubject.next(settings);
+        this.publishEffectiveUserPreferences();
       })
     );
   }
@@ -92,7 +102,8 @@ export class SettingsService {
   loadUserPreferences(): Observable<UserPreferences> {
     return this.http.get<UserPreferences>('/api/preferences/user', this.preferenceRequestOptions).pipe(
       tap(preferences => {
-        this.userPreferencesSubject.next(preferences);
+        this.rawUserPreferences = preferences;
+        this.publishEffectiveUserPreferences();
         if (preferences.theme) {
           this.currentThemeSubject.next(preferences.theme);
         }
@@ -105,7 +116,8 @@ export class SettingsService {
     localStorage.removeItem('chitrac-machine-dashboard-summary-card-visibility');
     localStorage.removeItem('chitrac-operator-dashboard-summary-card-order');
     localStorage.removeItem('chitrac-operator-dashboard-summary-card-visibility');
-    this.userPreferencesSubject.next(null);
+    this.rawUserPreferences = null;
+    this.publishEffectiveUserPreferences();
   }
 
   saveDashboardTimeframe(dashboardTimeframe: 'current' | 'shift'): Observable<AppSettings> {
@@ -136,6 +148,25 @@ export class SettingsService {
         const current = this.settingsSubject.value;
         if (current) {
           this.settingsSubject.next({ ...current, oePercentBreakpoints });
+        }
+      })
+    );
+  }
+
+  promoteCurrentUserDashboardLayouts(): Observable<PromoteDashboardLayoutsResponse> {
+    return this.http.post<PromoteDashboardLayoutsResponse>(
+      '/api/preferences/system/dashboard-layouts/from-current-user',
+      {},
+      this.preferenceRequestOptions
+    ).pipe(
+      tap(response => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({
+            ...current,
+            dashboardLayouts: response.preferences.dashboardLayouts
+          });
+          this.publishEffectiveUserPreferences();
         }
       })
     );
@@ -183,7 +214,7 @@ export class SettingsService {
 
     return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
       tap(preferences => {
-        this.userPreferencesSubject.next(preferences);
+        this.acceptUserPreferences(preferences);
       })
     );
   }
@@ -192,12 +223,14 @@ export class SettingsService {
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
     summaryCardVisibility: Record<string, boolean> = {},
+    tableColumnOrder: string[] = [],
     pphDisplayMode?: MachinePphDisplayMode
   ): Observable<UserPreferences> {
     const machineDashboard: DashboardLayoutPreferences['machineDashboard'] = {
       summaryCardOrder,
       summaryCardVisibility,
-      tableColumnVisibility
+      tableColumnVisibility,
+      tableColumnOrder
     };
     if (pphDisplayMode) {
       machineDashboard.pphDisplayMode = pphDisplayMode;
@@ -211,7 +244,7 @@ export class SettingsService {
 
     return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
       tap(preferences => {
-        this.userPreferencesSubject.next(preferences);
+        this.acceptUserPreferences(preferences);
       })
     );
   }
@@ -227,7 +260,7 @@ export class SettingsService {
 
     return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
       tap(preferences => {
-        this.userPreferencesSubject.next(preferences);
+        this.acceptUserPreferences(preferences);
       })
     );
   }
@@ -235,21 +268,23 @@ export class SettingsService {
   saveOperatorDashboardLayout(
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
-    summaryCardVisibility: Record<string, boolean> = {}
+    summaryCardVisibility: Record<string, boolean> = {},
+    tableColumnOrder: string[] = []
   ): Observable<UserPreferences> {
     const payload = {
       dashboardLayouts: {
         operatorDashboard: {
           summaryCardOrder,
           summaryCardVisibility,
-          tableColumnVisibility
+          tableColumnVisibility,
+          tableColumnOrder
         }
       }
     };
 
     return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
       tap(preferences => {
-        this.userPreferencesSubject.next(preferences);
+        this.acceptUserPreferences(preferences);
       })
     );
   }
@@ -269,9 +304,54 @@ export class SettingsService {
 
     return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
       tap(preferences => {
-        this.userPreferencesSubject.next(preferences);
+        this.acceptUserPreferences(preferences);
       })
     );
+  }
+
+  private acceptUserPreferences(preferences: UserPreferences): void {
+    this.rawUserPreferences = preferences;
+    this.publishEffectiveUserPreferences();
+  }
+
+  private publishEffectiveUserPreferences(): void {
+    const systemLayouts = this.settingsSubject.value?.dashboardLayouts;
+    const userLayouts = this.rawUserPreferences?.dashboardLayouts;
+    const dashboardLayouts = this.mergeDashboardLayouts(systemLayouts, userLayouts);
+
+    if (!this.rawUserPreferences && !dashboardLayouts) {
+      this.userPreferencesSubject.next(null);
+      return;
+    }
+
+    this.userPreferencesSubject.next({
+      ...(this.rawUserPreferences || {}),
+      ...(dashboardLayouts ? { dashboardLayouts } : {})
+    });
+  }
+
+  private mergeDashboardLayouts(
+    systemLayouts?: DashboardLayoutPreferences,
+    userLayouts?: DashboardLayoutPreferences
+  ): DashboardLayoutPreferences | undefined {
+    const dashboardLayouts: DashboardLayoutPreferences = {};
+    const dashboardNames: Array<keyof DashboardLayoutPreferences> = [
+      'machineDashboard',
+      'operatorDashboard',
+      'experimentalDailyDashboard'
+    ];
+
+    for (const dashboardName of dashboardNames) {
+      const systemLayout = systemLayouts?.[dashboardName];
+      const userLayout = userLayouts?.[dashboardName];
+      if (!systemLayout && !userLayout) continue;
+      dashboardLayouts[dashboardName] = {
+        ...(systemLayout || {}),
+        ...(userLayout || {})
+      } as DashboardLayoutPreferences[typeof dashboardName];
+    }
+
+    return Object.keys(dashboardLayouts).length ? dashboardLayouts : undefined;
   }
 
   setExperimentalDailyDashboardChartOrder(
@@ -310,6 +390,7 @@ export class SettingsService {
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
     summaryCardVisibility: Record<string, boolean> = {},
+    tableColumnOrder: string[] = [],
     pphDisplayMode?: MachinePphDisplayMode
   ): void {
     const current = this.userPreferencesSubject.value || {};
@@ -317,7 +398,8 @@ export class SettingsService {
       ...current.dashboardLayouts?.machineDashboard,
       summaryCardOrder,
       summaryCardVisibility,
-      tableColumnVisibility
+      tableColumnVisibility,
+      tableColumnOrder
     };
     if (pphDisplayMode) {
       machineDashboard.pphDisplayMode = pphDisplayMode;
@@ -335,7 +417,8 @@ export class SettingsService {
   setOperatorDashboardLayout(
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
-    summaryCardVisibility: Record<string, boolean> = {}
+    summaryCardVisibility: Record<string, boolean> = {},
+    tableColumnOrder: string[] = []
   ): void {
     const current = this.userPreferencesSubject.value || {};
     this.userPreferencesSubject.next({
@@ -346,7 +429,8 @@ export class SettingsService {
           ...current.dashboardLayouts?.operatorDashboard,
           summaryCardOrder,
           summaryCardVisibility,
-          tableColumnVisibility
+          tableColumnVisibility,
+          tableColumnOrder
         }
       }
     });

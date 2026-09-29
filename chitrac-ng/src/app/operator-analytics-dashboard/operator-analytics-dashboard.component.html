@@ -56,7 +56,9 @@
         [columnEditMode]="layoutEditing"
         [toggleableColumns]="operatorDashboardToggleableColumns"
         [columnVisibility]="tableColumnVisibility"
+        [columnOrder]="tableColumnOrder"
         (columnVisibilityChange)="onTableColumnVisibilityChange($event)"
+        (columnOrderChange)="onTableColumnOrderChange($event)"
         [class.dark]="isDarkTheme"
         [class.light]="!isDarkTheme"
       ></base-table>

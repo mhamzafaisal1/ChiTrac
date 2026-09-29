@@ -28,58 +28,23 @@
   </button>
 </div>
 
-<table mat-table [dataSource]="dataSource" matSort [matSortDisableClear]="true" [matSortDisabled]="disableSorting" [trackBy]="trackByIndex">
-  <ng-container *ngFor="let column of visibleColumns" [matColumnDef]="column">
-    <th
-      mat-header-cell
-      *matHeaderCellDef
-      mat-sort-header
-      [disabled]="disableSorting"
-      [matTooltip]="getTooltipForColumn(column)"
-      [matTooltipDisabled]="!hasTooltipForColumn(column)"
-      [matTooltipShowDelay]="700"
-      [matTooltipClass]="['tooltip', 'tooltip-tableheader']"
-    >
-      <span class="column-edit-control" *ngIf="columnEditMode && isColumnToggleable(column)" (click)="$event.stopPropagation()">
-        <mat-slide-toggle
-          [checked]="isColumnEnabled(column)"
-          aria-label="Toggle column visibility"
-          (change)="onColumnToggle(column, $event.checked)"
-        ></mat-slide-toggle>
-      </span>
-      <span class="column-label" [class.column-disabled]="columnEditMode && isColumnToggleable(column) && !isColumnEnabled(column)">
-        {{ column }}
-      </span>
-    </th>
-    <td
-      mat-cell
-      *matCellDef="let row"
-      [ngClass]="getCellClassForColumn(row[column], column)"
-      [class.column-disabled]="columnEditMode && isColumnToggleable(column) && !isColumnEnabled(column)"
-    >
-      <span *ngIf="column == 'Status'">
-        <mat-icon aria-hidden="false" [attr.aria-label]="getStatusAriaLabel(row[column])" fontIcon="circle" *ngIf="row[column] == 'Running Dot'" class="green"></mat-icon>
-        <mat-icon aria-hidden="false" [attr.aria-label]="getStatusAriaLabel(row[column])" fontIcon="circle" *ngIf="row[column] == 'Paused Dot'" class="yellow"></mat-icon>
-        <mat-icon aria-hidden="false" [attr.aria-label]="getStatusAriaLabel(row[column])" fontIcon="circle" *ngIf="row[column] == 'Faulted Dot'" class="red"></mat-icon>
-        <mat-icon aria-hidden="false" [attr.aria-label]="getStatusAriaLabel(row[column])" fontIcon="circle" *ngIf="row[column] == 'Offline Dot'" class="white"></mat-icon>
-      </span>
-      <span
-        *ngIf="column != 'Status'"
-        [matTooltip]="getTooltipForCell(row, column)"
-        [matTooltipDisabled]="!hasTooltipForCell(row, column)"
-        [matTooltipShowDelay]="700"
-        [matTooltipClass]="['tooltip', 'tooltip-tablerow']"
-      >
-        {{ row[column] }}
-      </span>
-    </td>
-  </ng-container>
-
-  <tr mat-header-row *matHeaderRowDef="visibleColumns"></tr>
-  <tr mat-row
-      *matRowDef="let row; columns: visibleColumns"
-      (click)="onRowClick(row)"
-      [class.selected]="isRowSelected(row)"
-      [ngClass]="row.cssClass || ''">
-  </tr>
-</table>
+<ag-grid-angular
+  class="base-data-grid"
+  [theme]="gridTheme"
+  [modules]="modules"
+  [rowData]="rows"
+  [columnDefs]="columnDefs"
+  [autoSizeStrategy]="fillAvailableWidth ? undefined : autoSizeStrategy"
+  domLayout="autoHeight"
+  [animateRows]="false"
+  [suppressCellFocus]="true"
+  [suppressDragLeaveHidesColumns]="true"
+  [suppressMovableColumns]="!columnEditMode"
+  [enableBrowserTooltips]="false"
+  [tooltipShowDelay]="700"
+  [getRowClass]="getRowClass"
+  (gridReady)="onGridReady($event)"
+  (gridSizeChanged)="onGridSizeChanged($event)"
+  (columnMoved)="onColumnMoved($event)"
+  (rowClicked)="onGridRowClicked($event)">
+</ag-grid-angular>

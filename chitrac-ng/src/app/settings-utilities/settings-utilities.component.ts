@@ -54,6 +54,21 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   isDeleteNodeLogsLoading = false;
   isConfigExportLoading = false;
   exportingConfigCollection: string | null = null;
+  isSavingDashboardTimeframe = false;
+  isSavingPercentBreakpoints = false;
+  isSavingOePercentBreakpoints = false;
+  isSavingDashboardLayouts = false;
+  dashboardTimeframe: 'current' | 'shift' = 'current';
+  percentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 70,
+    good: 90
+  };
+  oePercentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 60,
+    good: 80
+  };
   nodeLogsCutoffDate: Date | null = null;
   includeConfigIds = false;
   readonly configExportCollections: ConfigExportCollection[] = [
@@ -115,6 +130,143 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     }
 
     this.websocketService.connect();
+  }
+
+  saveDashboardTimeframe(): void {
+    this.isSavingDashboardTimeframe = true;
+
+    this.settingsService.saveDashboardTimeframe(this.dashboardTimeframe).subscribe({
+      next: () => {
+        this.isSavingDashboardTimeframe = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('Dashboard default timeframe saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save dashboard default timeframe';
+        this.isSavingDashboardTimeframe = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  savePercentBreakpoints(): void {
+    const breakpoints = this.normalizeBreakpoints(this.percentBreakpoints);
+    if (!breakpoints) return;
+
+    this.isSavingPercentBreakpoints = true;
+
+    this.settingsService.savePercentBreakpoints(breakpoints).subscribe({
+      next: () => {
+        this.isSavingPercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('Percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save percent breakpoints';
+        this.isSavingPercentBreakpoints = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  saveOePercentBreakpoints(): void {
+    const breakpoints = this.normalizeBreakpoints(this.oePercentBreakpoints);
+    if (!breakpoints) return;
+
+    this.isSavingOePercentBreakpoints = true;
+
+    this.settingsService.saveOePercentBreakpoints(breakpoints).subscribe({
+      next: () => {
+        this.isSavingOePercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('OE percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save OE percent breakpoints';
+        this.isSavingOePercentBreakpoints = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  saveCurrentUserLayoutsAsDefaults(): void {
+    const confirmed = confirm(
+      'Save your Machine, Operator, and Experimental Daily dashboard layouts as the system defaults? ' +
+      'Only layouts you have saved will be updated. Existing personal layouts will continue to override these defaults.'
+    );
+    if (!confirmed) return;
+
+    this.isSavingDashboardLayouts = true;
+    this.settingsService.promoteCurrentUserDashboardLayouts().subscribe({
+      next: (response) => {
+        this.isSavingDashboardLayouts = false;
+        const labels: Record<string, string> = {
+          machineDashboard: 'Machine',
+          operatorDashboard: 'Operator',
+          experimentalDailyDashboard: 'Experimental Daily'
+        };
+        const promoted = response.promotedLayouts.map(name => labels[name] || name).join(', ');
+        this.snackBar.open(`System layout defaults saved: ${promoted}.`, 'Close', {
+          duration: 7000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        this.isSavingDashboardLayouts = false;
+        const message = error.error?.error || error.error?.message || 'Failed to save system layout defaults';
+        this.snackBar.open(message, 'Close', {
+          duration: 7000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  private normalizeBreakpoints(source: PercentBreakpoints): PercentBreakpoints | null {
+    const rawValues = [
+      source.poor,
+      source.okay,
+      source.good
+    ];
+    const poor = Number(source.poor);
+    const okay = Number(source.okay);
+    const good = Number(source.good);
+
+    if (rawValues.some((value) => value === null || value === undefined || `${value}`.trim() === '') || ![poor, okay, good].every(Number.isFinite)) {
+      this.snackBar.open('Enter valid percentage breakpoints.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    if (!(good > okay && okay > poor)) {
+      this.snackBar.open('Percent breakpoints must satisfy Good > Okay > Poor.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    return { poor, okay, good };
   }
 
   scheduleReboot(): void {
