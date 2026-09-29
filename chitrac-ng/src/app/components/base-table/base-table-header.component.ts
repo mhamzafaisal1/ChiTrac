@@ -1,5 +1,4 @@
 import { Component } from '@angular/core';
-import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleChange, MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { IInnerHeaderAngularComp } from 'ag-grid-angular';
 import { IHeaderParams } from 'ag-grid-community';
@@ -14,22 +13,24 @@ interface BaseTableHeaderParams extends IHeaderParams {
 @Component({
   selector: 'base-table-header',
   standalone: true,
-  imports: [MatIconModule, MatSlideToggleModule],
+  imports: [MatSlideToggleModule],
   template: `
-    <div class="header-content" [class.header-content-editing]="params.editMode">
-      @if (params.editMode) {
-        <mat-icon class="drag-indicator" aria-hidden="true">drag_indicator</mat-icon>
-      }
+    <div
+      class="header-content"
+      [class.header-content-editing]="params.editMode"
+      [class.header-content-editing-toggleable]="params.editMode && params.toggleable">
       @if (params.editMode && params.toggleable) {
-        <mat-slide-toggle
-          class="visibility-toggle"
-          [checked]="params.enabled"
-          [attr.aria-label]="'Toggle ' + params.displayName + ' column visibility'"
-          (pointerdown)="$event.stopPropagation()"
-          (mousedown)="$event.stopPropagation()"
-          (click)="$event.stopPropagation()"
-          (change)="onToggle($event)">
-        </mat-slide-toggle>
+        <span class="visibility-toggle-slot">
+          <mat-slide-toggle
+            class="visibility-toggle"
+            [checked]="params.enabled"
+            [attr.aria-label]="'Toggle ' + params.displayName + ' column visibility'"
+            (pointerdown)="$event.stopPropagation()"
+            (mousedown)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+            (change)="onToggle($event)">
+          </mat-slide-toggle>
+        </span>
       }
       <span class="header-label" [class.column-disabled]="params.editMode && params.toggleable && !params.enabled">
         {{ params.displayName }}
@@ -53,36 +54,38 @@ interface BaseTableHeaderParams extends IHeaderParams {
     }
 
     .header-content-editing {
-      display: grid;
-      grid-template-columns: 1.25rem 2.5rem minmax(0, 1fr);
-      gap: 0.25rem;
       cursor: grab;
+    }
+
+    .header-content-editing-toggleable {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
     }
 
     .header-content-editing:active {
       cursor: grabbing;
     }
 
-    .drag-indicator {
-      width: 1.1rem;
-      height: 1.1rem;
-      font-size: 1.1rem;
-    }
-
     .visibility-toggle {
-      transform: scale(0.78);
+      transform: scale(0.62);
       transform-origin: center;
     }
 
+    .visibility-toggle-slot {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 2rem;
+      height: 100%;
+    }
+
     .header-label {
+      align-self: center;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-
-    .visibility-toggle + .header-label {
-      margin-left: 0.5rem;
     }
 
     .column-disabled {
