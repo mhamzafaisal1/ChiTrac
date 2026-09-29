@@ -28,6 +28,7 @@
   </button>
 </div>
 
+<<<<<<< Updated upstream
 <table mat-table [dataSource]="dataSource" matSort [matSortDisableClear]="true" [matSortDisabled]="disableSorting" [trackBy]="trackByIndex">
   <ng-container *ngFor="let column of visibleColumns" [matColumnDef]="column">
     <th
@@ -83,3 +84,26 @@
       [ngClass]="row.cssClass || ''">
   </tr>
 </table>
+=======
+<ag-grid-angular
+  class="base-data-grid"
+  [theme]="gridTheme"
+  [modules]="modules"
+  [rowData]="rows"
+  [columnDefs]="columnDefs"
+  [autoSizeStrategy]="fillAvailableWidth ? undefined : autoSizeStrategy"
+  domLayout="autoHeight"
+  [animateRows]="false"
+  [suppressColumnMoveAnimation]="!columnEditMode"
+  [suppressCellFocus]="true"
+  [suppressDragLeaveHidesColumns]="true"
+  [suppressMovableColumns]="!columnEditMode"
+  [enableBrowserTooltips]="false"
+  [tooltipShowDelay]="700"
+  [getRowClass]="getRowClass"
+  (gridReady)="onGridReady($event)"
+  (gridSizeChanged)="onGridSizeChanged($event)"
+  (columnMoved)="onColumnMoved($event)"
+  (rowClicked)="onGridRowClicked($event)">
+</ag-grid-angular>
+>>>>>>> Stashed changes
