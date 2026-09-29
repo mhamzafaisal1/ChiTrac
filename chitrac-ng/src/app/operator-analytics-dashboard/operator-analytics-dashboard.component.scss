@@ -74,7 +74,6 @@
   }
 
   &.layout-editing {
-    padding-right: 2.65rem;
     cursor: grab;
   }
 
@@ -120,32 +119,6 @@
   transition: transform 180ms cubic-bezier(0, 0, 0.2, 1);
 }
 
-.drag-handle {
-  position: absolute;
-  right: 0.45rem;
-  top: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  color: var(--theme-color-on-surface-variant);
-  background: color-mix(in srgb, var(--theme-color-surface-container) 86%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-color-on-surface-variant) 24%, transparent);
-  border-radius: 6px;
-  transform: translateY(-50%);
-  cursor: grab;
-  z-index: 2;
-
-  mat-icon {
-    font-size: 1.15rem;
-    width: 1.15rem;
-    height: 1.15rem;
-  }
-}
-
-.drag-handle:active,
 .summary-card.layout-editing:active {
   cursor: grabbing;
 }

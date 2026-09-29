@@ -22,6 +22,10 @@
 }
 
 .settings-card {
+  & + & {
+    margin-top: 16px;
+  }
+
   mat-card-header {
     margin-bottom: 16px;
   }
@@ -34,6 +38,37 @@
     display: flex;
     gap: 12px;
     padding: 16px 0 0;
+  }
+}
+
+.dashboard-timeframe-field {
+  width: 100%;
+  max-width: 320px;
+}
+
+.percent-breakpoints {
+  margin-top: 12px;
+
+  h3 {
+    margin: 0 0 12px;
+    color: #333;
+    font-size: 16px;
+    font-weight: 500;
+  }
+}
+
+.percent-breakpoint-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 12px;
+  max-width: 520px;
+
+  mat-form-field {
+    width: 100%;
+  }
+
+  span[matSuffix] {
+    padding-right: 12px;
   }
 }
 
@@ -91,6 +126,10 @@ button mat-spinner {
   .setting-row {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .percent-breakpoint-fields {
+    grid-template-columns: 1fr;
   }
 }
 

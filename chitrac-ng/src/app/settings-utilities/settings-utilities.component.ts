@@ -9,12 +9,10 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
-import { PercentBreakpoints, SettingsService } from '../services/settings.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { interval, Subject, Subscription, takeUntil } from 'rxjs';
 
@@ -36,7 +34,6 @@ interface ConfigExportCollection {
     MatIconModule,
     MatInputModule,
     MatNativeDateModule,
-    MatSelectModule,
     MatSlideToggleModule,
     MatProgressSpinnerModule,
     MatSnackBarModule
@@ -93,30 +90,12 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
 
   constructor(
     private utilitiesService: UtilitiesService,
-    private settingsService: SettingsService,
     private websocketService: WebsocketService,
     private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
     this.loadRebootStatus();
-
-    this.settingsService.getSystemPreferences().subscribe({
-      next: (settings) => {
-        this.dashboardTimeframe = settings.dashboardTimeframe === 'shift' ? 'shift' : 'current';
-        this.percentBreakpoints = settings.percentBreakpoints
-          ? { ...settings.percentBreakpoints }
-          : { poor: 0, okay: 70, good: 90 };
-        this.oePercentBreakpoints = settings.oePercentBreakpoints
-          ? { ...settings.oePercentBreakpoints }
-          : { poor: 0, okay: 60, good: 80 };
-      },
-      error: () => {
-        this.dashboardTimeframe = 'current';
-        this.percentBreakpoints = { poor: 0, okay: 70, good: 90 };
-        this.oePercentBreakpoints = { poor: 0, okay: 60, good: 80 };
-      }
-    });
 
     this.websocketService.status$
       .pipe(takeUntil(this.destroy$))

@@ -47,6 +47,7 @@ import { DowntimeParetoComponent } from "../downtime-pareto/downtime-pareto.comp
 import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
 import {
   SummaryCardVisibilityDialogComponent,
+  SummaryCardVisibilityDialogResult,
   SummaryCardVisibilityOption,
 } from "../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component";
 
@@ -56,7 +57,9 @@ interface SummaryCard {
   icon: string;
   tone: string;
   sparklineData?: SparklineDataPoint[];
+  comparisonSparklineData?: SparklineDataPoint[];
   sparklineLinePoints?: string;
+  comparisonSparklineLinePoints?: string;
   sparklineAreaPath?: string;
   sparklineSegments?: SparklineSegment[];
 }
@@ -423,20 +426,24 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       data: {
         cards: this.getSummaryCardVisibilityOptions(),
         visibility: this.summaryCardVisibility,
+        dragDropEnabled: true,
       },
     });
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
-      .subscribe((visibility: Record<string, boolean> | undefined) => {
-        if (!visibility) return;
+      .subscribe((result: SummaryCardVisibilityDialogResult | undefined) => {
+        if (!result) return;
         this.layoutEditService.markEditsMade();
-        this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
+        this.summaryCardOrder = this.cleanSummaryCardOrder(result.order);
+        this.summaryCardVisibility = this.cleanSummaryCardVisibility(result.visibility);
         this.syncSummaryCardsFromAll();
         this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
         if (!this.userService.getToken()) {
+          this.summaryCardOrderSource = "local";
           this.summaryCardVisibilitySource = "local";
+          localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
           localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
         }
       });
@@ -783,6 +790,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const shiftProjection = this.getShiftProjection(responses, cache);
     const shiftProjectionTone = shiftProjection.tone;
     const shiftInfoCard = this.getShiftInfoCard(cache);
+    const countSparklineData = this.getCountSparklineData(cache);
 
     const summaryCards = [
       { label: "Machines", value: machineCounts.total, icon: "precision_manufacturing", tone: "neutral" },
@@ -804,7 +812,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         value: totalCount.toLocaleString(),
         icon: "tag",
         tone: "neutral",
-        sparklineData: this.getCountSparklineData(cache) || this.getMockCountSparklineData(totalCount, currentPph),
+        sparklineData: countSparklineData || this.getMockCountSparklineData(totalCount, currentPph),
+        comparisonSparklineData: countSparklineData ? this.getYesterdayCountSparklineData(cache) || undefined : undefined,
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       ...(shiftInfoCard ? [shiftInfoCard] : []),
@@ -1048,6 +1057,34 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return values.length >= 2 ? values : null;
   }
 
+  private getYesterdayCountSparklineData(cache?: DashboardCacheState | null): SparklineDataPoint[] | null {
+    const sparkline =
+      cache?.countSparkline ||
+      cache?.dashboard?.counts?.sparkline ||
+      cache?.today?.countSparkline ||
+      cache?.currentShift?.countSparkline;
+    const historyPoints = sparkline?.history?.allMachines;
+    const currentStart = new Date(sparkline?.range?.start).getTime();
+    const currentEnd = new Date(sparkline?.range?.end).getTime();
+    if (!Array.isArray(historyPoints) || !Number.isFinite(currentStart) || !Number.isFinite(currentEnd)) return null;
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const comparisonStart = currentStart - dayMs;
+    const comparisonEnd = currentEnd - dayMs;
+    const values = historyPoints
+      .filter((point) => {
+        const timestamp = new Date(point?.minuteStart).getTime();
+        return Number.isFinite(timestamp) && timestamp >= comparisonStart && timestamp < comparisonEnd;
+      })
+      .map((point) => ({
+        value: Number(point?.count),
+        shiftState: this.normalizeSparklineShiftState(point?.shiftState),
+      }))
+      .filter((point) => Number.isFinite(point.value));
+
+    return values.length >= 2 ? values : null;
+  }
+
   private withSparkline(card: SummaryCard): SummaryCard {
     const data = (card.sparklineData || [])
       .map((point) => ({
@@ -1056,10 +1093,19 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }))
       .filter((point) => Number.isFinite(point.value));
     if (data.length < 2) return card;
+    const comparisonData = (card.comparisonSparklineData || [])
+      .map((point) => ({
+        value: Number(point?.value),
+        shiftState: this.normalizeSparklineShiftState(point?.shiftState),
+      }))
+      .filter((point) => Number.isFinite(point.value));
 
     const width = 160;
     const height = 48;
-    const values = data.map((point) => point.value);
+    const values = [
+      ...data.map((point) => point.value),
+      ...comparisonData.map((point) => point.value),
+    ];
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min || 1;
@@ -1069,6 +1115,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return { ...value, x, y };
     });
     const linePoints = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+    const comparisonLinePoints = comparisonData.length >= 2
+      ? comparisonData.map((value, index) => {
+        const x = (index / (comparisonData.length - 1)) * width;
+        const y = height - ((value.value - min) / range) * (height - 8) - 4;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(" ")
+      : undefined;
     const areaPath = [
       `M0,${height}`,
       ...points.map((point, index) => `${index === 0 ? "L" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`),
@@ -1079,7 +1132,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return {
       ...card,
       sparklineData: data,
+      comparisonSparklineData: comparisonData,
       sparklineLinePoints: linePoints,
+      comparisonSparklineLinePoints: comparisonLinePoints,
       sparklineAreaPath: areaPath,
       sparklineSegments: this.buildSparklineSegments(points),
     };
@@ -1138,6 +1193,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       : this.machineSummaryCardLabels.map((label): SummaryCard => ({ label, value: "", icon: this.getSummaryCardFallbackIcon(label), tone: "neutral" }));
 
     return cards.map((card) => ({
+      id: this.getSummaryCardPreferenceKey(card.label),
       label: card.label,
       icon: card.icon,
       value: card.value,

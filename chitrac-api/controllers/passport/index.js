@@ -205,7 +205,7 @@ function constructor(server) {
                 user: sanitizeUser(req.user)
             })
         } else {
-            sendFlashJSON(req, res)
+            res.status(401).json({ user: null, error: 'Authentication required' })
         }
     })
 
