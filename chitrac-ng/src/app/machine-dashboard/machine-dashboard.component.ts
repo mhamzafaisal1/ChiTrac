@@ -290,6 +290,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.loadInitialSummaryCardVisibility();
     this.setupSummaryCardOrderPersistence();
     this.subscribeToLayoutEditing();
+    this.subscribeToSystemSettings();
     this.subscribeToUserPreferences();
     this.layoutEditService.register(this.layoutContextId, "Machine Dashboard");
     this.updateChartDimensions();
@@ -1374,12 +1375,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         const hadLocalOrder = this.summaryCardOrderSource === "local";
         const hadLocalVisibility = this.summaryCardVisibilitySource === "local";
         const machineDashboardLayout = preferences.dashboardLayouts?.machineDashboard;
-        const nextPphDisplayMode: MachinePphDisplayMode =
-          machineDashboardLayout?.pphDisplayMode === "perStation" ? "perStation" : "perMachine";
-        const pphDisplayModeChanged = this.pphDisplayMode !== nextPphDisplayMode;
-        this.pphDisplayMode = nextPphDisplayMode;
-        this.updatePphTooltip();
-
         const serverOrder = machineDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
@@ -1423,6 +1418,20 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               },
             });
         }
+      });
+  }
+
+  private subscribeToSystemSettings(): void {
+    this.settingsService.settings$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((settings) => {
+        if (!settings) return;
+
+        const nextPphDisplayMode: MachinePphDisplayMode =
+          settings.machinePphDisplayMode === "perStation" ? "perStation" : "perMachine";
+        const pphDisplayModeChanged = this.pphDisplayMode !== nextPphDisplayMode;
+        this.pphDisplayMode = nextPphDisplayMode;
+        this.updatePphTooltip();
 
         if (pphDisplayModeChanged && this.machineData.length) {
           this.updateDashboardData(this.machineData);
@@ -1437,8 +1446,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.summaryCardVisibilitySource = "default";
     this.tableColumnVisibility = {};
     this.tableColumnOrder = [];
-    this.pphDisplayMode = "perMachine";
-    this.updatePphTooltip();
     this.restoreDefaultSummaryCardOrder();
     this.syncSummaryCardsFromAll();
   }

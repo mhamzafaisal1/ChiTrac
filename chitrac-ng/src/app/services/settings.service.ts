@@ -10,6 +10,7 @@ export interface AppSettings {
   systemName: string;
   httpsEnabled: boolean;
   dashboardTimeframe?: 'current' | 'shift' | null;
+  machinePphDisplayMode?: MachinePphDisplayMode;
   percentBreakpoints?: PercentBreakpoints;
   oePercentBreakpoints?: PercentBreakpoints;
   dashboardLayouts?: DashboardLayoutPreferences;
@@ -32,7 +33,6 @@ export interface DashboardLayoutPreferences {
     summaryCardVisibility?: Record<string, boolean>;
     tableColumnVisibility?: Record<string, boolean>;
     tableColumnOrder?: string[];
-    pphDisplayMode?: MachinePphDisplayMode;
   };
   operatorDashboard?: {
     summaryCardOrder?: string[];
@@ -223,8 +223,7 @@ export class SettingsService {
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
     summaryCardVisibility: Record<string, boolean> = {},
-    tableColumnOrder: string[] = [],
-    pphDisplayMode?: MachinePphDisplayMode
+    tableColumnOrder: string[] = []
   ): Observable<UserPreferences> {
     const machineDashboard: DashboardLayoutPreferences['machineDashboard'] = {
       summaryCardOrder,
@@ -232,10 +231,6 @@ export class SettingsService {
       tableColumnVisibility,
       tableColumnOrder
     };
-    if (pphDisplayMode) {
-      machineDashboard.pphDisplayMode = pphDisplayMode;
-    }
-
     const payload = {
       dashboardLayouts: {
         machineDashboard
@@ -249,18 +244,13 @@ export class SettingsService {
     );
   }
 
-  saveMachinePphDisplayMode(pphDisplayMode: MachinePphDisplayMode): Observable<UserPreferences> {
-    const payload = {
-      dashboardLayouts: {
-        machineDashboard: {
-          pphDisplayMode
+  saveMachinePphDisplayMode(machinePphDisplayMode: MachinePphDisplayMode): Observable<AppSettings> {
+    return this.http.put<AppSettings>('/api/preferences/system', { machinePphDisplayMode }).pipe(
+      tap(() => {
+        const current = this.settingsSubject.value;
+        if (current) {
+          this.settingsSubject.next({ ...current, machinePphDisplayMode });
         }
-      }
-    };
-
-    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
-      tap(preferences => {
-        this.acceptUserPreferences(preferences);
       })
     );
   }
@@ -390,8 +380,7 @@ export class SettingsService {
     summaryCardOrder: string[],
     tableColumnVisibility: Record<string, boolean>,
     summaryCardVisibility: Record<string, boolean> = {},
-    tableColumnOrder: string[] = [],
-    pphDisplayMode?: MachinePphDisplayMode
+    tableColumnOrder: string[] = []
   ): void {
     const current = this.userPreferencesSubject.value || {};
     const machineDashboard = {
@@ -401,10 +390,6 @@ export class SettingsService {
       tableColumnVisibility,
       tableColumnOrder
     };
-    if (pphDisplayMode) {
-      machineDashboard.pphDisplayMode = pphDisplayMode;
-    }
-
     this.userPreferencesSubject.next({
       ...current,
       dashboardLayouts: {

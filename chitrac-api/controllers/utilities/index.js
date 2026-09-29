@@ -2667,6 +2667,7 @@ function constructor(server) {
         systemName: config.systemName,
         httpsEnabled: config.httpsEnabled,
         dashboardTimeframe: config.dashboardTimeframe || 'current',
+        machinePphDisplayMode: config.machinePphDisplayMode || 'perMachine',
         percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined,
         oePercentBreakpoints: config.oePercentBreakpoints ? { ...config.oePercentBreakpoints } : undefined,
         dashboardLayouts: config.systemPreferences?.dashboardLayouts

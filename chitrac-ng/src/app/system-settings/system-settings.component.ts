@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -13,7 +14,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { finalize } from 'rxjs/operators';
 import { SystemPreferences, SystemPreferencesService } from '../services/system-preferences.service';
-import { PercentBreakpoints, SettingsService } from '../services/settings.service';
+import { MachinePphDisplayMode, PercentBreakpoints, SettingsService } from '../services/settings.service';
 
 @Component({
   selector: 'app-system-settings',
@@ -23,6 +24,7 @@ import { PercentBreakpoints, SettingsService } from '../services/settings.servic
     FormsModule,
     ReactiveFormsModule,
     MatButtonModule,
+    MatButtonToggleModule,
     MatCardModule,
     MatDividerModule,
     MatFormFieldModule,
@@ -42,9 +44,11 @@ export class SystemSettingsComponent implements OnInit {
   isSaving = false;
   isResetting = false;
   isSavingDashboardTimeframe = false;
+  isSavingMachinePphDisplayMode = false;
   isSavingPercentBreakpoints = false;
   isSavingOePercentBreakpoints = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
+  machinePphDisplayMode: MachinePphDisplayMode = 'perMachine';
   percentBreakpoints: PercentBreakpoints = {
     poor: 0,
     okay: 70,
@@ -88,6 +92,28 @@ export class SystemSettingsComponent implements OnInit {
       error: (error) => {
         const message = error.error?.error || error.error?.message || 'Failed to save dashboard default timeframe';
         this.isSavingDashboardTimeframe = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  saveMachinePphDisplayMode(): void {
+    this.isSavingMachinePphDisplayMode = true;
+
+    this.settingsService.saveMachinePphDisplayMode(this.machinePphDisplayMode).subscribe({
+      next: () => {
+        this.isSavingMachinePphDisplayMode = false;
+        this.snackBar.open('Machine PPH display mode saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save Machine PPH display mode';
+        this.isSavingMachinePphDisplayMode = false;
         this.snackBar.open(message, 'Close', {
           duration: 5000,
           panelClass: ['error-snackbar']
@@ -194,6 +220,7 @@ export class SystemSettingsComponent implements OnInit {
       .subscribe({
         next: (preferences) => {
           this.applyPreferences(preferences);
+          this.settingsService.loadSettings().subscribe();
           this.snackBar.open('System settings reset', 'Close', {
             duration: 3000,
             panelClass: ['success-snackbar']
@@ -210,6 +237,9 @@ export class SystemSettingsComponent implements OnInit {
   private applyPreferences(preferences: SystemPreferences): void {
     this.preferences = preferences;
     this.dashboardTimeframe = preferences.dashboardTimeframe === 'shift' ? 'shift' : 'current';
+    this.machinePphDisplayMode = preferences.machinePphDisplayMode === 'perStation'
+      ? 'perStation'
+      : 'perMachine';
     this.percentBreakpoints = preferences.percentBreakpoints
       ? { ...preferences.percentBreakpoints }
       : { poor: 0, okay: 70, good: 90 };

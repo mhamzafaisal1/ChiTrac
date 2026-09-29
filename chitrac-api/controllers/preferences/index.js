@@ -18,7 +18,7 @@ function constructor(server) {
   const db = server.db;
   const logger = server.logger;
   const systemPreferencesCollection = systemPreferences.getCollection(db, config);
-  const userPreferencesCollection = db.collection('user-preferences');
+  const userPreferencesCollection = db.collection(config.userPreferencesCollectionName || 'preferences-user');
   const userCollection = db.collection(config.userCollectionName);
 
   systemPreferencesCollection.createIndex({ _id: 1 }, { unique: true }).catch(() => {});
@@ -186,7 +186,6 @@ function constructor(server) {
         const summaryCardVisibility = layout.summaryCardVisibility;
         const tableColumnVisibility = layout.tableColumnVisibility;
         const tableColumnOrder = layout.tableColumnOrder;
-        const pphDisplayMode = layout.pphDisplayMode;
         const dashboardUpdates = {};
 
         if (summaryCardOrder !== undefined) {
@@ -268,16 +267,6 @@ function constructor(server) {
             .filter(Boolean)
             .slice(0, 20);
           dashboardUpdates.tableColumnOrder = [...new Set(cleanedOrder)];
-        }
-
-        if (pphDisplayMode !== undefined) {
-          if (!['perMachine', 'perStation'].includes(pphDisplayMode)) {
-            const error = new Error(`Invalid ${dashboardName}.pphDisplayMode. Must be 'perMachine' or 'perStation'`);
-            error.status = 400;
-            throw error;
-          }
-
-          dashboardUpdates.pphDisplayMode = pphDisplayMode;
         }
 
         return Object.keys(dashboardUpdates).length ? dashboardUpdates : null;
@@ -397,11 +386,6 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.machineDashboard?.tableColumnOrder) {
       updates['dashboardLayouts.machineDashboard.tableColumnOrder'] =
         preferences.dashboardLayouts.machineDashboard.tableColumnOrder;
-    }
-
-    if (preferences.dashboardLayouts?.machineDashboard?.pphDisplayMode) {
-      updates['dashboardLayouts.machineDashboard.pphDisplayMode'] =
-        preferences.dashboardLayouts.machineDashboard.pphDisplayMode;
     }
 
     if (preferences.dashboardLayouts?.operatorDashboard?.summaryCardOrder) {

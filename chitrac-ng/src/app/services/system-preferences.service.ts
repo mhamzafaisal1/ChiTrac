@@ -9,6 +9,7 @@ export interface SystemPreferences {
   logLevel?: string;
   httpsEnabled?: boolean;
   dashboardTimeframe?: 'current' | 'shift' | null;
+  machinePphDisplayMode?: 'perMachine' | 'perStation';
   percentBreakpoints?: {
     poor: number;
     okay: number;

@@ -3,7 +3,7 @@ const systemPreferencesSchema = require('../schemas/system-preferences');
 const SINGLETON_ID = 'system-preferences';
 
 function getCollection(db, config = {}) {
-  return db.collection(config.systemPreferencesCollectionName || 'system-preferences');
+  return db.collection(config.systemPreferencesCollectionName || 'preferences-system');
 }
 
 async function ensureSystemPreferences(db, config = {}) {
@@ -12,6 +12,7 @@ async function ensureSystemPreferences(db, config = {}) {
   if (existing) {
     const needsMigration =
       existing.schemaVersion !== systemPreferencesSchema.utils.CURRENT_SCHEMA_VERSION ||
+      existing.machinePphDisplayMode === undefined ||
       existing.userSessionExpirationHours === undefined ||
       !existing.timestamps?.create ||
       !existing.timestamps?.update ||
@@ -82,6 +83,10 @@ function applySystemPreferences(config, preferences = {}) {
   } else {
     config.dashboardTimeframe = 'current';
   }
+
+  config.machinePphDisplayMode = preferences.machinePphDisplayMode === 'perStation'
+    ? 'perStation'
+    : 'perMachine';
 
   if (preferences.percentBreakpoints) {
     config.percentBreakpoints = { ...preferences.percentBreakpoints };

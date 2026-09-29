@@ -8,7 +8,7 @@
     <mat-card-header>
       <mat-icon mat-card-avatar>dashboard_customize</mat-icon>
       <mat-card-title>Dashboard Defaults</mat-card-title>
-      <mat-card-subtitle>Choose the timeframe dashboards use when opened</mat-card-subtitle>
+      <mat-card-subtitle>Configure system-wide dashboard behavior</mat-card-subtitle>
     </mat-card-header>
 
     <mat-divider></mat-divider>
@@ -21,6 +21,21 @@
           <mat-option value="shift">Current shift</mat-option>
         </mat-select>
       </mat-form-field>
+
+      <div class="setting-row machine-pph-setting">
+        <div class="setting-copy">
+          <h3>Machine PPH</h3>
+          <p>Choose how Machine Dashboard PPH is displayed for all users.</p>
+        </div>
+
+        <mat-button-toggle-group
+          [(ngModel)]="machinePphDisplayMode"
+          aria-label="Machine dashboard PPH display mode"
+        >
+          <mat-button-toggle value="perMachine">Per Machine</mat-button-toggle>
+          <mat-button-toggle value="perStation">Per Station</mat-button-toggle>
+        </mat-button-toggle-group>
+      </div>
 
       <div class="percent-breakpoints">
         <h3>Percent breakpoints</h3>
@@ -74,6 +89,12 @@
         <mat-spinner *ngIf="isSavingDashboardTimeframe" diameter="20"></mat-spinner>
         <mat-icon *ngIf="!isSavingDashboardTimeframe">save</mat-icon>
         {{ isSavingDashboardTimeframe ? 'Saving...' : 'Save Default' }}
+      </button>
+
+      <button mat-raised-button color="primary" (click)="saveMachinePphDisplayMode()" [disabled]="isSavingMachinePphDisplayMode">
+        <mat-spinner *ngIf="isSavingMachinePphDisplayMode" diameter="20"></mat-spinner>
+        <mat-icon *ngIf="!isSavingMachinePphDisplayMode">speed</mat-icon>
+        {{ isSavingMachinePphDisplayMode ? 'Saving...' : 'Save Machine PPH' }}
       </button>
 
       <button mat-raised-button color="primary" (click)="savePercentBreakpoints()" [disabled]="isSavingPercentBreakpoints">
