@@ -28,6 +28,10 @@ const {
 } = require("./operatorFunctions");
 const config = require("../modules/config");
 
+const recordTimestamp = (record) => record?.timestamps?.create;
+const tickerTimestamp = (record) =>
+  record?.timestamps?.update || record?.timestamps?.create;
+
 // Used by daily-dashboard (6 charts) route: machines-group-summary-daily-cached
 const MACHINE_GROUP_DEPARTMENTS = [
   "Small Piece Folder",
@@ -549,7 +553,7 @@ async function computeItemSummaries(db, start, end, serial) {
       const cycleEnd = new Date(cycle.end);
       const cycleMs = cycleEnd.getTime() - cycleStart.getTime();
       const cycleCounts = counts.filter(c => {
-        const ts = new Date(c.timestamp);
+        const ts = new Date(recordTimestamp(c));
         return ts >= cycleStart && ts <= cycleEnd;
       });
       if (!cycleCounts.length) continue;
@@ -669,14 +673,14 @@ async function getCachedMachineResults(db, completeDays, serial) {
   const tickers = await db
     .collection(config.stateTickerCollectionName)
     .find({ "machine.id": { $in: machineSerials } })
-    .project({ _id: 0, "machine.id": 1, status: 1, timestamp: 1 })
+    .project({ _id: 0, "machine.id": 1, status: 1, timestamps: 1 })
     .toArray();
   const latestTickers = new Map();
   tickers.forEach(t => {
     const id = Number(t.machine?.id);
-    const ts = new Date(t.timestamp || 0);
+    const ts = new Date(tickerTimestamp(t) || 0);
     const existing = latestTickers.get(id);
-    if (!existing || ts > new Date(existing.timestamp || 0)) latestTickers.set(id, t);
+    if (!existing || ts > new Date(tickerTimestamp(existing) || 0)) latestTickers.set(id, t);
   });
   const statusMap = new Map();
   for (const [id, ticker] of latestTickers) {
@@ -774,9 +778,7 @@ async function getCachedOperatorResults(db, completeDays, options = {}) {
     const machine = stateRecord.machine || {};
     const status = stateRecord.status || {};
     const timestamp = new Date(
-      status.timestamp ||
-        stateRecord.timestamp ||
-        (stateRecord.timestamps && (stateRecord.timestamps.update || stateRecord.timestamps.active || stateRecord.timestamps.create)) ||
+      (stateRecord.timestamps && (stateRecord.timestamps.update || stateRecord.timestamps.active || stateRecord.timestamps.create)) ||
         0
     ).getTime();
     if (Array.isArray(stateRecord.operators)) {
@@ -1003,10 +1005,7 @@ async function buildDailyItemHourlyStack(db, start, end) {
     const pipeline = [
       {
         $match: {
-          $or: [
-            { timestamp: { $gte: startDate, $lte: endDate } },
-            { "timestamps.create": { $gte: startDate, $lte: endDate } }
-          ],
+          "timestamps.create": { $gte: startDate, $lte: endDate },
           misfeed: { $ne: true },
           'operator.id': { $exists: true, $ne: -1 }
         }
@@ -1016,9 +1015,9 @@ async function buildDailyItemHourlyStack(db, start, end) {
           itemName: { $ifNull: ["$item.name", "Unknown"] },
           hour: {
             $hour: {
-              date: { $ifNull: ["$timestamp", "$timestamps.create"] },
+              date: "$timestamps.create",
               timezone: "America/Chicago"
-            }  // Use timezone-aware hour extraction, handle both timestamp formats
+            }
           }
 
         }
@@ -1100,7 +1099,7 @@ async function buildTopOperatorEfficiency(db, start, end) {
     db.collection('count').aggregate([
       {
         $match: {
-          timestamp: { $gte: paddedStart, $lte: paddedEnd },
+          "timestamps.create": { $gte: paddedStart, $lte: paddedEnd },
           'operator.id': { $exists: true, $ne: -1 },
           misfeed: { $ne: true }
         }
@@ -1112,7 +1111,7 @@ async function buildTopOperatorEfficiency(db, start, end) {
           items: {
             $push: {
               item: '$item',
-              timestamp: '$timestamp'
+              timestamp: '$timestamps.create'
             }
           },
           totalCount: { $sum: 1 }
@@ -1516,7 +1515,7 @@ async function buildDailyCountTotals(db, _start, end) {
     const pipeline = [
       {
         $match: {
-          timestamp: { $gte: startDate, $lte: endDate },
+          "timestamps.create": { $gte: startDate, $lte: endDate },
           misfeed: { $ne: true },
           'operator.id': { $exists: true, $ne: -1 }
         }
@@ -1524,12 +1523,12 @@ async function buildDailyCountTotals(db, _start, end) {
       {
         $group: {
           _id: {
-            year: { $year: "$timestamp" },
-            month: { $month: "$timestamp" },
-            day: { $dayOfMonth: "$timestamp" }
+            year: { $year: "$timestamps.create" },
+            month: { $month: "$timestamps.create" },
+            day: { $dayOfMonth: "$timestamps.create" }
           },
           count: { $sum: 1 },
-          date: { $first: "$timestamp" }
+          date: { $first: "$timestamps.create" }
         }
       },
       {
@@ -2082,8 +2081,8 @@ async function buildLiveOperatorEfficiencySummary(states, counts, start, end, se
     (c) =>
       c.machine?.serial === serial &&
       c.operator?.id &&
-      new Date(c.timestamp) >= start &&
-      new Date(c.timestamp) <= end
+      new Date(recordTimestamp(c)) >= start &&
+      new Date(recordTimestamp(c)) <= end
   );
 
   const groupedCounts = groupCountsByOperatorAndMachine(relevantCounts);
@@ -2132,18 +2131,18 @@ async function buildLiveOperatorEfficiencySummary(states, counts, start, end, se
 
     for (const [windowName, window] of Object.entries(timeWindows)) {
       const windowValidCounts = validCounts.filter(
-        (c) => new Date(c.timestamp) >= window.start && new Date(c.timestamp) <= window.end
+        (c) => new Date(recordTimestamp(c)) >= window.start && new Date(recordTimestamp(c)) <= window.end
       );
       const windowMisfeedCounts = misfeedCounts.filter(
-        (c) => new Date(c.timestamp) >= window.start && new Date(c.timestamp) <= window.end
+        (c) => new Date(recordTimestamp(c)) >= window.start && new Date(recordTimestamp(c)) <= window.end
       );
       const windowTotalCounts = [...windowValidCounts, ...windowMisfeedCounts];
 
       const windowStates = states.filter(
         (s) =>
           s.machine?.serial === serial &&
-          new Date(s.timestamp) >= window.start &&
-          new Date(s.timestamp) <= window.end
+          new Date(recordTimestamp(s)) >= window.start &&
+          new Date(recordTimestamp(s)) <= window.end
       );
 
       const runningCycles = extractAllCyclesFromStates(windowStates, window.start, window.end).running;
@@ -2161,14 +2160,14 @@ async function buildLiveOperatorEfficiencySummary(states, counts, start, end, se
           Array.isArray(s.operators) &&
           s.operators.some((op) => op?.id === operatorId)
       )
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      .sort((a, b) => new Date(recordTimestamp(b)) - new Date(recordTimestamp(a)));
 
     const mostRecent = relevantStates[0];
     const statusCode = mostRecent?.status?.code ?? 0;
     const statusName = mostRecent?.status?.name ?? "Unknown";
 
     const allDayValidCounts = validCounts.filter(
-      (c) => new Date(c.timestamp) >= start && new Date(c.timestamp) <= end
+      (c) => new Date(recordTimestamp(c)) >= start && new Date(recordTimestamp(c)) <= end
     );
 
     const itemNamesSet = new Set(allDayValidCounts.map((c) => c.item?.name).filter(Boolean));
@@ -2223,16 +2222,16 @@ async function getMostRecentStateForMachine(db, serial, dateStr) {
   const endOfDay = new Date(`${dateStr}T${currentTimeOfDay}`);
 
   const query = {
-    timestamp: { $gte: startOfDay, $lte: endOfDay },
+    "timestamps.create": { $gte: startOfDay, $lte: endOfDay },
     "machine.serial": parseInt(serial)
   };
 
   const state = await db.collection("stateTicker")
     .find(query)
-    .sort({ timestamp: -1 })
+    .sort({ "timestamps.create": -1 })
     .limit(1)
     .project({
-      timestamp: 1,
+      timestamps: 1,
       'machine.serial': 1,
       'machine.name': 1,
       'program': 1,

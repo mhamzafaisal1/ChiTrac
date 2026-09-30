@@ -21,6 +21,8 @@
     "@angular/platform-browser-dynamic": "^20.0.2",
     "@angular/router": "^20.0.2",
     "@types/d3": "^7.4.3",
+    "ag-grid-angular": "^36.2.0",
+    "ag-grid-community": "^36.2.0",
     "bootstrap": "^5.3.3",
     "canvag": "^1.0.3",
     "canvg": "^4.0.3",

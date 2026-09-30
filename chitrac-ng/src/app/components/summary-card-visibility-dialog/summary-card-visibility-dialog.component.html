@@ -17,79 +17,106 @@
     <div class="list-grid">
       <section class="list-panel" aria-label="Show infoboxes">
         <h3>{{ showLabel }}</h3>
-        <button
-          type="button"
-          class="infobox-row"
-          [class.compact]="compactCards"
-          *ngFor="let card of showCards"
-          [class.selected]="selectedShowLabel === card.label"
-          (click)="selectShow(card.label)"
-          [ngClass]="card.tone"
-          [class.has-sparkline]="card.sparklineLinePoints"
+        <div
+          id="shown-card-list"
+          class="card-drop-list"
+          cdkDropList
+          [cdkDropListData]="showCards"
+          [cdkDropListConnectedTo]="['hidden-card-list']"
+          [cdkDropListDisabled]="!dragDropEnabled"
+          [cdkDropListEnterPredicate]="canEnterShow"
+          (cdkDropListDropped)="drop($event, true)"
         >
-          <article
-            class="summary-card-preview"
+          <button
+            type="button"
+            class="infobox-row"
             [class.compact]="compactCards"
+            *ngFor="let card of showCards"
+            cdkDrag
+            [cdkDragDisabled]="!dragDropEnabled"
+            [class.draggable]="dragDropEnabled"
+            [class.selected]="selectedShowId === (card.id || card.label)"
+            (click)="selectShow(card)"
             [ngClass]="card.tone"
             [class.has-sparkline]="card.sparklineLinePoints"
           >
-            <mat-icon class="summary-icon" *ngIf="card.icon">{{ card.icon }}</mat-icon>
-            <div class="summary-copy">
-              <span>{{ card.label }}</span>
-              <strong *ngIf="!compactCards">{{ card.value }}</strong>
-            </div>
-            <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
-              <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
-                <path class="sparkline-fill" [attr.d]="card.sparklineAreaPath"></path>
-                <polyline class="sparkline-line" [attr.points]="card.sparklineLinePoints"></polyline>
-              </svg>
-            </div>
-          </article>
-        </button>
-        <div class="empty-list" *ngIf="!showCards.length">{{ emptyShownText }}</div>
+            <article
+              class="summary-card-preview"
+              [class.compact]="compactCards"
+              [ngClass]="card.tone"
+              [class.has-sparkline]="card.sparklineLinePoints"
+            >
+              <mat-icon class="summary-icon" *ngIf="card.icon">{{ card.icon }}</mat-icon>
+              <div class="summary-copy">
+                <span>{{ card.label }}</span>
+                <strong *ngIf="!compactCards">{{ card.value }}</strong>
+              </div>
+              <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
+                <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
+                  <path class="sparkline-fill" [attr.d]="card.sparklineAreaPath"></path>
+                  <polyline class="sparkline-line" [attr.points]="card.sparklineLinePoints"></polyline>
+                </svg>
+              </div>
+            </article>
+          </button>
+          <div class="empty-list" *ngIf="!showCards.length">{{ emptyShownText }}</div>
+        </div>
       </section>
 
       <div class="transfer-actions" aria-label="Move selected infobox">
-        <button mat-icon-button type="button" aria-label="Hide selected infobox" [disabled]="!selectedShowLabel" (click)="hideSelected()">
+        <button mat-icon-button type="button" aria-label="Hide selected infobox" [disabled]="!selectedShowId" (click)="hideSelected()">
           <mat-icon>chevron_right</mat-icon>
         </button>
-        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideLabel" (click)="showSelected()">
+        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideId || !canShowMore" (click)="showSelected()">
           <mat-icon>chevron_left</mat-icon>
         </button>
       </div>
 
       <section class="list-panel" aria-label="Hide infoboxes">
         <h3>{{ hideLabel }}</h3>
-        <button
-          type="button"
-          class="infobox-row"
-          [class.compact]="compactCards"
-          *ngFor="let card of hideCards"
-          [class.selected]="selectedHideLabel === card.label"
-          (click)="selectHide(card.label)"
-          [ngClass]="card.tone"
-          [class.has-sparkline]="card.sparklineLinePoints"
+        <div
+          id="hidden-card-list"
+          class="card-drop-list"
+          cdkDropList
+          [cdkDropListData]="hideCards"
+          [cdkDropListConnectedTo]="['shown-card-list']"
+          [cdkDropListDisabled]="!dragDropEnabled"
+          (cdkDropListDropped)="drop($event, false)"
         >
-          <article
-            class="summary-card-preview"
+          <button
+            type="button"
+            class="infobox-row"
             [class.compact]="compactCards"
+            *ngFor="let card of hideCards"
+            cdkDrag
+            [cdkDragDisabled]="!dragDropEnabled"
+            [class.draggable]="dragDropEnabled"
+            [class.selected]="selectedHideId === (card.id || card.label)"
+            (click)="selectHide(card)"
             [ngClass]="card.tone"
             [class.has-sparkline]="card.sparklineLinePoints"
           >
-            <mat-icon class="summary-icon" *ngIf="card.icon">{{ card.icon }}</mat-icon>
-            <div class="summary-copy">
-              <span>{{ card.label }}</span>
-              <strong *ngIf="!compactCards">{{ card.value }}</strong>
-            </div>
-            <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
-              <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
-                <path class="sparkline-fill" [attr.d]="card.sparklineAreaPath"></path>
-                <polyline class="sparkline-line" [attr.points]="card.sparklineLinePoints"></polyline>
-              </svg>
-            </div>
-          </article>
-        </button>
-        <div class="empty-list" *ngIf="!hideCards.length">{{ emptyHiddenText }}</div>
+            <article
+              class="summary-card-preview"
+              [class.compact]="compactCards"
+              [ngClass]="card.tone"
+              [class.has-sparkline]="card.sparklineLinePoints"
+            >
+              <mat-icon class="summary-icon" *ngIf="card.icon">{{ card.icon }}</mat-icon>
+              <div class="summary-copy">
+                <span>{{ card.label }}</span>
+                <strong *ngIf="!compactCards">{{ card.value }}</strong>
+              </div>
+              <div class="summary-sparkline" *ngIf="card.sparklineLinePoints" aria-hidden="true">
+                <svg viewBox="0 0 160 48" preserveAspectRatio="none" focusable="false">
+                  <path class="sparkline-fill" [attr.d]="card.sparklineAreaPath"></path>
+                  <polyline class="sparkline-line" [attr.points]="card.sparklineLinePoints"></polyline>
+                </svg>
+              </div>
+            </article>
+          </button>
+          <div class="empty-list" *ngIf="!hideCards.length">{{ emptyHiddenText }}</div>
+        </div>
       </section>
     </div>
   </mat-dialog-content>

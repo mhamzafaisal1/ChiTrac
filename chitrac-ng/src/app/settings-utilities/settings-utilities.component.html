@@ -65,6 +65,22 @@
           </mat-form-field>
         </div>
       </div>
+
+      <div class="default-layouts">
+        <h3>Default layouts</h3>
+        <p>
+          Use your saved Machine, Operator, and Experimental Daily dashboard layouts as defaults for users who have not saved their own layouts.
+        </p>
+        <button
+          mat-stroked-button
+          color="primary"
+          (click)="saveCurrentUserLayoutsAsDefaults()"
+          [disabled]="isSavingDashboardLayouts">
+          <mat-spinner *ngIf="isSavingDashboardLayouts" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isSavingDashboardLayouts">publish</mat-icon>
+          {{ isSavingDashboardLayouts ? 'Saving Layouts...' : 'Use My Layouts as Defaults' }}
+        </button>
+      </div>
     </mat-card-content>
 
     <mat-card-actions>
@@ -85,6 +101,50 @@
         <mat-icon *ngIf="!isSavingOePercentBreakpoints">speed</mat-icon>
         {{ isSavingOePercentBreakpoints ? 'Saving...' : 'Save OE Breakpoints' }}
       </button>
+    </mat-card-actions>
+  </mat-card>
+
+  <mat-card class="utility-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>download</mat-icon>
+      <mat-card-title>Configuration Export</mat-card-title>
+      <mat-card-subtitle>Download all configuration collections as JSON</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <p>
+        Exports machines, operators, items, faults, statuses, users, shifts, and maintenance shifts in one JSON file.
+      </p>
+    </mat-card-content>
+
+    <mat-card-actions class="config-export-actions">
+      <div class="config-export-primary-row">
+        <mat-slide-toggle [(ngModel)]="includeConfigIds" [disabled]="isConfigExportLoading">
+          Include MongoDB IDs
+        </mat-slide-toggle>
+
+        <button
+          mat-raised-button
+          color="primary"
+          (click)="downloadConfigExport()"
+          [disabled]="isConfigExportLoading || isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+          <mat-spinner *ngIf="isConfigExportLoading && !exportingConfigCollection" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="!isConfigExportLoading || exportingConfigCollection">download</mat-icon>
+          {{ isConfigExportLoading && !exportingConfigCollection ? 'Exporting...' : 'Download JSON' }}
+        </button>
+      </div>
+
+      <div class="config-export-collection-row">
+        <button
+          *ngFor="let collection of configExportCollections"
+          mat-stroked-button
+          (click)="downloadConfigCollection(collection)"
+          [disabled]="isConfigExportLoading || isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+          <mat-spinner *ngIf="exportingConfigCollection === collection.name" diameter="20"></mat-spinner>
+          <mat-icon *ngIf="exportingConfigCollection !== collection.name">download</mat-icon>
+          {{ collection.label }}
+        </button>
+      </div>
     </mat-card-actions>
   </mat-card>
 
@@ -141,11 +201,12 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="warn" (click)="scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading">
+        <button mat-raised-button color="warn" (click)="isRebootScheduled ? cancelReboot() : scheduleReboot()" [disabled]="isRebootLoading || isBackupLoading || isDeleteNodeLogsLoading || isConfigExportLoading">
           <mat-spinner *ngIf="isRebootLoading" diameter="20"></mat-spinner>
-          <mat-icon *ngIf="!isRebootLoading">power_settings_new</mat-icon>
-          {{ isRebootLoading ? 'Scheduling...' : 'Reboot Server' }}
+          <mat-icon *ngIf="!isRebootLoading">{{ isRebootScheduled ? 'cancel' : 'power_settings_new' }}</mat-icon>
+          {{ isRebootLoading ? (isRebootScheduled ? 'Cancelling...' : 'Scheduling...') : isRebootScheduled ? 'Cancel Reboot' : 'Reboot Server' }}
         </button>
+        <span class="reboot-countdown" *ngIf="isRebootScheduled">Reboot in {{ rebootRemainingSeconds }}s</span>
       </mat-card-actions>
     </mat-card>
 
@@ -181,7 +242,7 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading">
+        <button mat-raised-button color="primary" (click)="backupMongoDbToUsb()" [disabled]="isBackupLoading || isRebootLoading || isDeleteNodeLogsLoading || isConfigExportLoading">
           <mat-spinner *ngIf="isBackupLoading" diameter="20"></mat-spinner>
           <mat-icon *ngIf="!isBackupLoading">backup</mat-icon>
           {{ isBackupLoading ? 'Backing Up...' : 'Back Up to USB' }}
@@ -232,7 +293,7 @@
       </mat-card-content>
 
       <mat-card-actions>
-        <button mat-raised-button color="warn" (click)="deleteOldNodeLogs()" [disabled]="isDeleteNodeLogsLoading || isRebootLoading || isBackupLoading || !nodeLogsCutoffDate">
+        <button mat-raised-button color="warn" (click)="deleteOldNodeLogs()" [disabled]="isDeleteNodeLogsLoading || isRebootLoading || isBackupLoading || isConfigExportLoading || !nodeLogsCutoffDate">
           <mat-spinner *ngIf="isDeleteNodeLogsLoading" diameter="20"></mat-spinner>
           <mat-icon *ngIf="!isDeleteNodeLogsLoading">delete</mat-icon>
           {{ isDeleteNodeLogsLoading ? 'Deleting...' : 'Delete Old Logs' }}

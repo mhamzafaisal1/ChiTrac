@@ -26,6 +26,8 @@ const {
   liveDowntimeMs,
 } = require("./availabilityLive");
 
+const recordTimestamp = (record) => record?.timestamps?.create;
+
 
 // ============================================================
 // Existing functions
@@ -34,14 +36,14 @@ const {
 async function getActiveOperatorIds(db, start, end) {
     const stateCollection = getStateCollectionName(start);
     return await db.collection(stateCollection).distinct("operators.id", {
-      timestamp: { $gte: new Date(start), $lte: new Date(end) },
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
       "operators.id": { $ne: -1 },
     });
   }
 
   async function getCountsForSessions(db, operatorId, sessions) {
     const orConditions = sessions.map(s => ({
-      timestamp: { $gte: new Date(s.start), $lte: new Date(s.end) }
+      "timestamps.create": { $gte: new Date(s.start), $lte: new Date(s.end) }
     }));
 
     // Use the start time of the first session to determine collection
@@ -54,7 +56,7 @@ async function getActiveOperatorIds(db, start, end) {
       })
       .project({
         _id: 0,
-        timestamp: 1,
+        "timestamps.create": 1,
         machine: 1,
         program: 1,
         operator: 1,
@@ -63,7 +65,7 @@ async function getActiveOperatorIds(db, start, end) {
         lane: 1,
         misfeed: 1
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray();
   }
 
@@ -222,8 +224,9 @@ function truncateAndRecalcOperator(original, newStart, newEnd, logger) {
   s.timestamps.end = clampedEnd;
 
   const inWindow = (d) => {
-    if (!d || !d.timestamp) return false;
-    const ts = new Date(d.timestamp);
+    const createdAt = recordTimestamp(d);
+    if (!createdAt) return false;
+    const ts = new Date(createdAt);
     return ts >= clampedStart && ts <= clampedEnd;
   };
 
@@ -622,8 +625,6 @@ async function buildHybridOperatorsSummary(db, logger, exactStart, exactEnd) {
     const machine = stateRecord.machine || {};
     const status = stateRecord.status || {};
     const timestamp = new Date(
-      status.timestamp ||
-      stateRecord.timestamp ||
       (stateRecord.timestamps &&
         (stateRecord.timestamps.update ||
           stateRecord.timestamps.active ||
@@ -810,7 +811,7 @@ function preprocessOperatorData(states, validCounts, allCounts, start, end) {
   const operatorMachineGroups = new Map(); // "operatorId-machineId" -> { counts: [], validCounts: [] }
 
   for (const count of allCounts) {
-    const ts = new Date(count.timestamp);
+    const ts = new Date(recordTimestamp(count));
     const hourIndex = Math.floor((ts - startDate) / (60 * 60 * 1000));
 
     // Build hourly maps
@@ -867,12 +868,12 @@ function preprocessOperatorData(states, validCounts, allCounts, start, end) {
     }
 
     // Index for cycle assignment
-    countIndex.set(count.timestamp, count);
+    countIndex.set(recordTimestamp(count), count);
   }
 
   // Single-pass state processing
   for (const state of states) {
-    const ts = new Date(state.timestamp);
+    const ts = new Date(recordTimestamp(state));
     const hourIndex = Math.floor((ts - startDate) / (60 * 60 * 1000));
 
     if (!data.hourlyStatesMap.has(hourIndex)) {
@@ -909,7 +910,7 @@ function preprocessOperatorData(states, validCounts, allCounts, start, end) {
 // MongoDB aggregation-based preprocessing for operator dashboard
 async function preprocessOperatorDataAggregated(db, start, end) {
   const matchStage = {
-    timestamp: { $gte: new Date(start), $lte: new Date(end) }
+    "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
   };
 
   // Aggregate counts by operator
@@ -941,7 +942,7 @@ async function preprocessOperatorDataAggregated(db, start, end) {
             itemName: "$item.name",
             itemStandard: "$item.standard",
             machineSerial: "$machine.serial",
-            timestamp: "$timestamp",
+            timestamp: "$timestamps.create",
             misfeed: "$misfeed"
           }
         }
@@ -955,7 +956,7 @@ async function preprocessOperatorDataAggregated(db, start, end) {
             input: "$counts",
             as: "count",
             in: {
-              timestamp: "$$count.timestamp",
+              timestamps: "$$count.timestamps",
               machine: {
                 serial: "$$count.machine.serial"
               },
@@ -984,7 +985,7 @@ async function preprocessOperatorDataAggregated(db, start, end) {
   const states = await db.collection("state")
     .find(matchStage)
     .project({
-      timestamp: 1,
+      "timestamps.create": 1,
       "machine.serial": 1,
       "machine.name": 1,
       "program.mode": 1,
@@ -992,7 +993,7 @@ async function preprocessOperatorDataAggregated(db, start, end) {
       "status.name": 1,
       operators: 1
     })
-    .sort({ timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .toArray();
 
   const countResults = await db.collection("count").aggregate(countPipeline).toArray();
@@ -1012,7 +1013,7 @@ async function preprocessOperatorDataAggregated(db, start, end) {
 
         // Transform state to match expected format
         const transformedState = {
-          timestamp: state.timestamp,
+          timestamps: state.timestamps,
           machine: {
             serial: state.machine?.serial,
             name: state.machine?.name
@@ -1156,7 +1157,7 @@ function buildOperatorItemSummaryOptimized(preprocessedData, start, end) {
     const cycleItems = [];
     for (const [itemId, itemGroup] of Object.entries(itemCountsMap)) {
       const cycleItemCounts = itemGroup.items.filter(c => {
-        const ts = new Date(c.timestamp);
+        const ts = new Date(recordTimestamp(c));
         return ts >= cycleStart && ts <= cycleEnd;
       });
 
@@ -1513,7 +1514,7 @@ async function buildItemSummaryFromItemSessions(db, operatorId, start, end, seri
     if (hasEndTimestamp && Array.isArray(s.counts) && s.counts.length && s.counts.length <= 50000) {
       // Session is closed - can reliably filter embedded counts by timestamp
       countInWin = s.counts.reduce((acc, c) => {
-        const ts = new Date(c.timestamps?.create || c.timestamp);
+        const ts = new Date(recordTimestamp(c));
         const sameItem = !c.item?.id || c.item.id === it.id;
         const sameOperator = !c.operator?.id || c.operator.id === Number(operatorId);
         const inWindow = ts >= ovStart && ts <= ovEnd;
@@ -2862,7 +2863,7 @@ async function getAllOperatorIds(db) {
       const hour = ts.getHours();
 
       const cycleCounts = counts.all.filter(c => {
-        const ts = new Date(c.timestamp);
+        const ts = new Date(recordTimestamp(c));
         return ts >= new Date(cycle.start) && ts <= new Date(cycle.end);
       });
 
@@ -2999,12 +3000,12 @@ async function getAllOperatorIds(db) {
 
     for (const day of days) {
       const dailyStates = states.filter(s => {
-        const ts = new Date(s.timestamp);
+        const ts = new Date(recordTimestamp(s));
         return ts >= day.start && ts <= day.end;
       });
 
       const dailyCounts = validCounts.filter(c => {
-        const ts = new Date(c.timestamp);
+        const ts = new Date(recordTimestamp(c));
         return ts >= day.start && ts <= day.end;
       });
 
@@ -3113,7 +3114,7 @@ async function getAllOperatorIds(db) {
       const itemId = item?.id;
       if (!itemId) continue;
 
-      const hour = new Date(count.timestamp).getUTCHours();
+      const hour = new Date(recordTimestamp(count)).getUTCHours();
       const itemName = item.name || "Unknown";
       itemNames.add(itemName);
 
@@ -3234,7 +3235,7 @@ async function getAllOperatorIds(db) {
 async function fetchOperatorDashboardData(db, start, end) {
   // 1. Find all operator IDs with data in the window
   const operatorIds = await db.collection("count").distinct("operator.id", {
-    timestamp: { $gte: new Date(start), $lte: new Date(end) },
+    "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
     "operator.id": { $ne: null }
   });
 
@@ -3245,7 +3246,7 @@ async function fetchOperatorDashboardData(db, start, end) {
       const perfAgg = await db.collection("count").aggregate([
         { $match: {
             "operator.id": operatorId,
-            timestamp: { $gte: new Date(start), $lte: new Date(end) }
+            "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
         }},
         { $group: {
             _id: null,
@@ -3258,8 +3259,8 @@ async function fetchOperatorDashboardData(db, start, end) {
       const perf = perfAgg[0] || {};
 
       const allStates = await db.collection("state").find({
-        timestamp: { $gte: new Date(start), $lte: new Date(end) }
-      }).sort({ timestamp: 1 }).toArray();
+        "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
+      }).sort({ "timestamps.create": 1 }).toArray();
       const states = allStates.filter(s => s.operator && s.operator.id === operatorId);
 
       const { runtime, pausedTime, faultTime } = calculateOperatorTimes(states, start, end);
@@ -3278,7 +3279,7 @@ async function fetchOperatorDashboardData(db, start, end) {
         const items = await db.collection("count").aggregate([
           { $match: {
               "operator.id": operatorId,
-              timestamp: { $gte: cycleStart, $lte: cycleEnd }
+              "timestamps.create": { $gte: cycleStart, $lte: cycleEnd }
           }},
           { $group: {
               _id: "$item._id",
@@ -3325,7 +3326,7 @@ async function fetchOperatorDashboardData(db, start, end) {
       const countByItemAgg = await db.collection("count").aggregate([
         { $match: {
             "operator.id": operatorId,
-            timestamp: { $gte: new Date(start), $lte: new Date(end) }
+            "timestamps.create": { $gte: new Date(start), $lte: new Date(end) }
         }},
         { $group: {
             _id: "$item._id",
@@ -3386,11 +3387,11 @@ async function fetchOperatorDashboardData(db, start, end) {
       const dailyCountsAgg = await db.collection("count").aggregate([
         { $match: {
             "operator.id": operatorId,
-            timestamp: { $gte: new Date(start), $lte: new Date(end) },
+            "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
             misfeed: { $ne: true }
         }},
         { $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$timestamps.create" } },
             count: { $sum: 1 }
         }},
         { $sort: { _id: 1 } }
@@ -3398,7 +3399,7 @@ async function fetchOperatorDashboardData(db, start, end) {
       const dailyEfficiency = await Promise.all(dailyCountsAgg.map(async (day) => {
         const dayStart = new Date(day._id + 'T00:00:00.000Z');
         const dayEnd = new Date(day._id + 'T23:59:59.999Z');
-        const dayStates = states.filter(s => new Date(s.timestamp) >= dayStart && new Date(s.timestamp) <= dayEnd);
+        const dayStates = states.filter(s => new Date(recordTimestamp(s)) >= dayStart && new Date(recordTimestamp(s)) <= dayEnd);
         const { runtime } = calculateOperatorTimes(dayStates, dayStart, dayEnd);
         const hours = runtime / 3600000;
         const pph = hours > 0 ? day.count / hours : 0;
@@ -3406,7 +3407,7 @@ async function fetchOperatorDashboardData(db, start, end) {
         if (day.count > 0) {
           const dayCounts = await db.collection("count").find({
             "operator.id": operatorId,
-            timestamp: { $gte: dayStart, $lte: dayEnd },
+            "timestamps.create": { $gte: dayStart, $lte: dayEnd },
             misfeed: { $ne: true }
           }).toArray();
           const standards = dayCounts.map(c => c.item?.standard).filter(s => typeof s === "number" && s > 0);
@@ -3750,9 +3751,6 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
   ]);
 
   const normalizeState = (state) => {
-    if (!state.timestamp && state.timestamps?.create) {
-      state.timestamp = state.timestamps.create;
-    }
     if (!state.machine?.serial && state.machine?.id) {
       state.machine = state.machine || {};
       state.machine.serial = state.machine.id;
@@ -3769,8 +3767,8 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
   if (!fullStates.length) return null;
 
   fullStates.sort((a, b) => {
-    const aTime = a.timestamp || a.timestamps?.create;
-    const bTime = b.timestamp || b.timestamps?.create;
+    const aTime = recordTimestamp(a);
+    const bTime = recordTimestamp(b);
     return new Date(aTime) - new Date(bTime);
   });
 
@@ -3781,7 +3779,7 @@ async function getBookendedOperatorStatesAndTimeRange(db, operatorId, start, end
   const sessionEnd = runCycles[runCycles.length - 1].end;
 
   const filteredStates = fullStates.filter(s => {
-    const stateTime = s.timestamp || s.timestamps?.create;
+    const stateTime = recordTimestamp(s);
     return new Date(stateTime) >= sessionStart && new Date(stateTime) <= sessionEnd;
   });
 
@@ -3816,7 +3814,7 @@ async function fetchGroupedAnalyticsDataWithOperators(db, start, end, groupBy = 
   const { targetSerials = [], operatorId = null } = options;
 
   const stateQuery = {
-    timestamp: { $gte: start, $lte: end },
+    "timestamps.create": { $gte: start, $lte: end },
     "machine.serial": { $type: "int" }
   };
 
@@ -3825,7 +3823,7 @@ async function fetchGroupedAnalyticsDataWithOperators(db, start, end, groupBy = 
   }
 
   const countQuery = {
-    timestamp: { $gte: start, $lte: end },
+    "timestamps.create": { $gte: start, $lte: end },
     "machine.serial": { $type: "int" }
   };
 
@@ -3841,7 +3839,7 @@ async function fetchGroupedAnalyticsDataWithOperators(db, start, end, groupBy = 
     db.collection("state")
       .find(stateQuery)
       .project({
-        timestamp: 1,
+        "timestamps.create": 1,
         "machine.serial": 1,
         "machine.name": 1,
         "program.mode": 1,
@@ -3849,13 +3847,13 @@ async function fetchGroupedAnalyticsDataWithOperators(db, start, end, groupBy = 
         "status.name": 1,
         operators: 1
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray(),
 
     db.collection("count")
       .find(countQuery)
       .project({
-        timestamp: 1,
+        "timestamps.create": 1,
         "machine.serial": 1,
         "operator.id": 1,
         "operator.name": 1,
@@ -3864,7 +3862,7 @@ async function fetchGroupedAnalyticsDataWithOperators(db, start, end, groupBy = 
         "item.standard": 1,
         misfeed: 1
       })
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .toArray()
   ]);
 

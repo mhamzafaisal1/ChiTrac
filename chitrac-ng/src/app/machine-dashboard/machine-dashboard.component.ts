@@ -47,6 +47,7 @@ import { DowntimeParetoComponent } from "../downtime-pareto/downtime-pareto.comp
 import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
 import {
   SummaryCardVisibilityDialogComponent,
+  SummaryCardVisibilityDialogResult,
   SummaryCardVisibilityOption,
 } from "../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component";
 
@@ -56,7 +57,9 @@ interface SummaryCard {
   icon: string;
   tone: string;
   sparklineData?: SparklineDataPoint[];
+  comparisonSparklineData?: SparklineDataPoint[];
   sparklineLinePoints?: string;
+  comparisonSparklineLinePoints?: string;
   sparklineAreaPath?: string;
   sparklineSegments?: SparklineSegment[];
 }
@@ -89,6 +92,7 @@ interface ShiftProjectionSummary {
 interface MachineDashboardLayoutSnapshot {
   summaryCardOrder: string[];
   tableColumnVisibility: Record<string, boolean>;
+  tableColumnOrder: string[];
   summaryCardVisibility: Record<string, boolean>;
   summaryCardOrderSource: "server" | "local" | "default";
   summaryCardVisibilitySource: "server" | "local" | "default";
@@ -169,7 +173,24 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Throughput",
     "Efficiency",
   ];
+  readonly machineDashboardColumns = [
+    "Status",
+    "Machine Name",
+    "Serial Number",
+    "Runtime",
+    "Downtime",
+    "Paused Time",
+    "Fault Time",
+    "Total Count",
+    "Misfeed Count",
+    "PPH",
+    "Availability",
+    "Throughput",
+    "Efficiency",
+    "OEE",
+  ];
   tableColumnVisibility: Record<string, boolean> = {};
+  tableColumnOrder: string[] = [];
   summaryCardVisibility: Record<string, boolean> = {};
 
   private observer!: MutationObserver;
@@ -269,6 +290,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.loadInitialSummaryCardVisibility();
     this.setupSummaryCardOrderPersistence();
     this.subscribeToLayoutEditing();
+    this.subscribeToSystemSettings();
     this.subscribeToUserPreferences();
     this.layoutEditService.register(this.layoutContextId, "Machine Dashboard");
     this.updateChartDimensions();
@@ -374,7 +396,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.layoutEditService.markEditsMade();
     this.summaryCardOrder = this.mergeVisibleSummaryCardOrder(this.summaryCards.map((card) => card.label));
     this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
-    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
     if (!this.userService.getToken()) {
       this.summaryCardOrderSource = "local";
@@ -387,7 +409,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       this.layoutEditService.markEditsMade();
     }
     this.tableColumnVisibility = this.cleanTableColumnVisibility(visibility);
-    this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
+  }
+
+  onTableColumnOrderChange(columnOrder: string[]): void {
+    if (!this.layoutEditing) return;
+    this.layoutEditService.markEditsMade();
+    this.tableColumnOrder = this.cleanTableColumnOrder(columnOrder);
+    this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
   }
 
   openSummaryCardVisibilityDialog(): void {
@@ -398,20 +427,24 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       data: {
         cards: this.getSummaryCardVisibilityOptions(),
         visibility: this.summaryCardVisibility,
+        dragDropEnabled: true,
       },
     });
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
-      .subscribe((visibility: Record<string, boolean> | undefined) => {
-        if (!visibility) return;
+      .subscribe((result: SummaryCardVisibilityDialogResult | undefined) => {
+        if (!result) return;
         this.layoutEditService.markEditsMade();
-        this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
+        this.summaryCardOrder = this.cleanSummaryCardOrder(result.order);
+        this.summaryCardVisibility = this.cleanSummaryCardVisibility(result.visibility);
         this.syncSummaryCardsFromAll();
-        this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility);
+        this.settingsService.setMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
         if (!this.userService.getToken()) {
+          this.summaryCardOrderSource = "local";
           this.summaryCardVisibilitySource = "local";
+          localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
           localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
         }
       });
@@ -758,6 +791,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const shiftProjection = this.getShiftProjection(responses, cache);
     const shiftProjectionTone = shiftProjection.tone;
     const shiftInfoCard = this.getShiftInfoCard(cache);
+    const countSparklineData = this.getCountSparklineData(cache);
 
     const summaryCards = [
       { label: "Machines", value: machineCounts.total, icon: "precision_manufacturing", tone: "neutral" },
@@ -779,7 +813,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         value: totalCount.toLocaleString(),
         icon: "tag",
         tone: "neutral",
-        sparklineData: this.getCountSparklineData(cache) || this.getMockCountSparklineData(totalCount, currentPph),
+        sparklineData: countSparklineData || this.getMockCountSparklineData(totalCount, currentPph),
+        comparisonSparklineData: countSparklineData ? this.getYesterdayCountSparklineData(cache) || undefined : undefined,
       }),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       ...(shiftInfoCard ? [shiftInfoCard] : []),
@@ -870,16 +905,22 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     const projectionWindow = this.getShiftProjectionWindow(cache);
-    const shift = projectionWindow?.currentShift || projectionWindow?.nextShift;
+    const currentShift = projectionWindow?.currentShift;
+    const shift = currentShift || projectionWindow?.nextShift;
     if (!shift?.start || !shift?.end) {
       return null;
     }
 
     const isTomorrow = this.isTomorrow(shift.start);
-    const prefix = isTomorrow ? "First Shift Tomorrow: " : "Shift: ";
+    const prefix = currentShift
+      ? "Current Shift: "
+      : isTomorrow
+        ? "First Shift Tomorrow: "
+        : "Shift: ";
+    const breakSuffix = currentShift && projectionWindow?.state === "inBreak" ? " (In Break)" : "";
     return {
       label: `${prefix}${shift.name || "Unnamed Shift"}`,
-      value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}`,
+      value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}${breakSuffix}`,
       icon: "schedule",
       tone: "neutral",
     };
@@ -1017,6 +1058,34 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return values.length >= 2 ? values : null;
   }
 
+  private getYesterdayCountSparklineData(cache?: DashboardCacheState | null): SparklineDataPoint[] | null {
+    const sparkline =
+      cache?.countSparkline ||
+      cache?.dashboard?.counts?.sparkline ||
+      cache?.today?.countSparkline ||
+      cache?.currentShift?.countSparkline;
+    const historyPoints = sparkline?.history?.allMachines;
+    const currentStart = new Date(sparkline?.range?.start).getTime();
+    const currentEnd = new Date(sparkline?.range?.end).getTime();
+    if (!Array.isArray(historyPoints) || !Number.isFinite(currentStart) || !Number.isFinite(currentEnd)) return null;
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const comparisonStart = currentStart - dayMs;
+    const comparisonEnd = currentEnd - dayMs;
+    const values = historyPoints
+      .filter((point) => {
+        const timestamp = new Date(point?.minuteStart).getTime();
+        return Number.isFinite(timestamp) && timestamp >= comparisonStart && timestamp < comparisonEnd;
+      })
+      .map((point) => ({
+        value: Number(point?.count),
+        shiftState: this.normalizeSparklineShiftState(point?.shiftState),
+      }))
+      .filter((point) => Number.isFinite(point.value));
+
+    return values.length >= 2 ? values : null;
+  }
+
   private withSparkline(card: SummaryCard): SummaryCard {
     const data = (card.sparklineData || [])
       .map((point) => ({
@@ -1025,10 +1094,19 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }))
       .filter((point) => Number.isFinite(point.value));
     if (data.length < 2) return card;
+    const comparisonData = (card.comparisonSparklineData || [])
+      .map((point) => ({
+        value: Number(point?.value),
+        shiftState: this.normalizeSparklineShiftState(point?.shiftState),
+      }))
+      .filter((point) => Number.isFinite(point.value));
 
     const width = 160;
     const height = 48;
-    const values = data.map((point) => point.value);
+    const values = [
+      ...data.map((point) => point.value),
+      ...comparisonData.map((point) => point.value),
+    ];
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min || 1;
@@ -1038,6 +1116,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return { ...value, x, y };
     });
     const linePoints = points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+    const comparisonLinePoints = comparisonData.length >= 2
+      ? comparisonData.map((value, index) => {
+        const x = (index / (comparisonData.length - 1)) * width;
+        const y = height - ((value.value - min) / range) * (height - 8) - 4;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(" ")
+      : undefined;
     const areaPath = [
       `M0,${height}`,
       ...points.map((point, index) => `${index === 0 ? "L" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`),
@@ -1048,7 +1133,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     return {
       ...card,
       sparklineData: data,
+      comparisonSparklineData: comparisonData,
       sparklineLinePoints: linePoints,
+      comparisonSparklineLinePoints: comparisonLinePoints,
       sparklineAreaPath: areaPath,
       sparklineSegments: this.buildSparklineSegments(points),
     };
@@ -1107,6 +1194,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       : this.machineSummaryCardLabels.map((label): SummaryCard => ({ label, value: "", icon: this.getSummaryCardFallbackIcon(label), tone: "neutral" }));
 
     return cards.map((card) => ({
+      id: this.getSummaryCardPreferenceKey(card.label),
       label: card.label,
       icon: card.icon,
       value: card.value,
@@ -1183,8 +1271,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private saveLayoutPreferences(): void {
     this.summaryCardOrder = this.getSummaryCardOrder();
     this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
+    this.tableColumnOrder = this.cleanTableColumnOrder(this.tableColumnOrder);
     this.summaryCardVisibility = this.cleanSummaryCardVisibility(this.summaryCardVisibility);
-    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
     if (!this.userService.getToken()) {
       localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
@@ -1193,7 +1282,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility).subscribe({
+    this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).subscribe({
       next: () => {
         localStorage.removeItem(this.summaryCardOrderKey);
         localStorage.removeItem(this.summaryCardVisibilityKey);
@@ -1212,6 +1301,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.layoutSnapshot = {
       summaryCardOrder: [...this.getSummaryCardOrder()],
       tableColumnVisibility: { ...this.tableColumnVisibility },
+      tableColumnOrder: [...this.tableColumnOrder],
       summaryCardVisibility: { ...this.summaryCardVisibility },
       summaryCardOrderSource: this.summaryCardOrderSource,
       summaryCardVisibilitySource: this.summaryCardVisibilitySource,
@@ -1227,11 +1317,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     this.summaryCardOrder = [...snapshot.summaryCardOrder];
     this.tableColumnVisibility = { ...snapshot.tableColumnVisibility };
+    this.tableColumnOrder = [...snapshot.tableColumnOrder];
     this.summaryCardVisibility = { ...snapshot.summaryCardVisibility };
     this.summaryCardOrderSource = snapshot.summaryCardOrderSource;
     this.summaryCardVisibilitySource = snapshot.summaryCardVisibilitySource;
     this.syncSummaryCardsFromAll();
-    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility);
+    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
     this.summaryCardOrderSource = snapshot.summaryCardOrderSource;
     this.summaryCardVisibilitySource = snapshot.summaryCardVisibilitySource;
     this.restoreLocalLayoutStorage(snapshot);
@@ -1284,12 +1375,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         const hadLocalOrder = this.summaryCardOrderSource === "local";
         const hadLocalVisibility = this.summaryCardVisibilitySource === "local";
         const machineDashboardLayout = preferences.dashboardLayouts?.machineDashboard;
-        const nextPphDisplayMode: MachinePphDisplayMode =
-          machineDashboardLayout?.pphDisplayMode === "perStation" ? "perStation" : "perMachine";
-        const pphDisplayModeChanged = this.pphDisplayMode !== nextPphDisplayMode;
-        this.pphDisplayMode = nextPphDisplayMode;
-        this.updatePphTooltip();
-
         const serverOrder = machineDashboardLayout?.summaryCardOrder;
         if (Array.isArray(serverOrder) && serverOrder.length) {
           this.summaryCardOrder = this.cleanSummaryCardOrder(serverOrder);
@@ -1312,6 +1397,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         }
 
         this.tableColumnVisibility = this.cleanTableColumnVisibility(machineDashboardLayout?.tableColumnVisibility);
+        this.tableColumnOrder = this.cleanTableColumnOrder(machineDashboardLayout?.tableColumnOrder);
 
         if (
           this.userService.getToken() &&
@@ -1319,7 +1405,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           (this.summaryCardOrder.length || Object.keys(this.summaryCardVisibility).length)
         ) {
           this.settingsService
-            .saveMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility)
+            .saveMachineDashboardLayout(this.getSummaryCardOrder(), this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder)
             .subscribe({
               next: () => {
                 localStorage.removeItem(this.summaryCardOrderKey);
@@ -1332,6 +1418,20 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
               },
             });
         }
+      });
+  }
+
+  private subscribeToSystemSettings(): void {
+    this.settingsService.settings$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((settings) => {
+        if (!settings) return;
+
+        const nextPphDisplayMode: MachinePphDisplayMode =
+          settings.machinePphDisplayMode === "perStation" ? "perStation" : "perMachine";
+        const pphDisplayModeChanged = this.pphDisplayMode !== nextPphDisplayMode;
+        this.pphDisplayMode = nextPphDisplayMode;
+        this.updatePphTooltip();
 
         if (pphDisplayModeChanged && this.machineData.length) {
           this.updateDashboardData(this.machineData);
@@ -1345,8 +1445,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.summaryCardVisibility = {};
     this.summaryCardVisibilitySource = "default";
     this.tableColumnVisibility = {};
-    this.pphDisplayMode = "perMachine";
-    this.updatePphTooltip();
+    this.tableColumnOrder = [];
     this.restoreDefaultSummaryCardOrder();
     this.syncSummaryCardsFromAll();
   }
@@ -1434,7 +1533,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return this.shiftProjectedCountLabel;
     }
 
-    if (label.startsWith("Shift: ") || label.startsWith("First Shift Tomorrow: ")) {
+    if (
+      label.startsWith("Current Shift: ") ||
+      label.startsWith("Shift: ") ||
+      label.startsWith("First Shift Tomorrow: ")
+    ) {
       return this.shiftInfoCardPreferenceLabel;
     }
 
@@ -1448,6 +1551,17 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       }
       return acc;
     }, {} as Record<string, boolean>);
+  }
+
+  private cleanTableColumnOrder(columnOrder: string[] = []): string[] {
+    const allowedColumns = new Set(this.machineDashboardColumns);
+    const seen = new Set<string>();
+    const cleanedOrder = columnOrder.filter((column) => {
+      if (typeof column !== "string" || !allowedColumns.has(column) || seen.has(column)) return false;
+      seen.add(column);
+      return true;
+    });
+    return [...cleanedOrder, ...this.machineDashboardColumns.filter((column) => !seen.has(column))];
   }
 
   private getSummaryCardOrder(): string[] {
@@ -2249,22 +2363,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
     // Set columns if not already set
     if (this.columns.length === 0) {
-      this.columns = [
-        "Status",
-        "Machine Name",
-        "Serial Number",
-        "Runtime",
-        "Downtime",
-        "Paused Time",
-        "Fault Time",
-        "Total Count",
-        "Misfeed Count",
-        "PPH",
-        "Availability",
-        "Throughput",
-        "Efficiency",
-        "OEE",
-      ];
+      this.columns = [...this.machineDashboardColumns];
     }
   }
 }

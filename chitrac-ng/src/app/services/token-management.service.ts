@@ -6,6 +6,7 @@ export interface PermanentToken {
   id: string;
   name: string;
   description: string;
+  isActive: boolean;
   timestamps: {
     create: Date;
     active: Date;
@@ -34,6 +35,7 @@ export interface CreateTokenResponse {
 
 export interface TokenListResponse {
   tokens: PermanentToken[];
+  deactivatedTokens: PermanentToken[];
 }
 
 @Injectable({

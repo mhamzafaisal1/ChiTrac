@@ -136,6 +136,10 @@ mat-divider {
   }
 }
 
+.deactivated-tokens .tokens-table td {
+  color: #666;
+}
+
 // Responsive design
 @media (max-width: 768px) {
   .token-management-container {

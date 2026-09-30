@@ -1,31 +1,37 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { finalize } from 'rxjs/operators';
 import { SystemPreferences, SystemPreferencesService } from '../services/system-preferences.service';
+import { MachinePphDisplayMode, PercentBreakpoints, SettingsService } from '../services/settings.service';
 
 @Component({
   selector: 'app-system-settings',
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     ReactiveFormsModule,
     MatButtonModule,
+    MatButtonToggleModule,
     MatCardModule,
     MatDividerModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
     MatSnackBarModule,
     MatTooltipModule
   ],
@@ -37,6 +43,22 @@ export class SystemSettingsComponent implements OnInit {
   isLoading = false;
   isSaving = false;
   isResetting = false;
+  isSavingDashboardTimeframe = false;
+  isSavingMachinePphDisplayMode = false;
+  isSavingPercentBreakpoints = false;
+  isSavingOePercentBreakpoints = false;
+  dashboardTimeframe: 'current' | 'shift' = 'current';
+  machinePphDisplayMode: MachinePphDisplayMode = 'perMachine';
+  percentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 70,
+    good: 90
+  };
+  oePercentBreakpoints: PercentBreakpoints = {
+    poor: 0,
+    okay: 60,
+    good: 80
+  };
 
   settingsForm = new FormGroup({
     userSessionExpirationHours: new FormControl<number>(48, [
@@ -47,11 +69,109 @@ export class SystemSettingsComponent implements OnInit {
 
   constructor(
     private systemPreferencesService: SystemPreferencesService,
+    private settingsService: SettingsService,
     private snackBar: MatSnackBar
   ) {}
 
   ngOnInit(): void {
     this.loadPreferences();
+  }
+
+  saveDashboardTimeframe(): void {
+    this.isSavingDashboardTimeframe = true;
+
+    this.settingsService.saveDashboardTimeframe(this.dashboardTimeframe).subscribe({
+      next: () => {
+        this.isSavingDashboardTimeframe = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('Dashboard default timeframe saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save dashboard default timeframe';
+        this.isSavingDashboardTimeframe = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  saveMachinePphDisplayMode(): void {
+    this.isSavingMachinePphDisplayMode = true;
+
+    this.settingsService.saveMachinePphDisplayMode(this.machinePphDisplayMode).subscribe({
+      next: () => {
+        this.isSavingMachinePphDisplayMode = false;
+        this.snackBar.open('Machine PPH display mode saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save Machine PPH display mode';
+        this.isSavingMachinePphDisplayMode = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  savePercentBreakpoints(): void {
+    const breakpoints = this.normalizeBreakpoints(this.percentBreakpoints);
+    if (!breakpoints) return;
+
+    this.isSavingPercentBreakpoints = true;
+
+    this.settingsService.savePercentBreakpoints(breakpoints).subscribe({
+      next: () => {
+        this.isSavingPercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('Percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save percent breakpoints';
+        this.isSavingPercentBreakpoints = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  saveOePercentBreakpoints(): void {
+    const breakpoints = this.normalizeBreakpoints(this.oePercentBreakpoints);
+    if (!breakpoints) return;
+
+    this.isSavingOePercentBreakpoints = true;
+
+    this.settingsService.saveOePercentBreakpoints(breakpoints).subscribe({
+      next: () => {
+        this.isSavingOePercentBreakpoints = false;
+        this.settingsService.loadSettings().subscribe();
+        this.snackBar.open('OE percent breakpoints saved.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to save OE percent breakpoints';
+        this.isSavingOePercentBreakpoints = false;
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
   }
 
   loadPreferences(): void {
@@ -100,6 +220,7 @@ export class SystemSettingsComponent implements OnInit {
       .subscribe({
         next: (preferences) => {
           this.applyPreferences(preferences);
+          this.settingsService.loadSettings().subscribe();
           this.snackBar.open('System settings reset', 'Close', {
             duration: 3000,
             panelClass: ['success-snackbar']
@@ -115,10 +236,45 @@ export class SystemSettingsComponent implements OnInit {
 
   private applyPreferences(preferences: SystemPreferences): void {
     this.preferences = preferences;
+    this.dashboardTimeframe = preferences.dashboardTimeframe === 'shift' ? 'shift' : 'current';
+    this.machinePphDisplayMode = preferences.machinePphDisplayMode === 'perStation'
+      ? 'perStation'
+      : 'perMachine';
+    this.percentBreakpoints = preferences.percentBreakpoints
+      ? { ...preferences.percentBreakpoints }
+      : { poor: 0, okay: 70, good: 90 };
+    this.oePercentBreakpoints = preferences.oePercentBreakpoints
+      ? { ...preferences.oePercentBreakpoints }
+      : { poor: 0, okay: 60, good: 80 };
     this.settingsForm.patchValue({
       userSessionExpirationHours: Number(preferences.userSessionExpirationHours) || 48
     });
     this.settingsForm.markAsPristine();
+  }
+
+  private normalizeBreakpoints(source: PercentBreakpoints): PercentBreakpoints | null {
+    const rawValues = [source.poor, source.okay, source.good];
+    const poor = Number(source.poor);
+    const okay = Number(source.okay);
+    const good = Number(source.good);
+
+    if (rawValues.some((value) => value === null || value === undefined || `${value}`.trim() === '') || ![poor, okay, good].every(Number.isFinite)) {
+      this.snackBar.open('Enter valid percentage breakpoints.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    if (!(good > okay && okay > poor)) {
+      this.snackBar.open('Percent breakpoints must satisfy Good > Okay > Poor.', 'Close', {
+        duration: 5000,
+        panelClass: ['warning-snackbar']
+      });
+      return null;
+    }
+
+    return { poor, okay, good };
   }
 
   private showError(error: any, fallbackMessage: string): void {

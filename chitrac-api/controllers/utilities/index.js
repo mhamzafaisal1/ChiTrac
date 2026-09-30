@@ -14,6 +14,15 @@ const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
 const { hasPermissionLevel } = require("../../modules/permissions");
+const {
+  configCollectionExportFilename,
+  configExportFilename,
+  exportConfigCollection,
+  exportConfigCollections,
+} = require("../../utils/configExport");
+const { REBOOT_DELAY_SECONDS, createLinuxRebootScheduler } = require("../../utils/rebootScheduler");
+
+const recordTimestamp = (record) => record?.timestamps?.create;
 
 let usbPackage = null;
 
@@ -40,6 +49,7 @@ function constructor(server) {
   const passport = server.passport;
   let mountInProgress = null;
   let backupInProgress = null;
+  const rebootScheduler = createLinuxRebootScheduler({ spawn, execFile });
 
   function getBearerToken(req) {
     const authHeader = req.headers["authorization"] || req.headers["Authorization"];
@@ -79,19 +89,6 @@ function constructor(server) {
       success: false,
       error: "Level 0 user permission is required"
     });
-  }
-
-  function scheduleLinuxReboot() {
-    const child = spawn(
-      "/bin/sh",
-      ["-c", "sleep 30 && sudo /sbin/shutdown -r now"],
-      {
-        detached: true,
-        stdio: "ignore"
-      }
-    );
-
-    child.unref();
   }
 
   function normalizeLogCutoffDate(dateInput) {
@@ -1087,8 +1084,8 @@ function constructor(server) {
 
       // Step 3: Query all states for the day, sorted chronologically
       const allStates = await stateColl.find({
-        timestamp: { $gte: dayStart, $lte: dayEnd }
-      }).sort({ timestamp: 1 }).toArray();
+        "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+      }).sort({ "timestamps.create": 1 }).toArray();
 
       if (allStates.length === 0) {
         return res.status(404).json({ 
@@ -1103,8 +1100,8 @@ function constructor(server) {
 
       // Step 4: Query all counts for the day
       const allCounts = await countColl.find({
-        timestamp: { $gte: dayStart, $lte: dayEnd }
-      }).sort({ timestamp: 1 }).toArray();
+        "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+      }).sort({ "timestamps.create": 1 }).toArray();
 
       logger.info(`Found ${allCounts.length} count records for ${date}`);
 
@@ -1147,7 +1144,7 @@ function constructor(server) {
 
       // Helper function to end machine session
       async function endMachineSession(session, endState) {
-        session.timestamps.end = endState.timestamp;
+        session.timestamps.end = recordTimestamp(endState);
         session.endState = endState;
         session.states.push(endState);
 
@@ -1215,7 +1212,7 @@ function constructor(server) {
 
       // Helper function to end operator session
       async function endOperatorSession(session, endState) {
-        session.timestamps.end = endState.timestamp;
+        session.timestamps.end = recordTimestamp(endState);
         session.endState = endState;
         session.states.push(endState);
 
@@ -1249,7 +1246,7 @@ function constructor(server) {
 
       // Helper function to end item session
       async function endItemSession(session, endState) {
-        session.timestamps.end = endState.timestamp;
+        session.timestamps.end = recordTimestamp(endState);
         session.endState = endState;
         session.states.push(endState);
 
@@ -1328,7 +1325,7 @@ function constructor(server) {
 
               // Create machine session
               currentMachineSession = {
-                timestamps: { start: state.timestamp },
+                timestamps: { start: recordTimestamp(state) },
                 counts: [],
                 misfeeds: [],
                 states: [state],
@@ -1351,7 +1348,7 @@ function constructor(server) {
               // Start operator sessions
               for (const op of operatorsWithNames) {
                 const opSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   counts: [],
                   misfeeds: [],
                   states: [state],
@@ -1374,7 +1371,7 @@ function constructor(server) {
               // Start item sessions
               for (const item of itemsWithDetails) {
                 const itemSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   counts: [],
                   misfeeds: [],
                   states: [state],
@@ -1393,7 +1390,7 @@ function constructor(server) {
                 currentItemSessions.set(item.id, itemSession);
               }
 
-              logger.info(`Started machine session for ${serial} at ${state.timestamp.toISOString()}`);
+              logger.info(`Started machine session for ${serial} at ${recordTimestamp(state).toISOString()}`);
             } else {
               // Add state to existing session
               currentMachineSession.states.push(state);
@@ -1403,7 +1400,7 @@ function constructor(server) {
 
             // End fault session if one is active
             if (currentFaultSession) {
-              currentFaultSession.timestamps.end = state.timestamp;
+              currentFaultSession.timestamps.end = recordTimestamp(state);
               currentFaultSession.endState = state;
               currentFaultSession.states.push(state);
 
@@ -1467,7 +1464,7 @@ function constructor(server) {
               );
 
               currentFaultSession = {
-                timestamps: { start: state.timestamp },
+                timestamps: { start: recordTimestamp(state) },
                 items: itemsWithDetails,
                 operators: operatorsWithNames,
                 states: [state],
@@ -1514,7 +1511,7 @@ function constructor(server) {
 
             // End fault session if one is active
             if (currentFaultSession) {
-              currentFaultSession.timestamps.end = state.timestamp;
+              currentFaultSession.timestamps.end = recordTimestamp(state);
               currentFaultSession.endState = state;
               currentFaultSession.states.push(state);
 
@@ -1554,7 +1551,7 @@ function constructor(server) {
 
         if (currentFaultSession) {
           const endState = states[states.length - 1];
-          currentFaultSession.timestamps.end = endState.timestamp;
+          currentFaultSession.timestamps.end = recordTimestamp(endState);
           currentFaultSession.endState = endState;
           
           const faultStart = DateTime.fromJSDate(currentFaultSession.timestamps.start);
@@ -1571,7 +1568,7 @@ function constructor(server) {
 
         // Step 8: Assign counts to sessions
         for (const count of counts) {
-          const countTime = count.timestamp;
+          const countTime = recordTimestamp(count);
           let assignedToMachineSession = false;
           let assignedToOperatorSession = false;
           let assignedToItemSession = false;
@@ -1791,12 +1788,12 @@ function constructor(server) {
         const countColl = db.collection('count');
 
         const allStates = await stateColl.find({
-          timestamp: { $gte: dayStart, $lte: dayEnd }
-        }).sort({ timestamp: 1 }).toArray();
+          "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+        }).sort({ "timestamps.create": 1 }).toArray();
 
         const allCounts = await countColl.find({
-          timestamp: { $gte: dayStart, $lte: dayEnd }
-        }).sort({ timestamp: 1 }).toArray();
+          "timestamps.create": { $gte: dayStart, $lte: dayEnd }
+        }).sort({ "timestamps.create": 1 }).toArray();
 
         if (allStates.length === 0) {
           return res.status(404).json({ 
@@ -1876,7 +1873,7 @@ function constructor(server) {
                 );
 
                 currentMachineSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   counts: [],
                   misfeeds: [],
                   states: [state],
@@ -1898,7 +1895,7 @@ function constructor(server) {
 
                 for (const op of operatorsWithNames) {
                   const opSession = {
-                    timestamps: { start: state.timestamp },
+                    timestamps: { start: recordTimestamp(state) },
                     counts: [],
                     misfeeds: [],
                     states: [state],
@@ -1920,7 +1917,7 @@ function constructor(server) {
 
                 for (const item of itemsWithDetails) {
                   const itemSession = {
-                    timestamps: { start: state.timestamp },
+                    timestamps: { start: recordTimestamp(state) },
                     counts: [],
                     misfeeds: [],
                     states: [state],
@@ -1945,7 +1942,7 @@ function constructor(server) {
               }
 
               if (currentFaultSession) {
-                currentFaultSession.timestamps.end = state.timestamp;
+                currentFaultSession.timestamps.end = recordTimestamp(state);
                 currentFaultSession.endState = state;
                 currentFaultSession.states.push(state);
 
@@ -2001,7 +1998,7 @@ function constructor(server) {
                 );
 
                 currentFaultSession = {
-                  timestamps: { start: state.timestamp },
+                  timestamps: { start: recordTimestamp(state) },
                   items: itemsWithDetails,
                   operators: operatorsWithNames,
                   states: [state],
@@ -2042,7 +2039,7 @@ function constructor(server) {
               }
 
               if (currentFaultSession) {
-                currentFaultSession.timestamps.end = state.timestamp;
+                currentFaultSession.timestamps.end = recordTimestamp(state);
                 currentFaultSession.endState = state;
                 currentFaultSession.states.push(state);
 
@@ -2079,7 +2076,7 @@ function constructor(server) {
 
           if (currentFaultSession) {
             const endState = states[states.length - 1];
-            currentFaultSession.timestamps.end = endState.timestamp;
+            currentFaultSession.timestamps.end = recordTimestamp(endState);
             currentFaultSession.endState = endState;
             
             const faultStart = DateTime.fromJSDate(currentFaultSession.timestamps.start);
@@ -2096,7 +2093,7 @@ function constructor(server) {
 
           // Assign counts to sessions
           for (const count of counts) {
-            const countTime = count.timestamp;
+            const countTime = recordTimestamp(count);
             
             for (const session of backfilledSessions.machineSessions) {
               if (session.machine.serial !== serialNum) continue;
@@ -2454,7 +2451,21 @@ function constructor(server) {
     }
   });
 
-  router.post("/reboot", requireRoot, (req, res) => {
+  router.get("/reboot/status", requireRoot, (req, res) => {
+    const platform = os.platform();
+    const status = platform === "linux"
+      ? rebootScheduler.getStatus()
+      : { scheduled: false, remainingSeconds: 0 };
+
+    return res.json({
+      success: true,
+      available: platform === "linux",
+      platform,
+      ...status
+    });
+  });
+
+  router.post("/reboot", requireRoot, async (req, res) => {
     const platform = os.platform();
 
     if (platform !== "linux") {
@@ -2467,17 +2478,29 @@ function constructor(server) {
     }
 
     try {
-      scheduleLinuxReboot();
-      logger.warn("Level 0 user scheduled server reboot in 30 seconds from web utilities route.");
+      const status = await rebootScheduler.schedule();
+      logger.warn(`Level 0 user scheduled server reboot in ${REBOOT_DELAY_SECONDS} seconds from web utilities route.`);
 
       return res.json({
         success: true,
         available: true,
         platform,
-        scheduledForSeconds: 30,
-        message: "Server reboot has been scheduled for 30 seconds from now."
+        scheduled: true,
+        scheduledForSeconds: REBOOT_DELAY_SECONDS,
+        ...status,
+        message: `Server reboot has been scheduled for ${REBOOT_DELAY_SECONDS} seconds from now.`
       });
     } catch (error) {
+      if (error.code === "REBOOT_ALREADY_SCHEDULED") {
+        return res.status(409).json({
+          success: false,
+          available: true,
+          platform,
+          ...rebootScheduler.getStatus(),
+          error: error.message
+        });
+      }
+
       logger.error("Failed to schedule server reboot:", error);
       return res.status(500).json({
         success: false,
@@ -2522,6 +2545,115 @@ function constructor(server) {
     }
   });
 
+  router.get("/export/config", requireRoot, async (req, res) => {
+    try {
+      const includeIds = String(req.query.includeIds || "").toLowerCase() === "true";
+      const exportedConfig = await exportConfigCollections(db, config, { includeIds });
+      const collectionCounts = Object.fromEntries(
+        Object.entries(exportedConfig.collections).map(([name, documents]) => [name, documents.length])
+      );
+
+      logger.info("Level 0 user exported configuration collections.", {
+        includeIds,
+        collectionCounts,
+      });
+
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${configExportFilename()}"`);
+      return res.send(JSON.stringify(exportedConfig, null, 2));
+    } catch (error) {
+      logger.error("Failed to export configuration collections:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to export configuration collections",
+        details: error.message,
+      });
+    }
+  });
+
+  router.get("/export/config/:collectionName", requireRoot, async (req, res) => {
+    const collectionName = req.params.collectionName;
+
+    try {
+      const includeIds = String(req.query.includeIds || "").toLowerCase() === "true";
+      const documents = await exportConfigCollection(db, config, collectionName, { includeIds });
+
+      logger.info("Level 0 user exported a configuration collection.", {
+        collectionName,
+        includeIds,
+        documentCount: documents.length,
+      });
+
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${configCollectionExportFilename(collectionName)}"`
+      );
+      return res.send(JSON.stringify(documents, null, 2));
+    } catch (error) {
+      if (error.code === "INVALID_CONFIG_COLLECTION") {
+        return res.status(400).json({
+          success: false,
+          error: error.message,
+        });
+      }
+
+      logger.error(`Failed to export configuration collection ${collectionName}:`, error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to export configuration collection",
+        details: error.message,
+      });
+    }
+  });
+
+  router.post("/reboot/cancel", requireRoot, async (req, res) => {
+    const platform = os.platform();
+
+    if (platform !== "linux") {
+      return res.json({
+        success: false,
+        available: false,
+        platform,
+        scheduled: false,
+        message: `Server reboot cancellation is unavailable on ${platform}.`
+      });
+    }
+
+    try {
+      const cancellation = await rebootScheduler.cancel();
+      if (!cancellation) {
+        return res.status(409).json({
+          success: false,
+          available: true,
+          platform,
+          scheduled: false,
+          error: "There is no scheduled server reboot to cancel."
+        });
+      }
+
+      logger.warn("Level 0 user cancelled the scheduled server reboot from web utilities route.");
+      return res.json({
+        success: true,
+        available: true,
+        platform,
+        scheduled: false,
+        cancelled: true,
+        message: "The scheduled server reboot has been cancelled."
+      });
+    } catch (error) {
+      logger.error("Failed to cancel scheduled server reboot:", error);
+      return res.status(500).json({
+        success: false,
+        available: true,
+        platform,
+        ...rebootScheduler.getStatus(),
+        error: "Failed to cancel scheduled server reboot",
+        details: error.details || error.message
+      });
+    }
+  });
+
   router.get("/backup/mongodb-usb", requireRoot, handleMongoUsbBackupRequest);
   router.post("/backup/mongodb-usb", requireRoot, handleMongoUsbBackupRequest);
 
@@ -2535,8 +2667,12 @@ function constructor(server) {
         systemName: config.systemName,
         httpsEnabled: config.httpsEnabled,
         dashboardTimeframe: config.dashboardTimeframe || 'current',
+        machinePphDisplayMode: config.machinePphDisplayMode || 'perMachine',
         percentBreakpoints: config.percentBreakpoints ? { ...config.percentBreakpoints } : undefined,
-        oePercentBreakpoints: config.oePercentBreakpoints ? { ...config.oePercentBreakpoints } : undefined
+        oePercentBreakpoints: config.oePercentBreakpoints ? { ...config.oePercentBreakpoints } : undefined,
+        dashboardLayouts: config.systemPreferences?.dashboardLayouts
+          ? JSON.parse(JSON.stringify(config.systemPreferences.dashboardLayouts))
+          : {}
       });
     } catch (error) {
       logger.error(`Error retrieving settings:`, error);

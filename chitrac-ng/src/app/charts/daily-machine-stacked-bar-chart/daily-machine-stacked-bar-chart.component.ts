@@ -86,7 +86,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     this.startTime = this.formatDateForInput(start);
     this.endTime = this.formatDateForInput(now);
 
-    this.enterDummy();
+    if (!this.preloadedData) this.enterDummy();
     if (this.useExternalTitle) return;
 
     // Consolidated initial fetch logic - only one fetch call

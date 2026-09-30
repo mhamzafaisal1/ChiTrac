@@ -15,7 +15,7 @@ const {
   buildShiftDailyAnalyticsCache,
 } = require("../utils/dailyAnalyticsDashboardCache");
 const {
-  buildLastHourCountSparklineCache,
+  buildCountSparklineCache,
   appendCompletedMinuteCountSparklineCache,
 } = require("../utils/countSparklineCache");
 const { SYSTEM_TIMEZONE } = require("../utils/time");
@@ -256,7 +256,7 @@ async function refreshCountSparklineCache(server, options = {}) {
   const { db, logger, config } = server;
   const existing = server.cache?.countSparkline;
   const nextCache = options.initial || !existing?.allMachines
-    ? await buildLastHourCountSparklineCache(db, config, options.now)
+    ? await buildCountSparklineCache(db, config, options.now)
     : await appendCompletedMinuteCountSparklineCache(db, config, existing, options.now);
 
   ensureCache(server);
@@ -272,7 +272,7 @@ async function refreshCountSparklineCache(server, options = {}) {
 
   if (logger) {
     logger.info(
-      `[mongoWatchers] Updated count sparkline cache with ${nextCache.allMachines?.length || 0} minute buckets`
+      `[mongoWatchers] Updated count sparkline cache with ${nextCache.allMachines?.length || 0} current and ${nextCache.history?.allMachines?.length || 0} historical minute buckets`
     );
   }
 

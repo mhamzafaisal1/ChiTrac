@@ -10,15 +10,49 @@ const {
   normalizeTokenUserId
 } = require("../../utils/authMiddleware");
 
+function buildTokenTimestamps(token, fallbackDate = new Date()) {
+  const timestamps = token.timestamps
+    ? timestampsSchema.utils.normalize(token.timestamps)
+    : timestampsSchema.utils.stampInit(token.createdAt || fallbackDate);
+
+  if (!timestamps.inactive && token.deactivatedAt) {
+    return timestampsSchema.utils.stampInactive(timestamps, token.deactivatedAt);
+  }
+
+  return timestamps;
+}
+
+function isTokenDeactivated(token) {
+  return token.isActive === false || Boolean(token.deactivatedAt || token.timestamps?.inactive);
+}
+
+function sanitizeToken(token, isActive = !isTokenDeactivated(token)) {
+  return {
+    id: token._id,
+    name: token.name,
+    description: token.description,
+    timestamps: buildTokenTimestamps(token),
+    isActive,
+    lastUsed: token.lastUsed,
+    usageCount: token.usageCount
+  };
+}
+
+function partitionTokens(tokens) {
+  return tokens.reduce((result, token) => {
+    if (isTokenDeactivated(token)) {
+      result.deactivatedTokens.push(sanitizeToken(token, false));
+    } else {
+      result.tokens.push(sanitizeToken(token, true));
+    }
+    return result;
+  }, { tokens: [], deactivatedTokens: [] });
+}
+
 module.exports = function (server) {
   const router = express.Router();
   const logger = server.logger;
   const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
-
-  function buildTokenTimestamps(token, fallbackDate = new Date()) {
-    if (token.timestamps) return timestampsSchema.utils.normalize(token.timestamps);
-    return timestampsSchema.utils.stampInit(token.createdAt || fallbackDate);
-  }
 
   function requirePermissionLevel(requiredLevel) {
     return async function(req, res, next) {
@@ -86,8 +120,8 @@ module.exports = function (server) {
     }
   });
 
-  // Create permanent token (requires JWT authentication)
-  router.post("/createPermanentToken", verifyJwtMiddleware, async (req, res) => {
+  // API token management is restricted to the same permission level as the settings page.
+  router.post("/createPermanentToken", verifyJwtMiddleware, requirePermissionLevel(1), async (req, res) => {
     try {
       const { name, description = "" } = req.body;
       
@@ -108,12 +142,14 @@ module.exports = function (server) {
         return res.status(409).json({ error: "Token name already exists" });
       }
 
+      const createdBy = normalizeTokenUserId(req.authUser?._id || req.tokenPayload.userId);
+
       // Generate permanent token (no expiry)
       const token = jwt.sign(
         { 
           type: 'permanent',
           name: name.trim(),
-          createdBy: req.tokenPayload.userId
+          createdBy
         },
         config.jwtSecret
         // No expiresIn - permanent token
@@ -129,8 +165,8 @@ module.exports = function (server) {
         name: name.trim(),
         description: description.trim(),
         hashedToken: hashedToken,
-        createdBy: req.tokenPayload.userId,
-        createdByUsername: req.tokenPayload.username,
+        createdBy,
+        createdByUsername: req.authUser?.username || req.tokenPayload.username,
         timestamps: timestampsSchema.utils.stampInit(now),
         isActive: true,
         lastUsed: null,
@@ -156,31 +192,18 @@ module.exports = function (server) {
     }
   });
 
-  // List user's created permanent tokens
-  router.get("/tokens", verifyJwtMiddleware, async (req, res) => {
+  // List all permanent tokens managed by this server.
+  router.get("/tokens", verifyJwtMiddleware, requirePermissionLevel(1), async (req, res) => {
     try {
       const db = server.db;
       const authTokensCollection = db.collection('auth-tokens');
 
-      const tokens = await authTokensCollection
-        .find({ 
-          createdBy: req.tokenPayload.userId,
-          isActive: true 
-        })
+      const tokenRecords = await authTokensCollection
+        .find({})
         .sort({ "timestamps.create": -1, createdAt: -1 })
         .toArray();
 
-      // Remove hashed tokens from response
-      const sanitizedTokens = tokens.map(token => ({
-        id: token._id,
-        name: token.name,
-        description: token.description,
-        timestamps: buildTokenTimestamps(token),
-        lastUsed: token.lastUsed,
-        usageCount: token.usageCount
-      }));
-
-      res.json({ tokens: sanitizedTokens });
+      res.json(partitionTokens(tokenRecords));
 
     } catch (err) {
       logger?.error?.("Error fetching tokens:", err);
@@ -189,16 +212,19 @@ module.exports = function (server) {
   });
 
   // Deactivate permanent token
-  router.delete("/tokens/:id", verifyJwtMiddleware, async (req, res) => {
+  router.delete("/tokens/:id", verifyJwtMiddleware, requirePermissionLevel(1), async (req, res) => {
     try {
       const { id } = req.params;
       const db = server.db;
       const authTokensCollection = db.collection('auth-tokens');
-      const ObjectId = require('mongodb').ObjectId;
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid token id" });
+      }
+
+      const tokenId = new ObjectId(id);
       const now = new Date();
       const tokenDoc = await authTokensCollection.findOne({
-        _id: new ObjectId(id),
-        createdBy: req.tokenPayload.userId
+        _id: tokenId
       });
 
       if (!tokenDoc) {
@@ -209,8 +235,7 @@ module.exports = function (server) {
 
       const result = await authTokensCollection.updateOne(
         { 
-          _id: new ObjectId(id),
-          createdBy: req.tokenPayload.userId 
+          _id: tokenId
         },
         { 
           $set: { 
@@ -247,3 +272,5 @@ module.exports = function (server) {
 
   return router;
 };
+
+module.exports.partitionTokens = partitionTokens;

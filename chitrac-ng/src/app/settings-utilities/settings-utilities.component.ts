@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -8,13 +9,19 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
 import { PercentBreakpoints, SettingsService } from '../services/settings.service';
+import { UtilitiesService, RebootResponse, MongoUsbBackupResponse, DeleteNodeLogsResponse } from '../services/utilities.service';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
-import { Subject, takeUntil } from 'rxjs';
+import { interval, Subject, Subscription, takeUntil } from 'rxjs';
+
+interface ConfigExportCollection {
+  name: string;
+  label: string;
+}
 
 @Component({
   selector: 'app-settings-utilities',
@@ -29,8 +36,9 @@ import { Subject, takeUntil } from 'rxjs';
     MatIconModule,
     MatInputModule,
     MatNativeDateModule,
-    MatSelectModule,
+    MatSlideToggleModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
     MatSnackBarModule
   ],
   providers: [provideNativeDateAdapter()],
@@ -39,13 +47,20 @@ import { Subject, takeUntil } from 'rxjs';
 })
 export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   private readonly destroy$ = new Subject<void>();
+  private rebootCountdownSubscription: Subscription | null = null;
 
   isRebootLoading = false;
+  isRebootScheduled = false;
+  rebootRemainingSeconds = 0;
+  rebootExecutesAt: string | null = null;
   isBackupLoading = false;
   isDeleteNodeLogsLoading = false;
+  isConfigExportLoading = false;
+  exportingConfigCollection: string | null = null;
   isSavingDashboardTimeframe = false;
   isSavingPercentBreakpoints = false;
   isSavingOePercentBreakpoints = false;
+  isSavingDashboardLayouts = false;
   dashboardTimeframe: 'current' | 'shift' = 'current';
   percentBreakpoints: PercentBreakpoints = {
     poor: 0,
@@ -58,6 +73,17 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     good: 80
   };
   nodeLogsCutoffDate: Date | null = null;
+  includeConfigIds = false;
+  readonly configExportCollections: ConfigExportCollection[] = [
+    { name: 'config-machine', label: 'Machines' },
+    { name: 'config-operator', label: 'Operators' },
+    { name: 'config-item', label: 'Items' },
+    { name: 'config-fault', label: 'Faults' },
+    { name: 'config-status', label: 'Statuses' },
+    { name: 'config-user', label: 'Users' },
+    { name: 'config-shift', label: 'Shifts' },
+    { name: 'config-shift-maintenance', label: 'Maintenance Shifts' }
+  ];
   lastRebootResponse: RebootResponse | null = null;
   lastBackupResponse: MongoUsbBackupResponse | null = null;
   lastDeleteNodeLogsResponse: DeleteNodeLogsResponse | null = null;
@@ -73,22 +99,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.settingsService.getSystemPreferences().subscribe({
-      next: (settings) => {
-        this.dashboardTimeframe = settings.dashboardTimeframe === 'shift' ? 'shift' : 'current';
-        this.percentBreakpoints = settings.percentBreakpoints
-          ? { ...settings.percentBreakpoints }
-          : { poor: 0, okay: 70, good: 90 };
-        this.oePercentBreakpoints = settings.oePercentBreakpoints
-          ? { ...settings.oePercentBreakpoints }
-          : { poor: 0, okay: 60, good: 80 };
-      },
-      error: () => {
-        this.dashboardTimeframe = 'current';
-        this.percentBreakpoints = { poor: 0, okay: 70, good: 90 };
-        this.oePercentBreakpoints = { poor: 0, okay: 60, good: 80 };
-      }
-    });
+    this.loadRebootStatus();
 
     this.websocketService.status$
       .pipe(takeUntil(this.destroy$))
@@ -110,6 +121,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopRebootCountdown();
     this.websocketService.disconnect();
     this.destroy$.next();
     this.destroy$.complete();
@@ -199,6 +211,39 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     });
   }
 
+  saveCurrentUserLayoutsAsDefaults(): void {
+    const confirmed = confirm(
+      'Save your Machine, Operator, and Experimental Daily dashboard layouts as the system defaults? ' +
+      'Only layouts you have saved will be updated. Existing personal layouts will continue to override these defaults.'
+    );
+    if (!confirmed) return;
+
+    this.isSavingDashboardLayouts = true;
+    this.settingsService.promoteCurrentUserDashboardLayouts().subscribe({
+      next: (response) => {
+        this.isSavingDashboardLayouts = false;
+        const labels: Record<string, string> = {
+          machineDashboard: 'Machine',
+          operatorDashboard: 'Operator',
+          experimentalDailyDashboard: 'Experimental Daily'
+        };
+        const promoted = response.promotedLayouts.map(name => labels[name] || name).join(', ');
+        this.snackBar.open(`System layout defaults saved: ${promoted}.`, 'Close', {
+          duration: 7000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        this.isSavingDashboardLayouts = false;
+        const message = error.error?.error || error.error?.message || 'Failed to save system layout defaults';
+        this.snackBar.open(message, 'Close', {
+          duration: 7000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
   private normalizeBreakpoints(source: PercentBreakpoints): PercentBreakpoints | null {
     const rawValues = [
       source.poor,
@@ -242,6 +287,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.lastRebootResponse = response;
         this.isRebootLoading = false;
+        this.applyRebootStatus(response);
 
         this.snackBar.open(response.message || 'Reboot request completed.', 'Close', {
           duration: 5000,
@@ -250,11 +296,13 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         const message = error.error?.error || error.error?.message || 'Failed to schedule server reboot';
+        this.applyRebootStatus(error.error || { scheduled: false });
 
         this.lastRebootResponse = {
           success: false,
           available: true,
-          platform: 'unknown',
+          platform: error.error?.platform || 'unknown',
+          scheduled: this.isRebootScheduled,
           message
         };
         this.isRebootLoading = false;
@@ -305,6 +353,167 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
           panelClass: ['error-snackbar']
         });
       }
+    });
+  }
+
+  cancelReboot(): void {
+    this.isRebootLoading = true;
+    this.lastRebootResponse = null;
+
+    this.utilitiesService.cancelReboot().subscribe({
+      next: (response) => {
+        this.lastRebootResponse = response;
+        this.isRebootLoading = false;
+        this.applyRebootStatus(response);
+        this.snackBar.open(response.message || 'Scheduled reboot cancelled.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to cancel scheduled server reboot';
+        this.isRebootLoading = false;
+        this.applyRebootStatus(error.error || { scheduled: this.isRebootScheduled });
+        this.lastRebootResponse = {
+          success: false,
+          available: true,
+          platform: error.error?.platform || 'unknown',
+          scheduled: this.isRebootScheduled,
+          message
+        };
+        this.snackBar.open(message, 'Close', {
+          duration: 5000,
+          panelClass: ['error-snackbar']
+        });
+      }
+    });
+  }
+
+  private loadRebootStatus(): void {
+    this.utilitiesService.getRebootStatus().subscribe({
+      next: (response) => this.applyRebootStatus(response),
+      error: () => this.applyRebootStatus({ scheduled: false })
+    });
+  }
+
+  private applyRebootStatus(response: Partial<RebootResponse>): void {
+    this.isRebootScheduled = response.scheduled === true;
+    this.rebootExecutesAt = response.executesAt || null;
+    this.rebootRemainingSeconds = response.remainingSeconds || 0;
+
+    if (this.isRebootScheduled && this.rebootExecutesAt) {
+      this.startRebootCountdown();
+    } else {
+      this.stopRebootCountdown();
+    }
+  }
+
+  private startRebootCountdown(): void {
+    this.stopRebootCountdown();
+    this.updateRebootCountdown();
+    this.rebootCountdownSubscription = interval(250)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.updateRebootCountdown());
+  }
+
+  private updateRebootCountdown(): void {
+    if (!this.rebootExecutesAt) return;
+    this.rebootRemainingSeconds = Math.max(
+      0,
+      Math.ceil((new Date(this.rebootExecutesAt).getTime() - Date.now()) / 1000)
+    );
+
+    if (this.rebootRemainingSeconds === 0) {
+      this.isRebootScheduled = false;
+      this.stopRebootCountdown();
+    }
+  }
+
+  private stopRebootCountdown(): void {
+    this.rebootCountdownSubscription?.unsubscribe();
+    this.rebootCountdownSubscription = null;
+  }
+
+  downloadConfigExport(): void {
+    this.isConfigExportLoading = true;
+    this.exportingConfigCollection = null;
+
+    this.utilitiesService.exportConfigCollections(this.includeConfigIds).subscribe({
+      next: (response) => {
+        if (!this.saveConfigExport(response, `chitrac-config-${this.downloadTimestamp()}.json`)) return;
+
+        this.isConfigExportLoading = false;
+        this.snackBar.open('Configuration export downloaded.', 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || 'Failed to export configuration collections';
+        this.handleConfigExportError(message);
+      }
+    });
+  }
+
+  downloadConfigCollection(collection: ConfigExportCollection): void {
+    this.isConfigExportLoading = true;
+    this.exportingConfigCollection = collection.name;
+
+    this.utilitiesService.exportConfigCollection(collection.name, this.includeConfigIds).subscribe({
+      next: (response) => {
+        if (!this.saveConfigExport(response, `${collection.name}-${this.downloadTimestamp()}.json`)) return;
+
+        this.isConfigExportLoading = false;
+        this.exportingConfigCollection = null;
+        this.snackBar.open(`${collection.label} configuration downloaded.`, 'Close', {
+          duration: 5000,
+          panelClass: ['success-snackbar']
+        });
+      },
+      error: (error) => {
+        const message = error.error?.error || error.error?.message || `Failed to export ${collection.label.toLowerCase()} configuration`;
+        this.handleConfigExportError(message);
+      }
+    });
+  }
+
+  private saveConfigExport(response: HttpResponse<Blob>, fallbackFilename: string): boolean {
+    const blob = response.body;
+    if (!blob) {
+      this.handleConfigExportError('The server returned an empty configuration export.');
+      return false;
+    }
+
+    const filename = this.getDownloadFilename(
+      response.headers.get('Content-Disposition'),
+      fallbackFilename
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    return true;
+  }
+
+  private downloadTimestamp(): string {
+    return new Date().toISOString().replace(/[:.]/g, '-');
+  }
+
+  private getDownloadFilename(contentDisposition: string | null, fallback: string): string {
+    const match = contentDisposition?.match(/filename="?([^";]+)"?/i);
+    return match?.[1] || fallback;
+  }
+
+  private handleConfigExportError(message: string): void {
+    this.isConfigExportLoading = false;
+    this.exportingConfigCollection = null;
+    this.snackBar.open(message, 'Close', {
+      duration: 7000,
+      panelClass: ['error-snackbar']
     });
   }
 

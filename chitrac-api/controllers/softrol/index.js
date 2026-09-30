@@ -55,7 +55,7 @@ function constructor(server) {
     const startDate = new Date(queryDateTime);
 
     const activeMachineStates = await stateTickerCollection
-      .find({ timestamp: { $lt: new Date(queryDateTime) } })
+      .find({ "timestamps.create": { $lt: new Date(queryDateTime) } })
       .sort({ "machine.name": 1 })
       .toArray();
 
@@ -65,7 +65,7 @@ function constructor(server) {
           "machine.serial": parseInt(serial),
           "status.code": { $ne: null },
         })
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.create": -1 })
         .limit(1)
         .toArray();
       let machineStatesMostRecent;
@@ -73,7 +73,7 @@ function constructor(server) {
       if (machineStatesMostRecentFind.length) {
         machineStatesMostRecent = machineStatesMostRecentFind[0];
         machineStatesMostRecentTimestamp = new Date(
-          machineStatesMostRecent.timestamp
+          machineStatesMostRecent.timestamps?.create
         );
       }
 
@@ -88,9 +88,9 @@ function constructor(server) {
             .find({
               "machine.serial": parseInt(serial),
               "status.code": { $ne: null },
-              timestamp: { $lt: new Date(machineStatesMostRecentTimestamp) },
+              "timestamps.create": { $lt: new Date(machineStatesMostRecentTimestamp) },
             })
-            .sort({ timestamp: -1 })
+            .sort({ "timestamps.create": -1 })
             .limit(1)
             .toArray();
           if (machineStatesMostRecentFind.length) {
@@ -101,7 +101,7 @@ function constructor(server) {
                 machineStatesNextMostRecent
               );
               machineStatesMostRecentTimestamp = new Date(
-                machineStatesNextMostRecent.timestamp
+                machineStatesNextMostRecent.timestamps?.create
               );
             } else {
               break;
@@ -131,7 +131,7 @@ function constructor(server) {
         );
         const sessionDuration = Duration.fromMillis(diff.length());
         const sessionObject = {
-          start: machineStatesMostRecent.timestamp,
+          start: machineStatesMostRecent.timestamps?.create,
           end: DateTime.now(),
           duration: sessionDuration.as("seconds"),
           state: machineStatesMostRecent,
@@ -167,7 +167,7 @@ function constructor(server) {
                     "machine.serial": serial,
                     "operator.id": operator.id,
                     station: operator.station ? operator.station : 1,
-                    timestamp: { $gte: new Date(session.start) },
+                    "timestamps.create": { $gte: new Date(session.start) },
                   },
                 },
                 {
@@ -275,7 +275,7 @@ function constructor(server) {
           const machineTotalCountFind = await countCollection
             .find({
               "machine.serial": parseInt(serial),
-              timestamp: { $gte: new Date(queryDateTime) },
+              "timestamps.create": { $gte: new Date(queryDateTime) },
             })
             .toArray();
           let items = [];
@@ -376,12 +376,12 @@ function constructor(server) {
       const [latestState] = await db
         .collection("state")
         .find()
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.create": -1 })
         .limit(1)
         .toArray();
 
       const effectiveEnd =
-        new Date(end) > new Date() ? latestState?.timestamp || new Date() : end;
+        new Date(end) > new Date() ? latestState?.timestamps?.create || new Date() : end;
 
       const { paddedStart, paddedEnd } = createPaddedTimeRange(
         start,
@@ -436,7 +436,7 @@ function constructor(server) {
 
         // Sort counts by timestamp for efficient processing
         const sortedCounts = countGroup.counts.sort(
-          (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          (a, b) => new Date(a.timestamps?.create) - new Date(b.timestamps?.create)
         );
 
         // Process each cycle
@@ -482,12 +482,12 @@ router.get("/historic-data", async (req, res) => {
     const [latestState] = await db
       .collection("state")
       .find()
-      .sort({ timestamp: -1 })
+      .sort({ "timestamps.create": -1 })
       .limit(1)
       .toArray();
 
     const effectiveEnd =
-      new Date(end) > new Date() ? latestState?.timestamp || new Date() : end;
+      new Date(end) > new Date() ? latestState?.timestamps?.create || new Date() : end;
 
     // Create padded time range for state queries to capture boundary states
     const { paddedStart, paddedEnd } = createPaddedTimeRange(start, effectiveEnd);
@@ -541,7 +541,7 @@ router.get("/historic-data", async (req, res) => {
       if (!countGroup) continue;
 
       const sortedCounts = countGroup.counts.sort(
-        (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+        (a, b) => new Date(a.timestamps?.create) - new Date(b.timestamps?.create)
       );
 
       for (const cycle of group.completedCycles) {
@@ -575,7 +575,7 @@ router.get("/historic-data", async (req, res) => {
       // If there are counts but no completed cycles, create a summary from all counts
       if (countGroup && countGroup.counts.length > 0) {
         const sortedCounts = countGroup.counts.sort(
-          (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          (a, b) => new Date(a.timestamps?.create) - new Date(b.timestamps?.create)
         );
 
         // Find the operator from the first count or first state
@@ -584,12 +584,12 @@ router.get("/historic-data", async (req, res) => {
                           null;
 
         // Create a pseudo-cycle from the entire time range
-        const firstCountTime = new Date(sortedCounts[0].timestamp);
-        const lastCountTime = new Date(sortedCounts[sortedCounts.length - 1].timestamp);
+        const firstCountTime = new Date(sortedCounts[0].timestamps?.create);
+        const lastCountTime = new Date(sortedCounts[sortedCounts.length - 1].timestamps?.create);
         
         // Filter states that overlap with count time range
         const relevantStates = group.states.filter(state => {
-          const stateTime = new Date(state.timestamp);
+          const stateTime = new Date(state.timestamps?.create);
           return stateTime >= firstCountTime && stateTime <= lastCountTime;
         });
 

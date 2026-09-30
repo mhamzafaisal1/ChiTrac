@@ -18,7 +18,7 @@ function constructor(server) {
   const db = server.db;
   const logger = server.logger;
   const systemPreferencesCollection = systemPreferences.getCollection(db, config);
-  const userPreferencesCollection = db.collection('user-preferences');
+  const userPreferencesCollection = db.collection(config.userPreferencesCollectionName || 'preferences-user');
   const userCollection = db.collection(config.userCollectionName);
 
   systemPreferencesCollection.createIndex({ _id: 1 }, { unique: true }).catch(() => {});
@@ -185,7 +185,7 @@ function constructor(server) {
         const summaryCardOrder = layout.summaryCardOrder;
         const summaryCardVisibility = layout.summaryCardVisibility;
         const tableColumnVisibility = layout.tableColumnVisibility;
-        const pphDisplayMode = layout.pphDisplayMode;
+        const tableColumnOrder = layout.tableColumnOrder;
         const dashboardUpdates = {};
 
         if (summaryCardOrder !== undefined) {
@@ -255,14 +255,18 @@ function constructor(server) {
           dashboardUpdates.tableColumnVisibility = cleanedVisibility;
         }
 
-        if (pphDisplayMode !== undefined) {
-          if (!['perMachine', 'perStation'].includes(pphDisplayMode)) {
-            const error = new Error(`Invalid ${dashboardName}.pphDisplayMode. Must be 'perMachine' or 'perStation'`);
+        if (tableColumnOrder !== undefined) {
+          if (!Array.isArray(tableColumnOrder) || tableColumnOrder.some((column) => typeof column !== 'string')) {
+            const error = new Error(`Invalid ${dashboardName}.tableColumnOrder. Must be an array of strings`);
             error.status = 400;
             throw error;
           }
 
-          dashboardUpdates.pphDisplayMode = pphDisplayMode;
+          const cleanedOrder = tableColumnOrder
+            .map((column) => column.trim())
+            .filter(Boolean)
+            .slice(0, 20);
+          dashboardUpdates.tableColumnOrder = [...new Set(cleanedOrder)];
         }
 
         return Object.keys(dashboardUpdates).length ? dashboardUpdates : null;
@@ -379,9 +383,9 @@ function constructor(server) {
         preferences.dashboardLayouts.machineDashboard.tableColumnVisibility;
     }
 
-    if (preferences.dashboardLayouts?.machineDashboard?.pphDisplayMode) {
-      updates['dashboardLayouts.machineDashboard.pphDisplayMode'] =
-        preferences.dashboardLayouts.machineDashboard.pphDisplayMode;
+    if (preferences.dashboardLayouts?.machineDashboard?.tableColumnOrder) {
+      updates['dashboardLayouts.machineDashboard.tableColumnOrder'] =
+        preferences.dashboardLayouts.machineDashboard.tableColumnOrder;
     }
 
     if (preferences.dashboardLayouts?.operatorDashboard?.summaryCardOrder) {
@@ -397,6 +401,11 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.operatorDashboard?.tableColumnVisibility) {
       updates['dashboardLayouts.operatorDashboard.tableColumnVisibility'] =
         preferences.dashboardLayouts.operatorDashboard.tableColumnVisibility;
+    }
+
+    if (preferences.dashboardLayouts?.operatorDashboard?.tableColumnOrder) {
+      updates['dashboardLayouts.operatorDashboard.tableColumnOrder'] =
+        preferences.dashboardLayouts.operatorDashboard.tableColumnOrder;
     }
 
     if (preferences.dashboardLayouts?.experimentalDailyDashboard?.chartOrder) {
@@ -415,13 +424,31 @@ function constructor(server) {
   function mergePreferences(envPreferences, systemPrefs, userPrefs) {
     const { _id: systemId, timestamps: systemTimestamps, ...systemValues } = systemPrefs || {};
     const { _id: userPreferenceId, userId, timestamps: userTimestamps, theme, ...userValues } = userPrefs || {};
+    const dashboardLayouts = mergeDashboardLayouts(
+      systemValues.dashboardLayouts,
+      userValues.dashboardLayouts
+    );
 
     return {
       ...envPreferences,
       ...systemValues,
       ...userValues,
+      dashboardLayouts,
       ...(theme ? { defaultTheme: theme, theme } : {})
     };
+  }
+
+  function mergeDashboardLayouts(systemLayouts = {}, userLayouts = {}) {
+    const merged = { ...systemLayouts };
+    for (const dashboardName of ['machineDashboard', 'operatorDashboard', 'experimentalDailyDashboard']) {
+      const userLayout = userLayouts[dashboardName];
+      if (!userLayout || typeof userLayout !== 'object' || Array.isArray(userLayout)) continue;
+      merged[dashboardName] = {
+        ...(systemLayouts[dashboardName] || {}),
+        ...userLayout
+      };
+    }
+    return merged;
   }
 
   async function getSystemPreferences(req, res, next) {
@@ -470,6 +497,49 @@ function constructor(server) {
       systemPreferences.applySystemPreferences(config, saved);
       server.systemPreferences = saved;
       res.json(saved);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async function promoteUserDashboardLayouts(req, res, next) {
+    try {
+      const userId = req.authUserId || (config.enableApiTokenCheck === false ? 'bypassed' : null);
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required to promote dashboard layouts' });
+      }
+
+      const userPreferences = await userPreferencesCollection.findOne({ userId });
+      const dashboardLayouts = sanitizeUserPreferences({
+        dashboardLayouts: userPreferences?.dashboardLayouts
+      }, userId).dashboardLayouts;
+
+      if (!dashboardLayouts || !Object.keys(dashboardLayouts).length) {
+        return res.status(400).json({ error: 'The current user has no saved dashboard layouts to promote' });
+      }
+
+      const existing = await systemPreferences.ensureSystemPreferences(db, config);
+      const mergedLayouts = mergeDashboardLayouts(existing.dashboardLayouts, dashboardLayouts);
+      const preferences = systemPreferencesSchema.utils.normalizePreferences(
+        { dashboardLayouts: mergedLayouts },
+        existing,
+        config
+      );
+      const { _id, ...updates } = preferences;
+
+      await systemPreferencesCollection.updateOne(
+        { _id: SYSTEM_SINGLETON_ID },
+        { $set: updates, $setOnInsert: { _id } },
+        { upsert: true }
+      );
+
+      const saved = await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID });
+      systemPreferences.applySystemPreferences(config, saved);
+      server.systemPreferences = saved;
+      res.json({
+        preferences: saved,
+        promotedLayouts: Object.keys(dashboardLayouts)
+      });
     } catch (error) {
       next(error);
     }
@@ -594,6 +664,7 @@ function constructor(server) {
   router.post('/system/config', requirePermissionLevel(7), upsertSystemPreferences);
   router.put('/system', requirePermissionLevel(7), upsertSystemPreferences);
   router.put('/system/config', requirePermissionLevel(7), upsertSystemPreferences);
+  router.post('/system/dashboard-layouts/from-current-user', requirePermissionLevel(7), promoteUserDashboardLayouts);
   router.delete('/system', requirePermissionLevel(7), resetSystemPreferences);
   router.delete('/system/config', requirePermissionLevel(7), resetSystemPreferences);
 

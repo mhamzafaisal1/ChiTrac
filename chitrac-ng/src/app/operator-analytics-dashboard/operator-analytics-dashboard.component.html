@@ -22,9 +22,6 @@
       cdkDrag
       [cdkDragDisabled]="!layoutEditing"
     >
-      <button class="drag-handle" type="button" cdkDragHandle aria-label="Move summary card" *ngIf="layoutEditing">
-        <mat-icon>drag_indicator</mat-icon>
-      </button>
       <mat-icon>{{ card.icon }}</mat-icon>
       <div>
         <span>{{ card.label }}</span>
@@ -59,7 +56,9 @@
         [columnEditMode]="layoutEditing"
         [toggleableColumns]="operatorDashboardToggleableColumns"
         [columnVisibility]="tableColumnVisibility"
+        [columnOrder]="tableColumnOrder"
         (columnVisibilityChange)="onTableColumnVisibilityChange($event)"
+        (columnOrderChange)="onTableColumnOrderChange($event)"
         [class.dark]="isDarkTheme"
         [class.light]="!isDarkTheme"
       ></base-table>

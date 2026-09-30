@@ -27,7 +27,73 @@ const DEFAULT_OE_PERCENT_BREAKPOINTS = {
   good: 80
 };
 
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
+
+const booleanMapSchema = {
+  type: 'object',
+  maxProperties: 40,
+  additionalProperties: { type: 'boolean' }
+};
+
+const dashboardLayoutsSchema = {
+  type: 'object',
+  properties: {
+    machineDashboard: {
+      type: 'object',
+      properties: {
+        summaryCardOrder: {
+          type: 'array',
+          maxItems: 20,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1 }
+        },
+        summaryCardVisibility: booleanMapSchema,
+        tableColumnVisibility: booleanMapSchema,
+        tableColumnOrder: {
+          type: 'array',
+          maxItems: 20,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1 }
+        }
+      },
+      additionalProperties: false
+    },
+    operatorDashboard: {
+      type: 'object',
+      properties: {
+        summaryCardOrder: {
+          type: 'array',
+          maxItems: 20,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1 }
+        },
+        summaryCardVisibility: booleanMapSchema,
+        tableColumnVisibility: booleanMapSchema,
+        tableColumnOrder: {
+          type: 'array',
+          maxItems: 20,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1 }
+        }
+      },
+      additionalProperties: false
+    },
+    experimentalDailyDashboard: {
+      type: 'object',
+      properties: {
+        chartOrder: {
+          type: 'array',
+          maxItems: 20,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1 }
+        },
+        chartVisibility: booleanMapSchema
+      },
+      additionalProperties: false
+    }
+  },
+  additionalProperties: false
+};
 
 function buildPercentBreakpointSchema(descriptionPrefix) {
   return {
@@ -91,8 +157,14 @@ const schema = {
       enum: ['current', 'shift', null],
       description: "Default dashboard timeframe. 'current' uses midnight-to-now; 'shift' uses the active/current shift when available."
     },
+    machinePphDisplayMode: {
+      type: 'string',
+      enum: ['perMachine', 'perStation'],
+      description: 'Whether Machine Dashboard PPH is displayed per machine or per station'
+    },
     percentBreakpoints: buildPercentBreakpointSchema('Percentage threshold for'),
     oePercentBreakpoints: buildPercentBreakpointSchema('OE percentage threshold for'),
+    dashboardLayouts: dashboardLayoutsSchema,
     userSessionExpirationHours: {
       type: 'number',
       exclusiveMinimum: 0,
@@ -159,8 +231,10 @@ function buildDefaultPreferences(config = {}) {
     defaultTheme: config.defaultTheme || 'dark',
     logLevel: config.logLevel || 'info',
     dashboardTimeframe: 'current',
+    machinePphDisplayMode: 'perMachine',
     percentBreakpoints: config.percentBreakpoints || { ...DEFAULT_PERCENT_BREAKPOINTS },
     oePercentBreakpoints: config.oePercentBreakpoints || { ...DEFAULT_OE_PERCENT_BREAKPOINTS },
+    dashboardLayouts: {},
     userSessionExpirationHours: Number(config.userSessionExpirationHours) > 0
       ? Number(config.userSessionExpirationHours)
       : 48,
@@ -220,6 +294,14 @@ function validatePercentBreakpointOrder(preferences, fieldName = 'percentBreakpo
   }
 }
 
+function normalizeDashboardLayouts(layouts = {}) {
+  const normalized = JSON.parse(JSON.stringify(layouts || {}));
+  if (normalized.machineDashboard) {
+    delete normalized.machineDashboard.pphDisplayMode;
+  }
+  return normalized;
+}
+
 function normalizePreferences(input = {}, existing = {}, config = {}, options = {}) {
   const now = new Date();
   const defaults = buildDefaultPreferences(config);
@@ -235,6 +317,14 @@ function normalizePreferences(input = {}, existing = {}, config = {}, options = 
   const oePercentBreakpoints = Object.prototype.hasOwnProperty.call(input, 'oePercentBreakpoints')
     ? normalizePercentBreakpoints(input.oePercentBreakpoints, 'oePercentBreakpoints')
     : existing.oePercentBreakpoints || defaults.oePercentBreakpoints;
+  const dashboardLayouts = Object.prototype.hasOwnProperty.call(input, 'dashboardLayouts')
+    ? input.dashboardLayouts
+    : existing.dashboardLayouts || defaults.dashboardLayouts;
+  const legacyMachinePphDisplayMode = existing.dashboardLayouts?.machineDashboard?.pphDisplayMode;
+  const machinePphDisplayMode = input.machinePphDisplayMode
+    ?? existing.machinePphDisplayMode
+    ?? (['perMachine', 'perStation'].includes(legacyMachinePphDisplayMode) ? legacyMachinePphDisplayMode : undefined)
+    ?? defaults.machinePphDisplayMode;
   const operatorPaceHandicap = Array.isArray(input.operatorPaceHandicap)
     ? input.operatorPaceHandicap.map(rule => ({
         daysOfEmployment: Number(rule.daysOfEmployment),
@@ -262,8 +352,10 @@ function normalizePreferences(input = {}, existing = {}, config = {}, options = 
     defaultTheme: input.defaultTheme ?? existing.defaultTheme ?? defaults.defaultTheme,
     logLevel: input.logLevel ?? existing.logLevel ?? defaults.logLevel,
     dashboardTimeframe: input.dashboardTimeframe ?? existing.dashboardTimeframe ?? defaults.dashboardTimeframe,
+    machinePphDisplayMode,
     percentBreakpoints,
     oePercentBreakpoints,
+    dashboardLayouts: normalizeDashboardLayouts(dashboardLayouts),
     userSessionExpirationHours,
     userPermissionsLevels,
     timestamps: {

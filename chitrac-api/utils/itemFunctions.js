@@ -296,7 +296,7 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
             countInWin = typeof s.totalCount === "number" ? Math.round(s.totalCount * (ovSec / sessSec)) : 0;
           } else {
             countInWin = s.counts.reduce((acc, c) => {
-              const t = new Date(c.timestamp);
+              const t = new Date(c.timestamps?.create);
               const sameItem = !c.item?.id || c.item.id === itm.id;
               return acc + (sameItem && t >= ovStart && t <= ovEnd ? 1 : 0);
             }, 0);

@@ -9,6 +9,10 @@ const { DateTime, Duration, Interval } = require("luxon"); //For handling dates 
 const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
 const bcrypt = require("bcryptjs");
+
+function recordTimestamps(eventTime) {
+  return { create: eventTime, active: eventTime, update: eventTime };
+}
 const {
   parseAndValidateQueryParams,
   createPaddedTimeRange,
@@ -715,7 +719,7 @@ function constructor(server) {
       const status = Object.assign({}, storeJSON.status);
 
       const state = {
-        timestamp: storeJSON.timestamp,
+        timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
           id: machine.serial,
           serial: machine.serial,
@@ -948,7 +952,7 @@ function constructor(server) {
       const item = Object.assign({}, storeJSON.item);
 
       const formattedCount = {
-        timestamp: storeJSON.timestamp,
+        timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
           id: machine.serial,
           serial: machine.serial,
@@ -968,7 +972,7 @@ function constructor(server) {
       };
 
       const formattedMisfeed = {
-        timestamp: storeJSON.timestamp,
+        timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
           id: machine.serial,
           serial: machine.serial,
@@ -986,7 +990,7 @@ function constructor(server) {
         .insertOne(formattedCount);
 
       const state = {
-        timestamp: storeJSON.timestamp,
+        timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
           id: machine.serial,
           serial: machine.serial,
@@ -1147,7 +1151,7 @@ function constructor(server) {
     const startDate = new Date(queryDateTime);
 
     const activeMachineStates = await stateTickerCollection
-      .find({ timestamp: { $lt: new Date(queryDateTime) } })
+      .find({ "timestamps.create": { $lt: new Date(queryDateTime) } })
       .sort({ "machine.name": 1 })
       .toArray();
 
@@ -1157,7 +1161,7 @@ function constructor(server) {
           "machine.serial": parseInt(serial),
           "status.code": { $ne: null },
         })
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.create": -1 })
         .limit(1)
         .toArray();
       let machineStatesMostRecent;
@@ -1165,7 +1169,7 @@ function constructor(server) {
       if (machineStatesMostRecentFind.length) {
         machineStatesMostRecent = machineStatesMostRecentFind[0];
         machineStatesMostRecentTimestamp = new Date(
-          machineStatesMostRecent.timestamp
+          machineStatesMostRecent.timestamps?.create
         );
       }
 
@@ -1180,9 +1184,9 @@ function constructor(server) {
             .find({
               "machine.serial": parseInt(serial),
               "status.code": { $ne: null },
-              timestamp: { $lt: new Date(machineStatesMostRecentTimestamp) },
+              "timestamps.create": { $lt: new Date(machineStatesMostRecentTimestamp) },
             })
-            .sort({ timestamp: -1 })
+            .sort({ "timestamps.create": -1 })
             .limit(1)
             .toArray();
           if (machineStatesMostRecentFind.length) {
@@ -1193,7 +1197,7 @@ function constructor(server) {
                 machineStatesNextMostRecent
               );
               machineStatesMostRecentTimestamp = new Date(
-                machineStatesNextMostRecent.timestamp
+                machineStatesNextMostRecent.timestamps?.create
               );
             } else {
               break;
@@ -1223,7 +1227,7 @@ function constructor(server) {
         );
         const sessionDuration = Duration.fromMillis(diff.length());
         const sessionObject = {
-          start: machineStatesMostRecent.timestamp,
+          start: machineStatesMostRecent.timestamps?.create,
           end: DateTime.now(),
           duration: sessionDuration.as("seconds"),
           state: machineStatesMostRecent,
@@ -1261,7 +1265,7 @@ function constructor(server) {
                     "machine.serial": serial,
                     "operator.id": operator.id,
                     station: operator.station ? operator.station : 1,
-                    timestamp: { $gte: new Date(session.start) },
+                    "timestamps.create": { $gte: new Date(session.start) },
                   },
                 },
                 {
@@ -1369,7 +1373,7 @@ function constructor(server) {
           const machineTotalCountFind = await countCollection
             .find({
               "machine.serial": parseInt(serial),
-              timestamp: { $gte: new Date(queryDateTime) },
+              "timestamps.create": { $gte: new Date(queryDateTime) },
             })
             .toArray();
           let items = [];
@@ -1439,7 +1443,7 @@ function constructor(server) {
     const startDate = new Date(currentDateTime);
 
     const activeMachineStates = await stateTickerCollection
-      .find({ timestamp: { $gte: new Date(currentDateTime) } })
+      .find({ "timestamps.create": { $gte: new Date(currentDateTime) } })
       .sort({ "machine.name": 1 })
       .toArray();
 
@@ -1450,17 +1454,17 @@ function constructor(server) {
         .find({
           "machine.serial": parseInt(serial),
           status: { $ne: null },
-          timestamp: { $gte: new Date(currentDateTime) },
+          "timestamps.create": { $gte: new Date(currentDateTime) },
         })
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.create": -1 })
         .toArray();
       const machineStatesHistoryPreviousOne = await stateCollection
         .find({
           "machine.serial": parseInt(serial),
           status: { $ne: null },
-          timestamp: { $lte: new Date(currentDateTime) },
+          "timestamps.create": { $lte: new Date(currentDateTime) },
         })
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.create": -1 })
         .limit(1)
         .toArray();
       const machineStatesHistory = machineStatesHistorySinceStart.concat(
@@ -1476,12 +1480,12 @@ function constructor(server) {
 
           if (lastSessionStart.status.code == 1) {
             const lastSessionStartTSCheck = new Date(
-              lastSessionStart.timestamp
+              lastSessionStart.timestamps?.create
             );
             if (startDate > lastSessionStartTSCheck) {
               lastSessionStartTS = startDate;
             } else {
-              lastSessionStartTS = new Date(lastSessionStart.timestamp);
+              lastSessionStartTS = new Date(lastSessionStart.timestamps?.create);
             }
           }
         } while (
@@ -1499,7 +1503,7 @@ function constructor(server) {
           if (!lastSessionEnd || lastSessionEnd.status.code == 1) {
             lastSessionEndTS = new Date();
           } else {
-            lastSessionEndTS = new Date(lastSessionEnd.timestamp);
+            lastSessionEndTS = new Date(lastSessionEnd.timestamps?.create);
           }
         } else {
           lastSessionEndTS = new Date();
@@ -1559,7 +1563,7 @@ function constructor(server) {
                   "machine.serial": serial,
                   "operator.id": operator.id,
                   station: operator.station ? operator.station : 1,
-                  timestamp: { $gte: new Date(currentDateTime) },
+                  "timestamps.create": { $gte: new Date(currentDateTime) },
                 },
               },
               {
@@ -1667,7 +1671,7 @@ function constructor(server) {
         const machineTotalCountFind = await countCollection
           .find({
             "machine.serial": parseInt(serial),
-            timestamp: { $gte: new Date(currentDateTime) },
+            "timestamps.create": { $gte: new Date(currentDateTime) },
           })
           .toArray();
         let items = [];
@@ -1700,7 +1704,7 @@ function constructor(server) {
       const tickerArray = await db
         .collection(config.stateTickerCollectionName)
         .find({})
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.update": -1 })
         .toArray();
       res.json(tickerArray);
     } catch (err) {
@@ -1713,8 +1717,8 @@ function constructor(server) {
       const tickers = await db
         .collection(config.stateTickerCollectionName)
         .find({})
-        .project({ _id: 0, machine: 1, timestamp: 1 })
-        .sort({ timestamp: -1 })
+        .project({ _id: 0, machine: 1, timestamps: 1 })
+        .sort({ "timestamps.update": -1 })
         .toArray();
 
       const machinesBySerial = new Map();
@@ -2259,9 +2263,9 @@ function constructor(server) {
         .collection("count")
         .find({
           "operator.id": { $in: operatorIds },
-          timestamp: { $gte: new Date(start), $lte: new Date(end) },
+          "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
         })
-        .sort({ timestamp: 1 })
+        .sort({ "timestamps.create": 1 })
         .toArray();
 
       // Group counts by operator
@@ -2420,12 +2424,12 @@ function constructor(server) {
         hourlyIntervals.map(async (interval) => {
           // Filter states and counts for this hour
           const hourStates = states.filter((state) => {
-            const stateTime = new Date(state.timestamp);
+            const stateTime = new Date(state.timestamps?.create);
             return stateTime >= interval.start && stateTime <= interval.end;
           });
 
           const hourCounts = counts.filter((count) => {
-            const countTime = new Date(count.timestamp);
+            const countTime = new Date(count.timestamps?.create);
             return countTime >= interval.start && countTime <= interval.end;
           });
 
@@ -2714,14 +2718,14 @@ function constructor(server) {
         db
           .collection("state")
           .find()
-          .sort({ timestamp: -1 })
+          .sort({ "timestamps.create": -1 })
           .limit(1)
           .toArray(),
       ]);
 
       const finalEnd = endDate
         ? endDate.toISOString()
-        : latestState?.timestamp || new Date().toISOString();
+        : latestState?.timestamps?.create || new Date().toISOString();
       const { paddedStart, paddedEnd } = createPaddedTimeRange(
         startDate,
         new Date(finalEnd)
@@ -2773,7 +2777,7 @@ function constructor(server) {
         if (!countGroup) continue;
 
         const sortedCounts = countGroup.counts.sort(
-          (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          (a, b) => new Date(a.timestamps?.create) - new Date(b.timestamps?.create)
         );
         let countIndex = 0;
 
@@ -2784,7 +2788,7 @@ function constructor(server) {
 
           while (countIndex < sortedCounts.length) {
             const currentCount = sortedCounts[countIndex];
-            const countTimestamp = new Date(currentCount.timestamp);
+            const countTimestamp = new Date(currentCount.timestamps?.create);
 
             if (countTimestamp < cycleStart) {
               countIndex++;
@@ -3112,7 +3116,7 @@ function constructor(server) {
             const cycleMs = cycleEnd - cycleStart;
 
             const cycleCounts = allCounts.filter((c) => {
-              const ts = new Date(c.timestamp);
+              const ts = new Date(c.timestamps?.create);
               return ts >= cycleStart && ts <= cycleEnd;
             });
 
@@ -3392,7 +3396,7 @@ function constructor(server) {
           const cycleMs = cycleEnd - cycleStart;
 
           const cycleCounts = counts.filter((c) => {
-            const ts = new Date(c.timestamp);
+            const ts = new Date(c.timestamps?.create);
             return ts >= cycleStart && ts <= cycleEnd;
           });
 
@@ -3471,7 +3475,7 @@ function constructor(server) {
       const hourMap = new Map(); // hourIndex => { itemName => count }
 
       for (const count of counts) {
-        const ts = new Date(count.timestamp);
+        const ts = new Date(count.timestamps?.create);
         const hourIndex = Math.floor((ts - startDate) / (60 * 60 * 1000)); // hour offset since start
         const itemName = count.item?.name || "Unknown";
 
@@ -3719,7 +3723,7 @@ function constructor(server) {
           const cycleMs = cycleEnd - cycleStart;
 
           const cycleCounts = counts.filter((c) => {
-            const ts = new Date(c.timestamp);
+            const ts = new Date(c.timestamps?.create);
             return ts >= cycleStart && ts <= cycleEnd;
           });
 
@@ -3790,12 +3794,12 @@ function constructor(server) {
       const [latestState] = await db
         .collection("state-test")
         .find()
-        .sort({ timestamp: -1 })
+        .sort({ "timestamps.create": -1 })
         .limit(1)
         .toArray();
 
       const effectiveEnd =
-        new Date(end) > new Date() ? latestState?.timestamp || new Date() : end;
+        new Date(end) > new Date() ? latestState?.timestamps?.create || new Date() : end;
 
       const { paddedStart, paddedEnd } = createPaddedTimeRange(
         start,
@@ -3845,7 +3849,7 @@ function constructor(server) {
         if (!countGroup) continue;
 
         const sortedCounts = countGroup.counts.sort(
-          (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+          (a, b) => new Date(a.timestamps?.create) - new Date(b.timestamps?.create)
         );
 
         for (const cycle of group.completedCycles) {

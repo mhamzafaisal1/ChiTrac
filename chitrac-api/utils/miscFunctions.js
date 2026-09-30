@@ -71,27 +71,27 @@ async function getBookendedGlobalRange(db, serials, start, end) {
 
     const [beforeStart, afterEnd] = await Promise.all([
       db.collection("state")
-        .find({ "machine.serial": serialInt, timestamp: { $lt: start } })
-        .sort({ timestamp: -1 })
+        .find({ "machine.serial": serialInt, "timestamps.create": { $lt: start } })
+        .sort({ "timestamps.create": -1 })
         .limit(1)
         .toArray(),
 
       db.collection("state")
-        .find({ "machine.serial": serialInt, timestamp: { $gt: effectiveEnd } })
-        .sort({ timestamp: 1 })
+        .find({ "machine.serial": serialInt, "timestamps.create": { $gt: effectiveEnd } })
+        .sort({ "timestamps.create": 1 })
         .limit(1)
         .toArray()
     ]);
 
     if (beforeStart.length) {
-      const ts = beforeStart[0].timestamp;
+      const ts = beforeStart[0].timestamps?.create;
       if (!minPreStart || new Date(ts) < new Date(minPreStart)) {
         minPreStart = ts;
       }
     }
 
     if (afterEnd.length) {
-      const ts = afterEnd[0].timestamp;
+      const ts = afterEnd[0].timestamps?.create;
       if (!maxPostEnd || new Date(ts) > new Date(maxPostEnd)) {
         maxPostEnd = ts;
       }

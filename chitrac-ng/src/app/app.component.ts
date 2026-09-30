@@ -49,6 +49,12 @@ export class AppComponent implements OnInit, OnDestroy {
         this.loadDefaultTheme();
       }
     });
+
+    // Resolve the server-backed session for public pages and the navigation shell.
+    // Protected routes share this in-flight request through UserService.
+    this.userService.getCurrentUser()
+      .pipe(take(1), takeUntil(this.destroy$))
+      .subscribe();
   }
 
   ngOnDestroy(): void {

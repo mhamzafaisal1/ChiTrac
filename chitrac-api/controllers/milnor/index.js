@@ -235,7 +235,7 @@ function constructor(server) {
         _id: 0,
         machine: 1,
         status: 1,
-        timestamp: 1,
+        timestamps: 1,
       })
       .toArray();
 
@@ -244,7 +244,7 @@ function constructor(server) {
       const machineSerial = Number(ticker.machine?.serial ?? ticker.machine?.id);
       if (!Number.isFinite(machineSerial)) continue;
 
-      const timestamp = new Date(ticker.timestamp || 0).getTime();
+      const timestamp = new Date(ticker.timestamps?.update || ticker.timestamps?.create || 0).getTime();
       const existing = statusMap.get(machineSerial);
       if (existing && existing.timestamp >= timestamp) continue;
 
@@ -274,7 +274,6 @@ function constructor(server) {
         machine: 1,
         operators: 1,
         status: 1,
-        timestamp: 1,
         timestamps: 1,
       })
       .toArray();
@@ -286,9 +285,7 @@ function constructor(server) {
 
       const status = ticker.status || {};
       const timestamp = new Date(
-        status.timestamp ||
-          ticker.timestamp ||
-          ticker.timestamps?.update ||
+        ticker.timestamps?.update ||
           ticker.timestamps?.active ||
           ticker.timestamps?.create ||
           0
@@ -1416,7 +1413,7 @@ function constructor(server) {
   function buildHourlyMachineItemRecordsFromCounts(counts) {
     const bucketMap = new Map();
     for (const count of counts) {
-      const timestamp = count.timestamps?.create || count.timestamp;
+      const timestamp = count.timestamps?.create;
       if (!timestamp || count.misfeed) continue;
       const dt = DateTime.fromJSDate(new Date(timestamp), { zone: SYSTEM_TIMEZONE });
       if (!dt.isValid) continue;
@@ -1450,7 +1447,6 @@ function constructor(server) {
           operator: 1,
           misfeed: 1,
           timestamps: 1,
-          timestamp: 1,
         })
         .toArray();
       counts.push(...rows);
@@ -1870,11 +1866,11 @@ function constructor(server) {
       const counts = await db
         .collection("count")
         .find(filter)
-        .project({ _id: 0, item: 1, timestamps: 1, timestamp: 1 })
+        .project({ _id: 0, item: 1, timestamps: 1 })
         .toArray();
 
       for (const count of counts) {
-        const timestamp = count.timestamps?.create || count.timestamp;
+        const timestamp = count.timestamps?.create;
         if (!timestamp) continue;
         const hour = DateTime.fromJSDate(new Date(timestamp), {
           zone: SYSTEM_TIMEZONE,

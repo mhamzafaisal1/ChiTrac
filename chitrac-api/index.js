@@ -213,15 +213,18 @@ async function initializeCollections() {
         }
     }
 
-    logger.debug('Initializing system-preferences collection...');
+    logger.debug(`Initializing ${config.systemPreferencesCollectionName} collection...`);
     const systemPreferences = require('./modules/systemPreferences');
     await ensureCollection(config.systemPreferencesCollectionName);
     await systemPreferences.ensureSystemPreferences(db, config);
-    logger.debug('System preferences collection initialized!');
+    logger.debug(`${config.systemPreferencesCollectionName} collection initialized!`);
 }
 
 async function startServer() {
     try {
+        const { migratePreferenceCollections } = require('./modules/preferenceCollections');
+        await migratePreferenceCollections(db, config, logger);
+
         const systemPreferences = require('./modules/systemPreferences');
         const preferences = await systemPreferences.loadAndApplySystemPreferences(server);
         logger.info('System preferences loaded', {

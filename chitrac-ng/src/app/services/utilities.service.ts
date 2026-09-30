@@ -1,11 +1,16 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface RebootResponse {
   success: boolean;
   available: boolean;
   platform: string;
+  scheduled?: boolean;
+  cancelled?: boolean;
+  scheduledAt?: string;
+  executesAt?: string;
+  remainingSeconds?: number;
   scheduledForSeconds?: number;
   message?: string;
   error?: string;
@@ -50,11 +55,35 @@ export class UtilitiesService {
     return this.http.post<RebootResponse>(`${this.apiUrl}/reboot`, {});
   }
 
+  getRebootStatus(): Observable<RebootResponse> {
+    return this.http.get<RebootResponse>(`${this.apiUrl}/reboot/status`);
+  }
+
+  cancelReboot(): Observable<RebootResponse> {
+    return this.http.post<RebootResponse>(`${this.apiUrl}/reboot/cancel`, {});
+  }
+
   backupMongoDbToUsb(): Observable<MongoUsbBackupResponse> {
     return this.http.post<MongoUsbBackupResponse>(`${this.apiUrl}/backup/mongodb-usb`, {});
   }
 
   deleteOldNodeLogs(date: string): Observable<DeleteNodeLogsResponse> {
     return this.http.post<DeleteNodeLogsResponse>(`${this.apiUrl}/logs/delete-old-nodejs`, { date });
+  }
+
+  exportConfigCollections(includeIds: boolean): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.apiUrl}/export/config`, {
+      params: { includeIds: String(includeIds) },
+      observe: 'response',
+      responseType: 'blob'
+    });
+  }
+
+  exportConfigCollection(collectionName: string, includeIds: boolean): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.apiUrl}/export/config/${encodeURIComponent(collectionName)}`, {
+      params: { includeIds: String(includeIds) },
+      observe: 'response',
+      responseType: 'blob'
+    });
   }
 }

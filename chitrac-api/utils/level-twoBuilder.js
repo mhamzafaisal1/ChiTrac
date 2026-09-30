@@ -132,7 +132,7 @@ async function buildLevelTwoPerformance(
   
     // Build state query
     const stateQuery = {
-      timestamp: { $gte: start, $lte: end },
+      "timestamps.create": { $gte: start, $lte: end },
       "machine.serial": { $type: "int" }
     };
   
@@ -142,7 +142,7 @@ async function buildLevelTwoPerformance(
   
     // Build count query
     const countQuery = {
-      timestamp: { $gte: start, $lte: end },
+      "timestamps.create": { $gte: start, $lte: end },
       "machine.serial": { $type: "int" }
     };
   
@@ -158,7 +158,7 @@ async function buildLevelTwoPerformance(
       db.collection("state")
         .find(stateQuery)
         .project({
-          timestamp: 1,
+          timestamps: 1,
           "machine.serial": 1,
           "machine.name": 1,
           "machine.ipAddress": 1,
@@ -168,13 +168,13 @@ async function buildLevelTwoPerformance(
           "status.code": 1,
           "status.name": 1
         })
-        .sort({ timestamp: 1 })
+        .sort({ "timestamps.create": 1 })
         .toArray(),
   
       db.collection("count")
         .find(countQuery)
         .project({
-          timestamp: 1,
+          timestamps: 1,
           "machine.serial": 1,
           "machine.name": 1,
           "operator.id": 1,
@@ -187,7 +187,7 @@ async function buildLevelTwoPerformance(
           misfeed: 1,
           program: 1
         })
-        .sort({ timestamp: 1 })
+        .sort({ "timestamps.create": 1 })
         .toArray()
     ]);
   

@@ -1,8 +1,10 @@
 const { getStateCollectionName } = require('./time');
 
+const stateTimestamp = (state) => state?.timestamps?.create;
+
 async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     const query = {
-      timestamp: { $gte: paddedStart, $lte: paddedEnd }
+      "timestamps.create": { $gte: paddedStart, $lte: paddedEnd }
     };
 
     if (serial) query['machine.serial'] = serial;
@@ -10,10 +12,10 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     const stateCollection = getStateCollectionName(paddedStart);
     return db.collection(stateCollection)
       .find(query)
-      .sort({ timestamp: 1 })
+      .sort({ "timestamps.create": 1 })
       .project({
         _id:0, //RTI II: ADDED 06/10/25 to omit _ids from the API returns as those are extraneous outside of UPDATE or DELETE actions
-        timestamp: 1,
+        "timestamps.create": 1,
         'machine.serial': 1,
         'machine.name': 1,
         'program.mode': 1,
@@ -87,7 +89,7 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
         code = 0;
       }
       
-      const timestamp = new Date(state.timestamps?.create || state.timestamp);
+      const timestamp = new Date(stateTimestamp(state));
       
       // Skip invalid timestamps
       if (isNaN(timestamp.getTime())) {
@@ -179,7 +181,7 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   
   async function getAllMachinesFromStates(db, start, end) {
     const query = {
-      timestamp: { $gte: start, $lte: end }
+      "timestamps.create": { $gte: start, $lte: end }
     };
     // Get unique machines from state collection
     const machines = await db.collection('state')
@@ -343,7 +345,6 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     .project({
       _id:0, //RTI II: ADDED 06/10/25 to omit _ids from the API returns as those are extraneous outside of UPDATE or DELETE actions
       "timestamps.create": 1,
-      timestamp: 1, // Keep for backward compatibility
       'machine.id': 1,
       'machine.serial': 1, // Keep for backward compatibility
       'machine.name': 1,
@@ -355,11 +356,8 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     })
     .toArray();
 
-  // Normalize states: map timestamps.create to timestamp and status
+  // Normalize machine and status fields used by analytics.
   return states.map(state => {
-    if (!state.timestamp && state.timestamps?.create) {
-      state.timestamp = state.timestamps.create;
-    }
     if (!state.machine?.serial && state.machine?.id) {
       state.machine = state.machine || {};
       state.machine.serial = state.machine.id;
@@ -373,14 +371,10 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
 }
 
 async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, paddedEnd) {
-  // Build query to handle both document formats (old and new)
   const query = {
     $and: [
       {
-        $or: [
-          { timestamp: { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } },
-          { "timestamps.create": { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) } }
-        ]
+        "timestamps.create": { $gte: new Date(paddedStart), $lte: new Date(paddedEnd) }
       },
       {
         $or: [
@@ -401,11 +395,10 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
 
   const states = await db.collection('state')
     .find(query)
-    .sort({ "timestamps.create": 1, timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .project({
       _id:0,
       "timestamps.create": 1,
-      timestamp: 1, // Keep for backward compatibility
       'machine.id': 1,
       'machine.serial': 1, // Keep for backward compatibility
       'machine.name': 1,
@@ -417,11 +410,8 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
     })
     .toArray();
 
-  // Normalize states: map timestamps.create to timestamp and status
+  // Normalize machine and status fields used by analytics.
   return states.map(state => {
-    if (!state.timestamp && state.timestamps?.create) {
-      state.timestamp = state.timestamps.create;
-    }
     if (!state.machine?.serial && state.machine?.id) {
       state.machine = state.machine || {};
       state.machine.serial = state.machine.id;
@@ -481,7 +471,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
   
       // Extract essential state data once per state
       const essentialState = {
-        timestamp: state.timestamp,
+        timestamps: state.timestamps,
         status: state.status,
         machine: state.machine,
         program: state.program
@@ -530,7 +520,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
   
       // Extract essential state data once per state
       const essentialState = {
-        timestamp: state.timestamp,
+        timestamps: state.timestamps,
         status: state.status,
         machine: state.machine,
         program: state.program,
@@ -584,7 +574,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
 
         // Extract essential state data with ONLY the operator for THIS station
         const essentialState = {
-          timestamp: state.timestamp,
+          timestamps: state.timestamps,
           status: state.status,
           machine: state.machine,
           program: state.program,
@@ -621,7 +611,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
     const MAX_CYCLE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
     const sortedStates = states.sort((a, b) =>
-        new Date(a.timestamp) - new Date(b.timestamp)
+        new Date(stateTimestamp(a)) - new Date(stateTimestamp(b))
     );
 
     for (let i = 0; i < sortedStates.length; i++) {
@@ -632,7 +622,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
         }
 
         const statusCode = state.status.code;
-        const timestamp = new Date(state.timestamp);
+        const timestamp = new Date(stateTimestamp(state));
         
         if (statusCode === 1) {
             // Start a new cycle when code is 1
@@ -668,7 +658,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
     // Final check: if machine never paused/faulted after last Run
     if (currentCycle) {
         const lastState = sortedStates[sortedStates.length - 1];
-        currentCycle.end = new Date(lastState.timestamp);
+        currentCycle.end = new Date(stateTimestamp(lastState));
         currentCycle.endState = lastState;
         currentCycle.duration = currentCycle.end - currentCycle.start;
 
@@ -694,12 +684,12 @@ function getCompletedCyclesWithOperatorSplit(states) {
 
   const sortedStates = states
     .filter(s => s.status && typeof s.status.code === 'number')
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    .sort((a, b) => new Date(stateTimestamp(a)) - new Date(stateTimestamp(b)));
 
   for (let i = 0; i < sortedStates.length; i++) {
     const state = sortedStates[i];
     const statusCode = state.status.code;
-    const timestamp = new Date(state.timestamp);
+    const timestamp = new Date(stateTimestamp(state));
 
     const operator = Array.isArray(state.operators) ? state.operators[0] : null;
     const operatorId = operator?.id ?? null;
@@ -768,7 +758,7 @@ function getCompletedCyclesWithOperatorSplit(states) {
   // Final catch
   if (currentCycle) {
     const lastState = sortedStates.at(-1);
-    currentCycle.end = new Date(lastState.timestamp);
+    currentCycle.end = new Date(stateTimestamp(lastState));
     currentCycle.endState = lastState;
     currentCycle.duration = currentCycle.end - currentCycle.start;
 
@@ -978,13 +968,13 @@ function extractFaultCycles(states, queryStart, queryEnd) {
   let currentCycle = null;
 
   const sortedStates = states
-    .filter(s => (s.status?.code !== undefined || s._tickerDoc?.status?.code !== undefined) && (s.timestamp || s.timestamps?.create))
-    .sort((a, b) => new Date(a.timestamp || a.timestamps?.create) - new Date(b.timestamp || b.timestamps?.create));
+    .filter(s => (s.status?.code !== undefined || s._tickerDoc?.status?.code !== undefined) && stateTimestamp(s))
+    .sort((a, b) => new Date(stateTimestamp(a)) - new Date(stateTimestamp(b)));
 
   for (const state of sortedStates) {
     const code = state.status?.code ?? state._tickerDoc?.status?.code;
     const faultName = state.status?.name ?? state._tickerDoc?.status?.name ?? 'Unknown';
-    const timestamp = new Date(state.timestamp || state.timestamps?.create);
+    const timestamp = new Date(stateTimestamp(state));
 
     // A fault cycle begins when the machine is NOT running (code !== 1)
     // and continues as long as it's not running.
@@ -1072,7 +1062,7 @@ function extractFaultCycles(states, queryStart, queryEnd) {
  */
 async function getAllMachineSerials(db, start, end) {
   const query = {
-    timestamp: { $gte: start, $lte: end },
+    "timestamps.create": { $gte: start, $lte: end },
     "machine.serial": { $type: "int" }  // Only fetch documents where serial is already stored as integer
   };
 
@@ -1092,7 +1082,7 @@ async function getAllMachineSerials(db, start, end) {
  */
 async function getAllMachineSerialsAndNames(db, start, end) {
   const states = await db.collection("state").find({
-    timestamp: { $gte: start, $lte: end },
+    "timestamps.create": { $gte: start, $lte: end },
     "machine.serial": { $type: "int" },
     "machine.name": { $exists: true, $ne: null }
   }).project({
@@ -1121,13 +1111,13 @@ async function getAllMachineSerialsAndNames(db, start, end) {
 async function fetchAllStates(db, start, end) {
   return db.collection('state')
     .find({
-      timestamp: { $gte: new Date(start), $lte: new Date(end) },
+      "timestamps.create": { $gte: new Date(start), $lte: new Date(end) },
       'operators': { $exists: true, $ne: [] } // Only states with at least one operator
     })
-    .sort({ timestamp: 1 })
+    .sort({ "timestamps.create": 1 })
     .project({
       _id:0, //RTI II: ADDED 06/10/25 to omit _ids from the API returns as those are extraneous outside of UPDATE or DELETE actions
-      timestamp: 1,
+      "timestamps.create": 1,
       'machine.serial': 1,
       'machine.name': 1,
       'program.mode': 1,
@@ -1141,10 +1131,7 @@ async function fetchAllStates(db, start, end) {
 // OEE-specific functions that work with new timestamp structure (timestamps.create)
 async function getAllMachinesFromStatesForOEE(db, start, end) {
   const query = {
-    $or: [
-      { timestamp: { $gte: start, $lte: end } },
-      { 'timestamps.create': { $gte: start, $lte: end } }
-    ]
+    'timestamps.create': { $gte: start, $lte: end }
   };
 
   const stateCollection = getStateCollectionName(start);
@@ -1176,12 +1163,7 @@ async function getAllMachinesFromStatesForOEE(db, start, end) {
 async function fetchStatesForMachineForOEE(db, serial, paddedStart, paddedEnd) {
   const query = {
     $and: [
-      {
-        $or: [
-          { timestamp: { $gte: paddedStart, $lte: paddedEnd } },
-          { 'timestamps.create': { $gte: paddedStart, $lte: paddedEnd } }
-        ]
-      },
+      { 'timestamps.create': { $gte: paddedStart, $lte: paddedEnd } },
       {
         $or: [
           { 'machine.serial': serial },
@@ -1195,10 +1177,9 @@ async function fetchStatesForMachineForOEE(db, serial, paddedStart, paddedEnd) {
 
   const states = await db.collection(stateCollection)
     .find(query)
-    .sort({ timestamp: 1, 'timestamps.create': 1 })
+    .sort({ 'timestamps.create': 1 })
     .project({
       _id:0,
-      timestamp: 1,
       'timestamps.create': 1,
       'machine.serial': 1,
       'machine.id': 1,
@@ -1211,11 +1192,8 @@ async function fetchStatesForMachineForOEE(db, serial, paddedStart, paddedEnd) {
     })
     .toArray();
 
-  // Normalize: create timestamp field if it doesn't exist
+  // Normalize machine and status fields used by analytics.
   return states.map(state => {
-    if (!state.timestamp && state.timestamps?.create) {
-      state.timestamp = state.timestamps.create;
-    }
     if (!state.machine?.serial && state.machine?.id) {
       state.machine = state.machine || {};
       state.machine.serial = state.machine.id;
@@ -1252,4 +1230,3 @@ async function fetchStatesForMachineForOEE(db, serial, paddedStart, paddedEnd) {
     getAllMachinesFromStatesForOEE,
     fetchStatesForMachineForOEE
   };
-  

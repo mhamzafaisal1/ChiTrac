@@ -4,6 +4,7 @@ const ajvErrors = require('ajv-errors');
 const { ObjectId } = require('mongodb');
 
 const machineSchema = require('../schemas/machine.js');
+const timestampsSchema = require('../schemas/timestampsSchema');
 const config = require('../modules/config');
 
 const ajv = new Ajv({ allErrors: true, useDefaults: true });
@@ -47,9 +48,16 @@ function machineValidator(server) {
       const existing = await server.db
         .collection(config.machineCollectionName)
         .findOne({ _id: objectId }, { projection: { timestamps: 1 } });
-      body.timestamps = body.timestamps || existing?.timestamps || machineSchema.utils.stampInit(now);
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Machine not found' });
+      }
+
+      // Timestamps are server-owned. HTTP JSON turns BSON Dates into strings,
+      // so validating timestamps echoed by the client rejects otherwise valid edits.
+      body.timestamps = existing.timestamps || timestampsSchema.utils.stampInit(now);
     } else {
-      body.timestamps = body.timestamps || machineSchema.utils.stampInit(now);
+      body.timestamps = timestampsSchema.utils.stampInit(now);
     }
 
     req.body = body;
