@@ -43,7 +43,7 @@ const dashboardLayoutsSchema = {
       properties: {
         summaryCardOrder: {
           type: 'array',
-          maxItems: 20,
+          maxItems: 40,
           uniqueItems: true,
           items: { type: 'string', minLength: 1 }
         },
@@ -63,7 +63,7 @@ const dashboardLayoutsSchema = {
       properties: {
         summaryCardOrder: {
           type: 'array',
-          maxItems: 20,
+          maxItems: 40,
           uniqueItems: true,
           items: { type: 'string', minLength: 1 }
         },

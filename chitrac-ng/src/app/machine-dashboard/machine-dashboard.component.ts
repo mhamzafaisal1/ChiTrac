@@ -212,10 +212,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Paused Machines",
     "Faulted",
     "Fault Time",
+    "Avg Fault Time",
     "Offline",
     "Run Time",
+    "Avg Worked Time",
     "Paused Time",
+    "Avg Paused Time",
     "Down Time",
+    "Avg Down Time",
     "Idle/Paused Machines",
     "Down Machines",
     "Paused Operators",
@@ -226,6 +230,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     "Shift",
     "Projected Count (All Day)",
     "Projected Count (Shift)",
+    "Avg Availability",
+    "Avg Throughput",
+    "Avg Efficiency",
     "Avg OEE",
   ];
   private readonly layoutContextId = "machineDashboard";
@@ -773,12 +780,16 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const totalPausedTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.pausedTime?.total ?? r.performance?.pausedTime?.total ?? 0), 0);
     const totalDownTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.downTime?.total ?? r.metrics?.downtime?.total ?? r.performance?.downTime?.total ?? r.performance?.downtime?.total ?? 0), 0);
     const totalFaultTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.faultTime?.total ?? r.performance?.faultTime?.total ?? 0), 0);
+    const responseCount = responses.length;
     const machineCounts = calculateMachineStatusCounts(responses);
     const operatorCounts = this.operatorStatusCounts;
     const totalCount = responses.reduce((sum, r) => {
       const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
       return sum + Number(value || 0);
     }, 0);
+    const avgAvailability = this.averagePercent(responses.map((r) => r.metrics?.performance?.availability?.percentage ?? r.performance?.availability?.percentage));
+    const avgThroughput = this.averagePercent(responses.map((r) => r.metrics?.performance?.throughput?.percentage ?? r.performance?.throughput?.percentage));
+    const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage ?? r.performance?.efficiency?.percentage));
     const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage ?? r.performance?.oee?.percentage));
     const allDayProjection = this.getAllDayProjectionSource(responses, cache);
     const allDayTotalCount = this.getSummaryTotalCount(allDayProjection.responses);
@@ -799,10 +810,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Paused Machines", value: machineCounts.paused, icon: "pause_circle", tone: machineCounts.paused > 0 ? "warn" : "neutral" },
       { label: "Faulted", value: machineCounts.faulted, icon: "warning", tone: machineCounts.faulted > 0 ? "bad" : "neutral" },
       { label: "Fault Time", value: this.formatMilliseconds(totalFaultTimeMs), icon: "timer_off", tone: totalFaultTimeMs > 0 ? "bad" : "neutral" },
+      { label: "Avg Fault Time", value: this.formatAverageDuration(totalFaultTimeMs, responseCount), icon: "timer_off", tone: totalFaultTimeMs > 0 ? "bad" : "neutral" },
       { label: "Offline", value: machineCounts.offline, icon: "cloud_off", tone: machineCounts.offline > 0 ? "warn" : "neutral" },
       { label: "Run Time", value: this.formatMilliseconds(totalRunTimeMs), icon: "timer", tone: totalRunTimeMs > 0 ? "good" : "neutral" },
+      { label: "Avg Worked Time", value: this.formatAverageDuration(totalRunTimeMs, responseCount), icon: "timer", tone: totalRunTimeMs > 0 ? "good" : "neutral" },
       { label: "Paused Time", value: this.formatMilliseconds(totalPausedTimeMs), icon: "pause_circle", tone: totalPausedTimeMs > 0 ? "warn" : "neutral" },
+      { label: "Avg Paused Time", value: this.formatAverageDuration(totalPausedTimeMs, responseCount), icon: "pause_circle", tone: totalPausedTimeMs > 0 ? "warn" : "neutral" },
       { label: "Down Time", value: this.formatMilliseconds(totalDownTimeMs), icon: "timer_off", tone: totalDownTimeMs > 0 ? "bad" : "neutral" },
+      { label: "Avg Down Time", value: this.formatAverageDuration(totalDownTimeMs, responseCount), icon: "timer_off", tone: totalDownTimeMs > 0 ? "bad" : "neutral" },
       { label: "Idle/Paused Machines", value: machineCounts.idlePaused, icon: "motion_photos_paused", tone: machineCounts.idlePaused > 0 ? "warn" : "neutral" },
       { label: "Down Machines", value: machineCounts.down, icon: "do_not_disturb_on", tone: machineCounts.down > 0 ? "warn" : "neutral" },
       { label: "Paused Operators", value: operatorCounts.paused, icon: "pause_circle", tone: operatorCounts.paused > 0 ? "warn" : "neutral" },
@@ -820,6 +835,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       ...(shiftInfoCard ? [shiftInfoCard] : []),
       { label: this.allDayProjectedCountLabel, value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= allDayTotalCount ? "good" : "neutral" },
       { label: shiftProjection.label, value: shiftProjection.value, icon: "outlined_flag", tone: shiftProjectionTone },
+      { label: "Avg Availability", value: `${avgAvailability}%`, icon: "event_available", tone: this.getPercentSummaryTone(avgAvailability) },
+      { label: "Avg Throughput", value: `${avgThroughput}%`, icon: "trending_up", tone: this.getPercentSummaryTone(avgThroughput) },
+      { label: "Avg Efficiency", value: `${avgEfficiency}%`, icon: "speed", tone: this.getPercentSummaryTone(avgEfficiency) },
       { label: "Avg OEE", value: `${avgOee}%`, icon: "speed", tone: this.getOeeSummaryTone(avgOee) },
     ];
 
@@ -834,6 +852,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private formatMilliseconds(totalMs: number): string {
     return formatDurationMilliseconds(totalMs);
+  }
+
+  private formatAverageDuration(totalMs: number, count: number): string {
+    return this.formatMilliseconds(count > 0 ? totalMs / count : 0);
   }
 
   private getShiftProjection(responses: any[], cache?: DashboardCacheState | null): ShiftProjectionSummary {
@@ -989,6 +1011,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private getOeeSummaryTone(value: unknown): "good" | "warn" | "bad" {
     const color = this.percentBreakpointService.getOeDashboardColor(value);
+    if (color === "green") return "good";
+    if (color === "orange") return "warn";
+    return "bad";
+  }
+
+  private getPercentSummaryTone(value: unknown): "good" | "warn" | "bad" {
+    const color = this.percentBreakpointService.getDashboardColor(value);
     if (color === "green") return "good";
     if (color === "orange") return "warn";
     return "bad";
@@ -1211,10 +1240,14 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       "Paused Machines": "pause_circle",
       Faulted: "warning",
       "Fault Time": "timer_off",
+      "Avg Fault Time": "timer_off",
       Offline: "cloud_off",
       "Run Time": "timer",
+      "Avg Worked Time": "timer",
       "Paused Time": "pause_circle",
+      "Avg Paused Time": "pause_circle",
       "Down Time": "timer_off",
+      "Avg Down Time": "timer_off",
       "Idle/Paused Machines": "motion_photos_paused",
       "Down Machines": "do_not_disturb_on",
       "Paused Operators": "pause_circle",
@@ -1225,6 +1258,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       [this.shiftInfoCardPreferenceLabel]: "schedule",
       [this.allDayProjectedCountLabel]: "flag",
       [this.shiftProjectedCountLabel]: "outlined_flag",
+      "Avg Availability": "event_available",
+      "Avg Throughput": "trending_up",
+      "Avg Efficiency": "speed",
       "Avg OEE": "speed",
     };
     return icons[label] || "dashboard";
