@@ -123,10 +123,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Paused Operators',
     'Faulted',
     'Fault Time',
+    'Avg Fault Time',
     'Idle Operators',
     'Worked Time',
+    'Avg Worked Time',
     'Paused Time',
+    'Avg Paused Time',
     'Down Time',
+    'Avg Down Time',
     'Idle/Paused Operators',
     'Down Operators',
     'Paused Machines',
@@ -134,7 +138,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     'Down Machines',
     'Total Count',
     'Projected Count',
+    'Avg Availability',
+    'Avg Throughput',
     'Avg Efficiency',
+    'Avg OEE',
   ];
   private readonly layoutContextId = 'operatorDashboard';
   private summaryCardOrder: string[] = [];
@@ -511,10 +518,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const totalPausedTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.pausedTime?.total || 0), 0);
     const totalDownTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.downTime?.total ?? r.metrics?.downtime?.total ?? 0), 0);
     const totalFaultTimeMs = responses.reduce((sum, r) => sum + Number(r.metrics?.faultTime?.total || 0), 0);
+    const responseCount = responses.length;
     const operatorCounts = calculateOperatorStatusCounts(responses, idleOperators);
     const machineCounts = this.machineStatusCounts;
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
+    const avgAvailability = this.averagePercent(responses.map((r) => r.metrics?.performance?.availability?.percentage));
+    const avgThroughput = this.averagePercent(responses.map((r) => r.metrics?.performance?.throughput?.percentage));
     const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
+    const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage));
     const elapsedHours = this.getElapsedHours();
     const totalProjectionHours = this.getProjectionWindowHours(elapsedHours);
     const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
@@ -526,10 +537,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Paused Operators', value: operatorCounts.paused, icon: 'pause_circle', tone: operatorCounts.paused > 0 ? 'warn' : 'neutral' },
       { label: 'Faulted', value: operatorCounts.faulted, icon: 'warning', tone: operatorCounts.faulted > 0 ? 'bad' : 'neutral' },
       { label: 'Fault Time', value: this.formatMilliseconds(totalFaultTimeMs), icon: 'timer_off', tone: totalFaultTimeMs > 0 ? 'bad' : 'neutral' },
+      { label: 'Avg Fault Time', value: this.formatAverageDuration(totalFaultTimeMs, responseCount), icon: 'timer_off', tone: totalFaultTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Idle Operators', value: operatorCounts.idle, icon: 'person_off', tone: operatorCounts.idle > 0 ? 'warn' : 'good' },
       { label: 'Worked Time', value: this.formatMilliseconds(totalRunTimeMs), icon: 'timer', tone: totalRunTimeMs > 0 ? 'good' : 'neutral' },
+      { label: 'Avg Worked Time', value: this.formatAverageDuration(totalRunTimeMs, responseCount), icon: 'timer', tone: totalRunTimeMs > 0 ? 'good' : 'neutral' },
       { label: 'Paused Time', value: this.formatMilliseconds(totalPausedTimeMs), icon: 'pause_circle', tone: totalPausedTimeMs > 0 ? 'warn' : 'neutral' },
+      { label: 'Avg Paused Time', value: this.formatAverageDuration(totalPausedTimeMs, responseCount), icon: 'pause_circle', tone: totalPausedTimeMs > 0 ? 'warn' : 'neutral' },
       { label: 'Down Time', value: this.formatMilliseconds(totalDownTimeMs), icon: 'timer_off', tone: totalDownTimeMs > 0 ? 'bad' : 'neutral' },
+      { label: 'Avg Down Time', value: this.formatAverageDuration(totalDownTimeMs, responseCount), icon: 'timer_off', tone: totalDownTimeMs > 0 ? 'bad' : 'neutral' },
       { label: 'Idle/Paused Operators', value: operatorCounts.idlePaused, icon: 'person_off', tone: operatorCounts.idlePaused > 0 ? 'warn' : 'neutral' },
       { label: 'Down Operators', value: operatorCounts.down, icon: 'do_not_disturb_on', tone: operatorCounts.down > 0 ? 'warn' : 'neutral' },
       { label: 'Paused Machines', value: machineCounts.paused, icon: 'pause_circle', tone: machineCounts.paused > 0 ? 'warn' : 'neutral' },
@@ -537,7 +552,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Down Machines', value: machineCounts.down, icon: 'do_not_disturb_on', tone: machineCounts.down > 0 ? 'warn' : 'neutral' },
       { label: 'Total Count', value: totalCount.toLocaleString(), icon: 'tag', tone: 'neutral' },
       { label: 'Projected Count', value: projectedCount.toLocaleString(), icon: 'flag', tone: projectedCount >= totalCount ? 'good' : 'neutral' },
-      { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
+      { label: 'Avg Availability', value: `${avgAvailability}%`, icon: 'event_available', tone: this.getPercentSummaryTone(avgAvailability) },
+      { label: 'Avg Throughput', value: `${avgThroughput}%`, icon: 'trending_up', tone: this.getPercentSummaryTone(avgThroughput) },
+      { label: 'Avg Efficiency', value: `${avgEfficiency}%`, icon: 'speed', tone: this.getPercentSummaryTone(avgEfficiency) },
+      { label: 'Avg OEE', value: `${avgOee}%`, icon: 'speed', tone: this.getOeeSummaryTone(avgOee) },
     ]);
     this.syncSummaryCardsFromAll();
   }
@@ -549,6 +567,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private formatMilliseconds(totalMs: number): string {
     return formatDurationMilliseconds(totalMs);
+  }
+
+  private formatAverageDuration(totalMs: number, count: number): string {
+    return this.formatMilliseconds(count > 0 ? totalMs / count : 0);
   }
 
   private loadMachineStatusCounts(): void {
@@ -631,10 +653,14 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Paused Operators': 'pause_circle',
       Faulted: 'warning',
       'Fault Time': 'timer_off',
+      'Avg Fault Time': 'timer_off',
       'Idle Operators': 'person_off',
       'Worked Time': 'timer',
+      'Avg Worked Time': 'timer',
       'Paused Time': 'pause_circle',
+      'Avg Paused Time': 'pause_circle',
       'Down Time': 'timer_off',
+      'Avg Down Time': 'timer_off',
       'Idle/Paused Operators': 'person_off',
       'Down Operators': 'do_not_disturb_on',
       'Paused Machines': 'pause_circle',
@@ -642,7 +668,10 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       'Down Machines': 'do_not_disturb_on',
       'Total Count': 'tag',
       'Projected Count': 'flag',
+      'Avg Availability': 'event_available',
+      'Avg Throughput': 'trending_up',
       'Avg Efficiency': 'speed',
+      'Avg OEE': 'speed',
     };
     return icons[label] || 'dashboard';
   }
@@ -932,6 +961,20 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const numbers = values.map(Number).filter((value) => Number.isFinite(value));
     if (!numbers.length) return 0;
     return Math.round(numbers.reduce((sum, value) => sum + value, 0) / numbers.length);
+  }
+
+  private getPercentSummaryTone(value: unknown): 'good' | 'warn' | 'bad' {
+    const color = this.percentBreakpointService.getDashboardColor(value);
+    if (color === 'green') return 'good';
+    if (color === 'orange') return 'warn';
+    return 'bad';
+  }
+
+  private getOeeSummaryTone(value: unknown): 'good' | 'warn' | 'bad' {
+    const color = this.percentBreakpointService.getOeDashboardColor(value);
+    if (color === 'green') return 'good';
+    if (color === 'orange') return 'warn';
+    return 'bad';
   }
 
   private getElapsedHours(): number {
