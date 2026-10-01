@@ -56,6 +56,43 @@ export interface CountSparklineCache {
   history: CountSparklineSeries;
 }
 
+export interface ProductionWindowStats {
+  hasData: boolean;
+  availabilityPercent: number | null;
+  efficiencyPercent: number | null;
+  throughputPercent: number | null;
+  oeePercent: number | null;
+  validCount: number;
+  rejectCount: number;
+  runtimeMs: number;
+  workedTimeMs: number;
+  pausedTimeMs: number;
+  faultTimeMs: number;
+  offlineTimeMs: number;
+  breakTimeMs: number;
+  timeCreditMs: number;
+}
+
+export interface ProductionEntity {
+  key: string;
+  machine: any;
+  operator?: any;
+  item?: any;
+  active?: boolean;
+  activeOperatorKeys?: string[];
+  status: number;
+  fault: string;
+  statusSince?: string | Date | null;
+  stats: Record<string, ProductionWindowStats>;
+}
+
+export interface ProductionStatsCache {
+  updatedAt: string | Date;
+  windows: Record<string, { key: string; label: string; start: string | Date; end: string | Date }>;
+  machines: Record<string, ProductionEntity>;
+  operators: Record<string, ProductionEntity>;
+}
+
 export interface DashboardCacheEnvelope {
   machinesSummary?: any[];
   operatorsSummary?: any[];
@@ -107,12 +144,13 @@ export interface DashboardCacheState {
     counts?: {
       sparkline?: CountSparklineCache;
     };
+    production?: ProductionStatsCache;
   };
 }
 
 interface DashboardCacheMessage {
   type: 'dashboard-cache-update' | 'dashboard-cache';
-  scope?: DashboardCacheScope | 'all' | 'dashboard' | 'dashboardHistory' | 'countSparkline' | 'initial';
+  scope?: DashboardCacheScope | 'all' | 'dashboard' | 'dashboardHistory' | 'countSparkline' | 'production' | 'initial';
   cache?: DashboardCacheEnvelope | DashboardCacheState;
   dashboard?: DashboardCacheState['dashboard'];
 }
@@ -396,6 +434,14 @@ export class WebsocketService {
         today: cache?.today || current.today,
         currentShift: cache?.currentShift || current.currentShift,
         activeShift: cache?.activeShift || this.activeShiftFromCurrentShift(cache?.currentShift || current.currentShift),
+        dashboard: message.dashboard || cache?.dashboard || current.dashboard
+      });
+      return;
+    }
+
+    if (message.scope === 'production') {
+      this.dashboardCacheSubject.next({
+        ...current,
         dashboard: message.dashboard || cache?.dashboard || current.dashboard
       });
       return;

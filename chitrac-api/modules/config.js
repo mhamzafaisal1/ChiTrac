@@ -77,6 +77,7 @@ module.exports = {
   operatorSessionCollectionName: 'session-operator',
   itemSessionCollectionName: 'session-item',
   totalsDailyCollectionName: 'totals-daily',
+  totalsMinuteCollectionName: 'totals-minute',
   totalsHourlyCollectionName: 'totals-hourly',
   totalsShiftCollectionName: 'totals-shift',
 
