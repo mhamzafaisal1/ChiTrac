@@ -149,6 +149,11 @@
   font-weight: bolder;
 }
 
+.neutral {
+  background-color: var(--sg-color-medium-gray-neutral) !important;
+  color: var(--sg-color-black);
+}
+
 .no-operator {
   background-color: var(--sg-color-medium-gray-neutral) !important;
 }

@@ -27,6 +27,7 @@ const {
   buildIdleOperatorSummary,
   emptyIdleOperatorSummary,
 } = require("../utils/idleOperatorSummary");
+const { loadProductionStatsCache } = require("../utils/productionStatsCache");
 
 const CACHE_POLL_INTERVAL_MS = 6_000;
 const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
@@ -34,6 +35,8 @@ const DASHBOARD_HISTORY_REFRESH_JOB_KEY = "dashboardHistoryRefresh";
 const DASHBOARD_HISTORY_DAYS = 7;
 const LAST_SEVEN_DAYS_CACHE_JOB_KEY = "lastSevenDaysCacheRefresh";
 const COUNT_SPARKLINE_JOB_KEY = "countSparklineMinuteRefresh";
+const PRODUCTION_STATS_JOB_KEY = "productionStatsRefresh";
+const PRODUCTION_STATS_REFRESH_INTERVAL_MS = 5_000;
 const HISTORICAL_DAY_COUNT = 7;
 
 function ensureCache(server) {
@@ -46,6 +49,7 @@ function ensureCache(server) {
   if (!server.cache.dashboard.operators) server.cache.dashboard.operators = {};
   if (!server.cache.dashboard.dailyAnalytics) server.cache.dashboard.dailyAnalytics = {};
   if (!server.cache.dashboard.counts) server.cache.dashboard.counts = {};
+  if (!server.cache.dashboard.production) server.cache.dashboard.production = {};
   if (!Array.isArray(server.cache.dashboard.machines.shifts)) server.cache.dashboard.machines.shifts = [];
   if (!Array.isArray(server.cache.dashboard.operators.shifts)) server.cache.dashboard.operators.shifts = [];
   if (!Array.isArray(server.cache.dashboard.dailyAnalytics.shifts)) server.cache.dashboard.dailyAnalytics.shifts = [];
@@ -280,6 +284,22 @@ async function refreshCountSparklineCache(server, options = {}) {
     broadcastDashboardCache(server, "countSparkline");
   }
 
+  return nextCache;
+}
+
+async function refreshProductionStatsCache(server, options = {}) {
+  const nextCache = await loadProductionStatsCache(server.db, server.config, options.now || new Date());
+  ensureCache(server);
+  server.cache.dashboard.production = nextCache;
+
+  if (server.logger) {
+    server.logger.info(
+      `[mongoWatchers] Updated production stats cache with ${Object.keys(nextCache.machines).length} machines and ${Object.keys(nextCache.operators).length} operator-machine records`
+    );
+  }
+  if (options.broadcast !== false) {
+    broadcastDashboardCache(server, "production");
+  }
   return nextCache;
 }
 
@@ -932,6 +952,51 @@ function scheduleCountSparklineRefresh(server) {
   return job;
 }
 
+function scheduleNextProductionStatsRefresh(server) {
+  ensureCache(server);
+  if (server.cache.productionPolling?.stopped) return null;
+  if (!server.cache.productionPolling) server.cache.productionPolling = {};
+
+  const job = schedule.scheduleJob(
+    new Date(Date.now() + PRODUCTION_STATS_REFRESH_INTERVAL_MS),
+    async () => {
+      server.cache.productionPolling.job = null;
+      if (server.scheduledJobs) server.scheduledJobs[PRODUCTION_STATS_JOB_KEY] = null;
+      try {
+        await refreshProductionStatsCache(server);
+      } catch (error) {
+        server.logger?.error?.(`[mongoWatchers] Production stats refresh failed: ${error.message}`);
+      } finally {
+        scheduleNextProductionStatsRefresh(server);
+      }
+    }
+  );
+  server.cache.productionPolling.job = job;
+  if (!server.scheduledJobs) server.scheduledJobs = {};
+  server.scheduledJobs[PRODUCTION_STATS_JOB_KEY] = job;
+  return job;
+}
+
+function startProductionStatsRefresh(server) {
+  ensureCache(server);
+  if (!server.cache.productionPolling) server.cache.productionPolling = {};
+  if (server.cache.productionPolling.job) return server.cache.productionPolling.job;
+  server.cache.productionPolling.stopped = false;
+  const job = scheduleNextProductionStatsRefresh(server);
+  server.logger?.info?.(
+    `[mongoWatchers] Started production stats refresh every ${PRODUCTION_STATS_REFRESH_INTERVAL_MS}ms`
+  );
+  return job;
+}
+
+function stopProductionStatsRefresh(server) {
+  if (!server?.cache?.productionPolling) return;
+  server.cache.productionPolling.stopped = true;
+  server.cache.productionPolling.job?.cancel?.();
+  server.cache.productionPolling.job = null;
+  if (server.scheduledJobs) server.scheduledJobs[PRODUCTION_STATS_JOB_KEY] = null;
+}
+
 function scheduleLastSevenDaysRefresh(server) {
   ensureCache(server);
   if (!server.scheduledJobs) server.scheduledJobs = {};
@@ -1078,12 +1143,14 @@ async function startMongoWatchers(server) {
   ensureCache(server);
 
   await refreshCountSparklineCache(server, { initial: true, broadcast: false });
+  await refreshProductionStatsCache(server, { broadcast: false });
   await refreshLastWeekDashboardCache(server);
   await refreshDashboardCache(server);
   startHistoryRefreshSchedule(server);
   await refreshLastSevenDaysCache(server, { broadcast: false });
   scheduleLastSevenDaysRefresh(server);
   scheduleCountSparklineRefresh(server);
+  startProductionStatsRefresh(server);
   startCachePolling(server);
 
   return server.cache;
@@ -1093,6 +1160,7 @@ async function stopMongoWatchers(server) {
   if (!server?.cache) return;
   stopCachePolling(server);
   stopHistoryRefreshSchedule(server);
+  stopProductionStatsRefresh(server);
   const historyJob = server.scheduledJobs?.[LAST_SEVEN_DAYS_CACHE_JOB_KEY];
   if (historyJob && typeof historyJob.cancel === "function") {
     historyJob.cancel();
@@ -1117,6 +1185,7 @@ module.exports = {
   refreshCurrentShiftCache,
   refreshTodayDailyAnalyticsCache,
   refreshCountSparklineCache,
+  refreshProductionStatsCache,
   refreshLastWeekDashboardCache,
   refreshDashboardCache,
   refreshLastSevenDaysCache,
