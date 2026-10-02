@@ -19,6 +19,7 @@ import {
   calculateMachineStatusCounts,
   calculateOperatorStatusCounts,
   EMPTY_MACHINE_STATUS_COUNTS,
+  hasConnectedActivity,
   MachineStatusCounts,
 } from '../../utils/dashboard-status-counts';
 import { PollingService } from '../services/polling-service.service';
@@ -522,10 +523,11 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     const operatorCounts = calculateOperatorStatusCounts(responses, idleOperators);
     const machineCounts = this.machineStatusCounts;
     const totalCount = responses.reduce((sum, r) => sum + Number(r.metrics?.output?.totalCount || 0), 0);
-    const avgAvailability = this.averagePercent(responses.map((r) => r.metrics?.performance?.availability?.percentage));
-    const avgThroughput = this.averagePercent(responses.map((r) => r.metrics?.performance?.throughput?.percentage));
-    const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage));
-    const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage));
+    const connectedResponses = responses.filter(hasConnectedActivity);
+    const avgAvailability = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.availability?.percentage));
+    const avgThroughput = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.throughput?.percentage));
+    const avgEfficiency = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.efficiency?.percentage));
+    const avgOee = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.oee?.percentage));
     const elapsedHours = this.getElapsedHours();
     const totalProjectionHours = this.getProjectionWindowHours(elapsedHours);
     const projectedCount = this.getProjectedCount(totalCount, elapsedHours, totalProjectionHours);
