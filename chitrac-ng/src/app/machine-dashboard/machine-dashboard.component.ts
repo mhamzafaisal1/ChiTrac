@@ -34,6 +34,7 @@ import {
   calculateMachineStatusCounts,
   calculateOperatorStatusCounts,
   EMPTY_OPERATOR_STATUS_COUNTS,
+  hasConnectedActivity,
   OperatorStatusCounts,
 } from "../../utils/dashboard-status-counts";
 import { ModalWrapperComponent } from "../components/modal-wrapper-component/modal-wrapper-component.component";
@@ -787,10 +788,11 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       const value = r.metrics?.output?.totalCount ?? r.itemSummary?.machineSummary?.totalCount ?? 0;
       return sum + Number(value || 0);
     }, 0);
-    const avgAvailability = this.averagePercent(responses.map((r) => r.metrics?.performance?.availability?.percentage ?? r.performance?.availability?.percentage));
-    const avgThroughput = this.averagePercent(responses.map((r) => r.metrics?.performance?.throughput?.percentage ?? r.performance?.throughput?.percentage));
-    const avgEfficiency = this.averagePercent(responses.map((r) => r.metrics?.performance?.efficiency?.percentage ?? r.performance?.efficiency?.percentage));
-    const avgOee = this.averagePercent(responses.map((r) => r.metrics?.performance?.oee?.percentage ?? r.performance?.oee?.percentage));
+    const connectedResponses = responses.filter(hasConnectedActivity);
+    const avgAvailability = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.availability?.percentage ?? r.performance?.availability?.percentage));
+    const avgThroughput = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.throughput?.percentage ?? r.performance?.throughput?.percentage));
+    const avgEfficiency = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.efficiency?.percentage ?? r.performance?.efficiency?.percentage));
+    const avgOee = this.averagePercent(connectedResponses.map((r) => r.metrics?.performance?.oee?.percentage ?? r.performance?.oee?.percentage));
     const allDayProjection = this.getAllDayProjectionSource(responses, cache);
     const allDayTotalCount = this.getSummaryTotalCount(allDayProjection.responses);
     const allDayElapsedHours = this.getProjectionElapsedHours(allDayProjection.projectionWindow) ?? this.getElapsedHours();
