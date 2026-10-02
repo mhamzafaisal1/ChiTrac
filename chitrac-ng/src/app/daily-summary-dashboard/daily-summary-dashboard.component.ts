@@ -14,6 +14,7 @@ import { forkJoin } from 'rxjs';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Subject, takeUntil, tap, delay, Observable, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -33,6 +34,33 @@ import { DateTimeService } from '../services/date-time.service';
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { OperatorService } from '../services/operator.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
+import { SettingsService } from '../services/settings.service';
+import { LayoutEditService } from '../services/layout-edit.service';
+import { UserService } from '../user.service';
+import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
+import {
+  SummaryCardVisibilityDialogComponent,
+  SummaryCardVisibilityDialogResult,
+  SummaryCardVisibilityOption,
+} from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
+import {
+  calculateMachineStatusCounts,
+  calculateOperatorStatusCounts,
+  hasConnectedActivity,
+} from '../../utils/dashboard-status-counts';
+
+interface SummaryCard {
+  id: string;
+  label: string;
+  value: string | number;
+  icon: string;
+  tone: string;
+}
+
+interface SummaryDashboardLayoutSnapshot {
+  summaryCardOrder: string[];
+  summaryCardVisibility: Record<string, boolean>;
+}
 
 @Component({
     selector: "app-daily-summary-dashboard",
@@ -43,6 +71,7 @@ import { PercentBreakpointService } from '../services/percent-breakpoint.service
         MatButtonModule,
         MatIconModule,
         MatSlideToggleModule,
+        DragDropModule,
         BaseTableComponent,
         MatDialogModule,
     ],
@@ -68,6 +97,39 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   rawMachineData: any[] = []; // store full API response for machines
   rawOperatorData: any[] = []; // store full API response for operators
   rawItemData: any[] = [];
+  summaryCards: SummaryCard[] = [];
+  allSummaryCards: SummaryCard[] = [];
+  summaryCardVisibility: Record<string, boolean> = {};
+  layoutEditing = false;
+  private idleOperatorSummary: any = null;
+  private readonly layoutContextId = 'summaryDashboard';
+  private readonly summaryCardOrderKey = 'chitrac-summary-dashboard-summary-card-order';
+  private readonly summaryCardVisibilityKey = 'chitrac-summary-dashboard-summary-card-visibility';
+  private summaryCardOrder: string[] = [];
+  private layoutSnapshot: SummaryDashboardLayoutSnapshot | null = null;
+  private readonly defaultVisibleSummaryCardIds = new Set([
+    'machine.machines',
+    'machine.running',
+    'operator.operators',
+    'operator.running',
+    'machine.totalCount',
+    'operator.totalCount',
+    'machine.avgOee',
+    'operator.avgEfficiency',
+  ]);
+  private readonly summaryCardIds = [
+    'machine.machines', 'machine.running', 'machine.paused', 'machine.faulted', 'machine.offline',
+    'machine.idlePaused', 'machine.down', 'operator.operators', 'operator.assigned', 'operator.running',
+    'operator.paused', 'operator.faulted', 'operator.idle', 'operator.idlePaused', 'operator.down',
+    'machine.faultTime', 'machine.avgFaultTime', 'machine.runTime', 'machine.avgWorkedTime',
+    'machine.pausedTime', 'machine.avgPausedTime', 'machine.downTime', 'machine.avgDownTime',
+    'machine.totalCount', 'machine.currentPace', 'machine.shift', 'machine.projectedAllDay',
+    'machine.projectedShift', 'machine.avgAvailability', 'machine.avgThroughput', 'machine.avgEfficiency',
+    'machine.avgOee', 'operator.faultTime', 'operator.avgFaultTime', 'operator.workedTime',
+    'operator.avgWorkedTime', 'operator.pausedTime', 'operator.avgPausedTime', 'operator.downTime',
+    'operator.avgDownTime', 'operator.totalCount', 'operator.projectedCount', 'operator.avgAvailability',
+    'operator.avgThroughput', 'operator.avgEfficiency', 'operator.avgOee',
+  ];
   private machinePollSub: any;
   private operatorPollSub: any;
   private itemPollSub: any;
@@ -92,10 +154,18 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private machineService: MachineService,
     private operatorService: OperatorService,
-    private percentBreakpointService: PercentBreakpointService
+    private percentBreakpointService: PercentBreakpointService,
+    private settingsService: SettingsService,
+    private layoutEditService: LayoutEditService,
+    private userService: UserService
   ) {}
 
   ngOnInit(): void {
+
+    this.loadInitialSummaryCardLayout();
+    this.subscribeToLayoutEditing();
+    this.subscribeToUserPreferences();
+    this.layoutEditService.register(this.layoutContextId, 'Summary Dashboard');
 
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();
@@ -183,6 +253,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
+    this.layoutEditService.unregister(this.layoutContextId);
   }
 
   detectTheme(): void {
@@ -209,10 +280,17 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       this.POLLING_INTERVAL, this.destroy$, false, false).subscribe();
 
     this.operatorPollSub = this.pollingService.poll(
-      () => { tick(); return this.dashboardService
-        .getOperatorsSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
+      () => { tick(); return forkJoin({
+        operators: this.dashboardService.getOperatorsSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId()),
+        idleOperators: this.operatorService
+          .getIdleOperatorSummary(this.startTime, this.endTime, this.dateTimeService.getShiftId())
+          .pipe(catchError(() => of(null))),
+      })
         .pipe(
-          tap((r:any)=> this.updateOperators(r)),
+          tap(({ operators, idleOperators }) => {
+            this.idleOperatorSummary = idleOperators;
+            this.updateOperators(operators);
+          }),
           catchError(err => { console.error('operators poll', err); return of(null); }),
           delay(0)
         ); },
@@ -241,6 +319,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
     this.machineRows = [];
     this.operatorRows = [];
     this.itemRows = [];
+    this.idleOperatorSummary = null;
+    this.updateSummaryCards();
   }
 
   private updateMachines(data:any){ 
@@ -253,6 +333,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       'Total Count': m.performance?.output?.totalCount ?? 0,
       serial: m.machine?.serial
     }));
+    this.updateSummaryCards();
   }
 
   private updateOperators(data:any){
@@ -265,6 +346,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       'Efficiency': this.formatPercentage(o.metrics?.performance?.efficiency?.percentage ?? 0),
       operatorId: o.operator?.id
     }));
+    this.updateSummaryCards();
   }
 
   private updateItems(data:any){
@@ -276,6 +358,342 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
         'Total Count': x.count,
         'Efficiency': this.formatPercentage(x.efficiency ?? 0)
       }));
+  }
+
+  onSummaryCardDrop(event: CdkDragDrop<SummaryCard[]>): void {
+    if (!this.layoutEditing || event.previousIndex === event.currentIndex) return;
+    moveItemInArray(this.summaryCards, event.previousIndex, event.currentIndex);
+    const visibleIds = this.summaryCards.map((card) => card.id);
+    const hiddenIds = this.getSummaryCardOrder().filter((id) => !visibleIds.includes(id));
+    this.summaryCardOrder = this.cleanSummaryCardOrder([...visibleIds, ...hiddenIds]);
+    this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
+    this.layoutEditService.markEditsMade();
+  }
+
+  openSummaryCardVisibilityDialog(): void {
+    const dialogRef = this.dialog.open(SummaryCardVisibilityDialogComponent, {
+      width: '900px',
+      maxWidth: 'calc(100vw - 32px)',
+      autoFocus: false,
+      data: {
+        cards: this.getSummaryCardVisibilityOptions(),
+        visibility: this.summaryCardVisibility,
+        title: 'Summary Dashboard Infoboxes',
+        description: 'Choose machine and operator infoboxes for this dashboard.',
+        dragDropEnabled: true,
+      },
+    });
+
+    dialogRef.afterClosed()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((result: SummaryCardVisibilityDialogResult | undefined) => {
+        if (!result) return;
+        this.summaryCardOrder = this.cleanSummaryCardOrder(result.order);
+        this.summaryCardVisibility = this.cleanSummaryCardVisibility(result.visibility);
+        this.syncSummaryCardsFromAll();
+        this.layoutEditService.markEditsMade();
+      });
+  }
+
+  private updateSummaryCards(): void {
+    const machines = this.rawMachineData.filter((record) => !record?.isDummy);
+    const operators = this.rawOperatorData.filter((record) => !record?.isDummy);
+    const machineCounts = calculateMachineStatusCounts(machines);
+    const operatorCounts = calculateOperatorStatusCounts(
+      operators,
+      Number(this.idleOperatorSummary?.idleOperators || 0)
+    );
+
+    const machineRuntimeMs = this.sumDuration(machines, ['runtime']);
+    const machinePausedMs = this.sumDuration(machines, ['pausedTime']);
+    const machineFaultMs = this.sumDuration(machines, ['faultTime']);
+    const machineDownMs = this.sumDuration(machines, ['downTime', 'downtime']);
+    const operatorRuntimeMs = this.sumDuration(operators, ['runtime', 'workedTime']);
+    const operatorPausedMs = this.sumDuration(operators, ['pausedTime']);
+    const operatorFaultMs = this.sumDuration(operators, ['faultTime']);
+    const operatorDownMs = this.sumDuration(operators, ['downTime', 'downtime']);
+    const machineTotalCount = this.sumTotalCount(machines);
+    const operatorTotalCount = this.sumTotalCount(operators);
+    const machineConnected = machines.filter(hasConnectedActivity);
+    const operatorConnected = operators.filter(hasConnectedActivity);
+    const elapsedHours = this.getElapsedHours();
+    const projectionHours = this.getProjectionWindowHours(elapsedHours);
+    const machinePace = elapsedHours > 0 ? Math.round(machineTotalCount / elapsedHours) : 0;
+    const machineProjectedCount = this.getProjectedCount(machineTotalCount, elapsedHours, projectionHours);
+    const operatorProjectedCount = this.getProjectedCount(operatorTotalCount, elapsedHours, projectionHours);
+    const selectedShift = Boolean(this.dateTimeService.getShiftId());
+
+    const machineAverage = (metric: 'availability' | 'throughput' | 'efficiency' | 'oee') =>
+      this.averagePercent(machineConnected.map((record) => this.performancePercent(record, metric)));
+    const operatorAverage = (metric: 'availability' | 'throughput' | 'efficiency' | 'oee') =>
+      this.averagePercent(operatorConnected.map((record) => this.performancePercent(record, metric)));
+
+    const cards: SummaryCard[] = [
+      this.card('machine.machines', 'Machines', machineCounts.total, 'precision_manufacturing', 'neutral'),
+      this.card('machine.running', 'Running Machines', machineCounts.running, 'play_circle', 'good'),
+      this.card('machine.paused', 'Paused Machines', machineCounts.paused, 'pause_circle', machineCounts.paused ? 'warn' : 'neutral'),
+      this.card('machine.faulted', 'Faulted Machines', machineCounts.faulted, 'warning', machineCounts.faulted ? 'bad' : 'neutral'),
+      this.card('machine.offline', 'Offline Machines', machineCounts.offline, 'cloud_off', machineCounts.offline ? 'warn' : 'neutral'),
+      this.card('machine.idlePaused', 'Idle/Paused Machines', machineCounts.idlePaused, 'motion_photos_paused', machineCounts.idlePaused ? 'warn' : 'neutral'),
+      this.card('machine.down', 'Down Machines', machineCounts.down, 'do_not_disturb_on', machineCounts.down ? 'warn' : 'neutral'),
+      this.card('operator.operators', 'Operators', operatorCounts.total, 'groups', 'neutral'),
+      this.card('operator.assigned', 'Assigned Operators', operatorCounts.assigned, 'assignment_ind', 'neutral'),
+      this.card('operator.running', 'Running Operators', operatorCounts.running, 'play_circle', 'good'),
+      this.card('operator.paused', 'Paused Operators', operatorCounts.paused, 'pause_circle', operatorCounts.paused ? 'warn' : 'neutral'),
+      this.card('operator.faulted', 'Faulted Operators', operatorCounts.faulted, 'warning', operatorCounts.faulted ? 'bad' : 'neutral'),
+      this.card('operator.idle', 'Idle Operators', operatorCounts.idle, 'person_off', operatorCounts.idle ? 'warn' : 'good'),
+      this.card('operator.idlePaused', 'Idle/Paused Operators', operatorCounts.idlePaused, 'person_off', operatorCounts.idlePaused ? 'warn' : 'neutral'),
+      this.card('operator.down', 'Down Operators', operatorCounts.down, 'do_not_disturb_on', operatorCounts.down ? 'warn' : 'neutral'),
+      this.card('machine.faultTime', 'Machine Fault Time', this.formatMilliseconds(machineFaultMs), 'timer_off', machineFaultMs ? 'bad' : 'neutral'),
+      this.card('machine.avgFaultTime', 'Avg Machine Fault Time', this.formatAverageDuration(machineFaultMs, machines.length), 'timer_off', machineFaultMs ? 'bad' : 'neutral'),
+      this.card('machine.runTime', 'Machine Run Time', this.formatMilliseconds(machineRuntimeMs), 'timer', machineRuntimeMs ? 'good' : 'neutral'),
+      this.card('machine.avgWorkedTime', 'Avg Machine Worked Time', this.formatAverageDuration(machineRuntimeMs, machines.length), 'timer', machineRuntimeMs ? 'good' : 'neutral'),
+      this.card('machine.pausedTime', 'Machine Paused Time', this.formatMilliseconds(machinePausedMs), 'pause_circle', machinePausedMs ? 'warn' : 'neutral'),
+      this.card('machine.avgPausedTime', 'Avg Machine Paused Time', this.formatAverageDuration(machinePausedMs, machines.length), 'pause_circle', machinePausedMs ? 'warn' : 'neutral'),
+      this.card('machine.downTime', 'Machine Down Time', this.formatMilliseconds(machineDownMs), 'timer_off', machineDownMs ? 'bad' : 'neutral'),
+      this.card('machine.avgDownTime', 'Avg Machine Down Time', this.formatAverageDuration(machineDownMs, machines.length), 'timer_off', machineDownMs ? 'bad' : 'neutral'),
+      this.card('machine.totalCount', 'Machine Total Count', machineTotalCount.toLocaleString(), 'tag', 'neutral'),
+      this.card('machine.currentPace', 'Machine Current Pace', `${machinePace.toLocaleString()} PPH`, 'trending_up', machinePace ? 'good' : 'warn'),
+      this.card('machine.shift', 'Shift', selectedShift ? 'Selected Shift' : 'All Day', 'schedule', 'neutral'),
+      this.card('machine.projectedAllDay', 'Machine Projected Count (All Day)', selectedShift ? 'N/A' : machineProjectedCount.toLocaleString(), 'flag', !selectedShift && machineProjectedCount >= machineTotalCount ? 'good' : 'neutral'),
+      this.card('machine.projectedShift', 'Machine Projected Count (Shift)', selectedShift ? machineProjectedCount.toLocaleString() : 'N/A', 'outlined_flag', selectedShift && machineProjectedCount >= machineTotalCount ? 'good' : 'neutral'),
+      this.percentCard('machine.avgAvailability', 'Avg Machine Availability', machineAverage('availability'), 'event_available'),
+      this.percentCard('machine.avgThroughput', 'Avg Machine Throughput', machineAverage('throughput'), 'trending_up'),
+      this.percentCard('machine.avgEfficiency', 'Avg Machine Efficiency', machineAverage('efficiency'), 'speed'),
+      this.percentCard('machine.avgOee', 'Avg Machine OEE', machineAverage('oee'), 'speed', true),
+      this.card('operator.faultTime', 'Operator Fault Time', this.formatMilliseconds(operatorFaultMs), 'timer_off', operatorFaultMs ? 'bad' : 'neutral'),
+      this.card('operator.avgFaultTime', 'Avg Operator Fault Time', this.formatAverageDuration(operatorFaultMs, operators.length), 'timer_off', operatorFaultMs ? 'bad' : 'neutral'),
+      this.card('operator.workedTime', 'Operator Worked Time', this.formatMilliseconds(operatorRuntimeMs), 'timer', operatorRuntimeMs ? 'good' : 'neutral'),
+      this.card('operator.avgWorkedTime', 'Avg Operator Worked Time', this.formatAverageDuration(operatorRuntimeMs, operators.length), 'timer', operatorRuntimeMs ? 'good' : 'neutral'),
+      this.card('operator.pausedTime', 'Operator Paused Time', this.formatMilliseconds(operatorPausedMs), 'pause_circle', operatorPausedMs ? 'warn' : 'neutral'),
+      this.card('operator.avgPausedTime', 'Avg Operator Paused Time', this.formatAverageDuration(operatorPausedMs, operators.length), 'pause_circle', operatorPausedMs ? 'warn' : 'neutral'),
+      this.card('operator.downTime', 'Operator Down Time', this.formatMilliseconds(operatorDownMs), 'timer_off', operatorDownMs ? 'bad' : 'neutral'),
+      this.card('operator.avgDownTime', 'Avg Operator Down Time', this.formatAverageDuration(operatorDownMs, operators.length), 'timer_off', operatorDownMs ? 'bad' : 'neutral'),
+      this.card('operator.totalCount', 'Operator Total Count', operatorTotalCount.toLocaleString(), 'tag', 'neutral'),
+      this.card('operator.projectedCount', 'Operator Projected Count', operatorProjectedCount.toLocaleString(), 'flag', operatorProjectedCount >= operatorTotalCount ? 'good' : 'neutral'),
+      this.percentCard('operator.avgAvailability', 'Avg Operator Availability', operatorAverage('availability'), 'event_available'),
+      this.percentCard('operator.avgThroughput', 'Avg Operator Throughput', operatorAverage('throughput'), 'trending_up'),
+      this.percentCard('operator.avgEfficiency', 'Avg Operator Efficiency', operatorAverage('efficiency'), 'speed'),
+      this.percentCard('operator.avgOee', 'Avg Operator OEE', operatorAverage('oee'), 'speed', true),
+    ];
+
+    this.allSummaryCards = this.applySummaryCardOrder(cards);
+    this.syncSummaryCardsFromAll();
+  }
+
+  private card(id: string, label: string, value: string | number, icon: string, tone: string): SummaryCard {
+    return { id, label, value, icon, tone };
+  }
+
+  private percentCard(id: string, label: string, value: number, icon: string, oee = false): SummaryCard {
+    return this.card(id, label, `${value}%`, icon, oee ? this.getOeeSummaryTone(value) : this.getPercentSummaryTone(value));
+  }
+
+  private sumDuration(records: any[], keys: string[]): number {
+    return records.reduce((sum, record) => sum + this.durationTotal(record, keys), 0);
+  }
+
+  private durationTotal(record: any, keys: string[]): number {
+    for (const key of keys) {
+      const value = record?.metrics?.[key]?.total ?? record?.performance?.[key]?.total;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return numeric;
+    }
+    return 0;
+  }
+
+  private sumTotalCount(records: any[]): number {
+    return records.reduce((sum, record) => {
+      const value = record?.metrics?.output?.totalCount ?? record?.performance?.output?.totalCount ?? 0;
+      return sum + (Number(value) || 0);
+    }, 0);
+  }
+
+  private performancePercent(record: any, metric: string): number {
+    const value = record?.metrics?.performance?.[metric]?.percentage ?? record?.performance?.[metric]?.percentage;
+    const numeric = Number(typeof value === 'string' ? value.replace('%', '') : value);
+    return Number.isFinite(numeric) ? numeric : NaN;
+  }
+
+  private averagePercent(values: number[]): number {
+    const valid = values.filter(Number.isFinite);
+    return valid.length ? Math.round(valid.reduce((sum, value) => sum + value, 0) / valid.length) : 0;
+  }
+
+  private formatMilliseconds(totalMs: number): string {
+    return formatDurationMilliseconds(totalMs);
+  }
+
+  private formatAverageDuration(totalMs: number, count: number): string {
+    return this.formatMilliseconds(count > 0 ? totalMs / count : 0);
+  }
+
+  private getPercentSummaryTone(value: unknown): 'good' | 'warn' | 'bad' {
+    const color = this.percentBreakpointService.getDashboardColor(value);
+    return color === 'green' ? 'good' : color === 'orange' ? 'warn' : 'bad';
+  }
+
+  private getOeeSummaryTone(value: unknown): 'good' | 'warn' | 'bad' {
+    const color = this.percentBreakpointService.getOeDashboardColor(value);
+    return color === 'green' ? 'good' : color === 'orange' ? 'warn' : 'bad';
+  }
+
+  private getElapsedHours(): number {
+    const start = new Date(this.startTime).getTime();
+    const end = new Date(this.endTime).getTime();
+    return Number.isFinite(start) && Number.isFinite(end) && end > start ? (end - start) / 36e5 : 0;
+  }
+
+  private getProjectionWindowHours(elapsedHours: number): number {
+    const start = new Date(this.startTime);
+    const end = new Date(this.endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return elapsedHours;
+    const projectionEnd = new Date(end);
+    projectionEnd.setHours(23, 59, 59, 999);
+    return Math.max(elapsedHours, (projectionEnd.getTime() - start.getTime()) / 36e5);
+  }
+
+  private getProjectedCount(totalCount: number, elapsedHours: number, projectionHours: number): number {
+    if (elapsedHours <= 0 || projectionHours <= 0) return totalCount;
+    return Math.round((totalCount / elapsedHours) * Math.max(elapsedHours, projectionHours));
+  }
+
+  private applySummaryCardOrder(cards: SummaryCard[]): SummaryCard[] {
+    const byId = new Map(cards.map((card) => [card.id, card]));
+    const ordered = this.summaryCardOrder.map((id) => byId.get(id)).filter((card): card is SummaryCard => Boolean(card));
+    return [...ordered, ...cards.filter((card) => !this.summaryCardOrder.includes(card.id))];
+  }
+
+  private syncSummaryCardsFromAll(): void {
+    this.allSummaryCards = this.applySummaryCardOrder(this.allSummaryCards);
+    this.summaryCards = this.allSummaryCards.filter((card) => this.summaryCardVisibility[card.id] !== false);
+  }
+
+  private getSummaryCardVisibilityOptions(): SummaryCardVisibilityOption[] {
+    return this.allSummaryCards.map((card) => ({
+      id: card.id,
+      label: card.label,
+      icon: card.icon,
+      value: card.value,
+      tone: card.tone,
+    }));
+  }
+
+  private getSummaryCardOrder(): string[] {
+    return this.allSummaryCards.length ? this.allSummaryCards.map((card) => card.id) : this.summaryCardOrder;
+  }
+
+  private cleanSummaryCardOrder(order: string[] = []): string[] {
+    const allowed = new Set(this.summaryCardIds);
+    const unique = [...new Set(order.filter((id) => typeof id === 'string' && allowed.has(id)))];
+    return [...unique, ...this.summaryCardIds.filter((id) => !unique.includes(id))];
+  }
+
+  private cleanSummaryCardVisibility(visibility: Record<string, boolean> = {}): Record<string, boolean> {
+    return this.summaryCardIds.reduce((cleaned, id) => {
+      cleaned[id] = typeof visibility[id] === 'boolean'
+        ? visibility[id]
+        : this.defaultVisibleSummaryCardIds.has(id);
+      return cleaned;
+    }, {} as Record<string, boolean>);
+  }
+
+  private loadInitialSummaryCardLayout(): void {
+    try {
+      const order = JSON.parse(localStorage.getItem(this.summaryCardOrderKey) || '[]');
+      const visibility = JSON.parse(localStorage.getItem(this.summaryCardVisibilityKey) || '{}');
+      this.summaryCardOrder = this.cleanSummaryCardOrder(Array.isArray(order) ? order : []);
+      this.summaryCardVisibility = this.cleanSummaryCardVisibility(visibility);
+    } catch {
+      this.resetSummaryCardLayout();
+    }
+  }
+
+  private subscribeToUserPreferences(): void {
+    this.settingsService.userPreferences$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((preferences) => {
+        if (!preferences) return;
+        const layout = preferences.dashboardLayouts?.summaryDashboard;
+        if (!layout) {
+          this.resetSummaryCardLayout();
+          return;
+        }
+        this.summaryCardOrder = this.cleanSummaryCardOrder(layout.summaryCardOrder || []);
+        this.summaryCardVisibility = this.cleanSummaryCardVisibility(layout.summaryCardVisibility || {});
+        this.syncSummaryCardsFromAll();
+      });
+  }
+
+  private subscribeToLayoutEditing(): void {
+    this.layoutEditService.context$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((context) => {
+        const nextEditing = context?.id === this.layoutContextId && context.editing;
+        if (nextEditing && !this.layoutEditing) {
+          this.layoutSnapshot = {
+            summaryCardOrder: [...this.getSummaryCardOrder()],
+            summaryCardVisibility: { ...this.summaryCardVisibility },
+          };
+        } else if (!nextEditing && this.layoutEditing) {
+          this.layoutSnapshot = null;
+        }
+        this.layoutEditing = nextEditing;
+      });
+
+    this.layoutEditService.lockRequested$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.confirmAndSaveLayout());
+  }
+
+  private confirmAndSaveLayout(): void {
+    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
+      width: '460px',
+      maxWidth: 'calc(100vw - 32px)',
+      autoFocus: false,
+    });
+    dialogRef.afterClosed()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((result) => {
+        if (result === 'save') this.saveSummaryCardLayout();
+        if (result === 'discard') this.revertSummaryCardLayout();
+      });
+  }
+
+  private saveSummaryCardLayout(): void {
+    const order = this.getSummaryCardOrder();
+    this.settingsService.setSummaryDashboardLayout(order, this.summaryCardVisibility);
+    if (!this.userService.getToken()) {
+      localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(order));
+      localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
+      this.layoutEditService.setEditing(false);
+      return;
+    }
+    this.settingsService.saveSummaryDashboardLayout(order, this.summaryCardVisibility).subscribe({
+      next: () => {
+        localStorage.removeItem(this.summaryCardOrderKey);
+        localStorage.removeItem(this.summaryCardVisibilityKey);
+        this.layoutSnapshot = null;
+        this.layoutEditService.setEditing(false);
+      },
+      error: (error) => console.error('[SummaryDashboard] Failed to save layout preferences', error),
+    });
+  }
+
+  private revertSummaryCardLayout(): void {
+    if (this.layoutSnapshot) {
+      this.summaryCardOrder = this.cleanSummaryCardOrder(this.layoutSnapshot.summaryCardOrder);
+      this.summaryCardVisibility = this.cleanSummaryCardVisibility(this.layoutSnapshot.summaryCardVisibility);
+      this.syncSummaryCardsFromAll();
+    }
+    this.layoutSnapshot = null;
+    this.layoutEditService.setEditing(false);
+  }
+
+  private resetSummaryCardLayout(): void {
+    this.summaryCardOrder = this.cleanSummaryCardOrder([]);
+    this.summaryCardVisibility = this.cleanSummaryCardVisibility({});
+    this.syncSummaryCardsFromAll();
   }
 
   fetchData(): Observable<any> {
@@ -291,10 +709,14 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
       machines: this.dashboardService.getMachinesSummary(formattedStart, formattedEnd, undefined, this.dateTimeService.getShiftId()),
       operators: this.dashboardService.getOperatorsSummary(formattedStart, formattedEnd, this.dateTimeService.getShiftId()),
       items: this.dashboardService.getItemsSummary(formattedStart, formattedEnd, undefined, this.dateTimeService.getShiftId()),
+      idleOperators: this.operatorService
+        .getIdleOperatorSummary(formattedStart, formattedEnd, this.dateTimeService.getShiftId())
+        .pipe(catchError(() => of(null))),
     }).pipe(
       takeUntil(this.destroy$),
       tap({
-        next: ({machines, operators, items}) => {
+        next: ({machines, operators, items, idleOperators}) => {
+          this.idleOperatorSummary = idleOperators;
           this.updateMachines(machines);
           this.updateOperators(operators);
           this.updateItems(items);

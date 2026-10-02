@@ -173,11 +173,12 @@ function constructor(server) {
 
     if (input.dashboardLayouts && typeof input.dashboardLayouts === 'object' && !Array.isArray(input.dashboardLayouts)) {
       const dashboardLayouts = {};
+      const summaryDashboard = input.dashboardLayouts.summaryDashboard;
       const machineDashboard = input.dashboardLayouts.machineDashboard;
       const operatorDashboard = input.dashboardLayouts.operatorDashboard;
       const experimentalDailyDashboard = input.dashboardLayouts.experimentalDailyDashboard;
 
-      const cleanDashboardLayout = (layout, dashboardName) => {
+      const cleanDashboardLayout = (layout, dashboardName, summaryCardLimit = 40) => {
         if (!layout || typeof layout !== 'object' || Array.isArray(layout)) {
           return null;
         }
@@ -204,7 +205,7 @@ function constructor(server) {
           const cleanedOrder = summaryCardOrder
             .map((label) => label.trim())
             .filter(Boolean)
-            .slice(0, 40);
+            .slice(0, summaryCardLimit);
 
           dashboardUpdates.summaryCardOrder = [...new Set(cleanedOrder)];
         }
@@ -217,7 +218,7 @@ function constructor(server) {
           }
 
           const cleanedVisibility = {};
-          Object.entries(summaryCardVisibility).slice(0, 40).forEach(([label, enabled]) => {
+          Object.entries(summaryCardVisibility).slice(0, summaryCardLimit).forEach(([label, enabled]) => {
             if (typeof enabled !== 'boolean') {
               const error = new Error(`Invalid ${dashboardName}.summaryCardVisibility. Every value must be boolean`);
               error.status = 400;
@@ -271,6 +272,11 @@ function constructor(server) {
 
         return Object.keys(dashboardUpdates).length ? dashboardUpdates : null;
       };
+
+      const summaryDashboardUpdates = cleanDashboardLayout(summaryDashboard, 'summaryDashboard', 80);
+      if (summaryDashboardUpdates) {
+        dashboardLayouts.summaryDashboard = summaryDashboardUpdates;
+      }
 
       const machineDashboardUpdates = cleanDashboardLayout(machineDashboard, 'machineDashboard');
       if (machineDashboardUpdates) {
@@ -368,6 +374,16 @@ function constructor(server) {
       updates.defaultTheme = preferences.defaultTheme;
     }
 
+    if (preferences.dashboardLayouts?.summaryDashboard?.summaryCardOrder) {
+      updates['dashboardLayouts.summaryDashboard.summaryCardOrder'] =
+        preferences.dashboardLayouts.summaryDashboard.summaryCardOrder;
+    }
+
+    if (preferences.dashboardLayouts?.summaryDashboard?.summaryCardVisibility) {
+      updates['dashboardLayouts.summaryDashboard.summaryCardVisibility'] =
+        preferences.dashboardLayouts.summaryDashboard.summaryCardVisibility;
+    }
+
     if (preferences.dashboardLayouts?.machineDashboard?.summaryCardOrder) {
       updates['dashboardLayouts.machineDashboard.summaryCardOrder'] =
         preferences.dashboardLayouts.machineDashboard.summaryCardOrder;
@@ -440,7 +456,7 @@ function constructor(server) {
 
   function mergeDashboardLayouts(systemLayouts = {}, userLayouts = {}) {
     const merged = { ...systemLayouts };
-    for (const dashboardName of ['machineDashboard', 'operatorDashboard', 'experimentalDailyDashboard']) {
+    for (const dashboardName of ['summaryDashboard', 'machineDashboard', 'operatorDashboard', 'experimentalDailyDashboard']) {
       const userLayout = userLayouts[dashboardName];
       if (!userLayout || typeof userLayout !== 'object' || Array.isArray(userLayout)) continue;
       merged[dashboardName] = {
