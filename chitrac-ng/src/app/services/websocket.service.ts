@@ -69,6 +69,7 @@ export interface ProductionWindowStats {
   pausedTimeMs: number;
   faultTimeMs: number;
   offlineTimeMs: number;
+  shiftTimeMs: number;
   breakTimeMs: number;
   timeCreditMs: number;
 }

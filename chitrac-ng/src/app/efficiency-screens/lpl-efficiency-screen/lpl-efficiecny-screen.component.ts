@@ -15,6 +15,7 @@ import { ActivatedRoute } from '@angular/router';
 })
 export class LplEfficiencyScreen implements OnDestroy, OnInit {
   lanes: any[] = [];
+  machineLane: any | null = null;
   pollingActive: boolean = false;
   private destroy$ = new Subject<void>();
   private readonly POLL_INTERVAL = 6000;
@@ -57,6 +58,7 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
           const latestFaultStart = res?.latestFaultStart ?? null;
           const data = res?.flipperData || [];
           this.lanes = data.map((item: any) => ({ ...item, latestFaultStart }));
+          this.machineLane = res?.machineLane ?? null;
         },
         error: (err) => {
           console.error('Fetch error:', err);
@@ -79,6 +81,7 @@ export class LplEfficiencyScreen implements OnDestroy, OnInit {
           const latestFaultStart = res?.latestFaultStart ?? null;
           const data = res?.flipperData || [];
           this.lanes = data.map((item: any) => ({ ...item, latestFaultStart }));
+          this.machineLane = res?.machineLane ?? null;
         },
         error: (err) => {
           console.error('Polling error:', err);

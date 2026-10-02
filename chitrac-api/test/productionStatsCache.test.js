@@ -5,6 +5,7 @@ const {
   buildProductionStatsCache,
   productionWindowRanges,
   scheduledBreakMs,
+  scheduledShiftMs,
   statsFromTotals,
 } = require("../utils/productionStatsCache");
 
@@ -38,6 +39,7 @@ test("subtracts scheduled breaks from elapsed time but retains their production 
     breaks: [{ startTime: { hour: 9, minute: 3 }, endTime: { hour: 9, minute: 4 } }],
   }];
   const breakTimeMs = scheduledBreakMs(shifts, start, end);
+  const shiftTimeMs = scheduledShiftMs(shifts, start, end);
   const stats = statsFromTotals({
     validCount: 9,
     rejectCount: 1,
@@ -47,15 +49,45 @@ test("subtracts scheduled breaks from elapsed time but retains their production 
     faultTimeMs: 0,
     offlineTimeMs: 0,
     timeCreditMs: 165000,
-  }, { start, end }, breakTimeMs);
+  }, { start, end }, breakTimeMs, shiftTimeMs);
 
   assert.equal(breakTimeMs, 60000);
+  assert.equal(shiftTimeMs, 330000);
   assert.equal(stats.availabilityPercent, 100);
   assert.equal(stats.efficiencyPercent, 50);
   assert.equal(stats.throughputPercent, 90);
   assert.equal(stats.oeePercent, 45);
   assert.equal(stats.runtimeMs, 330000);
+  assert.equal(stats.shiftTimeMs, 330000);
   assert.equal(stats.breakTimeMs, 60000);
+});
+
+test("uses valid shift time instead of time since midnight for All Day OEE", () => {
+  const now = new Date("2026-09-24T16:00:00.000Z");
+  const machine = { id: 90007, serial: 90007, name: "LPL1" };
+  const documents = [totalDocument("machine", "2026-09-24T15:59:00.000Z", machine, null, {
+    runtimeMs: 4 * 60 * 60 * 1000,
+    workedTimeMs: 4 * 60 * 60 * 1000,
+    count: 100,
+    misfeeds: 0,
+    timeCreditMs: 4.36 * 60 * 60 * 1000,
+  })];
+  const shifts = [{
+    active: true,
+    activeDays: [4],
+    startTime: { hour: 7, minute: 0 },
+    endTime: { hour: 13, minute: 30 },
+    breaks: [],
+  }];
+
+  const cache = buildProductionStatsCache(documents, [], shifts, now);
+  const allDay = cache.machines["90007"].stats.today;
+
+  assert.equal(allDay.shiftTimeMs, 4 * 60 * 60 * 1000);
+  assert.equal(allDay.availabilityPercent, 100);
+  assert.equal(allDay.efficiencyPercent, 109);
+  assert.equal(allDay.throughputPercent, 100);
+  assert.equal(allDay.oeePercent, 109);
 });
 
 test("groups operators by operator-machine and returns N/A-compatible null percentages", () => {

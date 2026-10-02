@@ -23,7 +23,11 @@ export class EfficiencyScreensService {
     return this.websocketService.dashboardCache$.pipe(
       filter(cache => !!cache.dashboard?.production),
       take(1),
-      map(cache => ({ flipperData: this.machineLanes(cache.dashboard?.production, serial), serial }))
+      map(cache => ({
+        flipperData: this.machineLanes(cache.dashboard?.production, serial),
+        machineLane: this.machineLane(cache.dashboard?.production, serial),
+        serial
+      }))
     );
   }
 
@@ -66,6 +70,12 @@ export class EfficiencyScreensService {
       return activeOperators.map(operator => this.toLane(operator));
     }
     return [this.toLane(machine)];
+  }
+
+  private machineLane(cache: ProductionStatsCache | undefined, serial: number): any | null {
+    if (!cache) return null;
+    const machine = cache.machines[String(serial)];
+    return machine ? this.toLane(machine) : null;
   }
 
   private toLane(entity: ProductionEntity): any {
