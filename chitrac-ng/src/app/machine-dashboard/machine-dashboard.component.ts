@@ -397,6 +397,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       });
   }
 
+  trackBySummaryCard = (_index: number, card: SummaryCard): string => {
+    return this.getSummaryCardPreferenceKey(card.label);
+  };
+
   onSummaryCardDrop(event: CdkDragDrop<SummaryCard[]>): void {
     if (!this.layoutEditing) return;
     if (event.previousIndex === event.currentIndex) return;
