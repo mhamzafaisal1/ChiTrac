@@ -38,6 +38,23 @@ const booleanMapSchema = {
 const dashboardLayoutsSchema = {
   type: 'object',
   properties: {
+    summaryDashboard: {
+      type: 'object',
+      properties: {
+        summaryCardOrder: {
+          type: 'array',
+          maxItems: 80,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1 }
+        },
+        summaryCardVisibility: {
+          type: 'object',
+          maxProperties: 80,
+          additionalProperties: { type: 'boolean' }
+        }
+      },
+      additionalProperties: false
+    },
     machineDashboard: {
       type: 'object',
       properties: {

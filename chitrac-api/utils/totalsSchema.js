@@ -2,7 +2,7 @@ const { DateTime } = require("luxon");
 const { ObjectId } = require("mongodb");
 const { SYSTEM_TIMEZONE } = require("./time");
 
-const TOTALS_COLLECTIONS = new Set(["totals-daily", "totals-hourly", "totals-shift"]);
+const TOTALS_COLLECTIONS = new Set(["totals-daily", "totals-hourly", "totals-shift", "totals-minute"]);
 
 const LEGACY_PATHS = {
   entityType: "type",

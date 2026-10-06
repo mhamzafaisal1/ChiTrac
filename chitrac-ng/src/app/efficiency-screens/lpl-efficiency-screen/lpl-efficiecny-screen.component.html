@@ -3,8 +3,8 @@
     <div class="lane-container" *ngFor="let lane of lanes; trackBy: ident">
       <app-efficiency-screen-lane [lane]="lane" [mode]="getLaneMode(lane)"></app-efficiency-screen-lane>
     </div>
-    <div class="lane-container" *ngIf="lanes.length > 0">
-      <app-efficiency-screen-lane [lane]="lanes[0]" mode="oee"></app-efficiency-screen-lane>
+    <div class="lane-container" *ngIf="machineLane">
+      <app-efficiency-screen-lane [lane]="machineLane" mode="oee"></app-efficiency-screen-lane>
     </div>
   </div>
   <div class="no-data-container" *ngIf="lanes.length === 0">

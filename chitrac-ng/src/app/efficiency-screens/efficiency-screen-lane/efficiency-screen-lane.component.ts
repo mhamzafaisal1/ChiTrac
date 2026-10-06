@@ -7,9 +7,10 @@ import { PercentBreakpointService } from '../../services/percent-breakpoint.serv
 export type EfficiencyScreenLaneMode = 'operator' | 'oee' | 'fault' | 'offline';
 
 export interface EfficiencySlot {
-  value: number;
+  value: number | null;
   label: string;
-  color: 'green' | 'orange' | 'red';
+  color: 'green' | 'orange' | 'red' | 'neutral';
+  hasData: boolean;
 }
 
 @Component({
@@ -113,8 +114,9 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   }
 
   /** Derive color from efficiency value (frontend-controlled: ≥90 green, 70-89 yellow, <70 red). */
-  getColor(value: number | undefined | null): 'green' | 'orange' | 'red' {
-    const v = value ?? 0;
+  getColor(value: number | undefined | null): 'green' | 'orange' | 'red' | 'neutral' {
+    if (value == null) return 'neutral';
+    const v = value;
     if (this.mode === 'oee') return this.percentBreakpointService.getOeDashboardColor(v);
     return this.percentBreakpointService.getDashboardColor(v);
   }
@@ -127,25 +129,42 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
     today: EfficiencySlot;
   } {
     const source = this.mode === 'oee' ? (this.lane?.oee ?? {}) : (this.lane?.efficiency ?? {});
-    const def = (v: number, label: string) => ({ value: v, label, color: this.getColor(v) });
+    const def = (v: number | null, label: string, hasData: boolean) => ({
+      value: v,
+      label,
+      hasData,
+      color: this.getColor(v)
+    });
     return {
       lastSixMinutes: def(
-        source?.lastSixMinutes?.value ?? 0,
-        source?.lastSixMinutes?.label ?? 'Last 6 Mins'
+        source?.lastSixMinutes?.value ?? null,
+        source?.lastSixMinutes?.label ?? 'Last 6 Mins',
+        source?.lastSixMinutes?.hasData === true
       ),
       lastFifteenMinutes: def(
-        source?.lastFifteenMinutes?.value ?? 0,
-        source?.lastFifteenMinutes?.label ?? 'Last 15 Mins'
+        source?.lastFifteenMinutes?.value ?? null,
+        source?.lastFifteenMinutes?.label ?? 'Last 15 Mins',
+        source?.lastFifteenMinutes?.hasData === true
       ),
       lastHour: def(
-        source?.lastHour?.value ?? 0,
-        source?.lastHour?.label ?? 'Last Hour'
+        source?.lastHour?.value ?? null,
+        source?.lastHour?.label ?? 'Last Hour',
+        source?.lastHour?.hasData === true
       ),
       today: def(
-        source?.today?.value ?? 0,
-        source?.today?.label ?? 'All Day'
+        source?.today?.value ?? null,
+        source?.today?.label ?? 'All Day',
+        source?.today?.hasData === true
       )
     };
+  }
+
+  displayValue(slot: EfficiencySlot): string {
+    return slot.hasData && slot.value != null ? `${Math.round(slot.value)}%` : 'N/A';
+  }
+
+  barHeight(slot: EfficiencySlot): number {
+    return slot.hasData && slot.value != null ? Math.max(0, Math.min(slot.value, 100)) : 0;
   }
 
   /** Operator/oee header label. */

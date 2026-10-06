@@ -67,6 +67,19 @@ export function calculateOperatorStatusCounts(responses: any[] = [], idleOperato
   return { total, assigned, running, paused, faulted, idle, idlePaused, down };
 }
 
+export function hasConnectedActivity(response: any): boolean {
+  const runtimeMs = metricTotal(response, 'runtime');
+  const pausedTimeMs = metricTotal(response, 'pausedTime');
+  const faultTimeMs = metricTotal(response, 'faultTime');
+  return runtimeMs > 0 || pausedTimeMs > 0 || faultTimeMs > 0;
+}
+
+function metricTotal(response: any, key: 'runtime' | 'pausedTime' | 'faultTime'): number {
+  const value = response?.metrics?.[key]?.total ?? response?.performance?.[key]?.total ?? 0;
+  const total = Number(value);
+  return Number.isFinite(total) ? total : 0;
+}
+
 function isAssignedOperator(response: any): boolean {
   return Boolean(response?.currentMachine?.name || response?.currentMachine?.serial);
 }
