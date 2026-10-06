@@ -174,7 +174,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   subscribeToUser(): void {
     this.userSub = this.userService.user.subscribe(x => {
-      if (x.username) {
+      if (x?.username) {
         this.user = x;
       } else {
         this.user = {
