@@ -78,7 +78,11 @@ function scheduledBreakMs(shifts, rangeStart, rangeEnd) {
   while (day <= lastDay) {
     for (const shift of Array.isArray(shifts) ? shifts : []) {
       if (shift?.active === false) continue;
-      if (Array.isArray(shift?.activeDays) && !shift.activeDays.includes(day.weekday)) continue;
+      if (
+        Array.isArray(shift?.activeDays)
+        && shift.activeDays.length
+        && !shift.activeDays.includes(day.weekday)
+      ) continue;
       const shiftComponents = rangeTimeComponents(shift);
       if (!shiftComponents) continue;
       const shiftStart = day.set({ ...shiftComponents.startTime, second: 0, millisecond: 0 });
@@ -107,6 +111,41 @@ function scheduledBreakMs(shifts, rangeStart, rangeEnd) {
   );
 }
 
+function scheduledShiftMs(shifts, rangeStart, rangeEnd) {
+  const start = DateTime.fromJSDate(new Date(rangeStart), { zone: SYSTEM_TIMEZONE });
+  const end = DateTime.fromJSDate(new Date(rangeEnd), { zone: SYSTEM_TIMEZONE });
+  if (!start.isValid || !end.isValid || end <= start) return 0;
+
+  const intervals = [];
+  let day = start.startOf("day");
+  const lastDay = end.minus({ milliseconds: 1 }).startOf("day");
+  while (day <= lastDay) {
+    for (const shift of Array.isArray(shifts) ? shifts : []) {
+      if (shift?.active === false) continue;
+      if (
+        Array.isArray(shift?.activeDays)
+        && shift.activeDays.length
+        && !shift.activeDays.includes(day.weekday)
+      ) continue;
+      const components = rangeTimeComponents(shift);
+      if (!components) continue;
+      const shiftStart = day.set({ ...components.startTime, second: 0, millisecond: 0 });
+      const shiftEnd = day.set({ ...components.endTime, second: 0, millisecond: 0 });
+      if (shiftEnd <= shiftStart) continue;
+
+      const startMs = Math.max(start.toMillis(), shiftStart.toMillis());
+      const endMs = Math.min(end.toMillis(), shiftEnd.toMillis());
+      if (endMs > startMs) intervals.push({ startMs, endMs });
+    }
+    day = day.plus({ days: 1 });
+  }
+
+  return mergeIntervals(intervals).reduce(
+    (total, interval) => total + interval.endMs - interval.startMs,
+    0
+  );
+}
+
 function emptyTotals() {
   return {
     validCount: 0,
@@ -116,6 +155,8 @@ function emptyTotals() {
     pausedTimeMs: 0,
     faultTimeMs: 0,
     offlineTimeMs: 0,
+    shiftTimeMs: 0,
+    shiftTimeSamples: 0,
     timeCreditMs: 0,
   };
 }
@@ -129,12 +170,22 @@ function addDocumentTotals(target, document) {
   target.pausedTimeMs += Number(totals.pausedTimeMs || 0);
   target.faultTimeMs += Number(totals.faultTimeMs || 0);
   target.offlineTimeMs += Number(totals.offlineTimeMs || 0);
+  if (Object.prototype.hasOwnProperty.call(totals, "shiftTimeMs")) {
+    target.shiftTimeMs += Number(totals.shiftTimeMs || 0);
+    target.shiftTimeSamples += 1;
+  }
   target.timeCreditMs += Number(totals.timeCreditMs || 0);
 }
 
-function statsFromTotals(totals, range, breakTimeMs) {
+function statsFromTotals(totals, range, breakTimeMs, fallbackShiftTimeMs = 0) {
   const elapsedMs = Math.max(0, new Date(range.end) - new Date(range.start));
-  const eligibleElapsedMs = Math.max(0, elapsedMs - breakTimeMs);
+  const expectedMinuteSamples = Math.ceil(elapsedMs / 60000);
+  const hasCompleteShiftTime = expectedMinuteSamples > 0
+    && totals.shiftTimeSamples >= expectedMinuteSamples;
+  const shiftTimeMs = hasCompleteShiftTime
+    ? totals.shiftTimeMs
+    : fallbackShiftTimeMs;
+  const eligibleElapsedMs = Math.max(0, shiftTimeMs - breakTimeMs);
   const hasData = totals.runtimeMs > 0;
   const availability = !hasData
     ? null
@@ -162,6 +213,7 @@ function statsFromTotals(totals, range, breakTimeMs) {
     pausedTimeMs: Math.round(totals.pausedTimeMs),
     faultTimeMs: Math.round(totals.faultTimeMs),
     offlineTimeMs: Math.round(totals.offlineTimeMs),
+    shiftTimeMs: Math.round(shiftTimeMs),
     breakTimeMs: Math.round(breakTimeMs),
     timeCreditMs: Math.round(totals.timeCreditMs),
   };
@@ -220,6 +272,9 @@ function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Da
   const breakTimes = Object.fromEntries(
     Object.entries(windows).map(([key, range]) => [key, scheduledBreakMs(shifts, range.start, range.end)])
   );
+  const shiftTimes = Object.fromEntries(
+    Object.entries(windows).map(([key, range]) => [key, scheduledShiftMs(shifts, range.start, range.end)])
+  );
   const machines = {};
   const operators = {};
 
@@ -268,7 +323,7 @@ function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Da
     ...entity,
     stats: Object.fromEntries(Object.entries(windows).map(([key, range]) => [
       key,
-      statsFromTotals(entity.totals[key], range, breakTimes[key]),
+      statsFromTotals(entity.totals[key], range, breakTimes[key], shiftTimes[key]),
     ])),
     totals: undefined,
   });
@@ -301,5 +356,6 @@ module.exports = {
   loadProductionStatsCache,
   productionWindowRanges,
   scheduledBreakMs,
+  scheduledShiftMs,
   statsFromTotals,
 };
