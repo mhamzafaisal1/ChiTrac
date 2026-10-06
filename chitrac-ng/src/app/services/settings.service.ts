@@ -28,6 +28,10 @@ export interface ThemeResponse {
 }
 
 export interface DashboardLayoutPreferences {
+  summaryDashboard?: {
+    summaryCardOrder?: string[];
+    summaryCardVisibility?: Record<string, boolean>;
+  };
   machineDashboard?: {
     summaryCardOrder?: string[];
     summaryCardVisibility?: Record<string, boolean>;
@@ -116,6 +120,8 @@ export class SettingsService {
     localStorage.removeItem('chitrac-machine-dashboard-summary-card-visibility');
     localStorage.removeItem('chitrac-operator-dashboard-summary-card-order');
     localStorage.removeItem('chitrac-operator-dashboard-summary-card-visibility');
+    localStorage.removeItem('chitrac-summary-dashboard-summary-card-order');
+    localStorage.removeItem('chitrac-summary-dashboard-summary-card-visibility');
     this.rawUserPreferences = null;
     this.publishEffectiveUserPreferences();
   }
@@ -279,6 +285,24 @@ export class SettingsService {
     );
   }
 
+  saveSummaryDashboardLayout(
+    summaryCardOrder: string[],
+    summaryCardVisibility: Record<string, boolean> = {}
+  ): Observable<UserPreferences> {
+    const payload = {
+      dashboardLayouts: {
+        summaryDashboard: {
+          summaryCardOrder,
+          summaryCardVisibility
+        }
+      }
+    };
+
+    return this.http.put<UserPreferences>('/api/preferences/user', payload, this.preferenceRequestOptions).pipe(
+      tap(preferences => this.acceptUserPreferences(preferences))
+    );
+  }
+
   saveExperimentalDailyDashboardChartOrder(
     chartOrder: string[],
     chartVisibility: Record<string, boolean> = {}
@@ -326,6 +350,7 @@ export class SettingsService {
   ): DashboardLayoutPreferences | undefined {
     const dashboardLayouts: DashboardLayoutPreferences = {};
     const dashboardNames: Array<keyof DashboardLayoutPreferences> = [
+      'summaryDashboard',
       'machineDashboard',
       'operatorDashboard',
       'experimentalDailyDashboard'
@@ -416,6 +441,24 @@ export class SettingsService {
           summaryCardVisibility,
           tableColumnVisibility,
           tableColumnOrder
+        }
+      }
+    });
+  }
+
+  setSummaryDashboardLayout(
+    summaryCardOrder: string[],
+    summaryCardVisibility: Record<string, boolean> = {}
+  ): void {
+    const current = this.userPreferencesSubject.value || {};
+    this.userPreferencesSubject.next({
+      ...current,
+      dashboardLayouts: {
+        ...current.dashboardLayouts,
+        summaryDashboard: {
+          ...current.dashboardLayouts?.summaryDashboard,
+          summaryCardOrder,
+          summaryCardVisibility
         }
       }
     });
