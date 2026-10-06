@@ -482,7 +482,7 @@ function constructor(server) {
       const { _id, ...updates } = preferences;
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
-        { $set: updates, $setOnInsert: { _id } },
+        { $set: updates, $setOnInsert: { _id }, $unset: { createdAt: '', updatedAt: '' } },
         { upsert: true }
       );
       const saved = await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID });
@@ -506,7 +506,7 @@ function constructor(server) {
       const { _id, ...updates } = preferences;
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
-        { $set: updates, $setOnInsert: { _id }, $unset: { systemName: '' } },
+        { $set: updates, $setOnInsert: { _id }, $unset: { createdAt: '', updatedAt: '', systemName: '' } },
         { upsert: true }
       );
       const saved = await systemPreferencesCollection.findOne({ _id: SYSTEM_SINGLETON_ID });
