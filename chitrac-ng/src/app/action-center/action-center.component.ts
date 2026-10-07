@@ -1,5 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { SettingsService } from '../services/settings.service';
+import { DisplayTimePipe } from '../pipes/display-time.pipe';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Subject, takeUntil } from 'rxjs';
@@ -35,11 +37,12 @@ interface UnusedStationsSummary {
 @Component({
   selector: 'app-action-center',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule],
+  imports: [CommonModule, MatButtonModule, MatIconModule, DisplayTimePipe],
   templateUrl: './action-center.component.html',
   styleUrl: './action-center.component.scss',
 })
 export class ActionCenterComponent implements OnInit, OnDestroy {
+  private readonly settings = inject(SettingsService);
   websocketStatus: WebsocketConnectionStatus = 'disconnected';
   updatedAt: Date | null = null;
   alerts: ActionAlert[] = [];
@@ -55,6 +58,8 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.settings.timeFormat$.pipe(takeUntil(this.destroy$)).subscribe(() =>
+      this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot()));
     this.websocketService.ensureConnected();
     this.websocketService.status$
       .pipe(takeUntil(this.destroy$))
@@ -125,7 +130,7 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
         icon: 'cloud_off',
         title: 'Live feed is not connected',
         detail: 'Dashboards may be relying on fallback REST polling or stale cache.',
-        meta: this.updatedAt ? `Last cache: ${this.updatedAt.toLocaleString()}` : 'No cache timestamp',
+        meta: this.updatedAt ? `Last cache: ${this.settings.formatTime(this.updatedAt, { year: 'numeric', month: 'short', day: 'numeric', second: '2-digit' })}` : 'No cache timestamp',
       });
     }
 

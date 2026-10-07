@@ -7,6 +7,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ReportsService, ReportSubscriptionDto, ReportSubscriptionPayload } from '../../services/reports.service';
+import { SettingsService } from '../../services/settings.service';
 import { ReportSubscriptionCuComponent, ReportSubscriptionFormValue } from './report-subscription-cu.component';
 import { ReportSubscriptionDeleteConfirmComponent } from './report-subscription-delete-confirm.component';
 
@@ -25,6 +26,7 @@ import { ReportSubscriptionDeleteConfirmComponent } from './report-subscription-
   styleUrl: './report-subscription.component.scss',
 })
 export class ReportSubscriptionComponent implements OnInit {
+  private readonly settings = inject(SettingsService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -167,7 +169,7 @@ export class ReportSubscriptionComponent implements OnInit {
   formatDate(value: any): string {
     if (!value) return '-';
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+    return Number.isNaN(date.getTime()) ? '-' : this.settings.formatTime(date, { year: 'numeric', month: 'short', day: 'numeric', second: '2-digit' });
   }
 
   formatSchedule(row: ReportSubscriptionDto): string {
@@ -200,7 +202,7 @@ export class ReportSubscriptionComponent implements OnInit {
 
     if (dayOfMonthRaw === '*' && dayOfWeekRaw === '*') {
       if (next <= now) next.setDate(next.getDate() + 1);
-      return next.toLocaleString();
+      return this.formatDate(next);
     }
 
     if (dayOfWeekRaw !== '*') {
@@ -210,7 +212,7 @@ export class ReportSubscriptionComponent implements OnInit {
       let delta = (target - today + 7) % 7;
       if (delta === 0 && next <= now) delta = 7;
       next.setDate(next.getDate() + delta);
-      return next.toLocaleString();
+      return this.formatDate(next);
     }
 
     if (dayOfMonthRaw !== '*') {
@@ -221,7 +223,7 @@ export class ReportSubscriptionComponent implements OnInit {
         next.setMonth(next.getMonth() + 1, 1);
         next.setDate(Math.min(day, this.daysInMonth(next)));
       }
-      return next.toLocaleString();
+      return this.formatDate(next);
     }
 
     return 'Custom schedule';
@@ -231,7 +233,7 @@ export class ReportSubscriptionComponent implements OnInit {
     const h = Number(hour);
     const m = Number(minute);
     if (!Number.isFinite(h) || !Number.isFinite(m)) return `${hour}:${minute}`;
-    return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return this.settings.formatTime(new Date(2000, 0, 1, h, m));
   }
 
   private weekdayName(value: string): string {

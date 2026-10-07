@@ -22,6 +22,7 @@ import { map, shareReplay } from 'rxjs/operators';
 
 import { PermissionLevels, UserService } from '../user.service';
 import { SettingsService } from '../services/settings.service';
+import { DisplayTimePipe } from '../pipes/display-time.pipe';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { LayoutEditContext, LayoutEditService } from '../services/layout-edit.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
@@ -48,6 +49,7 @@ const right = [
     templateUrl: './nav-main-menu.component.html',
     styleUrl: './nav-main-menu.component.scss',
     imports: [
+        DisplayTimePipe,
         CommonModule,
         RouterOutlet,
         RouterModule,

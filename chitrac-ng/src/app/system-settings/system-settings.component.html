@@ -4,6 +4,11 @@
     <p class="subtitle">Manage system-wide settings that apply across ChiTrac.</p>
   </div>
 
+  <section aria-label="Personal preferences">
+    <h2>Personal Preferences</h2>
+    <app-time-format-setting></app-time-format-setting>
+  </section>
+
   <mat-card class="settings-card dashboard-defaults-card">
     <mat-card-header>
       <mat-icon mat-card-avatar>dashboard_customize</mat-icon>
@@ -146,7 +151,7 @@
         </div>
 
         <div class="metadata" *ngIf="preferences">
-          <span>Last updated: {{ preferences.timestamps?.update ? (preferences.timestamps?.update | date:'medium') : 'Not available' }}</span>
+          <span>Last updated: {{ preferences.timestamps?.update ? (preferences.timestamps?.update | displayTime:'dateTime') : 'Not available' }}</span>
         </div>
 
         <mat-card-actions align="end">

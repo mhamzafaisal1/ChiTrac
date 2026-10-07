@@ -14,6 +14,8 @@ import {
   inject,
 } from '@angular/core';
 import * as d3 from 'd3';
+import { SettingsService } from '../services/settings.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
 
@@ -135,6 +137,14 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly ngZone = inject(NgZone);
+  private readonly settings = inject(SettingsService);
+
+  constructor() {
+    this.settings.timeFormat$.pipe(takeUntilDestroyed()).subscribe(() => {
+      if (this.preloadedData) this.buildView();
+      this.cdr.markForCheck();
+    });
+  }
 
   ngAfterViewInit(): void {
     this.setupResizeObserver();
@@ -497,7 +507,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   }
 
   private formatDateTime(date: Date): string {
-    return date.toLocaleString('en-US', {
+    return this.settings.formatTime(date, {
       hour: 'numeric',
       minute: '2-digit',
       second: '2-digit',
@@ -505,14 +515,14 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   }
 
   private formatTime(date: Date): string {
-    return date.toLocaleTimeString('en-US', {
+    return this.settings.formatTime(date, {
       hour: 'numeric',
       minute: '2-digit',
     });
   }
 
   private formatTickDateTime(date: Date): string {
-    return date.toLocaleString('en-US', {
+    return this.settings.formatTime(date, {
       month: 'numeric',
       day: 'numeric',
       hour: 'numeric',
