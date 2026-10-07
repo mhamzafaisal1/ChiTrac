@@ -89,6 +89,13 @@
   gap: 0.75rem; // Adjust spacing between all icons/toggle
 }
 
+.sidenav-container .mat-toolbar > span:not(.toolbar-actions):not(.spacer) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .live-chip {
   display: inline-flex;
   align-items: center;
@@ -144,6 +151,21 @@
 
 .calendar-btn {
   margin-right: 0.5rem;
+}
+
+.timeframe-chip {
+  max-width: 180px;
+  min-width: 0;
+  color: var(--theme-color-on-surface-variant);
+  background: rgba(128, 128, 128, 0.14);
+  border-color: rgba(128, 128, 128, 0.35);
+
+  .timeframe-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .layout-edit-btn {
@@ -238,6 +260,39 @@
 }
 
 @media (max-width: 760px) {
+  .sidenav-container .mat-toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding-bottom: 8px;
+  }
+
+  .sidenav-container .mat-toolbar > span:not(.toolbar-actions):not(.spacer) {
+    min-width: 0;
+    max-width: calc(100% - 92px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.25rem;
+  }
+
+  .toolbar-actions .light-icon, .toolbar-actions .dark-icon {
+    display: none;
+  }
+
+  .calendar-btn, .login-btn, .dark-toggle {
+    margin: 0;
+  }
+
+  .timeframe-chip {
+    max-width: 110px;
+  }
+
   .live-chip small {
     display: none;
   }
