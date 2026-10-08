@@ -1,0 +1,48 @@
+<section class="local-picker" aria-label="Select Timeframe">
+  <div class="picker-heading"><mat-icon>edit_calendar</mat-icon><span>Select Timeframe</span></div>
+  <div class="picker-fields" [class.disabled]="!manualEnabled">
+    <mat-form-field appearance="outline">
+      <mat-label>Start Date</mat-label>
+      <input matInput [matDatepicker]="startDatePicker" [(ngModel)]="pickerStart" [disabled]="!manualEnabled" />
+      <mat-datepicker-toggle matSuffix [for]="startDatePicker" [disabled]="!manualEnabled"></mat-datepicker-toggle>
+      <mat-datepicker #startDatePicker></mat-datepicker>
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>Start Time</mat-label>
+      <input matInput [matTimepicker]="startTimePicker" [(ngModel)]="pickerStart" [disabled]="!manualEnabled" />
+      <mat-timepicker-toggle matSuffix [for]="startTimePicker" [disabled]="!manualEnabled"></mat-timepicker-toggle>
+      <mat-timepicker #startTimePicker></mat-timepicker>
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>End Date</mat-label>
+      <input matInput [matDatepicker]="endDatePicker" [(ngModel)]="pickerEnd" [disabled]="!manualEnabled" />
+      <mat-datepicker-toggle matSuffix [for]="endDatePicker" [disabled]="!manualEnabled"></mat-datepicker-toggle>
+      <mat-datepicker #endDatePicker></mat-datepicker>
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>End Time</mat-label>
+      <input matInput [matTimepicker]="endTimePicker" [(ngModel)]="pickerEnd" [disabled]="!manualEnabled" />
+      <mat-timepicker-toggle matSuffix [for]="endTimePicker" [disabled]="!manualEnabled"></mat-timepicker-toggle>
+      <mat-timepicker #endTimePicker></mat-timepicker>
+    </mat-form-field>
+  </div>
+  <div class="picker-option-section">
+    <h4>Shift filter</h4>
+    <p class="shift-hint" *ngIf="shiftsLoadError">{{ shiftsLoadError }}</p>
+    <div class="picker-button-row">
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="!pickerShiftId" [attr.aria-pressed]="!pickerShiftId" (click)="selectShift(null)">All data (no shift)</button>
+      <button mat-stroked-button type="button" *ngFor="let shift of shifts" [disabled]="disabled" [class.selected]="pickerShiftId === shift._id" [attr.aria-pressed]="pickerShiftId === shift._id" (click)="selectShift(shift._id)">{{ shift.name || 'Shift' }}</button>
+    </div>
+  </div>
+  <div class="picker-option-section">
+    <h4>Quick Select</h4>
+    <div class="picker-button-row">
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'today'" (click)="quickSelect('today')">Today</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'thisWeek'" (click)="quickSelect('thisWeek')">This Week</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'thisMonth'" (click)="quickSelect('thisMonth')">This Month</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'thisYear'" (click)="quickSelect('thisYear')">This Year</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'custom'" (click)="quickSelect('custom')">Custom</button>
+    </div>
+  </div>
+  <div class="picker-actions"><button mat-flat-button color="primary" type="button" [disabled]="disabled || !valid" (click)="confirm()"><mat-icon>done</mat-icon>Confirm</button></div>
+</section>

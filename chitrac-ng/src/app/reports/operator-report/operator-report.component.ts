@@ -10,7 +10,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { ReportsService } from '../../services/reports.service';
-import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { displayInteger } from '../../shared/utils/display-number';
 import { formatDurationParts, parseDurationDisplay } from '../../shared/utils/duration-format';
@@ -31,7 +31,7 @@ interface OperatorReportGroup {
         MatButtonModule,
         MatIconModule,
         MatTooltipModule,
-        DateTimePickerComponent
+        TimeframePickerComponent
     ],
     templateUrl: './operator-report.component.html',
     styleUrls: ['./operator-report.component.scss']
@@ -39,6 +39,8 @@ interface OperatorReportGroup {
 export class OperatorReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
+  selectedShiftId: string | null = null;
+  timeframeMode: TimeframePickerMode = 'custom';
   columns: string[] = [];
   summaryColumns: string[] = ['Operator', 'Worked Time', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
   detailColumns: string[] = ['Item', 'Worked Time', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
@@ -102,7 +104,19 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     this.isDarkTheme = isDark;
   }
 
+  applyTimeframe(selection: TimeframeSelection): void {
+    if (this.isLoading) return;
+    this.startTime = selection.start.toISOString();
+    this.endTime = selection.end.toISOString();
+    this.selectedShiftId = selection.shiftId;
+    this.timeframeMode = selection.mode || 'custom';
+    this.rows = [];
+    this.reportGroups = [];
+    this.fetchAnalyticsData();
+  }
+
   fetchAnalyticsData(): void {
+    if (this.isLoading) return;
     if (!this.startTime || !this.endTime) return;
 
     this.isLoading = true;
@@ -112,7 +126,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     const formattedEnd = new Date(this.endTime).toISOString();
 
     // Fetch the operator report for the table
-    this.reportsService.getOperatorReport(formattedStart, formattedEnd).subscribe({
+    this.reportsService.getOperatorReport(formattedStart, formattedEnd, undefined, this.selectedShiftId).subscribe({
       next: (data: any) => {
         const results = data?.results ?? (Array.isArray(data) ? data : []);
         this.processTableData(results);

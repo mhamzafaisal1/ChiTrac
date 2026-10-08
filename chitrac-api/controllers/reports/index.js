@@ -23,6 +23,7 @@ const {
   lookupMergedTime,
 } = require("../../utils/faultTimeSummary");
 const config = require("../../modules/config");
+const { reportShiftMiddleware } = require('../../utils/reportShiftFilter');
 
 function isValidMachineReportRecipientEmail(s) {
   if (typeof s !== "string") return false;
@@ -202,7 +203,7 @@ module.exports = function (server) {
   });
 
   // Cached version of operator-item-sessions-summary using totals-daily collection
-  router.get("/analytics/operator-item-sessions-summary-cache", async (req, res) => {
+  router.get("/analytics/operator-item-sessions-summary-cache", reportShiftMiddleware(db), async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const operatorId = req.query.operatorId ? parseInt(req.query.operatorId) : null;
@@ -217,7 +218,7 @@ module.exports = function (server) {
       
       const exactStart = start;
       const exactEnd = end;
-      const activeShifts = await loadActiveShifts(db).catch(() => []);
+      const activeShifts = req.reportShift ? [req.reportShift] : await loadActiveShifts(db).catch(() => []);
       const shiftElapsedMs = computeShiftElapsedMs(activeShifts, exactStart, exactEnd, SYSTEM_TIMEZONE);
       
       console.log(`[OPERATOR-CACHE] Normalized: ${exactStart.toISOString()} to ${exactEnd.toISOString()}`);
@@ -299,7 +300,7 @@ module.exports = function (server) {
       let operatorMachineCache = [];
       let operatorItemCache = [];
       let sessionData = { operators: [] };
-      let useCache = completeDays.length > 0;
+      let useCache = !req.reportShift && completeDays.length > 0;
       
       if (useCache) {
         const dateStrings = completeDays.map(d => d.dateStr);
@@ -346,7 +347,7 @@ module.exports = function (server) {
       } else {
         // No complete days, use sessions for entire range
         console.log(`[OPERATOR-CACHE] No complete days, using sessions for entire range`);
-        sessionData = await getOperatorSessionDataForPartialDays(db,[{ start: exactStart, end: exactEnd }], operatorId);
+        sessionData = await getOperatorSessionDataForPartialDays(db,[{ start: exactStart, end: exactEnd }], operatorId, { shiftId: req.query.shiftId });
         console.log(`[OPERATOR-CACHE] Sessions returned ${sessionData.operators.length} operators`);
       }
 
@@ -462,7 +463,7 @@ module.exports = function (server) {
         [...operatorDataMap.keys()],
         exactStart,
         exactEnd,
-        { activeShifts, zone: SYSTEM_TIMEZONE }
+        { activeShifts, zone: SYSTEM_TIMEZONE, shiftId: req.query.shiftId }
       );
       for (const [opId, operatorData] of operatorDataMap) {
         const sessionTimes = lookupMergedTime(sessionTimeByOperatorId, opId);
@@ -897,7 +898,7 @@ module.exports = function (server) {
   });
 
   // NEW: Simplified cached version using simulator's item entity records (with itemStandard built-in)
-  router.get("/analytics/item-sessions-summary-daily-cache", async (req, res) => {
+  router.get("/analytics/item-sessions-summary-daily-cache", reportShiftMiddleware(db), async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const exactStart = new Date(start);
@@ -939,13 +940,13 @@ module.exports = function (server) {
       });
 
       // If querying a partial day from the PAST (not today), use session data for accurate time windowing
-      if (isPartialPastDay) {
+      if (isPartialPastDay || req.reportShift) {
         console.log(`[item-sessions-summary-daily-cache] ⚠️ PARTIAL PAST DAY DETECTED - Falling back to session-based query for accurate time windowing`);
         console.log(`[item-sessions-summary-daily-cache] Reason: Querying partial day from the past requires session-level precision`);
 
         // Fall back to session-based approach
         const partialDays = [{ start: exactStart, end: exactEnd }];
-        const sessionData = await getSessionDataForPartialDays(db, partialDays);
+        const sessionData = await getSessionDataForPartialDays(db, partialDays, undefined, { shiftId: req.query.shiftId });
         const sessionItems = sessionData.machineItems || [];
 
         console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions`);
@@ -1144,7 +1145,8 @@ module.exports = function (server) {
         overlayShifts = [shiftDoc];
         shiftElapsedMs = computeShiftElapsedMs(overlayShifts, start, end, SYSTEM_TIMEZONE);
 
-        const dateStrings = getPlantDateStringsForRange(start, end);
+        const { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
+        const dateStrings = completeDays.map(day => day.dateStr);
         const shiftIdCandidates = getShiftIdCandidates(shiftId);
         const serialNumber = serial ? parseInt(serial, 10) : null;
         const cacheQuery = buildTotalsCacheQuery(
@@ -1169,8 +1171,16 @@ module.exports = function (server) {
           dateStrings
         );
 
-        machineRecords = cacheDocs.filter(d => d.entityType === 'machine');
-        machineItemRecords = cacheDocs.filter(d => d.entityType === 'machine-item');
+        const sessionData = partialDays.length
+          ? await getSessionDataForPartialDays(db, partialDays, serial, { shiftId: String(shiftId) })
+          : { machines: [], machineItems: [] };
+        const combined = combineHybridData(
+          cacheDocs.filter(d => d.entityType === 'machine'),
+          cacheDocs.filter(d => d.entityType === 'machine-item'),
+          sessionData
+        );
+        machineRecords = combined.machines;
+        machineItemRecords = combined.machineItems;
 
         responseTimeRange = {
           start: start.toISOString(),
@@ -1178,10 +1188,7 @@ module.exports = function (server) {
         };
 
         if (!machineRecords.length && !machineItemRecords.length) {
-          const shiftWindows = buildShiftScopedSessionWindows(shiftDoc, start, end);
-          const sessionData = shiftWindows.length
-            ? await getSessionDataForPartialDays(db, shiftWindows, serial)
-            : { machines: [], machineItems: [] };
+          const sessionData = await getSessionDataForPartialDays(db, [{ start, end }], serial, { shiftId: String(shiftId) });
 
           machineRecords = sessionData.machines || [];
           machineItemRecords = sessionData.machineItems || [];
@@ -1319,6 +1326,7 @@ module.exports = function (server) {
         {
           activeShifts: overlayShifts,
           zone: SYSTEM_TIMEZONE,
+          shiftId: shiftIdRaw,
         }
       );
       for (const [serial, machineData] of machineMap) {
