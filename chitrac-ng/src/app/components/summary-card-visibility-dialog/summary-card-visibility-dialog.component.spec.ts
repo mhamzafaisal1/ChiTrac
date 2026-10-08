@@ -76,6 +76,72 @@ describe('SummaryCardVisibilityDialogComponent', () => {
     expect(component.hideCards.map((card) => card.id)).toEqual(['third']);
   });
 
+  it('hides all in source order and clears selection without changing input', () => {
+    const visibility = { third: false };
+    const component = createComponent({ visibility });
+    component.selectShow(component.showCards[0]);
+    component.hideAll();
+    expect(component.showCards).toEqual([]);
+    expect(component.hideCards.map(card => card.id)).toEqual(['third', 'first', 'second']);
+    expect(component.visibility).toEqual({ first: false, second: false, third: false });
+    expect(visibility).toEqual({ third: false });
+    expect(component.selectedShowId).toBeNull();
+    expect(component.selectedHideId).toBeNull();
+  });
+
+  it('shows all, preserves destination order and saves all IDs once', () => {
+    const component = createComponent();
+    component.selectHide(component.hideCards[0]);
+    component.showAll();
+    component.save();
+    expect(component.hideCards).toEqual([]);
+    expect(component.showCards.map(card => card.id)).toEqual(['first', 'second', 'third']);
+    expect(component.selectedHideId).toBeNull();
+    expect(close).toHaveBeenCalledWith({ visibility: { third: true }, order: ['first', 'second', 'third'] });
+    expect(component.canShowAll).toBeFalse();
+  });
+
+  it('does not partially show all when there is insufficient capacity', () => {
+    const component = createComponent({ visibility: { second: false, third: false }, maxVisible: 2 });
+    expect(component.canShowMore).toBeTrue();
+    expect(component.canShowAll).toBeFalse();
+    component.showAll();
+    expect(component.showCards.map(card => card.id)).toEqual(['first']);
+    expect(component.hideCards.map(card => card.id)).toEqual(['second', 'third']);
+  });
+
+  it('allows show all at the maximum and validates exact counts after hide all', () => {
+    const component = createComponent({ maxVisible: 3, exactVisible: 3 });
+    expect(component.canShowAll).toBeTrue();
+    component.showAll();
+    expect(component.canApply).toBeTrue();
+    component.hideAll();
+    expect(component.canApply).toBeFalse();
+    component.showAll();
+    expect(component.canApply).toBeTrue();
+  });
+
+  it('respects the exact count even without a maximum', () => {
+    const component = createComponent({ exactVisible: 2 });
+    expect(component.canShowAll).toBeFalse();
+    component.showAll();
+    expect(component.showCards.length).toBe(2);
+  });
+
+  it('handles empty lists, label-only cards and cancelling bulk edits', () => {
+    const visibility = { First: true, Second: false };
+    const component = createComponent({ cards: [{ label: 'First' }, { label: 'Second' }], visibility });
+    component.hideAll();
+    component.hideAll();
+    expect(component.hideCards.map(card => card.label)).toEqual(['Second', 'First']);
+    component.showAll();
+    component.showAll();
+    expect(component.visibility).toEqual({ First: true, Second: true });
+    component.cancel();
+    expect(close).toHaveBeenCalledWith();
+    expect(visibility).toEqual({ First: true, Second: false });
+  });
+
   it('returns visibility and stable card order when applied', () => {
     const component = createComponent();
     component.drop(dropEvent(component.showCards, component.showCards, 0, 1), true);
