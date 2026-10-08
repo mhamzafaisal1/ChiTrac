@@ -53,6 +53,7 @@ import {
 } from "../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component";
 
 interface SummaryCard {
+  isTimeRange?: boolean;
   label: string;
   value: string | number;
   icon: string;
@@ -948,6 +949,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const breakSuffix = currentShift && projectionWindow?.state === "inBreak" ? " (In Break)" : "";
     return {
       label: `${prefix}${shift.name || "Unnamed Shift"}`,
+      isTimeRange: true,
       value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}${breakSuffix}`,
       icon: "schedule",
       tone: "neutral",
@@ -958,11 +960,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const date = value ? new Date(value) : null;
     if (!date || Number.isNaN(date.getTime())) return "";
 
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(date);
+    return this.settingsService.formatTime(date).replace(/ (AM|PM)$/, "\u00a0$1");
   }
 
   private isTomorrow(value: string | Date | null): boolean {
@@ -1409,6 +1407,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
+        if (this.machineData.length) this.updateDashboardData(this.machineData);
         if (!preferences) {
           this.resetLayoutToDefault();
           return;

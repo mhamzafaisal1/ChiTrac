@@ -1,4 +1,5 @@
-import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { SettingsService } from '../services/settings.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -47,6 +48,7 @@ import { TokenManagementService, PermanentToken } from '../services/token-manage
   styleUrl: './token-management.component.scss'
 })
 export class TokenManagementComponent implements OnInit, OnDestroy {
+  private readonly settings = inject(SettingsService);
   tokens: PermanentToken[] = [];
   deactivatedTokens: PermanentToken[] = [];
   dataSource: MatTableDataSource<PermanentToken>;
@@ -213,7 +215,7 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
 
   formatDate(date: Date | null): string {
     if (!date) return 'Never';
-    return new Date(date).toLocaleString();
+    return this.settings.formatTime(date, { year: 'numeric', month: 'short', day: 'numeric', second: '2-digit' });
   }
 
   ngOnDestroy() {

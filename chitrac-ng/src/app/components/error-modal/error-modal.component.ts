@@ -7,6 +7,7 @@ import { ErrorInfo } from '../../services/error-queue.service';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { JiraService } from '../../services/jira.service';
 import { finalize } from 'rxjs/operators';
+import { SettingsService } from '../../services/settings.service';
 
 @Component({
   selector: 'app-error-modal',
@@ -15,6 +16,7 @@ import { finalize } from 'rxjs/operators';
   styleUrls: ['./error-modal.component.scss']
 })
 export class ErrorModalComponent {
+  private readonly settings = inject(SettingsService);
   dialogRef = inject(MatDialogRef<ErrorModalComponent>);
   errorData: ErrorInfo = inject(MAT_DIALOG_DATA);
   private clipboard = inject(Clipboard);
@@ -116,7 +118,7 @@ export class ErrorModalComponent {
    * Format timestamp for display
    */
   getFormattedTime(): string {
-    return this.errorData.timestamp.toLocaleTimeString();
+    return this.settings.formatTime(this.errorData.timestamp, { second: '2-digit' });
   }
 
   /**

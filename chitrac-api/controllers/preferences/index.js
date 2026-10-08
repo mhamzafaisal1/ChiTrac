@@ -152,6 +152,14 @@ function constructor(server) {
 
   function sanitizeUserPreferences(input = {}, userId) {
     const preferences = {};
+    if (input.timeFormat !== undefined) {
+      if (!['12h', '24h'].includes(input.timeFormat)) {
+        const error = new Error("Invalid timeFormat. Must be '12h' or '24h'");
+        error.status = 400;
+        throw error;
+      }
+      preferences.timeFormat = input.timeFormat;
+    }
 
     if (typeof input.theme === 'string') {
       if (!['light', 'dark'].includes(input.theme)) {
@@ -365,6 +373,7 @@ function constructor(server) {
 
   function buildUserPreferenceUpdates(preferences = {}) {
     const updates = {};
+    if (preferences.timeFormat !== undefined) updates.timeFormat = preferences.timeFormat;
 
     if (preferences.theme !== undefined) {
       updates.theme = preferences.theme;

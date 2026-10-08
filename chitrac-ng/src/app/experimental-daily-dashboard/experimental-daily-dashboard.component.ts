@@ -246,6 +246,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   }
 
   private subscribeToUserPreferences(): void {
+    this.settingsService.timeFormat$.pipe(takeUntil(this.destroy$)).subscribe(() => this.applyWebsocketCache());
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
@@ -484,7 +485,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     if (!updatedAt) return null;
     const date = new Date(updatedAt);
     if (Number.isNaN(date.getTime())) return null;
-    return `Updated ${date.toLocaleTimeString('en-US', {
+    return `Updated ${this.settingsService.formatTime(date, {
       hour: 'numeric',
       minute: '2-digit'
     })}`;

@@ -1,5 +1,6 @@
 import { SelectionModel } from '@angular/cdk/collections';
 import { CommonModule } from '@angular/common';
+import { SettingsService } from '../services/settings.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -56,6 +57,7 @@ import {
   styleUrls: ['./shift-crud.component.scss'],
 })
 export class ShiftCrudComponent {
+  private readonly settings = inject(SettingsService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly shiftService = inject(ShiftService);
@@ -116,7 +118,7 @@ export class ShiftCrudComponent {
   }
 
   formatBreakRange(breakValue: EditableBreak): string {
-    return `${formatTime(breakValue.startTime)} - ${formatTime(breakValue.endTime)}`;
+    return `${formatTime(breakValue.startTime, this.settings.getTimeFormat())} - ${formatTime(breakValue.endTime, this.settings.getTimeFormat())}`;
   }
 
   addBreak(): void {

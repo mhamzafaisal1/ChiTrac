@@ -1,4 +1,5 @@
 import { ShiftTimeValue } from '../services/shift.service';
+import { TimeFormat } from '../utils/time-format';
 
 export interface EditableBreak {
   startTime: ShiftTimeValue;
@@ -13,7 +14,8 @@ export function compareTimes(a: ShiftTimeValue, b: ShiftTimeValue): number {
   return toMinutes(a) - toMinutes(b);
 }
 
-export function formatTime(time: ShiftTimeValue): string {
+export function formatTime(time: ShiftTimeValue, timeFormat: TimeFormat = '12h'): string {
+  if (timeFormat === '24h') return `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}`;
   let hour12 = time.hour % 12;
   if (hour12 === 0) {
     hour12 = 12;
@@ -24,7 +26,7 @@ export function formatTime(time: ShiftTimeValue): string {
 }
 
 /** Avoids throwing if API/DB sends string or partial times (keeps table rows visible). */
-export function formatTimeSafe(time: ShiftTimeValue | null | undefined): string {
+export function formatTimeSafe(time: ShiftTimeValue | null | undefined, timeFormat: TimeFormat = '12h'): string {
   if (time == null || time.hour == null || time.minute == null) {
     return '—';
   }
@@ -33,7 +35,7 @@ export function formatTimeSafe(time: ShiftTimeValue | null | undefined): string 
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
     return '—';
   }
-  return formatTime({ hour, minute });
+  return formatTime({ hour, minute }, timeFormat);
 }
 
 export function doBreaksOverlap(a: EditableBreak, b: EditableBreak): boolean {

@@ -15,11 +15,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { finalize } from 'rxjs/operators';
 import { SystemPreferences, SystemPreferencesService } from '../services/system-preferences.service';
 import { MachinePphDisplayMode, PercentBreakpoints, SettingsService } from '../services/settings.service';
+import { TimeFormatSettingComponent } from '../components/time-format-setting/time-format-setting.component';
+import { DisplayTimePipe } from '../pipes/display-time.pipe';
 
 @Component({
   selector: 'app-system-settings',
   standalone: true,
   imports: [
+    TimeFormatSettingComponent,
+    DisplayTimePipe,
     CommonModule,
     FormsModule,
     ReactiveFormsModule,

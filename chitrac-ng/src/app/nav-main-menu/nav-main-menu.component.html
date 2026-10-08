@@ -215,7 +215,7 @@
           matTooltipShowDelay="500">
           <mat-icon>{{ getLiveChipIcon() }}</mat-icon>
           <span>{{ getLiveChipLabel() }}</span>
-          <small *ngIf="dashboardUpdatedAt">{{ dashboardUpdatedAt | date:'shortTime' }}</small>
+          <small *ngIf="dashboardUpdatedAt">{{ dashboardUpdatedAt | displayTime }}</small>
         </span>
 
         <button

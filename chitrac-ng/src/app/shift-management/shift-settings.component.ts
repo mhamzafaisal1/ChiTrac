@@ -10,6 +10,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { ShiftCrudComponent } from './shift-crud.component';
 import { ShiftDocument, ShiftService, ShiftTimeValue } from '../services/shift.service';
 import { formatTimeSafe } from './shift-time.utils';
+import { SettingsService } from '../services/settings.service';
 
 @Component({
   selector: 'app-shift-settings',
@@ -55,6 +56,7 @@ import { formatTimeSafe } from './shift-time.utils';
   ],
 })
 export class ShiftSettingsComponent implements OnInit {
+  private readonly settings = inject(SettingsService);
   private readonly shiftService = inject(ShiftService);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -96,7 +98,7 @@ export class ShiftSettingsComponent implements OnInit {
     const name = shift.name?.trim() ? shift.name : 'Unnamed shift';
     const st = shift.startTime;
     const en = shift.endTime;
-    const timePart = `${formatTimeSafe(st)} – ${formatTimeSafe(en)}`;
+    const timePart = `${formatTimeSafe(st, this.settings.getTimeFormat())} – ${formatTimeSafe(en, this.settings.getTimeFormat())}`;
     const activeDays = shift.activeDays ?? [];
     const days = this.allDayValues.every((day) => activeDays.includes(day))
       ? 'All'

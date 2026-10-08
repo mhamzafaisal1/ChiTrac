@@ -1,4 +1,5 @@
-import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, NgZone } from "@angular/core";
+import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, NgZone, inject } from "@angular/core";
+import { SettingsService } from '../services/settings.service';
 import { CommonModule } from "@angular/common";
 import { Subject } from "rxjs";
 import { takeUntil } from "rxjs/operators";
@@ -30,6 +31,7 @@ import { EfficiencyByMachineGroupBarChartComponent } from "../charts/efficiency-
     styleUrls: ['./daily-analytics-dashboard-split.component.scss']
 })
 export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy, AfterViewInit {
+  private readonly settings = inject(SettingsService);
   @ViewChild('chartsGrid') chartsGrid!: ElementRef<HTMLElement>;
   @ViewChild(DailyCountByItemChartComponent) itemChart!: DailyCountByItemChartComponent;
   
@@ -53,6 +55,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
   ) {}
 
   ngOnInit(): void {
+    this.settings.timeFormat$.pipe(takeUntil(this.destroy$)).subscribe(() => this.applyWebsocketCache());
     this.detectTheme();
     this.websocketService.ensureConnected();
     if (!this.dateTimeService.getConfirmed()) {
@@ -176,7 +179,7 @@ export class DailyAnalyticsDashboardSplitComponent implements OnInit, OnDestroy,
     if (!updatedAt) return null;
     const date = new Date(updatedAt);
     if (Number.isNaN(date.getTime())) return null;
-    return `Updated ${date.toLocaleTimeString('en-US', {
+    return `Updated ${this.settings.formatTime(date, {
       hour: 'numeric',
       minute: '2-digit'
     })}`;
