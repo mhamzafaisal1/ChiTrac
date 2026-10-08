@@ -1,0 +1,13 @@
+<div class="chart-viewport" #viewport *ngIf="state$ | async as state">
+  <app-chart-tile
+    [title]="title"
+    [icon]="icon"
+    [subtitle]="state.subtitle"
+    [subtitleStrong]="state.subtitleStrong"
+    [updatedAt]="state.updatedAt"
+    [chartWidth]="chartWidth"
+    [chartHeight]="chartHeight"
+  >
+    <ng-container *ngComponentOutlet="chartComponent; inputs: chartInputs(state)"></ng-container>
+  </app-chart-tile>
+</div>

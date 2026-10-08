@@ -31,6 +31,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
+  private themeObserver?: MutationObserver;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
@@ -52,9 +53,10 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     private percentBreakpointService: PercentBreakpointService
   ) {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
-    new MutationObserver(() => {
+    this.themeObserver = new MutationObserver(() => {
       this.isDarkTheme = document.body.classList.contains('dark-theme');
-    }).observe(document.body, { attributes: true });
+    });
+    this.themeObserver.observe(document.body, { attributes: true });
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -104,6 +106,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   }
 
   ngOnDestroy(): void {
+    this.themeObserver?.disconnect();
     this.destroy$.next(); this.destroy$.complete();
     this.stopPolling();
   }

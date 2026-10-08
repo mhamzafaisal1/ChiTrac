@@ -31,6 +31,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
+  private themeObserver?: MutationObserver;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
@@ -57,9 +58,10 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     private dateTimeService: DateTimeService
   ) {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
-    new MutationObserver(() => {
+    this.themeObserver = new MutationObserver(() => {
       this.isDarkTheme = document.body.classList.contains('dark-theme');
-    }).observe(document.body, { attributes: true });
+    });
+    this.themeObserver.observe(document.body, { attributes: true });
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -114,6 +116,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   }
 
   ngOnDestroy(): void {
+    this.themeObserver?.disconnect();
     this.destroy$.next(); this.destroy$.complete();
     this.stopPolling();
   }

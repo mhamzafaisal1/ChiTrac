@@ -5,6 +5,11 @@
   box-sizing: border-box;
 }
 
+:host-context(.daily-chart-detail-dialog) {
+  .modal-wrapper { padding: 1rem; }
+  .modal-content { padding: 0; overflow: hidden; }
+}
+
 .modal-wrapper {
   display: flex;
   flex-direction: column;

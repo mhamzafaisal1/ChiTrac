@@ -33,6 +33,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   @Input() useExternalTitle = false;
 
   chartConfig: CartesianChartConfig | null = null;
+  private themeObserver?: MutationObserver;
   isDarkTheme = false;
   isLoading = false;
   hasInitialData = false;
@@ -54,9 +55,10 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     private percentBreakpointService: PercentBreakpointService
   ) {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
-    new MutationObserver(() => {
+    this.themeObserver = new MutationObserver(() => {
       this.isDarkTheme = document.body.classList.contains('dark-theme');
-    }).observe(document.body, { attributes: true });
+    });
+    this.themeObserver.observe(document.body, { attributes: true });
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -102,6 +104,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   }
 
   ngOnDestroy(): void {
+    this.themeObserver?.disconnect();
     this.destroy$.next(); this.destroy$.complete();
     this.stopPolling();
   }

@@ -23,6 +23,13 @@
         *ngFor="let tile of visibleChartTiles; trackBy: trackTile"
         cdkDrag
         [cdkDragDisabled]="!layoutEditing"
+        [attr.role]="layoutEditing ? null : 'button'"
+        [attr.tabindex]="layoutEditing ? null : 0"
+        [attr.aria-label]="'Enlarge ' + tile.title"
+        [attr.aria-haspopup]="layoutEditing ? null : 'dialog'"
+        (click)="openChartDetail(tile)"
+        (keydown.enter)="openChartDetail(tile)"
+        (keydown.space)="$event.preventDefault(); openChartDetail(tile)"
       >
         <button
           class="chart-drag-handle"
