@@ -16,6 +16,7 @@ import {
 import * as d3 from 'd3';
 import { SettingsService } from '../services/settings.service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TimelineZoomControlsComponent } from '../components/timeline-zoom-controls/timeline-zoom-controls.component';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
 
@@ -76,7 +77,7 @@ interface TimelineViewMachine {
 @Component({
   selector: 'app-operator-timeline-chart',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, TimelineZoomControlsComponent],
   templateUrl: './operator-timeline-chart.component.html',
   styleUrls: ['./operator-timeline-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -229,7 +230,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
 
     const rowCount = Math.max(1, visibleMachines.length);
     const preferredRowHeight = rowCount === 1 ? 64 : 48;
-    const maxSvgHeight = Math.max(160, Math.floor(this.chartHeight || 450));
+    const maxSvgHeight = Math.max(160, Math.floor(this.chartHeight || 450) - 52);
     const availableRowHeight = (maxSvgHeight - this.plotTop - this.plotBottom) / rowCount;
     const rowHeight = Math.max(28, Math.min(preferredRowHeight, availableRowHeight));
     this.innerHeight = rowCount * rowHeight;
@@ -298,6 +299,30 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
       selection.on('dblclick.zoom', null);
       selection.call(this.zoomBehavior!.transform, this.zoomTransform);
     });
+  }
+
+  get canZoomIn(): boolean {
+    return Boolean(this.hasInitialData && this.zoomBehavior && this.svgElement &&
+      d3.zoomTransform(this.svgElement).k < 32);
+  }
+
+  get canZoomOut(): boolean {
+    return Boolean(this.hasInitialData && this.zoomBehavior && this.svgElement &&
+      d3.zoomTransform(this.svgElement).k > 1);
+  }
+
+  zoomBy(factor: number): void {
+    if (!this.svgElement || !this.zoomBehavior || !this.hasInitialData) return;
+    const center: [number, number] = [this.plotLeft + this.innerWidth / 2, this.svgHeight / 2];
+    const selection = d3.select(this.svgElement);
+    this.ngZone.runOutsideAngular(() => selection.call(this.zoomBehavior!.scaleBy, factor, center));
+  }
+
+  resetZoom(): void {
+    if (!this.svgElement || !this.zoomBehavior || !this.hasInitialData) return;
+    this.cancelPendingZoom();
+    const selection = d3.select(this.svgElement);
+    this.ngZone.runOutsideAngular(() => selection.call(this.zoomBehavior!.transform, d3.zoomIdentity));
   }
 
   private detachZoom(): void {

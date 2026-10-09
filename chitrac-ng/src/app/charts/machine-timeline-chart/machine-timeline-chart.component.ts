@@ -16,6 +16,7 @@ import {
 import * as d3 from 'd3';
 import { SettingsService } from '../../services/settings.service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TimelineZoomControlsComponent } from '../../components/timeline-zoom-controls/timeline-zoom-controls.component';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
 
@@ -72,7 +73,7 @@ interface TimelineViewMachine {
 @Component({
   selector: 'app-machine-timeline-chart',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, TimelineZoomControlsComponent],
   templateUrl: './machine-timeline-chart.component.html',
   styleUrls: ['./machine-timeline-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -283,8 +284,32 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
   }
 
   private resolveSvgHeight(): number {
-    if (this.measuredHeight >= 10) return this.measuredHeight;
-    return Math.max(180, Math.floor(this.chartHeight || 360));
+    const height = this.measuredHeight >= 10 ? this.measuredHeight : Math.floor(this.chartHeight || 360);
+    return Math.max(128, height - 52);
+  }
+
+  get canZoomIn(): boolean {
+    return Boolean(this.hasInitialData && this.zoomBehavior && this.svgElement &&
+      d3.zoomTransform(this.svgElement).k < 32);
+  }
+
+  get canZoomOut(): boolean {
+    return Boolean(this.hasInitialData && this.zoomBehavior && this.svgElement &&
+      d3.zoomTransform(this.svgElement).k > 1);
+  }
+
+  zoomBy(factor: number): void {
+    if (!this.svgElement || !this.zoomBehavior || !this.hasInitialData) return;
+    const center: [number, number] = [this.plotLeft + this.innerWidth / 2, this.svgHeight / 2];
+    const selection = d3.select(this.svgElement);
+    this.ngZone.runOutsideAngular(() => selection.call(this.zoomBehavior!.scaleBy, factor, center));
+  }
+
+  resetZoom(): void {
+    if (!this.svgElement || !this.zoomBehavior || !this.hasInitialData) return;
+    this.cancelPendingZoom();
+    const selection = d3.select(this.svgElement);
+    this.ngZone.runOutsideAngular(() => selection.call(this.zoomBehavior!.transform, d3.zoomIdentity));
   }
 
   private configureZoom(): void {

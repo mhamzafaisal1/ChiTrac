@@ -24,6 +24,16 @@
   min-height: 0;
 }
 
+.timeline-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-chart-shell {
+  flex: 1 1 auto;
+  height: auto;
+}
+
 .timeline-svg {
   display: block;
   width: 100%;
