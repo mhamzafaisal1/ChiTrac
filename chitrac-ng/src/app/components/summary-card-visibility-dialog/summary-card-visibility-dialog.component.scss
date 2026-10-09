@@ -1,6 +1,23 @@
+.visibility-dialog,
+.list-panel {
+  box-sizing: border-box;
+}
+
 .visibility-dialog {
   color: var(--theme-color-text, #202124);
-  min-width: 800px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: min(760px, 90vh);
+  height: min(760px, 90dvh);
+  min-width: 0;
+}
+
+mat-dialog-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
 }
 
 .dialog-header {
@@ -30,9 +47,12 @@
   gap: 1rem;
   align-items: stretch;
   padding-top: 0.4rem;
+  flex: 1;
+  min-height: 0;
 }
 
 .limit-message {
+  flex-shrink: 0;
   margin: 0.25rem 0 0.65rem;
   color: var(--theme-color-on-surface-variant, #69707a);
   font-size: 0.82rem;
@@ -45,13 +65,18 @@
 }
 
 .list-panel {
-  min-height: 18rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   padding: 0.75rem;
   border: 1px solid rgba(127, 127, 127, 0.2);
   border-radius: 6px;
   background: var(--theme-color-surface-container, #f7f8fa);
 
   h3 {
+    flex-shrink: 0;
     margin: 0 0 0.6rem;
     color: var(--theme-color-on-surface-variant, #69707a);
     font-size: 0.78rem;
@@ -61,7 +86,12 @@
 }
 
 .card-drop-list {
-  min-height: 14rem;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 3px;
 }
 
 .infobox-row {
@@ -228,17 +258,28 @@
 
 .transfer-actions {
   display: flex;
+  min-height: 0;
   flex-direction: column;
   justify-content: center;
   gap: 0.75rem;
 
   button {
+    flex-shrink: 0;
     background: var(--theme-color-surface-container, #f7f8fa);
   }
 }
 
+@media (min-width: 641px) and (max-height: 500px) {
+  .transfer-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 40px);
+    align-content: center;
+    gap: 0.5rem;
+  }
+}
+
 .empty-list {
-  min-height: 11rem;
+  min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -266,9 +307,16 @@
 
   .list-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.5rem;
   }
 
   .transfer-actions {
     flex-direction: row;
+    gap: 0.5rem;
+
+    mat-icon {
+      transform: rotate(90deg);
+    }
   }
 }

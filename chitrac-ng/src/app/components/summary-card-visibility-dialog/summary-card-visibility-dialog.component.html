@@ -20,6 +20,7 @@
         <div
           id="shown-card-list"
           class="card-drop-list"
+          cdkScrollable
           cdkDropList
           [cdkDropListData]="showCards"
           [cdkDropListConnectedTo]="['hidden-card-list']"
@@ -63,12 +64,18 @@
         </div>
       </section>
 
-      <div class="transfer-actions" aria-label="Move selected infobox">
-        <button mat-icon-button type="button" aria-label="Hide selected infobox" [disabled]="!selectedShowId" (click)="hideSelected()">
+      <div class="transfer-actions" role="group" aria-label="Move infoboxes">
+        <button mat-icon-button type="button" aria-label="Hide all" matTooltip="Hide all" [disabled]="!showCards.length" (click)="hideAll()">
+          <mat-icon>keyboard_double_arrow_right</mat-icon>
+        </button>
+        <button mat-icon-button type="button" aria-label="Hide selected infobox" matTooltip="Hide selected" [disabled]="!selectedShowId" (click)="hideSelected()">
           <mat-icon>chevron_right</mat-icon>
         </button>
-        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideId || !canShowMore" (click)="showSelected()">
+        <button mat-icon-button type="button" aria-label="Show selected infobox" matTooltip="Show selected" [disabled]="!selectedHideId || !canShowMore" (click)="showSelected()">
           <mat-icon>chevron_left</mat-icon>
+        </button>
+        <button mat-icon-button type="button" aria-label="Show all" matTooltip="Show all" [disabled]="!canShowAll" (click)="showAll()">
+          <mat-icon>keyboard_double_arrow_left</mat-icon>
         </button>
       </div>
 
@@ -77,6 +84,7 @@
         <div
           id="hidden-card-list"
           class="card-drop-list"
+          cdkScrollable
           cdkDropList
           [cdkDropListData]="hideCards"
           [cdkDropListConnectedTo]="['shown-card-list']"

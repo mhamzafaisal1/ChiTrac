@@ -4,6 +4,8 @@ import { CdkDrag, CdkDragDrop, CdkDropList, DragDropModule, moveItemInArray, tra
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { ScrollingModule } from '@angular/cdk/scrolling';
 
 export interface SummaryCardVisibilityOption {
   id?: string;
@@ -38,7 +40,7 @@ export interface SummaryCardVisibilityDialogResult {
 @Component({
   selector: 'app-summary-card-visibility-dialog',
   standalone: true,
-  imports: [CommonModule, DragDropModule, MatButtonModule, MatDialogModule, MatIconModule],
+  imports: [CommonModule, DragDropModule, ScrollingModule, MatButtonModule, MatDialogModule, MatIconModule, MatTooltipModule],
   templateUrl: './summary-card-visibility-dialog.component.html',
   styleUrl: './summary-card-visibility-dialog.component.scss'
 })
@@ -108,6 +110,23 @@ export class SummaryCardVisibilityDialogComponent {
     this.selectedHideId = null;
   }
 
+  hideAll(): void {
+    if (!this.showCards.length) return;
+    this.moveAll(false);
+  }
+
+  showAll(): void {
+    if (!this.canShowAll) return;
+    this.moveAll(true);
+  }
+
+  get canShowAll(): boolean {
+    const total = this.showCards.length + this.hideCards.length;
+    return this.hideCards.length > 0 &&
+      (this.maxVisible == null || total <= this.maxVisible) &&
+      (this.exactVisible == null || total <= this.exactVisible);
+  }
+
   drop(event: CdkDragDrop<SummaryCardVisibilityOption[]>, destinationVisible: boolean): void {
     if (!this.dragDropEnabled) return;
 
@@ -169,5 +188,19 @@ export class SummaryCardVisibilityDialogComponent {
 
   private setCardVisibility(card: SummaryCardVisibilityOption, visible: boolean): void {
     this.visibility = { ...this.visibility, [this.getCardId(card)]: visible };
+  }
+
+  private moveAll(visible: boolean): void {
+    const source = visible ? this.hideCards : this.showCards;
+    const destination = visible ? this.showCards : this.hideCards;
+    const visibility = { ...this.visibility };
+    for (const card of source) {
+      visibility[this.getCardId(card)] = visible;
+      destination.push(card);
+    }
+    source.length = 0;
+    this.visibility = visibility;
+    this.selectedShowId = null;
+    this.selectedHideId = null;
   }
 }
