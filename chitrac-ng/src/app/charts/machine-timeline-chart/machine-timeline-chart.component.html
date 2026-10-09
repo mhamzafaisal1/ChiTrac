@@ -19,6 +19,8 @@
         [attr.height]="svgHeight"
         preserveAspectRatio="xMidYMid meet"
         focusable="false"
+        (mousemove)="onChunkMove($event)"
+        (mouseleave)="onChunkLeave()"
       >
         <defs>
           <clipPath [attr.id]="clipPathId">
@@ -71,11 +73,11 @@
               [attr.width]="chunk.width"
               [attr.height]="barHeight"
               [attr.fill]="chunk.color"
+              [attr.data-machine]="machine.serial"
+              [attr.data-chunk]="chunk.id"
               rx="2"
               ry="2"
               (mouseenter)="onChunkEnter($event, chunk)"
-              (mousemove)="onChunkMove($event)"
-              (mouseleave)="onChunkLeave()"
             ></rect>
           </g>
         </g>
