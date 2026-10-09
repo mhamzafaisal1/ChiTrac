@@ -81,6 +81,9 @@
           <span class="detail-count" *ngIf="group.details.length">
             {{ group.details.length }}
             {{ group.details.length === 1 ? "occurrence" : "occurrences" }}
+            <ng-container *ngIf="group.summary.Count === 1 && group.details.length === 1">
+              on {{ group.details[0].Machine }}
+            </ng-container>
           </span>
         </span>
         <span>{{ group.summary["Count"] }}</span>
