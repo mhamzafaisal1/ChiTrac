@@ -9,7 +9,7 @@ import { MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { Subject, takeUntil, tap } from 'rxjs';
+import { Observable, of, Subject, takeUntil, tap } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { OperatorService } from '../services/operator.service';
@@ -41,7 +41,7 @@ import { OperatorFaultHistoryComponent } from '../operator-fault-history/operato
 import { OperatorLineChartComponent } from '../operator-line-chart/operator-line-chart.component';
 import { OperatorMachineSummaryComponent } from '../operator-machine-summary/operator-machine-summary.component';
 import { OperatorTimelineChartComponent } from '../operator-timeline-chart/operator-timeline-chart.component';
-import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
+import { openLayoutSaveConfirmDialog } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
   SummaryCardVisibilityDialogComponent,
   SummaryCardVisibilityDialogResult,
@@ -697,52 +697,43 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private confirmAndSaveLayout(): void {
-    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: '460px',
-      maxWidth: 'calc(100vw - 32px)',
-      autoFocus: false,
-    });
+    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayoutPreferences(), this.destroy$);
+    if (!dialogRef) return;
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
-        if (result === 'save') {
-          this.saveLayoutPreferences();
-          return;
-        }
         if (result === 'discard') {
           this.revertLayoutChanges();
         }
       });
   }
 
-  private saveLayoutPreferences(): void {
+  private saveLayoutPreferences(): Observable<unknown> {
     this.summaryCardOrder = this.getSummaryCardOrder();
     this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
     this.tableColumnOrder = this.cleanTableColumnOrder(this.tableColumnOrder);
     this.summaryCardVisibility = this.cleanSummaryCardVisibility(this.summaryCardVisibility);
-    this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
     if (!this.userService.getToken()) {
+      this.settingsService.setOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
       localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
       localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
       this.layoutEditService.setEditing(false);
-      return;
+      this.layoutSnapshot = null;
+      return of(null);
     }
 
-    this.settingsService.saveOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).subscribe({
-      next: () => {
+    return this.settingsService.saveOperatorDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).pipe(
+      tap(() => {
         localStorage.removeItem(this.summaryCardOrderKey);
         localStorage.removeItem(this.summaryCardVisibilityKey);
         this.summaryCardOrderSource = 'server';
         this.summaryCardVisibilitySource = 'server';
         this.layoutSnapshot = null;
         this.layoutEditService.setEditing(false);
-      },
-      error: (error) => {
-        console.error('[OperatorDashboard] Failed to save layout preferences', error);
-      },
-    });
+      })
+    );
   }
 
   private captureLayoutSnapshot(): void {

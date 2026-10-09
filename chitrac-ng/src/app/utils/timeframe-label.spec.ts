@@ -2,8 +2,8 @@ import { selectedTimeframeLabel } from './timeframe-label';
 
 describe('selectedTimeframeLabel', () => {
   it('labels default and explicitly selected Today consistently', () => {
-    expect(selectedTimeframeLabel('', '', true)).toBe('today');
-    expect(selectedTimeframeLabel('today', '', false)).toBe('today');
+    expect(selectedTimeframeLabel('', '', true)).toBe('Today');
+    expect(selectedTimeframeLabel('today', '', false)).toBe('Today');
   });
 
   it('labels a custom range and the existing calendar presets', () => {

@@ -170,7 +170,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   private dashboardCacheSub?: Subscription;
   private layoutEditSub?: Subscription;
   private timeframeSub?: Subscription;
-  selectedTimeframeLabel = 'today';
+  selectedTimeframeLabel = 'Today';
 
   user: any;
   

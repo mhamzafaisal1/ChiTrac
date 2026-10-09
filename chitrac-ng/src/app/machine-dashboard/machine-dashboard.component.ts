@@ -45,7 +45,7 @@ import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
 import { DowntimeParetoComponent } from "../downtime-pareto/downtime-pareto.component";
-import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
+import { openLayoutSaveConfirmDialog } from "../components/layout-save-confirm/layout-save-confirm.component";
 import {
   SummaryCardVisibilityDialogComponent,
   SummaryCardVisibilityDialogResult,
@@ -1295,52 +1295,43 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private confirmAndSaveLayout(): void {
-    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: "460px",
-      maxWidth: "calc(100vw - 32px)",
-      autoFocus: false,
-    });
+    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayoutPreferences(), this.destroy$);
+    if (!dialogRef) return;
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
-        if (result === "save") {
-          this.saveLayoutPreferences();
-          return;
-        }
         if (result === "discard") {
           this.revertLayoutChanges();
         }
       });
   }
 
-  private saveLayoutPreferences(): void {
+  private saveLayoutPreferences(): Observable<unknown> {
     this.summaryCardOrder = this.getSummaryCardOrder();
     this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
     this.tableColumnOrder = this.cleanTableColumnOrder(this.tableColumnOrder);
     this.summaryCardVisibility = this.cleanSummaryCardVisibility(this.summaryCardVisibility);
-    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
     if (!this.userService.getToken()) {
+      this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
       localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
       localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
       this.layoutEditService.setEditing(false);
-      return;
+      this.layoutSnapshot = null;
+      return of(null);
     }
 
-    this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).subscribe({
-      next: () => {
+    return this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).pipe(
+      tap(() => {
         localStorage.removeItem(this.summaryCardOrderKey);
         localStorage.removeItem(this.summaryCardVisibilityKey);
         this.summaryCardOrderSource = "server";
         this.summaryCardVisibilitySource = "server";
         this.layoutSnapshot = null;
         this.layoutEditService.setEditing(false);
-      },
-      error: (error) => {
-        console.error("[MachineDashboard] Failed to save layout preferences", error);
-      },
-    });
+      })
+    );
   }
 
   private captureLayoutSnapshot(): void {

@@ -25,7 +25,7 @@ export function selectedTimeframeLabel(
   }
 
   const labels: Record<string, string> = {
-    today: 'today', thisWeek: 'This Week', thisMonth: 'This Month', thisYear: 'This Year',
+    today: 'Today', thisWeek: 'This Week', thisMonth: 'This Month', thisYear: 'This Year',
   };
-  return labels[timeframe] || (liveMode && !timeframe ? 'today' : 'Custom');
+  return labels[timeframe] || (liveMode && !timeframe ? 'Today' : 'Custom');
 }
