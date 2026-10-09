@@ -51,6 +51,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   }
 
   chartConfig: CartesianChartConfig | null = null;
+  private themeObserver?: MutationObserver;
 
   isDarkTheme = false;
   isLoading = false;
@@ -72,9 +73,10 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     private dateTimeService: DateTimeService
   ) {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
-    new MutationObserver(() => {
+    this.themeObserver = new MutationObserver(() => {
       this.isDarkTheme = document.body.classList.contains('dark-theme');
-    }).observe(document.body, { attributes: true });
+    });
+    this.themeObserver.observe(document.body, { attributes: true });
   }
 
   ngOnInit(): void {
@@ -112,6 +114,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   }
 
   ngOnDestroy(): void {
+    this.themeObserver?.disconnect();
     this.destroy$.next(); this.destroy$.complete();
     this.stopPollingInternal();
   }

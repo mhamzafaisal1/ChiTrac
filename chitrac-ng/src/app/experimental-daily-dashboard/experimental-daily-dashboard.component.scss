@@ -60,6 +60,12 @@
 }
 
 .chart-shell {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--theme-color-primary);
+    outline-offset: -2px;
+  }
   position: relative;
   width: 100%;
   height: 100%;

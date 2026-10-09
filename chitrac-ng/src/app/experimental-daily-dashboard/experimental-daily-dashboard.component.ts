@@ -2,9 +2,11 @@ import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog } from '@angular/material/dialog';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
-import { Subject } from 'rxjs';
+import { BehaviorSubject, Subject } from 'rxjs';
+import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
+import { DAILY_CHART_COMPONENTS, DailyChartDetailComponent, DailyChartDetailState } from '../components/daily-chart-detail/daily-chart-detail.component';
 import { takeUntil } from 'rxjs/operators';
 import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
@@ -98,6 +100,9 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   private resizeFrame: number | null = null;
   private destroy$ = new Subject<void>();
   private layoutSnapshot: ExperimentalDashboardLayoutSnapshot | null = null;
+  private chartDetailRef?: MatDialogRef<ModalWrapperComponent>;
+  private chartDetailState?: BehaviorSubject<DailyChartDetailState>;
+  private expandedTile?: ExperimentalChartTile;
 
   constructor(
     private websocketService: WebsocketService,
@@ -132,6 +137,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
           this.applyWebsocketCache();
         } else if (status === 'disconnected' || status === 'error') {
           this.preloadedData = null;
+          this.updateChartDetail();
         }
       });
 
@@ -146,6 +152,8 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   }
 
   ngOnDestroy(): void {
+    this.chartDetailRef?.close();
+    this.chartDetailState?.complete();
     this.layoutEditService.unregister(this.layoutContextId);
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -172,6 +180,45 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     this.layoutEditService.markEditsMade();
     this.settingsService.setExperimentalDailyDashboardChartOrder(this.getChartOrder(), this.chartVisibility);
     this.scheduleChartDimensionUpdate();
+  }
+
+  openChartDetail(tile: ExperimentalChartTile): void {
+    if (this.layoutEditing || this.chartDetailRef || !DAILY_CHART_COMPONENTS[tile.id]) return;
+    this.expandedTile = tile;
+    const state = new BehaviorSubject(this.getChartDetailState(tile));
+    this.chartDetailState = state;
+    const ref = this.dialog.open(ModalWrapperComponent, {
+      width: '90vw',
+      height: '85vh',
+      maxWidth: '95vw',
+      maxHeight: '90vh',
+      panelClass: ['performance-chart-dialog', 'daily-chart-detail-dialog'],
+      ariaLabel: tile.title,
+      data: {
+        component: DailyChartDetailComponent,
+        componentInputs: { chartId: tile.id, title: tile.title, icon: tile.icon, state$: state },
+      },
+    });
+    this.chartDetailRef = ref;
+    ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe(() => {
+      state.complete();
+      this.chartDetailRef = undefined;
+      this.chartDetailState = undefined;
+      this.expandedTile = undefined;
+    });
+  }
+
+  private getChartDetailState(tile: ExperimentalChartTile): DailyChartDetailState {
+    return {
+      data: this.preloadedData?.[DAILY_CHART_COMPONENTS[tile.id].dataKey] ?? null,
+      subtitle: this.chartSubtitle(tile),
+      subtitleStrong: this.chartSubtitleStrong(tile),
+      updatedAt: this.cacheUpdatedAt,
+    };
+  }
+
+  private updateChartDetail(): void {
+    if (this.expandedTile) this.chartDetailState?.next(this.getChartDetailState(this.expandedTile));
   }
 
   get visibleChartTiles(): ExperimentalChartTile[] {
@@ -465,6 +512,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     this.preloadedData = envelope?.data || null;
     this.cacheSubtitle = this.buildCacheSubtitle(envelope, scope);
     this.cacheUpdatedAt = this.formatUpdatedAt(envelope?.updatedAt);
+    this.updateChartDetail();
   }
 
   private getDashboardCacheScope(): DashboardCacheScope {
