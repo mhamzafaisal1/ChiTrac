@@ -106,6 +106,15 @@ for (const chart of [MachineTimelineChartComponent, OperatorTimelineChartCompone
       expect(parentClick).not.toHaveBeenCalled();
     }));
 
+    it('uses the app text color in both dark and light themes', fakeAsync(() => {
+      fixture.nativeElement.style.setProperty('--theme-color-text', '#ffffff');
+      render();
+      expect(getComputedStyle(buttons()[0]).color).toBe('rgb(255, 255, 255)');
+      fixture.nativeElement.style.setProperty('--theme-color-text', '#000000');
+      render();
+      expect(getComputedStyle(buttons()[0]).color).toBe('rgb(0, 0, 0)');
+    }));
+
     it('hides controls without data and safely ignores zoom commands', fakeAsync(() => {
       fixture.componentRef.setInput('preloadedData', null);
       fixture.detectChanges();

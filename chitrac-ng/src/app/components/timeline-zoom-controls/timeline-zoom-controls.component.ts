@@ -27,7 +27,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
       width: 48px;
       height: 48px;
       --mdc-icon-button-state-layer-size: 48px;
-      color: var(--theme-color-on-surface, #333);
+      color: var(--theme-color-text, currentColor);
     }
     button:disabled { opacity: 0.4; }
   `,
