@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/components/layout-save-confirm/layout-save-confirm.component.spec.ts",
+    "src/app/utils/timeframe-label.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

@@ -4,11 +4,11 @@ import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewCh
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { BehaviorSubject, Observable, of, Subject, tap } from 'rxjs';
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { DAILY_CHART_COMPONENTS, DailyChartDetailComponent, DailyChartDetailState } from '../components/daily-chart-detail/daily-chart-detail.component';
 import { takeUntil } from 'rxjs/operators';
-import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
+import { openLayoutSaveConfirmDialog } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
   SummaryCardVisibilityDialogComponent,
   SummaryCardVisibilityDialogResult,
@@ -324,43 +324,34 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   }
 
   private confirmAndSaveLayout(): void {
-    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: '460px',
-      maxWidth: 'calc(100vw - 32px)',
-      autoFocus: false
-    });
+    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayout(), this.destroy$);
+    if (!dialogRef) return;
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
-        if (result === 'save') {
-          this.saveLayout();
-          return;
-        }
         if (result === 'discard') {
           this.revertLayoutChanges();
         }
       });
   }
 
-  private saveLayout(): void {
+  private saveLayout(): Observable<unknown> {
     const chartOrder = this.getChartOrder();
-    this.settingsService.setExperimentalDailyDashboardChartOrder(chartOrder, this.chartVisibility);
 
     if (!this.userService.getToken()) {
+      this.settingsService.setExperimentalDailyDashboardChartOrder(chartOrder, this.chartVisibility);
       this.layoutEditService.setEditing(false);
-      return;
+      this.layoutSnapshot = null;
+      return of(null);
     }
 
-    this.settingsService.saveExperimentalDailyDashboardChartOrder(chartOrder, this.chartVisibility).subscribe({
-      next: () => {
+    return this.settingsService.saveExperimentalDailyDashboardChartOrder(chartOrder, this.chartVisibility).pipe(
+      tap(() => {
         this.layoutSnapshot = null;
         this.layoutEditService.setEditing(false);
-      },
-      error: (error) => {
-        console.error('[ExperimentalDailyDashboard] Failed to save chart layout', error);
-      }
-    });
+      })
+    );
   }
 
   private revertLayoutChanges(): void {

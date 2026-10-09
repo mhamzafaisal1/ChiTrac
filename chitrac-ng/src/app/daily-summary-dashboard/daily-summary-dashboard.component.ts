@@ -37,7 +37,7 @@ import { PercentBreakpointService } from '../services/percent-breakpoint.service
 import { SettingsService } from '../services/settings.service';
 import { LayoutEditService } from '../services/layout-edit.service';
 import { UserService } from '../user.service';
-import { LayoutSaveConfirmComponent } from '../components/layout-save-confirm/layout-save-confirm.component';
+import { openLayoutSaveConfirmDialog } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
   SummaryCardVisibilityDialogComponent,
   SummaryCardVisibilityDialogResult,
@@ -647,37 +647,33 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   private confirmAndSaveLayout(): void {
-    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: '460px',
-      maxWidth: 'calc(100vw - 32px)',
-      autoFocus: false,
-    });
+    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveSummaryCardLayout(), this.destroy$);
+    if (!dialogRef) return;
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
-        if (result === 'save') this.saveSummaryCardLayout();
         if (result === 'discard') this.revertSummaryCardLayout();
       });
   }
 
-  private saveSummaryCardLayout(): void {
+  private saveSummaryCardLayout(): Observable<unknown> {
     const order = this.getSummaryCardOrder();
-    this.settingsService.setSummaryDashboardLayout(order, this.summaryCardVisibility);
     if (!this.userService.getToken()) {
+      this.settingsService.setSummaryDashboardLayout(order, this.summaryCardVisibility);
       localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(order));
       localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
       this.layoutEditService.setEditing(false);
-      return;
+      this.layoutSnapshot = null;
+      return of(null);
     }
-    this.settingsService.saveSummaryDashboardLayout(order, this.summaryCardVisibility).subscribe({
-      next: () => {
+    return this.settingsService.saveSummaryDashboardLayout(order, this.summaryCardVisibility).pipe(
+      tap(() => {
         localStorage.removeItem(this.summaryCardOrderKey);
         localStorage.removeItem(this.summaryCardVisibilityKey);
         this.layoutSnapshot = null;
         this.layoutEditService.setEditing(false);
-      },
-      error: (error) => console.error('[SummaryDashboard] Failed to save layout preferences', error),
-    });
+      })
+    );
   }
 
   private revertSummaryCardLayout(): void {
