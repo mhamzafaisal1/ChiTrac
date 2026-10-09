@@ -929,24 +929,30 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private getShiftInfoCard(cache?: DashboardCacheState | null): SummaryCard | null {
-    if (this.dateTimeService.getShiftId() || !this.isCurrentDayView()) {
+    const selectedShiftId = this.dateTimeService.getShiftId();
+    if (!selectedShiftId && !this.isCurrentDayView()) {
       return null;
     }
 
     const projectionWindow = this.getShiftProjectionWindow(cache);
     const currentShift = projectionWindow?.currentShift;
-    const shift = currentShift || projectionWindow?.nextShift;
+    const shift = selectedShiftId
+      ? [currentShift, projectionWindow?.previousShift, projectionWindow?.nextShift]
+        .find((context) => context?.shiftId === selectedShiftId)
+      : currentShift || projectionWindow?.nextShift;
     if (!shift?.start || !shift?.end) {
       return null;
     }
 
     const isTomorrow = this.isTomorrow(shift.start);
-    const prefix = currentShift
+    const prefix = selectedShiftId
+      ? "Shift: "
+      : currentShift
       ? "Current Shift: "
       : isTomorrow
         ? "First Shift Tomorrow: "
         : "Shift: ";
-    const breakSuffix = currentShift && projectionWindow?.state === "inBreak" ? " (In Break)" : "";
+    const breakSuffix = shift === currentShift && projectionWindow?.state === "inBreak" ? " (In Break)" : "";
     return {
       label: `${prefix}${shift.name || "Unnamed Shift"}`,
       isTimeRange: true,
