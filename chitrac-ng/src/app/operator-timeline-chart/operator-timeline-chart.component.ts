@@ -17,6 +17,7 @@ import * as d3 from 'd3';
 import { SettingsService } from '../services/settings.service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TimelineZoomControlsComponent } from '../components/timeline-zoom-controls/timeline-zoom-controls.component';
+import { hoveredTimelineChunk, TimelinePointer } from '../utils/timeline-hover';
 
 type TimelineStatus = 'running' | 'paused' | 'faulted' | 'offline';
 
@@ -99,6 +100,8 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.configureZoom();
   }
 
+  @ViewChild('tooltipEl') tooltipEl?: ElementRef<HTMLElement>;
+
   isLoading = false;
   hasInitialData = false;
   isZoomed = false;
@@ -134,6 +137,8 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   private measuredWidth = 0;
   private resizeFrame = 0;
   private zoomFrame = 0;
+  private hoverFrame = 0;
+  private hoverPointer: TimelinePointer | null = null;
   private resizeObserver?: ResizeObserver;
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -166,6 +171,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
       this.resizeFrame = 0;
     }
     this.cancelPendingZoom();
+    if (this.hoverFrame) cancelAnimationFrame(this.hoverFrame);
   }
 
   trackMachine(_index: number, machine: TimelineViewMachine): number | string {
@@ -177,32 +183,47 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
   }
 
   onChunkEnter(event: MouseEvent, chunk: TimelineViewChunk): void {
-    const target = event.currentTarget as SVGGraphicsElement | null;
-    const hostRect = target?.ownerSVGElement?.getBoundingClientRect();
+    this.hoverPointer = { clientX: event.clientX, clientY: event.clientY };
+    this.showTooltip(chunk);
+  }
+
+  private showTooltip(chunk: TimelineViewChunk): void {
+    if (!this.hoverPointer) return;
     this.tooltip = {
       visible: true,
-      x: hostRect ? event.clientX - hostRect.left + 12 : event.offsetX + 12,
-      y: hostRect ? event.clientY - hostRect.top + 12 : event.offsetY + 12,
+      x: 0,
+      y: 0,
       lines: chunk.tooltip,
     };
+    this.cdr.detectChanges();
+    const position = this.resolveTooltipPosition(this.hoverPointer);
+    this.tooltip = { ...this.tooltip, ...position };
     this.cdr.markForCheck();
   }
 
   onChunkMove(event: MouseEvent): void {
-    if (!this.tooltip.visible) return;
-    const target = event.currentTarget as SVGGraphicsElement | null;
-    const hostRect = target?.ownerSVGElement?.getBoundingClientRect();
-    this.tooltip = {
-      ...this.tooltip,
-      x: hostRect ? event.clientX - hostRect.left + 12 : event.offsetX + 12,
-      y: hostRect ? event.clientY - hostRect.top + 12 : event.offsetY + 12,
-    };
-    this.cdr.markForCheck();
+    this.hoverPointer = { clientX: event.clientX, clientY: event.clientY };
+    this.syncHoveredTooltip();
   }
 
   onChunkLeave(): void {
-    this.tooltip = { ...this.tooltip, visible: false };
-    this.cdr.markForCheck();
+    this.hoverPointer = null;
+    this.hideTooltip();
+  }
+
+  private syncHoveredTooltip(): void {
+    const chunk = hoveredTimelineChunk(this.svgElement, this.hoverPointer, this.viewMachines);
+    if (chunk) this.showTooltip(chunk);
+    else this.hideTooltip();
+  }
+
+  private scheduleHoverSync(): void {
+    if (!this.hoverPointer || this.hoverFrame) return;
+    // Hit-test after Angular updates the SVG, including replaced live sessions.
+    this.hoverFrame = requestAnimationFrame(() => {
+      this.hoverFrame = 0;
+      this.ngZone.run(() => this.syncHoveredTooltip());
+    });
   }
 
   private buildView(): void {
@@ -244,8 +265,9 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.renderTimeline(rowHeight, this.zoomTransform);
     this.hasInitialData = this.sourceMachines.length > 0;
     this.isLoading = false;
-    this.tooltip = { ...this.tooltip, visible: false };
+    if (!this.hasInitialData) this.onChunkLeave();
     this.configureZoom();
+    this.scheduleHoverSync();
     this.cdr.markForCheck();
   }
 
@@ -288,7 +310,6 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
       .scaleExtent([1, 32])
       .extent([[this.plotLeft, 0], [plotRight, this.svgHeight]])
       .translateExtent([[this.plotLeft, -Infinity], [plotRight, Infinity]])
-      .on('start', () => this.hideTooltip())
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         this.scheduleZoomRender(event.transform);
       });
@@ -297,7 +318,8 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     this.ngZone.runOutsideAngular(() => {
       selection.call(this.zoomBehavior!);
       selection.on('dblclick.zoom', null);
-      selection.call(this.zoomBehavior!.transform, this.zoomTransform);
+      // Restore D3's internal state without emitting a synthetic zoom gesture.
+      selection.property('__zoom', this.zoomTransform);
     });
   }
 
@@ -351,7 +373,7 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     const rowHeight = this.innerHeight / rowCount;
     this.zoomTransform = transform;
     this.renderTimeline(rowHeight, transform);
-    this.tooltip = { ...this.tooltip, visible: false };
+    this.scheduleHoverSync();
     this.cdr.markForCheck();
   }
 
@@ -491,7 +513,8 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     if (status === 'faulted') {
       lines.push(`Fault Code: ${chunk.statusCode ?? 'N/A'}`);
       lines.push(`Fault Name: ${chunk.statusLabel || 'Faulted'}`);
-    } else if (status === 'paused') {
+    } else if (status === 'paused' || status === 'offline') {
+      if (status === 'offline') lines.unshift(`Status: ${chunk.statusLabel || 'Offline'}`);
       const durationMs = chunk.totalDurationMs ?? chunk.durationMs ?? Math.max(0, end.getTime() - start.getTime());
       lines.push(`Total Duration: ${this.formatDuration(durationMs)}`);
     } else {
@@ -510,6 +533,21 @@ export class OperatorTimelineChartComponent implements AfterViewInit, OnChanges,
     return [hours, minutes, seconds]
       .map(value => String(value).padStart(2, '0'))
       .join(':');
+  }
+
+  private resolveTooltipPosition(pointer: TimelinePointer): { x: number; y: number } {
+    const bounds = this.svgElement?.parentElement?.getBoundingClientRect();
+    if (!bounds) return { x: 12, y: 8 };
+    const x = pointer.clientX - bounds.left;
+    const y = pointer.clientY - bounds.top;
+    const width = this.tooltipEl?.nativeElement.offsetWidth || 0;
+    const height = this.tooltipEl?.nativeElement.offsetHeight || 0;
+    const gutter = 8;
+    const left = x + width + 12 + gutter > bounds.width ? x - width - 12 : x + 12;
+    return {
+      x: Math.max(gutter, Math.min(left, bounds.width - width - gutter)),
+      y: Math.max(gutter, Math.min(y, bounds.height - height - gutter)),
+    };
   }
 
   private normalizeStatus(status: unknown): TimelineStatus {
