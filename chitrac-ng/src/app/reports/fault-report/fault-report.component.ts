@@ -142,7 +142,7 @@ export class FaultReportComponent implements OnInit, OnDestroy {
         return {
           key: `${code ?? 'unknown'}|${name}|${index}`,
           summary: {
-            Fault: code === null ? name : `${name} (${code})`,
+            Fault: code === null ? name : `${name} (Code: ${code})`,
             Count: summary.count ?? details.length,
             'Total Duration': this.formatDuration(summary.formatted),
             _faultCode: code,
@@ -163,7 +163,7 @@ export class FaultReportComponent implements OnInit, OnDestroy {
     const validTimestamp = timestamp && !Number.isNaN(timestamp.getTime());
     const machineSerial = fault.machineSerial ?? null;
     const machineName =
-      fault.machineName ??
+      String(fault.machineName ?? '').trim() ||
       (machineSerial !== null ? `Machine ${machineSerial}` : 'Unknown Machine');
 
     return {
