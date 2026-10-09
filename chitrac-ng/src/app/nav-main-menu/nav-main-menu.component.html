@@ -218,6 +218,14 @@
           <small *ngIf="dashboardUpdatedAt">{{ dashboardUpdatedAt | displayTime }}</small>
         </span>
 
+        <span class="live-chip timeframe-chip"
+          [matTooltip]="'Selected timeframe: ' + selectedTimeframeLabel"
+          [attr.aria-label]="'Selected timeframe: ' + selectedTimeframeLabel"
+          aria-live="polite"
+          matTooltipShowDelay="500">
+          <span class="timeframe-label">{{ selectedTimeframeLabel }}</span>
+        </span>
+
         <button
           mat-icon-button
           class="layout-edit-btn"

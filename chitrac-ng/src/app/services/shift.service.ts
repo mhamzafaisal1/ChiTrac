@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface ShiftListItem {
@@ -73,8 +73,10 @@ export class ShiftService {
 
   constructor(private http: HttpClient) {}
 
-  getActiveShifts(): Observable<{ shifts: ShiftListItem[] }> {
-    return this.http.get<{ shifts: ShiftListItem[] }>(`${this.apiUrl}/shifts`);
+  getActiveShifts(skipErrorModal = false): Observable<{ shifts: ShiftListItem[] }> {
+    return this.http.get<{ shifts: ShiftListItem[] }>(`${this.apiUrl}/shifts`, skipErrorModal
+      ? { headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' }) }
+      : {});
   }
 
   /** All shifts (active and inactive), sorted by start time on the server. */
