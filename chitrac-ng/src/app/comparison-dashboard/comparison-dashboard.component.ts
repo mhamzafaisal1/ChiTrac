@@ -1,15 +1,13 @@
 import { CommonModule } from '@angular/common';
+import { TimeframePickerComponent, TimeframeSelection } from '../components/timeframe-picker/timeframe-picker.component';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
 
 import { MatButtonModule } from '@angular/material/button';
-import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatTimepickerModule } from '@angular/material/timepicker';
-import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 
@@ -77,17 +75,14 @@ interface WizardSnapshot {
 @Component({
   selector: 'app-comparison-dashboard',
   standalone: true,
-  providers: [provideNativeDateAdapter()],
   imports: [
     CommonModule,
+    TimeframePickerComponent,
     FormsModule,
     MatButtonModule,
-    MatDatepickerModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
-    MatTimepickerModule,
-    MatNativeDateModule,
     MatProgressSpinnerModule,
     MatSelectModule,
     PolarChartComponent
@@ -226,76 +221,14 @@ export class ComparisonDashboardComponent implements OnInit {
     this.pickerMode = current?.mode || (current?.shiftId ? 'shift' : 'custom');
   }
 
-  confirmPicker(): void {
-    if (!this.activePicker || !this.pickerStart || !this.pickerEnd || this.pickerEnd <= this.pickerStart) {
-      return;
-    }
-
-    const nextTimeframe = {
-      start: new Date(this.pickerStart),
-      end: new Date(this.pickerEnd),
-      shiftId: this.pickerShiftId,
-      mode: this.pickerMode
-    };
-
+  confirmPicker(selection: TimeframeSelection): void {
+    if (!this.activePicker) return;
     if (this.activePicker === 'primary') {
-      this.primaryTimeframe = nextTimeframe;
+      this.primaryTimeframe = selection;
     } else {
-      this.secondaryTimeframe = nextTimeframe;
+      this.secondaryTimeframe = selection;
     }
     this.activePicker = null;
-  }
-
-  clearPickerShift(): void {
-    this.pickerShiftId = null;
-    this.pickerMode = 'custom';
-  }
-
-  selectPickerShift(shiftId: string): void {
-    this.pickerShiftId = shiftId;
-    this.pickerMode = 'shift';
-  }
-
-  onPickerQuickSelect(timeframe: PickerMode): void {
-    if (timeframe === 'custom') {
-      this.pickerShiftId = null;
-      this.pickerMode = 'custom';
-      return;
-    }
-
-    const now = new Date();
-    let start: Date;
-
-    switch (timeframe) {
-      case 'today':
-        start = new Date(now);
-        start.setHours(0, 0, 0, 0);
-        break;
-      case 'thisWeek':
-        start = new Date(now);
-        start.setDate(start.getDate() - start.getDay());
-        start.setHours(0, 0, 0, 0);
-        break;
-      case 'thisMonth':
-        start = new Date(now.getFullYear(), now.getMonth(), 1);
-        start.setHours(0, 0, 0, 0);
-        break;
-      case 'thisYear':
-        start = new Date(now.getFullYear(), 0, 1);
-        start.setHours(0, 0, 0, 0);
-        break;
-      default:
-        return;
-    }
-
-    this.pickerShiftId = null;
-    this.pickerMode = timeframe;
-    this.pickerStart = start;
-    this.pickerEnd = now;
-  }
-
-  isManualPickerEnabled(): boolean {
-    return this.pickerMode === 'custom';
   }
 
   getOptionLabel(id: number | null): string {

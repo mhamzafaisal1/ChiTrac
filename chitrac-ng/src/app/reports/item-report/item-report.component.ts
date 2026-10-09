@@ -11,7 +11,7 @@ import autoTable from 'jspdf-autotable';
 
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
-import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
 import { displayInteger } from '../../shared/utils/display-number';
 import { formatDurationParts } from '../../shared/utils/duration-format';
 
@@ -36,7 +36,7 @@ interface ItemSummary {
         MatButtonModule,
         MatIconModule,
         BaseTableComponent,
-        DateTimePickerComponent
+        TimeframePickerComponent
     ],
     templateUrl: './item-report.component.html',
     styleUrls: ['./item-report.component.scss']
@@ -44,6 +44,8 @@ interface ItemSummary {
 export class ItemReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
+  selectedShiftId: string | null = null;
+  timeframeMode: TimeframePickerMode = 'custom';
   columns: string[] = [];
   rows: any[] = [];
   columnTooltips: { [column: string]: string } = {
@@ -92,7 +94,18 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     this.isDarkTheme = isDark;
   }
 
+  applyTimeframe(selection: TimeframeSelection): void {
+    if (this.isLoading) return;
+    this.startTime = selection.start.toISOString();
+    this.endTime = selection.end.toISOString();
+    this.selectedShiftId = selection.shiftId;
+    this.timeframeMode = selection.mode || 'custom';
+    this.rows = [];
+    this.fetchAnalyticsData();
+  }
+
   fetchAnalyticsData(): void {
+    if (this.isLoading) return;
     if (!this.startTime || !this.endTime) return;
 
     this.isLoading = true;
@@ -102,7 +115,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
 
-    this.reportsService.getItemReport(formattedStart, formattedEnd).subscribe({
+    this.reportsService.getItemReport(formattedStart, formattedEnd, this.selectedShiftId).subscribe({
       next: (data: ItemSummary[] | { results?: ItemSummary[] }) => {
         const items = Array.isArray(data)
           ? data

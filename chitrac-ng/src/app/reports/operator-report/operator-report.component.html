@@ -9,14 +9,14 @@
   </div>
 
   <div class="controls">
-    <app-date-time-picker
-      label="Start Time"
-      [(value)]="startTime"
-    ></app-date-time-picker>
-    <app-date-time-picker
-      label="End Time"
-      [(value)]="endTime"
-    ></app-date-time-picker>
+    <app-timeframe-picker
+      [start]="startTime"
+      [end]="endTime"
+      [shiftId]="selectedShiftId"
+      [mode]="timeframeMode"
+      [disabled]="isLoading"
+      (confirmed)="applyTimeframe($event)"
+    ></app-timeframe-picker>
 
     <div class="button-group">
       <button

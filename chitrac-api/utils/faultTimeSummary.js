@@ -1,4 +1,5 @@
 const { ObjectId } = require("mongodb");
+const { sessionShiftFilter } = require('./reportShiftFilter');
 const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
 const { getShiftTimeComponents, getTimeComponentsFromTimestamp } = require("./shiftTimeComponents");
@@ -503,6 +504,7 @@ async function getOperatorMachineStateTimeByOperatorId(db, config, operatorIds, 
     .find({
       ...overlapQuery(start, end),
       "operators.id": { $in: ids },
+      ...sessionShiftFilter(options.shiftId),
     })
     .project({ _id: 0, type: 1, status: 1, operators: 1, timestamps: 1 })
     .toArray();

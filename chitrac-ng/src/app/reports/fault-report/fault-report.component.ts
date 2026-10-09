@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
-import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
 import { formatDurationParts } from '../../shared/utils/duration-format';
 
 interface FaultDetailRow {
@@ -42,7 +42,7 @@ interface FaultReportGroup {
     FormsModule,
     MatButtonModule,
     MatIconModule,
-    DateTimePickerComponent,
+    TimeframePickerComponent,
   ],
   templateUrl: './fault-report.component.html',
   styleUrls: ['./fault-report.component.scss'],
@@ -50,6 +50,8 @@ interface FaultReportGroup {
 export class FaultReportComponent implements OnInit, OnDestroy {
   startTime = '';
   endTime = '';
+  selectedShiftId: string | null = null;
+  timeframeMode: TimeframePickerMode = 'custom';
   readonly summaryColumns = ['Fault', 'Count', 'Total Duration'];
   readonly detailColumns = ['Timestamp', 'Machine', 'Duration'];
   reportGroups: FaultReportGroup[] = [];
@@ -84,7 +86,18 @@ export class FaultReportComponent implements OnInit, OnDestroy {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
   }
 
+  applyTimeframe(selection: TimeframeSelection): void {
+    if (this.isLoading) return;
+    this.startTime = selection.start.toISOString();
+    this.endTime = selection.end.toISOString();
+    this.selectedShiftId = selection.shiftId;
+    this.timeframeMode = selection.mode || 'custom';
+    this.reportGroups = [];
+    this.fetchFaultReport();
+  }
+
   fetchFaultReport(): void {
+    if (this.isLoading) return;
     if (!this.startTime || !this.endTime) return;
 
     this.isLoading = true;
@@ -94,7 +107,7 @@ export class FaultReportComponent implements OnInit, OnDestroy {
     const formattedEnd = new Date(this.endTime).toISOString();
 
     this.dailyDashboardService
-      .getFaultReportSummary(formattedStart, formattedEnd)
+      .getFaultReportSummary(formattedStart, formattedEnd, this.selectedShiftId)
       .subscribe({
         next: (data: { context: any; summaries: any[] }) => {
           this.processReportData(data.summaries ?? []);
