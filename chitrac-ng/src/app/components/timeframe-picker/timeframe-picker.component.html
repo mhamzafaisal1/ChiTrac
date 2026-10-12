@@ -41,6 +41,10 @@
       <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'thisWeek'" (click)="quickSelect('thisWeek')">This Week</button>
       <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'thisMonth'" (click)="quickSelect('thisMonth')">This Month</button>
       <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'thisYear'" (click)="quickSelect('thisYear')">This Year</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'yesterday'" (click)="quickSelect('yesterday')">Yesterday</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'lastWeek'" (click)="quickSelect('lastWeek')">Last Week</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'lastMonth'" (click)="quickSelect('lastMonth')">Last Month</button>
+      <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'lastYear'" (click)="quickSelect('lastYear')">Last Year</button>
       <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'custom'" (click)="quickSelect('custom')">Custom</button>
     </div>
   </div>

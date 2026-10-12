@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { TimeframePickerComponent, TimeframeSelection } from '../components/timeframe-picker/timeframe-picker.component';
+import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../components/timeframe-picker/timeframe-picker.component';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
@@ -23,7 +23,7 @@ import { formatDurationMilliseconds, formatDurationParts } from '../shared/utils
 type ComparisonEntityType = 'machines' | 'operators';
 type WizardStep = 'chooseType' | 'chooseEntities' | 'chooseTimeframes' | 'results';
 type TimeframeKey = 'primary' | 'secondary';
-type PickerMode = 'custom' | 'shift' | 'today' | 'thisWeek' | 'thisMonth' | 'thisYear';
+type PickerMode = TimeframePickerMode;
 
 interface ComparisonOption {
   id: number;
