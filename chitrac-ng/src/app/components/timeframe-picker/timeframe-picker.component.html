@@ -48,5 +48,5 @@
       <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'custom'" (click)="quickSelect('custom')">Custom</button>
     </div>
   </div>
-  <div class="picker-actions"><button mat-flat-button color="primary" type="button" [disabled]="disabled || !valid" (click)="confirm()"><mat-icon>done</mat-icon>Confirm</button></div>
+  <div class="picker-actions"><button mat-flat-button color="primary" type="button" [disabled]="disabled || !valid" (click)="confirm()"><mat-icon>done</mat-icon>{{ confirmLabel }}</button></div>
 </section>

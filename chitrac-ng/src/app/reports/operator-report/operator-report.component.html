@@ -10,6 +10,7 @@
 
   <div class="controls">
     <app-timeframe-picker
+      confirmLabel="Generate Report"
       [start]="startTime"
       [end]="endTime"
       [shiftId]="selectedShiftId"
@@ -19,15 +20,6 @@
     ></app-timeframe-picker>
 
     <div class="button-group">
-      <button
-        mat-flat-button
-        color="primary"
-        (click)="fetchAnalyticsData()"
-        [disabled]="!startTime || !endTime || isLoading"
-      >
-        <mat-icon>refresh</mat-icon>
-        {{ isLoading && !isDownloading && !isDownloadingCsv ? "Loading..." : "Fetch Data" }}
-      </button>
       <button
         mat-flat-button
         color="primary"
@@ -85,8 +77,11 @@
           <span class="entity-cell">
             <mat-icon>{{ isGroupExpanded(group) ? "expand_more" : "chevron_right" }}</mat-icon>
             <span class="entity-name">{{ group.summary["Operator"] }}</span>
-            <span class="detail-count" *ngIf="group.details.length">
-              {{ group.details.length }} {{ group.details.length === 1 ? "item" : "items" }}
+            <span class="detail-count" *ngIf="group.details.length"
+              [class.single-item]="group.details.length === 1"
+              [matTooltip]="group.details.length === 1 ? group.details[0]['Item'] || 'Unknown Item' : ''"
+              [matTooltipShowDelay]="700">
+              {{ group.details.length === 1 ? group.details[0]['Item'] || 'Unknown Item' : group.details.length + ' items' }}
             </span>
           </span>
           <span>{{ group.summary["Worked Time"] }}</span>
