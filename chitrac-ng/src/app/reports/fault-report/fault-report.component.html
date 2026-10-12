@@ -8,6 +8,7 @@
 
   <div class="controls">
     <app-timeframe-picker
+      confirmLabel="Generate Report"
       [start]="startTime"
       [end]="endTime"
       [shiftId]="selectedShiftId"
@@ -17,15 +18,6 @@
     ></app-timeframe-picker>
 
     <div class="button-group">
-      <button
-        mat-flat-button
-        color="primary"
-        (click)="fetchFaultReport()"
-        [disabled]="!startTime || !endTime || isLoading"
-      >
-        <mat-icon>refresh</mat-icon>
-        {{ isLoading ? "Loading..." : "Fetch Data" }}
-      </button>
       <button
         mat-flat-button
         color="primary"

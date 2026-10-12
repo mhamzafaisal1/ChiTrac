@@ -34,6 +34,7 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
   @Input() shiftId: string | null = null;
   @Input() mode: TimeframePickerMode = 'custom';
   @Input() disabled = false;
+  @Input() confirmLabel = 'Confirm';
   @Input() shifts: ShiftListItem[] | null = null;
   @Input() shiftsLoadError: string | null = null;
   @Output() confirmed = new EventEmitter<TimeframeSelection>();

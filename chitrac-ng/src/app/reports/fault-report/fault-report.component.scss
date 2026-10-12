@@ -24,8 +24,9 @@
   gap: 1rem;
   align-items: center;
   padding: 1rem;
-  width: max-content;
+  width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
 
   app-date-time-picker {
     flex: 1;
