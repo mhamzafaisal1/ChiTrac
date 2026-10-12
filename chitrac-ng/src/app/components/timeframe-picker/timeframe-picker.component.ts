@@ -11,7 +11,8 @@ import { provideNativeDateAdapter } from '@angular/material/core';
 import { Subject, takeUntil } from 'rxjs';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
 
-export type TimeframePickerMode = 'custom' | 'shift' | 'today' | 'thisWeek' | 'thisMonth' | 'thisYear';
+export type TimeframePickerMode = 'custom' | 'shift' | 'today' | 'thisWeek' | 'thisMonth' | 'thisYear' |
+  'yesterday' | 'lastWeek' | 'lastMonth' | 'lastYear';
 export interface TimeframeSelection {
   start: Date;
   end: Date;
@@ -84,11 +85,39 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
     const now = new Date();
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
-    if (mode === 'thisWeek') start.setDate(start.getDate() - start.getDay());
-    if (mode === 'thisMonth') start.setDate(1);
-    if (mode === 'thisYear') { start.setMonth(0, 1); }
+    let end = now;
+    switch (mode) {
+      case 'thisWeek':
+        start.setDate(start.getDate() - start.getDay());
+        break;
+      case 'thisMonth':
+        start.setDate(1);
+        break;
+      case 'thisYear':
+        start.setMonth(0, 1);
+        break;
+      case 'yesterday':
+        end = new Date(start);
+        start.setDate(start.getDate() - 1);
+        break;
+      case 'lastWeek':
+        start.setDate(start.getDate() - start.getDay());
+        end = new Date(start);
+        start.setDate(start.getDate() - 7);
+        break;
+      case 'lastMonth':
+        start.setDate(1);
+        end = new Date(start);
+        start.setMonth(start.getMonth() - 1);
+        break;
+      case 'lastYear':
+        start.setMonth(0, 1);
+        end = new Date(start);
+        start.setFullYear(start.getFullYear() - 1);
+        break;
+    }
     this.pickerStart = start;
-    this.pickerEnd = now;
+    this.pickerEnd = end;
   }
 
   confirm(): void {

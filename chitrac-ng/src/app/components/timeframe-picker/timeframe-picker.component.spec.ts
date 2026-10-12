@@ -1,6 +1,7 @@
 import { SimpleChange } from '@angular/core';
 import { of } from 'rxjs';
-import { TimeframePickerComponent } from './timeframe-picker.component';
+import { TimeframePickerComponent, TimeframePickerMode, TimeframeSelection } from './timeframe-picker.component';
+import { ComparisonDashboardComponent } from '../../comparison-dashboard/comparison-dashboard.component';
 import { ReportsService } from '../../services/reports.service';
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { MachineReportComponent } from '../../reports/machine-report/machine-report.component';
@@ -79,15 +80,83 @@ describe('TimeframePickerComponent', () => {
     const confirmed = jasmine.createSpy('confirmed');
     component.confirmed.subscribe(confirmed);
     component.disabled = true;
-    component.quickSelect('today');
+    for (const mode of ['today', 'yesterday', 'lastWeek', 'lastMonth', 'lastYear'] as const) {
+      component.quickSelect(mode);
+    }
     component.selectShift('shift-one');
     component.confirm();
     expect(component.pickerMode).toBe('custom');
     expect(confirmed).not.toHaveBeenCalled();
   });
+
+  it('selects completed previous periods without emitting until Confirm', () => {
+    jasmine.clock().install();
+    try {
+      jasmine.clock().mockDate(new Date(2026, 9, 8, 13, 30));
+      const confirmed = jasmine.createSpy('confirmed');
+      component.confirmed.subscribe(confirmed);
+      const cases: [TimeframePickerMode, Date, Date][] = [
+        ['yesterday', new Date(2026, 9, 7), new Date(2026, 9, 8)],
+        ['lastWeek', new Date(2026, 8, 27), new Date(2026, 9, 4)],
+        ['lastMonth', new Date(2026, 8, 1), new Date(2026, 9, 1)],
+        ['lastYear', new Date(2025, 0, 1), new Date(2026, 0, 1)],
+      ];
+      for (const [mode, start, end] of cases) {
+        component.selectShift('shift-one');
+        component.quickSelect(mode);
+        expect(component.pickerStart).toEqual(start);
+        expect(component.pickerEnd).toEqual(end);
+        expect(component.pickerShiftId).toBeNull();
+        expect(component.pickerMode).toBe(mode);
+        expect(component.valid).toBeTrue();
+        expect(confirmed).not.toHaveBeenCalled();
+      }
+      component.confirm();
+      expect(confirmed.calls.mostRecent().args[0].mode).toBe('lastYear');
+    } finally { jasmine.clock().uninstall(); }
+  });
+
+  it('handles year rollover, Sunday boundaries, leap months and daylight-saving dates', () => {
+    jasmine.clock().install();
+    try {
+      const cases: [Date, TimeframePickerMode, Date, Date][] = [
+        [new Date(2026, 0, 1, 12), 'yesterday', new Date(2025, 11, 31), new Date(2026, 0, 1)],
+        [new Date(2026, 0, 1, 12), 'lastMonth', new Date(2025, 11, 1), new Date(2026, 0, 1)],
+        [new Date(2026, 0, 1, 12), 'lastWeek', new Date(2025, 11, 21), new Date(2025, 11, 28)],
+        [new Date(2026, 9, 4, 12), 'lastWeek', new Date(2026, 8, 27), new Date(2026, 9, 4)],
+        [new Date(2024, 2, 31, 12), 'lastMonth', new Date(2024, 1, 1), new Date(2024, 2, 1)],
+        [new Date(2025, 2, 31, 12), 'lastMonth', new Date(2025, 1, 1), new Date(2025, 2, 1)],
+        [new Date(2025, 0, 1, 12), 'lastYear', new Date(2024, 0, 1), new Date(2025, 0, 1)],
+        [new Date(2026, 2, 9, 12), 'yesterday', new Date(2026, 2, 8), new Date(2026, 2, 9)],
+        [new Date(2026, 10, 2, 12), 'yesterday', new Date(2026, 10, 1), new Date(2026, 10, 2)],
+      ];
+      for (const [now, mode, start, end] of cases) {
+        jasmine.clock().mockDate(now);
+        component.quickSelect(mode);
+        expect(component.pickerStart).withContext(`${mode} at ${now}`).toEqual(start);
+        expect(component.pickerEnd).withContext(`${mode} at ${now}`).toEqual(end);
+      }
+    } finally { jasmine.clock().uninstall(); }
+  });
 });
 
 describe('Report timeframe query parameters', () => {
+  it('retains previous-period modes and sends their confirmed dates in every report', () => {
+    for (const type of [MachineReportComponent, OperatorReportComponent, ItemReportComponent, FaultReportComponent]) {
+      for (const mode of ['yesterday', 'lastWeek', 'lastMonth', 'lastYear'] as const) {
+        const report = Object.create(type.prototype);
+        report.fetchAnalyticsData = jasmine.createSpy('fetch');
+        report.fetchFaultReport = jasmine.createSpy('fetch');
+        const selection: TimeframeSelection = { start: new Date(2026, 8, 1), end: new Date(2026, 9, 1), shiftId: null, mode };
+        report.applyTimeframe(selection);
+        expect(report.timeframeMode).toBe(mode);
+        expect(report.startTime).toBe(selection.start.toISOString());
+        expect(report.endTime).toBe(selection.end.toISOString());
+        expect(report.selectedShiftId).toBeNull();
+      }
+    }
+  });
+
   it('applies confirmed dates and clears old results before fetching in every report', () => {
     for (const type of [MachineReportComponent, OperatorReportComponent, ItemReportComponent, FaultReportComponent]) {
       const report = Object.create(type.prototype);
@@ -125,5 +194,24 @@ describe('Report timeframe query parameters', () => {
     }
     reports.getItemReport('start', 'end');
     expect(get.calls.mostRecent().args[1].params.shiftId).toBeUndefined();
+  });
+});
+
+describe('Comparison timeframe presets', () => {
+  it('retains the confirmed preset and dates when reopening either picker', () => {
+    const comparison = Object.create(ComparisonDashboardComponent.prototype);
+    for (const key of ['primary', 'secondary'] as const) {
+      for (const mode of ['yesterday', 'lastWeek', 'lastMonth', 'lastYear'] as const) {
+        const selection: TimeframeSelection = { start: new Date(2026, 8, 1), end: new Date(2026, 9, 1), shiftId: null, mode };
+        comparison.activePicker = key;
+        comparison.confirmPicker(selection);
+        comparison.openPicker(key);
+        expect(comparison.pickerMode).toBe(mode);
+        expect(comparison.pickerStart).toEqual(selection.start);
+        expect(comparison.pickerEnd).toEqual(selection.end);
+        expect(comparison.pickerStart).not.toBe(selection.start);
+        comparison.activePicker = null;
+      }
+    }
   });
 });
