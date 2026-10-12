@@ -68,6 +68,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   hasFetchedOnce = false;
   liveMode: boolean = false;
   isLoading: boolean = false;
+  hasLoadError = false;
 
   lastFetchedData: any | null = null;
   lastParams: { startTime: string; endTime: string; serial: string } | null = null;
@@ -135,6 +136,8 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
           this.lastFetchedData = null;
           this.rows = [];
           this.columns = [];
+          this.hasFetchedOnce = false;
+          this.hasLoadError = false;
         }
       });
 
@@ -219,6 +222,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
               )
               .pipe(
                 tap((data: any) => {
+                  this.hasLoadError = false;
                   this.hasFetchedOnce = true;
                   this.lastFetchedData = data;
                   this.updateTable();
@@ -230,7 +234,12 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
           false,
           false
         )
-        .subscribe();
+        .subscribe({
+          error: () => {
+            this.hasLoadError = true;
+            this.isLoading = false;
+          }
+        });
     }
   }
 
@@ -294,6 +303,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
     });
 
     this.isLoading = true;
+    this.hasLoadError = false;
     
     // Determine which data to include based on viewType
     const includeParam = this.viewType === 'summary' ? 'summaries' : 'cycles';
@@ -318,19 +328,26 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
           console.error('Error fetching fault history:', error);
           this.rows = [];
           this.columns = [];
+          this.lastFetchedData = null;
+          this.hasFetchedOnce = false;
+          this.hasLoadError = true;
           this.isLoading = false;
         }
       });
   }
 
   private usePreloadedData(): boolean {
-    return this.mode === 'dashboard' && !!this.preloadedData;
+    return this.mode === 'dashboard' && this.preloadedData != null;
   }
 
   private applyPreloadedData(): void {
     this.hasFetchedOnce = true;
-    this.lastFetchedData = this.preloadedData;
+    // Daily Dashboard supplies the selected array; machine modals supply both arrays.
+    this.lastFetchedData = Array.isArray(this.preloadedData)
+      ? { [this.viewType === 'summary' ? 'faultSummaries' : 'faultCycles']: this.preloadedData }
+      : this.preloadedData;
     this.isLoading = false;
+    this.hasLoadError = false;
     this.updateTable();
   }
 
@@ -364,7 +381,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
       });
     } else {
       // Sort fault cycles by start time (latest first) for default sorting
-      const sortedFaultCycles = (this.lastFetchedData.faultCycles || [])
+      const sortedFaultCycles = [...(this.lastFetchedData.faultCycles || [])]
         .sort((a: any, b: any) => new Date(b.start).getTime() - new Date(a.start).getTime());
       
       console.log('Debug: Processing fault cycles:', sortedFaultCycles);
