@@ -192,13 +192,16 @@ function statsFromTotals(totals, range, breakTimeMs, fallbackShiftTimeMs = 0) {
     : eligibleElapsedMs > 0
       ? Math.min(Math.max(totals.runtimeMs / eligibleElapsedMs, 0), 1)
       : 1;
-  const efficiency = hasData ? totals.timeCreditMs / totals.runtimeMs : null;
+  // Time credit includes all working stations; runtime remains machine elapsed time.
+  const efficiency = hasData && totals.workedTimeMs > 0
+    ? totals.timeCreditMs / totals.workedTimeMs
+    : null;
   const throughput = hasData
     ? (totals.validCount + totals.rejectCount > 0
       ? totals.validCount / (totals.validCount + totals.rejectCount)
       : 0)
     : null;
-  const oee = hasData ? availability * efficiency * throughput : null;
+  const oee = efficiency === null ? null : availability * efficiency * throughput;
 
   return {
     hasData,
