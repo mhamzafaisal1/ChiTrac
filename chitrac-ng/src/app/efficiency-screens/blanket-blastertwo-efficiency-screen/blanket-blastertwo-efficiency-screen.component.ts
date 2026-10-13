@@ -1,34 +1,29 @@
-import { Component, OnDestroy } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
 import { Subject, timer } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
-import { FormsModule } from '@angular/forms';
-import { NgIf, NgFor } from '@angular/common';
-import { MatButtonModule } from '@angular/material/button';
-import { BlanketBlasterModule } from '../../blanket-blaster/blanket-blaster.module';
+import { CommonModule } from '@angular/common';
+import { EfficiencyScreenLaneComponent, type EfficiencyScreenLaneMode } from '../efficiency-screen-lane/efficiency-screen-lane.component';
 
 @Component({
   selector: 'app-blanket-blastertwo-efficiency-screen',
   templateUrl: './blanket-blastertwo-efficiency-screen.component.html',
   styleUrls: ['./blanket-blastertwo-efficiency-screen.component.scss'],
-  imports: [
-    FormsModule,
-    NgIf,
-    NgFor,
-    MatButtonModule,
-    BlanketBlasterModule
-  ],
+  imports: [CommonModule, EfficiencyScreenLaneComponent],
   standalone: true
 })
-export class BlanketBlastertwoEfficiencyScreen implements OnDestroy {
+export class BlanketBlastertwoEfficiencyScreen implements OnInit, OnDestroy {
   lanes: any[] = [];
+  machineLane: any | null = null;
+  isLoading = true;
   pollingActive: boolean = false;
   private destroy$ = new Subject<void>();
   private readonly POLL_INTERVAL = 6000;
   private readonly SERIAL_NUMBER = 90010; // Blanket Blaster Two serial number
 
-  constructor(private efficiencyService: EfficiencyScreensService) {
-    // Automatically start polling when component is created
+  constructor(private efficiencyService: EfficiencyScreensService) {}
+
+  ngOnInit() {
     this.startPolling();
   }
 
@@ -38,9 +33,12 @@ export class BlanketBlastertwoEfficiencyScreen implements OnDestroy {
       .subscribe({
         next: (res) => {
           this.lanes = res?.flipperData || [];
+          this.machineLane = res?.machineLane ?? null;
+          this.isLoading = false;
         },
         error: (err) => {
           console.error('Fetch error:', err);
+          this.isLoading = false;
         }
       });
   }
@@ -58,9 +56,12 @@ export class BlanketBlastertwoEfficiencyScreen implements OnDestroy {
       .subscribe({
         next: (res) => {
           this.lanes = res?.flipperData || [];
+          this.machineLane = res?.machineLane ?? null;
+          this.isLoading = false;
         },
         error: (err) => {
           console.error('Polling error:', err);
+          this.isLoading = false;
         }
       });
   }
@@ -72,5 +73,11 @@ export class BlanketBlastertwoEfficiencyScreen implements OnDestroy {
 
   ident(index: number, lane: any): number {
     return index;
+  }
+
+  getLaneMode(lane: any): EfficiencyScreenLaneMode {
+    if (lane?.status === 1) return 'operator';
+    if (lane?.status > 1) return 'fault';
+    return 'offline';
   }
 }
