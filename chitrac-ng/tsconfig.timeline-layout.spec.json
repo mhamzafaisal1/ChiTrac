@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/charts/machine-timeline-chart/machine-timeline-layout.spec.ts",
+    "src/app/components/timeline-zoom-controls/timeline-zoom-controls.component.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

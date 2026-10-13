@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, Input, NgZone, OnDestroy, Type, ViewChild } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { ChartTileComponent } from '../chart-tile/chart-tile.component';
+import { TimelineZoomControlsComponent } from '../timeline-zoom-controls/timeline-zoom-controls.component';
 import { DailyMachineStackedBarChartComponent } from '../../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component';
 import { MachineTimelineChartComponent } from '../../charts/machine-timeline-chart/machine-timeline-chart.component';
 import { DailyMachineOeeBarChartComponent } from '../../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component';
@@ -30,7 +31,7 @@ export const DAILY_CHART_COMPONENTS: Record<string, { component: Type<unknown>; 
 @Component({
   selector: 'app-daily-chart-detail',
   standalone: true,
-  imports: [CommonModule, ChartTileComponent],
+  imports: [CommonModule, ChartTileComponent, MachineTimelineChartComponent, TimelineZoomControlsComponent],
   templateUrl: './daily-chart-detail.component.html',
   styleUrl: './daily-chart-detail.component.scss',
 })
