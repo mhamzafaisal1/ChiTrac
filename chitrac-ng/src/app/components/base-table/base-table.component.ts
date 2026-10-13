@@ -119,7 +119,6 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   readonly gridTheme = themeQuartz;
   readonly autoSizeStrategy: SizeColumnsToFitGridStrategy = {
     type: 'fitGridWidth',
-    defaultMinWidth: 85,
   };
 
   columnDefs: ColDef<any>[] = [];
@@ -195,7 +194,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     if (event.clientWidth <= 0 || Math.abs(event.clientWidth - this.lastGridWidth) < 1) return;
 
     this.lastGridWidth = event.clientWidth;
-    event.api.sizeColumnsToFit({ defaultMinWidth: this.columnEditMode ? 150 : 85 });
+    event.api.sizeColumnsToFit();
   }
 
   onColumnMoved(event: ColumnMovedEvent<any>): void {
@@ -320,7 +319,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
       suppressMovable: !this.columnEditMode,
       suppressHeaderMenuButton: true,
       resizable: false,
-      minWidth: this.columnEditMode ? 150 : 85,
+      minWidth: this.getMinimumColumnWidth(column),
       flex: this.fillAvailableWidth ? this.getInitialColumnWidth(column) : undefined,
       width: this.fillAvailableWidth ? undefined : this.getInitialColumnWidth(column),
       comparator: this.getComparator(column),
@@ -365,7 +364,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     if (this.fillAvailableWidth) return;
 
     requestAnimationFrame(() => {
-      this.gridApi?.sizeColumnsToFit({ defaultMinWidth: this.columnEditMode ? 150 : 85 });
+      this.gridApi?.sizeColumnsToFit();
     });
   }
 
@@ -396,13 +395,23 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     };
   }
 
+  private getMinimumColumnWidth(column: string): number {
+    if (window.innerWidth <= 768) return this.getInitialColumnWidth(column);
+    return this.columnEditMode ? 150 : 85;
+  }
+
   private getInitialColumnWidth(column: string): number {
+    const mobile = window.innerWidth <= 768;
+    const nameColumns = ['Operator Name', 'Machine Name', 'Operator', 'Machine', 'Item', 'Item Name', 'Fault Type'];
+    const mobileMinimum = column === 'Status' ? 64 : nameColumns.includes(column) ? 160 : column === 'Current Machine' ? 140 : 100;
+    const minimum = mobile ? Math.max(mobileMinimum, this.columnEditMode ? 150 : 0) : 85;
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-    if (!context) return 120;
+    if (!context) return Math.max(minimum, 120);
 
-    context.font = '500 14px Montserrat';
-    return Math.max(85, Math.ceil(context.measureText(column).width + 55));
+    context.font = mobile ? '500 12px Montserrat' : '500 14px Montserrat';
+    // Leave room for padding and sorting without squeezing mobile headers.
+    return Math.max(minimum, Math.ceil(context.measureText(column).width + (mobile ? 40 : 55)));
   }
 
   private getSortableValue(value: any): string | number {
