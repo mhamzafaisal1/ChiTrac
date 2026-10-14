@@ -15,6 +15,7 @@ import {
   SummaryCardVisibilityOption
 } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { ChartTileComponent } from '../components/chart-tile/chart-tile.component';
+import { TimelineZoomControlsComponent } from '../components/timeline-zoom-controls/timeline-zoom-controls.component';
 import { DailyCountBarChartComponent } from '../charts/daily-count-bar-chart/daily-count-bar-chart.component';
 import { DailyCountByItemChartComponent } from '../charts/daily-count-by-item-chart/daily-count-by-item-chart.component';
 import { DailyMachineOeeBarChartComponent } from '../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component';
@@ -49,6 +50,7 @@ interface ExperimentalDashboardLayoutSnapshot {
     MatButtonModule,
     MatIconModule,
     ChartTileComponent,
+    TimelineZoomControlsComponent,
     DailyMachineStackedBarChartComponent,
     MachineTimelineChartComponent,
     DailyMachineOeeBarChartComponent,

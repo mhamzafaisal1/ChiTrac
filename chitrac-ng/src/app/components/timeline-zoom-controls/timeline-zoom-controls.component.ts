@@ -10,7 +10,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="zoom-controls" role="group" aria-label="Timeline zoom"
-      (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
+      (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()"
+      (keydown)="$event.stopPropagation()">
       <button mat-icon-button type="button" aria-label="Zoom in" matTooltip="Zoom in"
         [disabled]="!canZoomIn" (click)="zoomIn.emit()"><mat-icon>zoom_in</mat-icon></button>
       <button mat-icon-button type="button" aria-label="Zoom out" matTooltip="Zoom out"
@@ -21,6 +22,12 @@ import { MatTooltipModule } from '@angular/material/tooltip';
   `,
   styles: `
     :host { display: block; flex: 0 0 52px; height: 52px; }
+    :host(.header-controls) { flex: none; height: 40px; }
+    :host(.header-controls) .zoom-controls { height: 40px; }
+    :host(.header-controls) button.mat-mdc-icon-button {
+      flex-basis: 40px; width: 40px; height: 40px;
+      --mdc-icon-button-state-layer-size: 40px;
+    }
     .zoom-controls { display: flex; justify-content: flex-end; align-items: center; height: 48px; gap: 4px; }
     button.mat-mdc-icon-button {
       flex: 0 0 48px;

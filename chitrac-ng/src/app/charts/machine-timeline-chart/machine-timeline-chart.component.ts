@@ -87,14 +87,23 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
   @ViewChild('timelineSvg')
   set timelineSvg(ref: ElementRef<SVGSVGElement> | undefined) {
     this.detachZoom();
+    if (this.zoomSetupFrame) cancelAnimationFrame(this.zoomSetupFrame);
     this.svgElement = ref?.nativeElement;
-    this.configureZoom();
+    // Header controls are checked before this child view is initialized.
+    this.zoomSetupFrame = requestAnimationFrame(() => {
+      this.zoomSetupFrame = 0;
+      this.ngZone.run(() => {
+        this.configureZoom();
+        this.cdr.markForCheck();
+      });
+    });
   }
 
   @Input() chartWidth = 600;
   @Input() chartHeight = 450;
   @Input() preloadedData?: MachineTimelinePayload | MachineTimelineMachine[] | null;
   @Input() useExternalTitle = false;
+  @Input() controlsInHeader = false;
 
   isLoading = false;
   hasInitialData = false;
@@ -133,6 +142,7 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
   private measuredHeight = 0;
   private resizeFrame = 0;
   private zoomFrame = 0;
+  private zoomSetupFrame = 0;
   private hoverFrame = 0;
   private hoverPointer: TimelinePointer | null = null;
   private resizeObserver?: ResizeObserver;
@@ -166,6 +176,7 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
   }
 
   ngOnDestroy(): void {
+    if (this.zoomSetupFrame) cancelAnimationFrame(this.zoomSetupFrame);
     this.detachZoom();
     this.resizeObserver?.disconnect();
     if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
@@ -250,7 +261,7 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
     );
     this.plotLeft = Math.min(160, Math.max(92, maxNameLength * 7 + 18));
     this.plotRight = 16;
-    this.plotTop = 40;
+    this.plotTop = this.useExternalTitle ? 8 : 40;
     this.plotBottom = 30;
     this.innerWidth = Math.max(40, this.svgWidth - this.plotLeft - this.plotRight);
     this.innerHeight = Math.max(40, this.svgHeight - this.plotTop - this.plotBottom);
@@ -305,7 +316,7 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
 
   private resolveSvgHeight(): number {
     const height = this.measuredHeight >= 10 ? this.measuredHeight : Math.floor(this.chartHeight || 360);
-    return Math.max(128, height - 52);
+    return Math.max(128, height - (this.controlsInHeader ? 0 : 52));
   }
 
   get canZoomIn(): boolean {
@@ -519,8 +530,8 @@ export class MachineTimelineChartComponent implements AfterViewInit, OnChanges, 
       lines.push(`Fault Code: ${chunk.statusCode ?? 'N/A'}`);
       lines.push(`Fault Name: ${chunk.statusLabel || 'Faulted'}`);
     } else if (status === 'paused' || status === 'offline') {
-      if (status === 'offline') lines.unshift('Status: Offline');
-      const durationMs = chunk.totalDurationMs ?? chunk.durationMs ?? Math.max(0, end.getTime() - start.getTime());
+      lines.unshift(status === 'paused' ? 'Status: Paused' : 'Status: Offline');
+      const durationMs = Math.max(0, end.getTime() - start.getTime());
       lines.push(`Total Duration: ${this.formatDuration(durationMs)}`);
     } else {
       lines.push(`Total Count: ${chunk.totalCount ?? 0}`);
