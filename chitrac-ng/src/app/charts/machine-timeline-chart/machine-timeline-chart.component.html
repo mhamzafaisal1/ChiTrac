@@ -7,7 +7,7 @@
   </div>
 
   <div class="timeline-content" *ngIf="hasInitialData">
-    <app-timeline-zoom-controls [canZoomIn]="canZoomIn" [canZoomOut]="canZoomOut"
+    <app-timeline-zoom-controls *ngIf="!controlsInHeader" [canZoomIn]="canZoomIn" [canZoomOut]="canZoomOut"
       (zoomIn)="zoomBy(2)" (zoomOut)="zoomBy(0.5)" (reset)="resetZoom()"></app-timeline-zoom-controls>
     <div class="timeline-chart-shell">
       <svg

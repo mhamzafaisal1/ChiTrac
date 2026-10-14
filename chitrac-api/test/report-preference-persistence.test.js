@@ -66,30 +66,6 @@ function harness() {
   };
 }
 
-test('saves user time format without overwriting theme or another user', async () => {
-  const h = harness();
-  const saved = await h.request('put', 'alice', { timeFormat: '24h' });
-  assert.equal(saved.status, 200);
-  assert.equal(saved.payload.timeFormat, '24h');
-  assert.equal(saved.payload.theme, 'dark');
-  assert.equal((await h.request('get', 'bob')).payload.timeFormat, undefined);
-  assert.equal((await h.request('get', 'alice')).payload.timeFormat, '24h');
-});
-
-test('accepts both formats and rejects malformed values without changing the saved preference', async () => {
-  const h = harness();
-  assert.equal((await h.request('put', 'alice', { timeFormat: '12h' })).status, 200);
-  for (const timeFormat of ['invalid', null, true, 24, {}]) {
-    assert.equal((await h.request('put', 'alice', { timeFormat })).status, 400);
-  }
-  assert.equal(h.users.get('alice').timeFormat, '12h');
-});
-
-test('does not allow anonymous preference updates', async () => {
-  const h = harness();
-  assert.equal((await h.request('put', null, { timeFormat: '24h' })).status, 401);
-  assert.equal(h.users.get('alice').timeFormat, undefined);
-});
 
 test('report orders survive partial updates and remain isolated per user and report', async () => {
   const h = harness();

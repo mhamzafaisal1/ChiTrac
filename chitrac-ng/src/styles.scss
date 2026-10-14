@@ -32,24 +32,30 @@ body.dark-theme {
 @font-face {
   font-family: 'Montserrat';
   font-style: normal;
-  src: url('/fonts/normal'); /* For IE6-8 */
-  src: local('Montserrat'),
-    url('/fonts/normal') format('woff2'),
-}
-
-@font-face {
-    font-family: 'Montserrat';
-    font-style: bold;
-    src: url('/fonts/bold');
-    src: local('Montserrat'),
-    url('/fonts/bold') format('woff2'),
+  font-weight: 100 900;
+  font-display: block;
+  src: url('/assets/fonts/Montserrat-VariableFont_wght.ttf') format('truetype');
 }
 
 @font-face {
   font-family: 'Material Icons';
-  src: url(/icons); /* For IE6-8 */
-  src: local('Material Icons'),
-    url(/icons) format('woff2'),
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/assets/fonts/MaterialSymbolsOutlined_Filled-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/assets/fonts/material-symbols-layout-edit.ttf') format('truetype');
+}
+
+html.icon-font-loading .material-icons,
+html.symbol-font-loading .material-symbols-outlined {
+  visibility: hidden;
 }
 
 .material-icons {
@@ -243,7 +249,7 @@ body.dark-theme {
 
 
 html, body { height: 100%; }
-body { margin: 0; font-family: 'Montserrat'}
+body { margin: 0; font-family: 'Montserrat', Arial, sans-serif; }
 a {text-decoration: none; color:inherit;}
 
 #OperatorConfigDialog {

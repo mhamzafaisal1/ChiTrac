@@ -218,6 +218,23 @@
   }
 }
 
+@media (max-width: 768px) {
+  :host ::ng-deep .base-data-grid {
+    --ag-header-font-size: 12px;
+    --ag-cell-horizontal-padding: 8px;
+
+    .ag-header-cell,
+    .ag-cell {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .ag-header-cell {
+      font-size: 12px;
+    }
+  }
+}
+
 @media (max-width: 700px) {
   .table-toolbar {
     align-items: stretch;

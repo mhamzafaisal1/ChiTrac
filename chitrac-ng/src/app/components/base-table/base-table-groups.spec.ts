@@ -62,4 +62,43 @@ describe('Shared grid report groups', () => {
     expect(table.columnDefs.every(column => column.cellDataType === false)).toBeTrue();
     table.ngOnDestroy();
   });
+
+  it('preserves alpha mobile minimum widths alongside grouped identity sizing', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'innerWidth')!;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    const table = new BaseTableComponent({} as any);
+    try {
+      table.columns = ['Status', 'Machine Name', 'Current Machine', 'PPH'];
+      table.ngOnInit();
+      const minimums = table.columnDefs.map(column => column.minWidth!);
+      expect(minimums[0]).toBeGreaterThanOrEqual(64);
+      expect(minimums[1]).toBeGreaterThanOrEqual(160);
+      expect(minimums[2]).toBeGreaterThanOrEqual(140);
+      expect(minimums[3]).toBeGreaterThanOrEqual(100);
+    } finally {
+      table.ngOnDestroy();
+      Object.defineProperty(window, 'innerWidth', descriptor);
+    }
+  });
+
+  it('keeps grouped report names at least 220px on mobile and desktop', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'innerWidth')!;
+    try {
+      for (const width of [390, 1920]) {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+        const table = new BaseTableComponent({} as any);
+        table.columns = columns;
+        table.rowGroups = groups;
+        table.groupIdentityColumn = 'Machine';
+        table.columnEditMode = true;
+        table.ngOnInit();
+        expect(table.columnDefs[0].minWidth).toBe(220);
+        expect(table.columnDefs[0].width).toBe(220);
+        expect(table.columnDefs[1].minWidth).toBeGreaterThanOrEqual(150);
+        table.ngOnDestroy();
+      }
+    } finally {
+      Object.defineProperty(window, 'innerWidth', descriptor);
+    }
+  });
 });
