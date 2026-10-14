@@ -54,7 +54,12 @@
       [columns]="columns"
       [rows]="rows"
       [columnTooltips]="columnTooltips"
-      [getCellTooltip]="getCellTooltip.bind(this)"
+      [getCellTooltip]="getCellTooltip"
+      [fillAvailableWidth]="true"
+      [columnEditMode]="layout.editing"
+      [columnReorderOnly]="true"
+      [columnOrder]="layout.columns"
+      (columnOrderChange)="layout.setOrder($event)"
       style="height:93%; border-radius: 4px;"
     >
     </base-table>

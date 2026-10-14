@@ -11,7 +11,16 @@ function harness() {
   const collection = {
     async createIndex() {},
     async findOne({ userId }) { return users.get(userId) || null; },
-    async updateOne({ userId }, { $set }) { users.set(userId, { ...users.get(userId), ...$set }); },
+    async updateOne({ userId }, { $set }) {
+      const user = structuredClone(users.get(userId) || {});
+      for (const [path, value] of Object.entries($set)) {
+        const parts = path.split('.');
+        let target = user;
+        for (const part of parts.slice(0, -1)) target = target[part] ||= {};
+        target[parts.at(-1)] = value;
+      }
+      users.set(userId, user);
+    },
   };
   const router = {};
   for (const verb of ['get', 'put', 'post', 'delete']) {
@@ -80,4 +89,21 @@ test('does not allow anonymous preference updates', async () => {
   const h = harness();
   assert.equal((await h.request('put', null, { timeFormat: '24h' })).status, 401);
   assert.equal(h.users.get('alice').timeFormat, undefined);
+});
+
+test('report orders survive partial updates and remain isolated per user and report', async () => {
+  const h = harness();
+  const saved = await h.request('put', 'alice', { reportLayouts: { machineReport: { columnOrder: ['Efficiency', 'Machine'] } } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.payload.reportLayouts.machineReport.columnOrder[0], 'Efficiency');
+  assert.equal(saved.payload.theme, 'dark');
+  await h.request('put', 'alice', { reportLayouts: { itemReport: { columnOrder: ['PPH'] } } });
+  await h.request('put', 'alice', { timeFormat: '24h' });
+  const preferences = (await h.request('get', 'alice')).payload;
+  assert.equal(preferences.reportLayouts.machineReport.columnOrder[0], 'Efficiency');
+  assert.equal(preferences.reportLayouts.itemReport.columnOrder[0], 'PPH');
+  assert.equal((await h.request('get', 'bob')).payload.reportLayouts, undefined);
+  assert.equal((await h.request('put', null, { reportLayouts: { itemReport: { columnOrder: [] } } })).status, 401);
+  assert.equal((await h.request('put', 'alice', { reportLayouts: { itemReport: { columnOrder: [false] } } })).status, 400);
+  assert.equal((await h.request('get', 'alice')).payload.reportLayouts.itemReport.columnOrder[0], 'PPH');
 });

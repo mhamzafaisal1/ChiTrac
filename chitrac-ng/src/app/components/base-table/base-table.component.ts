@@ -41,10 +41,14 @@ import {
   RowStyleModule,
   TooltipModule,
   themeQuartz,
+  PostSortRowsParams,
+  GetRowIdParams,
 } from 'ag-grid-community';
 import { parseDurationDisplay } from '../../shared/utils/duration-format';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { BaseTableHeaderComponent } from './base-table-header.component';
+import { BaseTableGroup, groupedTableRows } from './base-table-groups';
+import { BaseTableGroupCellComponent } from './base-table-group-cell.component';
 
 export function reconcileColumnOrder(columns: string[] = [], columnOrder: string[] = []): string[] {
   const availableColumns = new Set(columns);
@@ -90,10 +94,15 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   @Input() enableCsvExport = true;
   @Input() exportFileName = 'chitrac-table-export.csv';
   @Input() columnEditMode = false;
+  @Input() columnReorderOnly = false;
   @Input() toggleableColumns: string[] = [];
   @Input() columnVisibility: Record<string, boolean> = {};
   @Input() columnOrder: string[] = [];
   @Input() fillAvailableWidth = false;
+  @Input() rowGroups: BaseTableGroup[] | null = null;
+  @Input() groupIdentityColumn = '';
+  groupedRows: any[] = [];
+  private expandedGroups = new Set<string>();
 
   @Output() rowClicked = new EventEmitter<any>();
   @Output() columnVisibilityChange = new EventEmitter<Record<string, boolean>>();
@@ -149,18 +158,26 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['rowGroups'] || changes['groupIdentityColumn'] || changes['columns']) {
+      const validKeys = new Set(this.rowGroups?.map(group => group.key));
+      this.expandedGroups = new Set([...this.expandedGroups].filter(key => validKeys.has(key)));
+      this.refreshGroupedRows();
+    }
     const columnDefinitionInputs = [
       'columns',
       'columnTooltips',
       'disableSorting',
       'responsiveHiddenColumns',
       'columnEditMode',
+      'columnReorderOnly',
       'toggleableColumns',
       'columnVisibility',
       'columnOrder',
       'fillAvailableWidth',
       'getCellClass',
       'getCellTooltip',
+      'groupIdentityColumn',
+      'rowGroups',
     ];
 
     const columnsChanged = changes['columns']
@@ -210,6 +227,10 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   onGridRowClicked(event: RowClickedEvent<any>): void {
+    if (this.rowGroups) {
+      if (event.data?.__baseTableGroup?.kind === 'summary') this.toggleGroup(event.data.__baseTableGroup.key);
+      return;
+    }
     this.onRowClick(event.data);
   }
 
@@ -250,6 +271,11 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
 
   getRowClass = (params: { data?: any }): string[] => {
     const classes: string[] = [];
+    const group = params.data?.__baseTableGroup;
+    if (group) {
+      classes.push(`report-${group.kind}`);
+      if (group.kind === 'summary' && group.expanded) classes.push('selected');
+    }
     if (params.data?.cssClass) classes.push(params.data.cssClass);
     if (params.data?.isDummy) classes.push('dummy-row');
     if (params.data === this.selectedRow) classes.push('selected');
@@ -286,6 +312,8 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   getTooltipForCell(row: any, column: string): string {
+    if (row?.__baseTableGroup?.kind === 'detail-header') return '';
+    if (row?.__baseTableGroup?.kind === 'detail' && column === this.groupIdentityColumn) column = 'Item';
     const cellTooltip = this.getCellTooltip ? this.getCellTooltip(row, column) : '';
     return cellTooltip || this.columnTooltips?.[column] || '';
   }
@@ -313,6 +341,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
       colId: column,
       field: column,
       headerName: column,
+      cellDataType: this.rowGroups ? false : undefined,
       headerTooltip: this.columnTooltips?.[column] || undefined,
       hide: !this.columnEditMode && (hiddenColumns.has(column) || !this.isColumnEnabled(column)),
       sortable: !this.disableSorting && !this.columnEditMode,
@@ -320,23 +349,28 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
       suppressMovable: !this.columnEditMode,
       suppressHeaderMenuButton: true,
       resizable: false,
-      minWidth: this.columnEditMode ? 150 : 85,
+      minWidth: this.rowGroups && column === this.groupIdentityColumn ? 220 : this.columnEditMode ? 150 : 85,
       flex: this.fillAvailableWidth ? this.getInitialColumnWidth(column) : undefined,
       width: this.fillAvailableWidth ? undefined : this.getInitialColumnWidth(column),
-      comparator: this.getComparator(column),
+      comparator: this.rowGroups ? (a, b, nodeA, nodeB) => this.getComparator(column)(
+        nodeA.data?.__baseTableGroup?.summary[column] ?? a,
+        nodeB.data?.__baseTableGroup?.summary[column] ?? b) : this.getComparator(column),
       tooltipValueGetter: (params) => this.getTooltipForCell(params.data, column) || undefined,
       cellClass: (params: CellClassParams<any>) => {
-        const classes = [this.getCellClassForColumn(params.value, column)];
+        const classes = params.data?.__baseTableGroup?.kind === 'detail-header' ? [] : [this.getCellClassForColumn(params.value, column)];
         if (this.columnEditMode && this.isColumnToggleable(column) && !this.isColumnEnabled(column)) {
           classes.push('column-disabled');
         }
         return classes.filter(Boolean);
       },
-      cellRenderer: column === 'Status' ? (params: any) => this.createStatusCell(params.value) : undefined,
+      cellRenderer: this.rowGroups && column === this.groupIdentityColumn ? BaseTableGroupCellComponent
+        : column === 'Status' ? (params: any) => this.createStatusCell(params.value) : undefined,
+      cellRendererParams: { onToggle: (key: string) => this.toggleGroup(key) },
       headerComponentParams: {
         innerHeaderComponent: BaseTableHeaderComponent,
         innerHeaderComponentParams: {
           editMode: this.columnEditMode,
+          reorderOnly: this.columnReorderOnly,
           toggleable: this.isColumnToggleable(column),
           enabled: this.isColumnEnabled(column),
           onToggle: (enabled: boolean) => this.onColumnToggle(column, enabled),
@@ -397,6 +431,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private getInitialColumnWidth(column: string): number {
+    if (this.rowGroups && column === this.groupIdentityColumn) return 220;
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     if (!context) return 120;
@@ -432,4 +467,29 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     if (typeof value !== 'string') return value == null ? '' : String(value);
     return value.replace(/<[^>]*>/g, '').trim();
   }
+
+  private refreshGroupedRows(): void {
+    this.groupedRows = groupedTableRows(this.rowGroups ?? [], this.expandedGroups, this.columns, this.groupIdentityColumn);
+  }
+
+  private toggleGroup(key: string): void {
+    if (this.expandedGroups.has(key)) this.expandedGroups.delete(key);
+    else this.expandedGroups.add(key);
+    this.refreshGroupedRows();
+  }
+
+  readonly getGroupedRowId = (params: GetRowIdParams): string => params.data.__baseTableGroup.id;
+
+  readonly postSortRows = (params: PostSortRowsParams): void => {
+    if (!this.rowGroups) return;
+    // Sort summaries with AG Grid, then keep each group's header and details attached.
+    const groups = new Map<string, typeof params.nodes>();
+    for (const node of params.nodes) {
+      const key = node.data.__baseTableGroup.key;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(node);
+    }
+    params.nodes.splice(0, params.nodes.length, ...[...groups.values()].flatMap(nodes =>
+      nodes.sort((a, b) => a.data.__baseTableGroup.rank - b.data.__baseTableGroup.rank)));
+  };
 }
