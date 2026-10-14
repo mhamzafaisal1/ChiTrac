@@ -240,12 +240,12 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     }, 100);
   }
 
-  getCellTooltip(row: any, column: string): string {
+  readonly getCellTooltip = (row: any, column: string): string => {
     if (column === 'Item Name' && row?._tooltipItemId != null && row._tooltipItemId !== '') {
       return `Item ID: ${row._tooltipItemId}`;
     }
     return '';
-  }
+  };
 
   private formatDateForInput(date: Date): string {
     const year = date.getFullYear();
