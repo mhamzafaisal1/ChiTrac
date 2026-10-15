@@ -104,6 +104,10 @@
       <ng-container matColumnDef="actions">
         <th mat-header-cell *matHeaderCellDef> Actions </th>
         <td mat-cell *matCellDef="let token">
+          <button mat-icon-button (click)="editControllerAccess(token)" [disabled]="!controllers.length"
+            matTooltip="Edit controller access" [attr.aria-label]="'Edit controller access for ' + token.name">
+            <mat-icon>admin_panel_settings</mat-icon>
+          </button>
           <button mat-icon-button color="warn" (click)="deleteToken(token)" matTooltip="Deactivate token">
             <mat-icon>delete</mat-icon>
           </button>

@@ -1,5 +1,7 @@
 import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { MatDialogRef } from '@angular/material/dialog';
+import { TestBed } from '@angular/core/testing';
+import { Subject, of, throwError } from 'rxjs';
 import {
   SummaryCardVisibilityDialogComponent,
   SummaryCardVisibilityDialogData,
@@ -25,10 +27,10 @@ describe('SummaryCardVisibilityDialogComponent', () => {
       ...overrides,
     };
 
-    return new SummaryCardVisibilityDialogComponent(
+    return TestBed.runInInjectionContext(() => new SummaryCardVisibilityDialogComponent(
       { close } as unknown as MatDialogRef<SummaryCardVisibilityDialogComponent>,
       data
-    );
+    ));
   }
 
   function dropEvent(
@@ -140,6 +142,43 @@ describe('SummaryCardVisibilityDialogComponent', () => {
     component.cancel();
     expect(close).toHaveBeenCalledWith();
     expect(visibility).toEqual({ First: true, Second: false });
+  });
+
+  it('keeps edits after a failed save and allows retry', () => {
+    const save = jasmine.createSpy('save').and.returnValues(throwError(() => new Error('offline')), of({}));
+    const component = createComponent({ save, applyLabel: 'Save', description: '' });
+    component.hideAll();
+    component.save();
+    expect(component.saveError).toContain('try again');
+    expect(component.saving).toBeFalse();
+    expect(component.showCards).toEqual([]);
+    expect(component.description).toBe('');
+    expect(close).not.toHaveBeenCalled();
+    component.save();
+    expect(close).toHaveBeenCalledWith({ visibility: { first: false, second: false, third: false }, order: ['third', 'first', 'second'] });
+  });
+
+  it('blocks duplicate saves and cancel while saving, and closes only on success', () => {
+    const pending = new Subject();
+    const save = jasmine.createSpy('save').and.returnValue(pending);
+    const component = createComponent({ save });
+    component.save();
+    component.save();
+    component.cancel();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(component.saving).toBeTrue();
+    expect(close).not.toHaveBeenCalled();
+    pending.next({});
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(component.saving).toBeFalse();
+  });
+
+  it('handles synchronous save errors without losing edits', () => {
+    const component = createComponent({ save: () => { throw new Error('offline'); } });
+    component.save();
+    expect(component.saving).toBeFalse();
+    expect(component.saveError).toContain('try again');
+    expect(close).not.toHaveBeenCalled();
   });
 
   it('returns visibility and stable card order when applied', () => {

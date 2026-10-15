@@ -1,5 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, Inject } from '@angular/core';
+import { Component, DestroyRef, Inject, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Observable, defer, finalize, take } from 'rxjs';
 import { CdkDrag, CdkDragDrop, CdkDropList, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -30,6 +32,8 @@ export interface SummaryCardVisibilityDialogData {
   maxVisible?: number;
   exactVisible?: number;
   dragDropEnabled?: boolean;
+  applyLabel?: string;
+  save?: (result: SummaryCardVisibilityDialogResult) => Observable<unknown>;
 }
 
 export interface SummaryCardVisibilityDialogResult {
@@ -60,14 +64,18 @@ export class SummaryCardVisibilityDialogComponent {
   dragDropEnabled = false;
   selectedShowId: string | null = null;
   selectedHideId: string | null = null;
+  applyLabel = 'Apply';
+  saving = false;
+  saveError = '';
+  private readonly destroyRef = inject(DestroyRef);
 
   constructor(
     private dialogRef: MatDialogRef<SummaryCardVisibilityDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) data: SummaryCardVisibilityDialogData
+    @Inject(MAT_DIALOG_DATA) private data: SummaryCardVisibilityDialogData
   ) {
     this.visibility = { ...(data.visibility || {}) };
     this.title = data.title || this.title;
-    this.description = data.description || this.description;
+    this.description = data.description ?? this.description;
     this.showLabel = data.showLabel || this.showLabel;
     this.hideLabel = data.hideLabel || this.hideLabel;
     this.emptyShownText = data.emptyShownText || this.emptyShownText;
@@ -76,6 +84,7 @@ export class SummaryCardVisibilityDialogComponent {
     this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
     this.exactVisible = typeof data.exactVisible === 'number' ? data.exactVisible : null;
     this.dragDropEnabled = data.dragDropEnabled === true;
+    this.applyLabel = data.applyLabel || this.applyLabel;
     this.showCards = (data.cards || []).filter((card) => this.isVisible(this.getCardId(card)));
     this.hideCards = (data.cards || []).filter((card) => !this.isVisible(this.getCardId(card)));
   }
@@ -167,15 +176,35 @@ export class SummaryCardVisibilityDialogComponent {
   }
 
   cancel(): void {
+    if (this.saving) return;
     this.dialogRef.close();
   }
 
   save(): void {
+    if (this.saving || !this.canApply) return;
     const result: SummaryCardVisibilityDialogResult = {
-      visibility: this.visibility,
+      visibility: { ...this.visibility },
       order: [...this.showCards, ...this.hideCards].map((card) => this.getCardId(card)),
     };
-    this.dialogRef.close(result);
+    if (!this.data.save) {
+      this.dialogRef.close(result);
+      return;
+    }
+    this.saving = true;
+    this.saveError = '';
+    const disableClose = this.dialogRef.disableClose;
+    this.dialogRef.disableClose = true;
+    defer(() => this.data.save!(result)).pipe(
+      take(1),
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => {
+        this.saving = false;
+        this.dialogRef.disableClose = disableClose;
+      })
+    ).subscribe({
+      next: () => this.dialogRef.close(result),
+      error: () => { this.saveError = 'Could not save changes. Please try again.'; }
+    });
   }
 
   private isVisible(label: string): boolean {
