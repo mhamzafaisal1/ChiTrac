@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
+const { createVerifyJwtMiddleware } = require('../../utils/authMiddleware');
 const { ObjectId } = require("mongodb");
 const { DateTime } = require("luxon");
 const config = require('../../modules/config');
@@ -141,44 +141,7 @@ function constructor(server) {
     return timestamps;
   }
 
-  // JWT verification middleware
-  function verifyJwtMiddleware(req, res, next) {
-    // Check if API token check is disabled via environment variable
-    if (config.enableApiTokenCheck === false) {
-      logger?.debug?.("API token check is disabled - bypassing authentication");
-      req.tokenPayload = { bypassed: true };
-      return next();
-    }
-
-    try {
-      const authHeader = req.headers["authorization"] || req.headers["Authorization"];
-      let token = null;
-      
-      if (authHeader?.startsWith("Bearer ")) {
-        token = authHeader.slice(7).trim();
-      } else if (req.query?.token) {
-        token = req.query.token;
-      } else if (req.body?.token) {
-        token = req.body.token;
-      }
-      
-      if (!token) {
-        return res.status(401).json({ valid: false, error: "Missing token" });
-      }
-      
-      const secret = config.jwtSecret;
-      if (!secret) {
-        logger?.warn?.("JWT secret not configured (config.jwtSecret)");
-        return res.status(500).json({ valid: false, error: "Server config error" });
-      }
-      
-      const decoded = jwt.verify(token, secret);
-      req.tokenPayload = decoded;
-      next();
-    } catch (err) {
-      return res.status(401).json({ valid: false, error: "Invalid token" });
-    }
-  }
+  const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
 
   async function getOperatorXML(req, res, next) {
     try {

@@ -6,6 +6,7 @@ const { assertPermissionLevel } = require('../../modules/permissions');
 const systemPreferences = require('../../modules/systemPreferences');
 const systemPreferencesSchema = require('../../schemas/system-preferences');
 const timestampsSchema = require('../../schemas/timestampsSchema');
+const { extractToken: extractApiToken } = require('../../utils/authMiddleware');
 
 const SYSTEM_SINGLETON_ID = systemPreferences.SINGLETON_ID;
 
@@ -25,11 +26,7 @@ function constructor(server) {
   userPreferencesCollection.createIndex({ userId: 1 }, { unique: true }).catch(() => {});
 
   function extractToken(req) {
-    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
-    if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
-    if (typeof req.query?.token === 'string') return req.query.token;
-    if (typeof req.body?.token === 'string') return req.body.token;
-    return null;
+    return extractApiToken(req);
   }
 
   function getTokenUserId(payload) {
@@ -48,9 +45,9 @@ function constructor(server) {
 
     try {
       const token = extractToken(req);
-      if (!token) return next();
+      if (!token && !req.tokenPayload) return next();
 
-      const payload = jwt.verify(token, config.jwtSecret);
+      const payload = req.tokenPayload || jwt.verify(token, config.jwtSecret);
       const tokenUserId = getTokenUserId(payload);
       if (!tokenUserId) return next();
 
@@ -76,9 +73,9 @@ function constructor(server) {
 
     try {
       const token = extractToken(req);
-      if (!token) return res.status(401).json({ error: 'Missing token' });
+      if (!token && !req.tokenPayload) return res.status(401).json({ error: 'Missing token' });
 
-      const payload = jwt.verify(token, config.jwtSecret);
+      const payload = req.tokenPayload || jwt.verify(token, config.jwtSecret);
       const tokenUserId = getTokenUserId(payload);
       if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 
@@ -99,9 +96,9 @@ function constructor(server) {
 
       try {
         const token = extractToken(req);
-        if (!token) return res.status(401).json({ error: 'Missing token' });
+        if (!token && !req.tokenPayload) return res.status(401).json({ error: 'Missing token' });
 
-        const payload = jwt.verify(token, config.jwtSecret);
+        const payload = req.tokenPayload || jwt.verify(token, config.jwtSecret);
         const tokenUserId = getTokenUserId(payload);
         if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 

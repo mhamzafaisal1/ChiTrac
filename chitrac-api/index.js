@@ -224,6 +224,7 @@ async function startServer() {
     try {
         const { migratePreferenceCollections } = require('./modules/preferenceCollections');
         await migratePreferenceCollections(db, config, logger);
+        await require('./modules/apiTokenControllers').migrateApiTokenControllerAccess(db, logger);
 
         const systemPreferences = require('./modules/systemPreferences');
         const preferences = await systemPreferences.loadAndApplySystemPreferences(server);
