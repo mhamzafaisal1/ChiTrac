@@ -26,7 +26,7 @@
       <div class="panel-header">
         <div>
           <h2>Active Issues</h2>
-          <p>{{ updatedAt ? ('Cache updated ' + (updatedAt | date:'shortTime')) : 'Waiting for live cache' }}</p>
+          <p>{{ updatedAt ? ('Cache updated ' + (updatedAt | displayTime)) : 'Waiting for live cache' }}</p>
         </div>
         <span class="status-pill" [ngClass]="websocketStatus">{{ websocketStatus | titlecase }}</span>
       </div>

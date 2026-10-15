@@ -5,7 +5,6 @@ const { getShiftTimeComponents } = require("./shiftTimeComponents");
 
 const LOOKBACK_MINUTES = 60;
 const RETENTION_MINUTES = 25 * 60;
-const REFRESH_OVERLAP_MINUTES = 1;
 const SPARKLINE_SHIFT_STATES = Object.freeze({
   SHIFT: "shift",
   BREAK: "break",
@@ -20,15 +19,6 @@ function floorToMinute(dateInput) {
 
 function addMinutes(dateInput, minutes) {
   return new Date(new Date(dateInput).getTime() + minutes * 60000);
-}
-
-function minuteKey(dateInput) {
-  return floorToMinute(dateInput).toISOString();
-}
-
-function machineSerialFromCount(count) {
-  const serial = Number(count?.machine?.serial ?? count?.machine?.id);
-  return Number.isFinite(serial) ? serial : null;
 }
 
 function timeComponentsFromObject(value) {
@@ -144,24 +134,41 @@ async function aggregateCountBuckets(db, config, start, end) {
   const timestampRange = { $gte: start, $lt: end };
   const counts = await db
     .collection(config.countCollectionName)
-    .find({
-      $or: [
-        { "timestamps.create": timestampRange },
-        { timestamp: timestampRange },
-      ],
-      misfeed: { $ne: true },
-    })
-    .project({ _id: 0, "timestamps.create": 1, timestamp: 1, machine: 1 })
+    .aggregate([
+      { $match: {
+        $or: [
+          { "timestamps.create": timestampRange },
+          { timestamp: timestampRange },
+        ],
+        misfeed: { $ne: true },
+      } },
+      { $project: {
+        serial: { $convert: {
+          input: { $ifNull: ["$machine.serial", "$machine.id"] },
+          to: "double", onError: null, onNull: null,
+        } },
+        timestamp: { $convert: {
+          input: { $ifNull: ["$timestamps.create", "$timestamp"] },
+          to: "date", onError: null, onNull: null,
+        } },
+      } },
+      { $match: { serial: { $ne: null }, timestamp: timestampRange } },
+      { $group: {
+        _id: {
+          serial: "$serial",
+          minute: { $dateToString: {
+            date: "$timestamp", format: "%Y-%m-%dT%H:%M:00.000Z", timezone: "UTC",
+          } },
+        },
+        count: { $sum: 1 },
+      } },
+    ])
     .toArray();
 
   const buckets = new Map();
   for (const count of counts) {
-    const serial = machineSerialFromCount(count);
-    const timestamp = new Date(count.timestamps?.create ?? count.timestamp);
-    if (serial === null || Number.isNaN(timestamp.getTime())) continue;
-
-    const key = `${serial}|${minuteKey(timestamp)}`;
-    buckets.set(key, (buckets.get(key) || 0) + 1);
+    if (!Number.isFinite(count._id.serial)) continue;
+    buckets.set(`${count._id.serial}|${count._id.minute}`, count.count);
   }
 
   return buckets;
@@ -240,66 +247,20 @@ function buildPayload(
   };
 }
 
-function bucketMapFromCache(cache, startMinute, endMinuteExclusive) {
-  const buckets = new Map();
-  const machineGroups = [cache?.history?.machines, cache?.machines];
-  const startMs = new Date(startMinute).getTime();
-  const endMs = new Date(endMinuteExclusive).getTime();
-
-  for (const machines of machineGroups) {
-    if (!machines || typeof machines !== "object") continue;
-    for (const [serial, points] of Object.entries(machines)) {
-      if (!Array.isArray(points)) continue;
-      for (const point of points) {
-        const timestamp = new Date(point?.minuteStart).getTime();
-        const count = Number(point?.count);
-        if (!Number.isFinite(timestamp) || timestamp < startMs || timestamp >= endMs) continue;
-        buckets.set(`${serial}|${new Date(timestamp).toISOString()}`, Number.isFinite(count) ? count : 0);
-      }
-    }
-  }
-
-  return buckets;
-}
-
-function hasHistoricalSeries(cache) {
-  return Boolean(
-    cache?.history &&
-    cache.history.machines &&
-    Array.isArray(cache.history.allMachines) &&
-    cache?.range?.end
-  );
-}
-
-function retainedMachineSerials(cache, retentionStartMinute) {
-  const retentionStartMs = new Date(retentionStartMinute).getTime();
-  const retained = new Set();
-  const machineGroups = [cache?.history?.machines, cache?.machines];
-
-  for (const machines of machineGroups) {
-    if (!machines || typeof machines !== "object") continue;
-    for (const [serial, points] of Object.entries(machines)) {
-      const hasRetainedCount = Array.isArray(points) && points.some((point) => {
-        const timestamp = new Date(point?.minuteStart).getTime();
-        return Number.isFinite(timestamp) && timestamp >= retentionStartMs && Number(point?.count) > 0;
-      });
-      if (hasRetainedCount) retained.add(Number(serial));
-    }
-  }
-
-  return [...retained].filter(Number.isFinite);
-}
-
 async function buildCountSparklineCache(db, config, nowInput = new Date()) {
   const endMinute = floorToMinute(nowInput);
   const currentStartMinute = addMinutes(endMinute, -LOOKBACK_MINUTES);
   const retentionStartMinute = addMinutes(endMinute, -RETENTION_MINUTES);
-  const [machineSerials, bucketMap, activeShifts] = await Promise.all([
+  const [activeMachineSerials, bucketMap, activeShifts] = await Promise.all([
     loadActiveMachineSerials(db, config),
     aggregateCountBuckets(db, config, retentionStartMinute, endMinute),
     loadActiveShifts(db, { collectionName: config.shiftCollectionName }),
   ]);
   const shiftStateClassifier = buildShiftStateClassifier(activeShifts);
+  const machineSerials = [...new Set([
+    ...activeMachineSerials,
+    ...[...bucketMap.keys()].map((key) => Number(key.split("|")[0])),
+  ])].sort((a, b) => a - b);
 
   return buildPayload(
     machineSerials,
@@ -312,48 +273,8 @@ async function buildCountSparklineCache(db, config, nowInput = new Date()) {
 }
 
 async function appendCompletedMinuteCountSparklineCache(db, config, existingCache, nowInput = new Date()) {
-  const endMinute = floorToMinute(nowInput);
-  const currentStartMinute = addMinutes(endMinute, -LOOKBACK_MINUTES);
-  const retentionStartMinute = addMinutes(endMinute, -RETENTION_MINUTES);
-  const existingEndMinute = new Date(existingCache?.range?.end);
-
-  if (
-    !hasHistoricalSeries(existingCache) ||
-    Number.isNaN(existingEndMinute.getTime()) ||
-    existingEndMinute > endMinute ||
-    existingEndMinute < retentionStartMinute
-  ) {
-    return buildCountSparklineCache(db, config, nowInput);
-  }
-
-  const refreshStartMinute = new Date(Math.max(
-    retentionStartMinute.getTime(),
-    addMinutes(existingEndMinute, -REFRESH_OVERLAP_MINUTES).getTime()
-  ));
-  const [activeMachineSerials, refreshedBuckets, activeShifts] = await Promise.all([
-    loadActiveMachineSerials(db, config),
-    refreshStartMinute < endMinute
-      ? aggregateCountBuckets(db, config, refreshStartMinute, endMinute)
-      : Promise.resolve(new Map()),
-    loadActiveShifts(db, { collectionName: config.shiftCollectionName }),
-  ]);
-  const bucketMap = bucketMapFromCache(existingCache, retentionStartMinute, endMinute);
-  for (const [key, count] of refreshedBuckets.entries()) {
-    bucketMap.set(key, count);
-  }
-  const machineSerials = [...new Set([
-    ...activeMachineSerials,
-    ...retainedMachineSerials(existingCache, retentionStartMinute),
-  ])].sort((a, b) => a - b);
-
-  return buildPayload(
-    machineSerials,
-    retentionStartMinute,
-    currentStartMinute,
-    endMinute,
-    bucketMap,
-    buildShiftStateClassifier(activeShifts)
-  );
+  // Delivery can lag the event timestamp by hours; reconcile history as well as the last hour.
+  return buildCountSparklineCache(db, config, nowInput);
 }
 
 const buildLastHourCountSparklineCache = buildCountSparklineCache;

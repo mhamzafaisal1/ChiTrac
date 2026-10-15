@@ -34,6 +34,7 @@
 }
 
 .chart-tile-title-group {
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: flex-start;
@@ -48,6 +49,11 @@
     margin-top: 1px;
     opacity: 0.78;
   }
+}
+
+.chart-tile-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .chart-tile-text {

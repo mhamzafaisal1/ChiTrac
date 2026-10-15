@@ -1,4 +1,4 @@
-<div class="scroll-wrapper">
+<div class="scroll-wrapper" [class.modal-view]="isModal">
   <div
     class="fault-container"
     [ngClass]="{ 'dark-mode': isDarkTheme, 'light-mode': !isDarkTheme }"
@@ -51,15 +51,30 @@
       </div>
     </div>
 
-    <base-table
-      [columns]="columns"
-      [rows]="rows"
-      [selectedRow]="selectedRow"
-      [disableSorting]="false"
-      [fillAvailableWidth]="isModal"
-      [enableSearch]="!isModal"
-      [enableCsvExport]="!isModal"
-      (rowClicked)="onRowSelected($event)"
-    ></base-table>
+    <div class="fault-content">
+      <base-table
+        *ngIf="rows.length && !hasLoadError"
+        [columns]="columns"
+        [rows]="rows"
+        [selectedRow]="selectedRow"
+        [disableSorting]="false"
+        [fillAvailableWidth]="isModal"
+        [enableSearch]="!isModal"
+        [enableCsvExport]="!isModal"
+        (rowClicked)="onRowSelected($event)"
+      ></base-table>
+      <div class="chart-no-data" *ngIf="hasFetchedOnce && !isLoading && !hasLoadError && !rows.length" role="status">
+        <div class="chart-no-data-content">
+          <div class="chart-no-data-icon" aria-hidden="true">{{ '\uD83D\uDCCA' }}</div>
+          <div class="chart-no-data-text">No faults recorded for the selected time range.</div>
+        </div>
+      </div>
+      <div class="chart-no-data" *ngIf="isLoading && !rows.length" role="status" aria-live="polite">
+        <div class="chart-no-data-text">Loading fault data...</div>
+      </div>
+      <div class="chart-no-data" *ngIf="hasLoadError && !isLoading" role="alert">
+        <div class="chart-no-data-text">Unable to load fault data. Please try again.</div>
+      </div>
+    </div>
   </div>
 </div>

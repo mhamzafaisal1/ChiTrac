@@ -1,4 +1,7 @@
-import { Component, OnInit, OnDestroy, ElementRef, Renderer2 } from '@angular/core';
+import { Component, OnInit, OnDestroy, ElementRef, Renderer2, inject } from '@angular/core';
+import { ReportColumnLayoutService } from '../report-column-layout.service';
+import { reportCsv, reportCsvColumns, reportPdfTable } from '../report-columns';
+import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -12,10 +15,10 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { ReportsService } from '../../services/reports.service';
-import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { displayInteger } from '../../shared/utils/display-number';
-import { formatDurationParts, parseDurationDisplay } from '../../shared/utils/duration-format';
+import { formatDurationParts } from '../../shared/utils/duration-format';
 import { MachineReportEmailModalComponent } from './machine-report-email-modal.component';
 
 interface MachineReportGroup {
@@ -25,9 +28,11 @@ interface MachineReportGroup {
 }
 
 @Component({
+    providers: [ReportColumnLayoutService],
     selector: 'app-machine-report',
     imports: [
         CommonModule,
+        BaseTableComponent,
         HttpClientModule,
         MatFormFieldModule,
         MatInputModule,
@@ -36,7 +41,7 @@ interface MachineReportGroup {
         MatTooltipModule,
         MatDialogModule,
         MatSnackBarModule,
-        DateTimePickerComponent
+        TimeframePickerComponent
     ],
     templateUrl: './machine-report.component.html',
     styleUrls: ['./machine-report.component.scss'] // ❗️Use plural: styleUrls
@@ -45,9 +50,11 @@ interface MachineReportGroup {
 export class MachineReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
-  columns: string[] = [];
-  summaryColumns: string[] = ['Machine', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
-  detailColumns: string[] = ['Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+  selectedShiftId: string | null = null;
+  timeframeMode: TimeframePickerMode = 'custom';
+  readonly layout = inject(ReportColumnLayoutService);
+  get columns(): string[] { return reportCsvColumns('machineReport', this.layout.columns); }
+  get summaryColumns(): string[] { return this.layout.columns; }
   rows: any[] = [];
   reportGroups: MachineReportGroup[] = [];
   columnTooltips: { [column: string]: string } = {
@@ -63,9 +70,6 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   isDownloadingCsv: boolean = false;
   isEmailing: boolean = false;
   showSummaryOnly: boolean = false;
-  expandedGroupKeys = new Set<string>();
-  sortColumn: string | null = null;
-  sortDirection: 'asc' | 'desc' = 'asc';
   private observer!: MutationObserver;
 
   get displayedRows(): any[] {
@@ -85,6 +89,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.layout.initialize('machineReport', 'Machine Report');
     const end = new Date();
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -111,7 +116,19 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     this.isDarkTheme = isDark;
   }
 
+  applyTimeframe(selection: TimeframeSelection): void {
+    if (this.isLoading || this.isEmailing) return;
+    this.startTime = selection.start.toISOString();
+    this.endTime = selection.end.toISOString();
+    this.selectedShiftId = selection.shiftId;
+    this.timeframeMode = selection.mode || 'custom';
+    this.rows = [];
+    this.reportGroups = [];
+    this.fetchAnalyticsData();
+  }
+
   fetchAnalyticsData(): void {
+    if (this.isLoading || this.isEmailing) return;
     if (!this.startTime || !this.endTime) return;
 
     this.isLoading = true;
@@ -120,7 +137,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     const formattedEnd = new Date(this.endTime).toISOString();
 
     // Fetch the machine report for the table
-    this.reportsService.getMachineReport(formattedStart, formattedEnd).subscribe({
+    this.reportsService.getMachineReport(formattedStart, formattedEnd, undefined, this.selectedShiftId).subscribe({
       next: (data) => {
         const results = data?.results ?? (Array.isArray(data) ? data : []);
         this.processTableData(results);
@@ -136,12 +153,9 @@ export class MachineReportComponent implements OnInit, OnDestroy {
   private processTableData(results: any[]): void {
     const formattedData: any[] = [];
     this.reportGroups = [];
-    this.expandedGroupKeys.clear();
-    this.sortColumn = null;
-    this.sortDirection = 'asc';
 
     if (!results || !Array.isArray(results)) {
-      this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
+
       this.rows = [];
       return;
     }
@@ -188,7 +202,6 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       });
     });
 
-    this.columns = ['Machine', 'Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency'];
     this.rows = formattedData;
   }
 
@@ -224,54 +237,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     };
   }
 
-  toggleGroup(group: MachineReportGroup): void {
-    if (this.expandedGroupKeys.has(group.key)) {
-      this.expandedGroupKeys.delete(group.key);
-    } else {
-      this.expandedGroupKeys.add(group.key);
-    }
-  }
-
-  isGroupExpanded(group: MachineReportGroup): boolean {
-    return this.expandedGroupKeys.has(group.key);
-  }
-
-  trackGroupByKey(_: number, group: MachineReportGroup): string {
-    return group.key;
-  }
-
-  sortBySummary(column: string): void {
-    if (this.sortColumn === column) {
-      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
-    } else {
-      this.sortColumn = column;
-      this.sortDirection = 'asc';
-    }
-
-    const direction = this.sortDirection === 'asc' ? 1 : -1;
-    this.reportGroups = this.reportGroups
-      .map((group, index) => ({ group, index }))
-      .sort((a, b) => {
-        const left = this.getSummarySortValue(a.group.summary, column);
-        const right = this.getSummarySortValue(b.group.summary, column);
-        const comparison = typeof left === 'string' && typeof right === 'string'
-          ? left.localeCompare(right, undefined, { sensitivity: 'base' })
-          : Number(left) - Number(right);
-        return comparison === 0 ? a.index - b.index : comparison * direction;
-      })
-      .map(({ group }) => group);
-  }
-
-  private getSummarySortValue(summary: any, column: string): string | number {
-    const value = summary?.[column];
-    if (column === 'Machine') return String(value ?? '');
-    if (column === 'Total Time (Runtime)') {
-      return parseDurationDisplay(value);
-    }
-    return Number.parseFloat(String(value ?? '').replace(/[,%]/g, '')) || 0;
-  }
-
-  getCellTooltip(row: any, column: string): string {
+  readonly getCellTooltip = (row: any, column: string): string => {
     if (column === 'Machine' && row?._tooltipMachineSerial != null && row._tooltipMachineSerial !== '') {
       return `Serial: ${row._tooltipMachineSerial}`;
     }
@@ -279,7 +245,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       return `Item ID: ${row._tooltipItemId}`;
     }
     return '';
-  }
+  };
 
   getEfficiencyClass(value: any, column: string): string {
     if (column === 'Efficiency' && typeof value === 'string' && value.includes('%')) {
@@ -366,23 +332,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
 
     setTimeout(() => {
       try {
-        const csvRows: string[] = [];
-      
-        // Header
-        csvRows.push(this.columns.join(','));
-      
-        // Rows
-        for (const row of this.displayedRows) {
-          const rowData = this.columns.map(col => {
-            const cell = row[col];
-            return typeof cell === 'string' && cell.includes(',')
-              ? `"${cell.replace(/"/g, '""')}"` // Escape double quotes
-              : cell;
-          });
-          csvRows.push(rowData.join(','));
-        }
-      
-        const csvContent = csvRows.join('\n');
+        const csvContent = reportCsv(this.columns, this.displayedRows);
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
       
@@ -425,15 +375,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     doc.text(`Range: ${this.startTime} → ${this.endTime}`, margin, y);
     y += 24;
 
-    const head = [['Machine/Item', 'Total Time (Runtime)', 'Total Count', 'PPH', 'Standard', 'Efficiency']];
-    const body = this.displayedRows.map(row => [
-      `${row['Machine']} / ${row['Item']}`,
-      row['Total Time (Runtime)'],
-      row['Total Count'],
-      row['PPH'],
-      row['Standard'],
-      row['Efficiency'],
-    ]);
+    const { head, body, identityIndex } = reportPdfTable('machineReport', this.layout.columns, this.displayedRows);
 
     autoTable(doc, {
       head,
@@ -442,7 +384,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
       margin: { left: margin, right: margin },
       styles: { fontSize: 8, cellPadding: 3 },
       headStyles: { fillColor: [22, 160, 133], textColor: 255 },
-      columnStyles: { 0: { cellWidth: 180 } },
+      columnStyles: { [identityIndex]: { cellWidth: 180 } },
       theme: 'striped'
     });
 

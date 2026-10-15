@@ -1,4 +1,6 @@
-import { Component, OnInit, OnDestroy, OnChanges, SimpleChanges, ElementRef, Renderer2, Input } from '@angular/core';
+import { Component, OnInit, OnDestroy, OnChanges, SimpleChanges, ElementRef, Renderer2, Input, inject } from '@angular/core';
+import { SettingsService } from '../services/settings.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -23,6 +25,7 @@ import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../char
     styleUrls: ['./operator-performance-chart.component.scss']
 })
 export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnChanges {
+  private readonly settings = inject(SettingsService);
   @Input() chartWidth: number = 600;
   @Input() chartHeight: number = 400;
   @Input() isModal: boolean = false;
@@ -48,7 +51,11 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
   constructor(
     private renderer: Renderer2,
     private elRef: ElementRef
-  ) {}
+  ) {
+    this.settings.timeFormat$.pipe(takeUntilDestroyed()).subscribe(() => {
+      if (this.chartConfig) this.chartConfig = { ...this.chartConfig };
+    });
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     // Handle input changes when component is used in carousel
@@ -213,7 +220,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
       xLabel: 'Hour',
       yLabel: 'Efficiency (%)',
       yMin,
-      xTickFormat: (value: any) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      xTickFormat: (value: any) => this.settings.formatTime(new Date(value)),
       margin: {
         top: this.marginTop,
         right: this.marginRight,

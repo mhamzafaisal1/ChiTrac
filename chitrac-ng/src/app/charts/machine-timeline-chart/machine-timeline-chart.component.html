@@ -7,6 +7,8 @@
   </div>
 
   <div class="timeline-content" *ngIf="hasInitialData">
+    <app-timeline-zoom-controls *ngIf="!controlsInHeader" [canZoomIn]="canZoomIn" [canZoomOut]="canZoomOut"
+      (zoomIn)="zoomBy(2)" (zoomOut)="zoomBy(0.5)" (reset)="resetZoom()"></app-timeline-zoom-controls>
     <div class="timeline-chart-shell">
       <svg
         #timelineSvg
@@ -17,6 +19,8 @@
         [attr.height]="svgHeight"
         preserveAspectRatio="xMidYMid meet"
         focusable="false"
+        (mousemove)="onChunkMove($event)"
+        (mouseleave)="onChunkLeave()"
       >
         <defs>
           <clipPath [attr.id]="clipPathId">
@@ -69,11 +73,11 @@
               [attr.width]="chunk.width"
               [attr.height]="barHeight"
               [attr.fill]="chunk.color"
+              [attr.data-machine]="machine.serial"
+              [attr.data-chunk]="chunk.id"
               rx="2"
               ry="2"
               (mouseenter)="onChunkEnter($event, chunk)"
-              (mousemove)="onChunkMove($event)"
-              (mouseleave)="onChunkLeave()"
             ></rect>
           </g>
         </g>

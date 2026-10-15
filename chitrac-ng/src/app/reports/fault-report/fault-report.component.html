@@ -7,25 +7,17 @@
   </div>
 
   <div class="controls">
-    <app-date-time-picker
-      label="Start Time"
-      [(value)]="startTime"
-    ></app-date-time-picker>
-    <app-date-time-picker
-      label="End Time"
-      [(value)]="endTime"
-    ></app-date-time-picker>
+    <app-timeframe-picker
+      confirmLabel="Generate Report"
+      [start]="startTime"
+      [end]="endTime"
+      [shiftId]="selectedShiftId"
+      [mode]="timeframeMode"
+      [disabled]="isLoading"
+      (confirmed)="applyTimeframe($event)"
+    ></app-timeframe-picker>
 
     <div class="button-group">
-      <button
-        mat-flat-button
-        color="primary"
-        (click)="fetchFaultReport()"
-        [disabled]="!startTime || !endTime || isLoading"
-      >
-        <mat-icon>refresh</mat-icon>
-        {{ isLoading ? "Loading..." : "Fetch Data" }}
-      </button>
       <button
         mat-flat-button
         color="primary"
@@ -81,6 +73,9 @@
           <span class="detail-count" *ngIf="group.details.length">
             {{ group.details.length }}
             {{ group.details.length === 1 ? "occurrence" : "occurrences" }}
+            <ng-container *ngIf="group.summary.Count === 1 && group.details.length === 1">
+              on {{ group.details[0].Machine }}
+            </ng-container>
           </span>
         </span>
         <span>{{ group.summary["Count"] }}</span>

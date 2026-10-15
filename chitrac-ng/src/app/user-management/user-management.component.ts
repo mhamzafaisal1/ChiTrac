@@ -1,4 +1,5 @@
-import { AfterViewInit, Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, OnInit, TemplateRef, ViewChild, inject } from '@angular/core';
+import { SettingsService } from '../services/settings.service';
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -51,6 +52,7 @@ const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-
   styleUrl: './user-management.component.scss'
 })
 export class UserManagementComponent implements OnInit, AfterViewInit {
+  private readonly settings = inject(SettingsService);
   users: ManagedUser[] = [];
   dataSource = new MatTableDataSource<ManagedUser>([]);
   displayedColumns: string[] = ['username', 'email', 'permissionLevel', 'active', 'updatedAt', 'actions'];
@@ -239,7 +241,7 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
 
   formatDate(date: Date | null): string {
     if (!date) return '-';
-    return new Date(date).toLocaleString();
+    return this.settings.formatTime(date, { year: 'numeric', month: 'short', day: 'numeric', second: '2-digit' });
   }
 
   get availableRoleOptions(): UserRoleOption[] {

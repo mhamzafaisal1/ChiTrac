@@ -3,6 +3,7 @@ const express = require("express");
 const config = require("../../modules/config");
 const { parseAndValidateQueryParams } = require("../../utils/time");
 const { formatHumanName } = require("../../utils/humanNames");
+const { reportShiftMiddleware, sessionShiftFilter } = require('../../utils/reportShiftFilter');
 
 const NON_FAULT_CODES = [0, 1, "0", "1", null];
 
@@ -341,13 +342,14 @@ module.exports = function faultHistoryRoute(server) {
    * Uses session-machine collection (fault rows filtered by type).
    * Query params: start, end (required).
    */
-  router.get("/analytics/fault-report-summary", async (req, res) => {
+  router.get("/analytics/fault-report-summary", reportShiftMiddleware(db), async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const startDate = new Date(start);
       const endDate = new Date(end);
 
       const match = buildFaultSessionMatch(startDate, endDate);
+      Object.assign(match, sessionShiftFilter(req.query.shiftId));
 
       const raw = await db
         .collection(config.machineSessionCollectionName)
@@ -476,13 +478,14 @@ module.exports = function faultHistoryRoute(server) {
    * Uses session-machine collection (fault rows filtered by type).
    * Query params: start, end (required).
    */
-  router.get("/analytics/fault-report-detailed", async (req, res) => {
+  router.get("/analytics/fault-report-detailed", reportShiftMiddleware(db), async (req, res) => {
     try {
       const { start, end } = parseAndValidateQueryParams(req);
       const startDate = new Date(start);
       const endDate = new Date(end);
 
       const match = buildFaultSessionMatch(startDate, endDate);
+      Object.assign(match, sessionShiftFilter(req.query.shiftId));
 
       const raw = await db
         .collection(config.machineSessionCollectionName)

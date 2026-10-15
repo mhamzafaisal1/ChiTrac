@@ -31,7 +31,7 @@ export class ReportsService {
   constructor(private http: HttpClient) { }
 
 
-  getMachineReport(start: string, end: string, serial?: number): Observable<any> {
+  getMachineReport(start: string, end: string, serial?: number, shiftId?: string | null): Observable<any> {
     let params = new HttpParams()
       .set('start', start)
       .set('end', end);
@@ -39,12 +39,13 @@ export class ReportsService {
     if (serial) {
       params = params.set('serial', serial.toString());
     }
+    if (shiftId) params = params.set('shiftId', shiftId);
 
     // return this.http.get(`${this.apiUrl}/analytics/machine-item-sessions-summary-cache`, { params });
     return this.http.get(`${this.apiUrl}/analytics/machine-report-cache`, { params });
   }
 
-  getOperatorReport(start: string, end: string, operatorId?: number): Observable<any> {
+  getOperatorReport(start: string, end: string, operatorId?: number, shiftId?: string | null): Observable<any> {
     let params = new HttpParams()
       .set('start', start)
       .set('end', end);
@@ -52,13 +53,14 @@ export class ReportsService {
     if (operatorId) {
       params = params.set('operatorId', operatorId.toString());
     }
+    if (shiftId) params = params.set('shiftId', shiftId);
 
     return this.http.get(`${this.apiUrl}/analytics/operator-item-sessions-summary-cache`, { params });
   }
 
-  getItemReport(start: string, end: string): Observable<any> {
+  getItemReport(start: string, end: string, shiftId?: string | null): Observable<any> {
     return this.http.get(`${this.apiUrl}/analytics/item-sessions-summary-daily-cache`, {
-      params: { start, end }
+      params: { start, end, ...(shiftId ? { shiftId } : {}) }
     });
   }
 

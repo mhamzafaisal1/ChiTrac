@@ -1,7 +1,9 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { tap, map, distinctUntilChanged } from 'rxjs/operators';
+import { TimeFormat, formatDisplayTime } from '../utils/time-format';
+import { ReportLayoutId } from '../reports/report-columns';
 
 export interface AppSettings {
   enableApiTokenCheck: boolean;
@@ -53,6 +55,8 @@ export interface DashboardLayoutPreferences {
 export type MachinePphDisplayMode = 'perMachine' | 'perStation';
 
 export interface UserPreferences {
+  reportLayouts?: Partial<Record<ReportLayoutId, { columnOrder: string[] }>>;
+  timeFormat?: TimeFormat;
   userId?: string;
   theme?: 'light' | 'dark';
   defaultTheme?: 'light' | 'dark';
@@ -80,12 +84,30 @@ export class SettingsService {
   public currentTheme$ = this.currentThemeSubject.asObservable();
   private userPreferencesSubject = new BehaviorSubject<UserPreferences | null>(null);
   public userPreferences$ = this.userPreferencesSubject.asObservable();
+  public timeFormat$ = this.userPreferences$.pipe(
+    map(preferences => preferences?.timeFormat === '24h' ? '24h' as const : '12h' as const),
+    distinctUntilChanged()
+  );
   private rawUserPreferences: UserPreferences | null = null;
   private readonly preferenceRequestOptions = {
     headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' })
   };
 
   constructor(private http: HttpClient) {}
+
+  getTimeFormat(): TimeFormat {
+    return this.userPreferencesSubject.value?.timeFormat === '24h' ? '24h' : '12h';
+  }
+
+  formatTime(value: string | Date | number | null | undefined, options: Intl.DateTimeFormatOptions = {}): string {
+    return formatDisplayTime(value, this.getTimeFormat(), options);
+  }
+
+  saveTimeFormat(timeFormat: TimeFormat): Observable<UserPreferences> {
+    return this.http.put<UserPreferences>('/api/preferences/user', { timeFormat }, this.preferenceRequestOptions).pipe(
+      tap(preferences => this.acceptUserPreferences(preferences))
+    );
+  }
 
   /**
    * Load application settings from the server
@@ -321,6 +343,12 @@ export class SettingsService {
         this.acceptUserPreferences(preferences);
       })
     );
+  }
+
+  saveReportColumnOrder(id: ReportLayoutId, columnOrder: string[]): Observable<UserPreferences> {
+    return this.http.put<UserPreferences>('/api/preferences/user', {
+      reportLayouts: { [id]: { columnOrder } }
+    }, this.preferenceRequestOptions).pipe(tap(preferences => this.acceptUserPreferences(preferences)));
   }
 
   private acceptUserPreferences(preferences: UserPreferences): void {

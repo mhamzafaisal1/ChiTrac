@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/utils/timeframe-label.spec.ts",
+    "src/app/nav-main-menu/timeframe-indicator.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

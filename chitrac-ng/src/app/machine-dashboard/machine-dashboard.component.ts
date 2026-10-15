@@ -45,7 +45,7 @@ import { MachineItemStackedBarChartComponent } from "../machine-item-stacked-bar
 import { MachineFaultHistoryComponent } from "../machine-fault-history/machine-fault-history.component";
 import { OperatorPerformanceChartComponent } from "../operator-performance-chart/operator-performance-chart.component";
 import { DowntimeParetoComponent } from "../downtime-pareto/downtime-pareto.component";
-import { LayoutSaveConfirmComponent } from "../components/layout-save-confirm/layout-save-confirm.component";
+import { openLayoutSaveConfirmDialog } from "../components/layout-save-confirm/layout-save-confirm.component";
 import {
   SummaryCardVisibilityDialogComponent,
   SummaryCardVisibilityDialogResult,
@@ -53,6 +53,7 @@ import {
 } from "../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component";
 
 interface SummaryCard {
+  isTimeRange?: boolean;
   label: string;
   value: string | number;
   icon: string;
@@ -928,26 +929,33 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private getShiftInfoCard(cache?: DashboardCacheState | null): SummaryCard | null {
-    if (this.dateTimeService.getShiftId() || !this.isCurrentDayView()) {
+    const selectedShiftId = this.dateTimeService.getShiftId();
+    if (!selectedShiftId && !this.isCurrentDayView()) {
       return null;
     }
 
     const projectionWindow = this.getShiftProjectionWindow(cache);
     const currentShift = projectionWindow?.currentShift;
-    const shift = currentShift || projectionWindow?.nextShift;
+    const shift = selectedShiftId
+      ? [currentShift, projectionWindow?.previousShift, projectionWindow?.nextShift]
+        .find((context) => context?.shiftId === selectedShiftId)
+      : currentShift || projectionWindow?.nextShift;
     if (!shift?.start || !shift?.end) {
       return null;
     }
 
     const isTomorrow = this.isTomorrow(shift.start);
-    const prefix = currentShift
+    const prefix = selectedShiftId
+      ? "Shift: "
+      : currentShift
       ? "Current Shift: "
       : isTomorrow
         ? "First Shift Tomorrow: "
         : "Shift: ";
-    const breakSuffix = currentShift && projectionWindow?.state === "inBreak" ? " (In Break)" : "";
+    const breakSuffix = shift === currentShift && projectionWindow?.state === "inBreak" ? " (In Break)" : "";
     return {
       label: `${prefix}${shift.name || "Unnamed Shift"}`,
+      isTimeRange: true,
       value: `${this.formatShiftInfoTime(shift.start)} — ${this.formatShiftInfoTime(shift.end)}${breakSuffix}`,
       icon: "schedule",
       tone: "neutral",
@@ -958,11 +966,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const date = value ? new Date(value) : null;
     if (!date || Number.isNaN(date.getTime())) return "";
 
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(date);
+    return this.settingsService.formatTime(date).replace(/ (AM|PM)$/, "\u00a0$1");
   }
 
   private isTomorrow(value: string | Date | null): boolean {
@@ -1291,52 +1295,43 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private confirmAndSaveLayout(): void {
-    const dialogRef = this.dialog.open(LayoutSaveConfirmComponent, {
-      width: "460px",
-      maxWidth: "calc(100vw - 32px)",
-      autoFocus: false,
-    });
+    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayoutPreferences(), this.destroy$);
+    if (!dialogRef) return;
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
-        if (result === "save") {
-          this.saveLayoutPreferences();
-          return;
-        }
         if (result === "discard") {
           this.revertLayoutChanges();
         }
       });
   }
 
-  private saveLayoutPreferences(): void {
+  private saveLayoutPreferences(): Observable<unknown> {
     this.summaryCardOrder = this.getSummaryCardOrder();
     this.tableColumnVisibility = this.cleanTableColumnVisibility(this.tableColumnVisibility);
     this.tableColumnOrder = this.cleanTableColumnOrder(this.tableColumnOrder);
     this.summaryCardVisibility = this.cleanSummaryCardVisibility(this.summaryCardVisibility);
-    this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
 
     if (!this.userService.getToken()) {
+      this.settingsService.setMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder);
       localStorage.setItem(this.summaryCardOrderKey, JSON.stringify(this.summaryCardOrder));
       localStorage.setItem(this.summaryCardVisibilityKey, JSON.stringify(this.summaryCardVisibility));
       this.layoutEditService.setEditing(false);
-      return;
+      this.layoutSnapshot = null;
+      return of(null);
     }
 
-    this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).subscribe({
-      next: () => {
+    return this.settingsService.saveMachineDashboardLayout(this.summaryCardOrder, this.tableColumnVisibility, this.summaryCardVisibility, this.tableColumnOrder).pipe(
+      tap(() => {
         localStorage.removeItem(this.summaryCardOrderKey);
         localStorage.removeItem(this.summaryCardVisibilityKey);
         this.summaryCardOrderSource = "server";
         this.summaryCardVisibilitySource = "server";
         this.layoutSnapshot = null;
         this.layoutEditService.setEditing(false);
-      },
-      error: (error) => {
-        console.error("[MachineDashboard] Failed to save layout preferences", error);
-      },
-    });
+      })
+    );
   }
 
   private captureLayoutSnapshot(): void {
@@ -1409,6 +1404,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     this.settingsService.userPreferences$
       .pipe(takeUntil(this.destroy$))
       .subscribe((preferences) => {
+        if (this.machineData.length) this.updateDashboardData(this.machineData);
         if (!preferences) {
           this.resetLayoutToDefault();
           return;

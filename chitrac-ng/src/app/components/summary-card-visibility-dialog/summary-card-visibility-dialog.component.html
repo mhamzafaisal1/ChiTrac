@@ -2,7 +2,7 @@
   <header class="dialog-header">
     <div>
       <h2 mat-dialog-title>{{ title }}</h2>
-      <p>{{ description }}</p>
+      <p *ngIf="description">{{ description }}</p>
     </div>
   </header>
 
@@ -14,12 +14,14 @@
     >
       {{ visibleCountMessage }}
     </div>
-    <div class="list-grid">
-      <section class="list-panel" aria-label="Show infoboxes">
+    <p *ngIf="saveError" role="alert">{{ saveError }}</p>
+    <div class="list-grid" [attr.inert]="saving ? '' : null" [attr.aria-busy]="saving">
+      <section class="list-panel" [attr.aria-label]="showLabel">
         <h3>{{ showLabel }}</h3>
         <div
           id="shown-card-list"
           class="card-drop-list"
+          cdkScrollable
           cdkDropList
           [cdkDropListData]="showCards"
           [cdkDropListConnectedTo]="['hidden-card-list']"
@@ -32,6 +34,8 @@
             class="infobox-row"
             [class.compact]="compactCards"
             *ngFor="let card of showCards"
+            [attr.aria-label]="card.label"
+            [attr.aria-pressed]="selectedShowId === (card.id || card.label)"
             cdkDrag
             [cdkDragDisabled]="!dragDropEnabled"
             [class.draggable]="dragDropEnabled"
@@ -63,20 +67,27 @@
         </div>
       </section>
 
-      <div class="transfer-actions" aria-label="Move selected infobox">
-        <button mat-icon-button type="button" aria-label="Hide selected infobox" [disabled]="!selectedShowId" (click)="hideSelected()">
+      <div class="transfer-actions" role="group" aria-label="Move selected entries">
+        <button mat-icon-button type="button" [attr.aria-label]="hideLabel + ' all'" [matTooltip]="hideLabel + ' all'" [disabled]="!showCards.length" (click)="hideAll()">
+          <mat-icon>keyboard_double_arrow_right</mat-icon>
+        </button>
+        <button mat-icon-button type="button" [attr.aria-label]="hideLabel + ' selected'" [matTooltip]="hideLabel + ' selected'" [disabled]="!selectedShowId" (click)="hideSelected()">
           <mat-icon>chevron_right</mat-icon>
         </button>
-        <button mat-icon-button type="button" aria-label="Show selected infobox" [disabled]="!selectedHideId || !canShowMore" (click)="showSelected()">
+        <button mat-icon-button type="button" [attr.aria-label]="showLabel + ' selected'" [matTooltip]="showLabel + ' selected'" [disabled]="!selectedHideId || !canShowMore" (click)="showSelected()">
           <mat-icon>chevron_left</mat-icon>
+        </button>
+        <button mat-icon-button type="button" [attr.aria-label]="showLabel + ' all'" [matTooltip]="showLabel + ' all'" [disabled]="!canShowAll" (click)="showAll()">
+          <mat-icon>keyboard_double_arrow_left</mat-icon>
         </button>
       </div>
 
-      <section class="list-panel" aria-label="Hide infoboxes">
+      <section class="list-panel" [attr.aria-label]="hideLabel">
         <h3>{{ hideLabel }}</h3>
         <div
           id="hidden-card-list"
           class="card-drop-list"
+          cdkScrollable
           cdkDropList
           [cdkDropListData]="hideCards"
           [cdkDropListConnectedTo]="['shown-card-list']"
@@ -88,6 +99,8 @@
             class="infobox-row"
             [class.compact]="compactCards"
             *ngFor="let card of hideCards"
+            [attr.aria-label]="card.label"
+            [attr.aria-pressed]="selectedHideId === (card.id || card.label)"
             cdkDrag
             [cdkDragDisabled]="!dragDropEnabled"
             [class.draggable]="dragDropEnabled"
@@ -122,7 +135,7 @@
   </mat-dialog-content>
 
   <mat-dialog-actions align="end">
-    <button mat-button type="button" (click)="cancel()">Cancel</button>
-    <button mat-flat-button color="primary" type="button" [disabled]="!canApply" (click)="save()">Apply</button>
+    <button mat-button type="button" [disabled]="saving" (click)="cancel()">Cancel</button>
+    <button mat-flat-button color="primary" type="button" [disabled]="saving || !canApply" (click)="save()">{{ saving ? 'Saving...' : applyLabel }}</button>
   </mat-dialog-actions>
 </div>

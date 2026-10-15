@@ -172,6 +172,14 @@
     opacity: 0.42;
   }
 
+  .ag-row.report-summary .ag-cell { font-weight: 600; }
+  .ag-row.report-detail-header {
+    background: var(--theme-color-table-header);
+    cursor: default;
+  }
+  .ag-row.report-detail-header .ag-cell { font-size: 12px; font-weight: 600; }
+  .ag-row.report-detail { cursor: default; }
+
   .status-dot {
     display: inline-flex;
     align-items: center;
@@ -207,6 +215,23 @@
   .white {
     color: var(--sg-color-white);
     font-weight: 600;
+  }
+}
+
+@media (max-width: 768px) {
+  :host ::ng-deep .base-data-grid {
+    --ag-header-font-size: 12px;
+    --ag-cell-horizontal-padding: 8px;
+
+    .ag-header-cell,
+    .ag-cell {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .ag-header-cell {
+      font-size: 12px;
+    }
   }
 }
 

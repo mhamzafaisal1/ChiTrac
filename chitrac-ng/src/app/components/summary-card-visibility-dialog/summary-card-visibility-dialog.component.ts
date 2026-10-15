@@ -1,9 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, Inject } from '@angular/core';
+import { Component, DestroyRef, Inject, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Observable, defer, finalize, take } from 'rxjs';
 import { CdkDrag, CdkDragDrop, CdkDropList, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { ScrollingModule } from '@angular/cdk/scrolling';
 
 export interface SummaryCardVisibilityOption {
   id?: string;
@@ -28,6 +32,8 @@ export interface SummaryCardVisibilityDialogData {
   maxVisible?: number;
   exactVisible?: number;
   dragDropEnabled?: boolean;
+  applyLabel?: string;
+  save?: (result: SummaryCardVisibilityDialogResult) => Observable<unknown>;
 }
 
 export interface SummaryCardVisibilityDialogResult {
@@ -38,7 +44,7 @@ export interface SummaryCardVisibilityDialogResult {
 @Component({
   selector: 'app-summary-card-visibility-dialog',
   standalone: true,
-  imports: [CommonModule, DragDropModule, MatButtonModule, MatDialogModule, MatIconModule],
+  imports: [CommonModule, DragDropModule, ScrollingModule, MatButtonModule, MatDialogModule, MatIconModule, MatTooltipModule],
   templateUrl: './summary-card-visibility-dialog.component.html',
   styleUrl: './summary-card-visibility-dialog.component.scss'
 })
@@ -58,14 +64,18 @@ export class SummaryCardVisibilityDialogComponent {
   dragDropEnabled = false;
   selectedShowId: string | null = null;
   selectedHideId: string | null = null;
+  applyLabel = 'Apply';
+  saving = false;
+  saveError = '';
+  private readonly destroyRef = inject(DestroyRef);
 
   constructor(
     private dialogRef: MatDialogRef<SummaryCardVisibilityDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) data: SummaryCardVisibilityDialogData
+    @Inject(MAT_DIALOG_DATA) private data: SummaryCardVisibilityDialogData
   ) {
     this.visibility = { ...(data.visibility || {}) };
     this.title = data.title || this.title;
-    this.description = data.description || this.description;
+    this.description = data.description ?? this.description;
     this.showLabel = data.showLabel || this.showLabel;
     this.hideLabel = data.hideLabel || this.hideLabel;
     this.emptyShownText = data.emptyShownText || this.emptyShownText;
@@ -74,6 +84,7 @@ export class SummaryCardVisibilityDialogComponent {
     this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
     this.exactVisible = typeof data.exactVisible === 'number' ? data.exactVisible : null;
     this.dragDropEnabled = data.dragDropEnabled === true;
+    this.applyLabel = data.applyLabel || this.applyLabel;
     this.showCards = (data.cards || []).filter((card) => this.isVisible(this.getCardId(card)));
     this.hideCards = (data.cards || []).filter((card) => !this.isVisible(this.getCardId(card)));
   }
@@ -106,6 +117,23 @@ export class SummaryCardVisibilityDialogComponent {
     this.showCards.push(card);
     this.setCardVisibility(card, true);
     this.selectedHideId = null;
+  }
+
+  hideAll(): void {
+    if (!this.showCards.length) return;
+    this.moveAll(false);
+  }
+
+  showAll(): void {
+    if (!this.canShowAll) return;
+    this.moveAll(true);
+  }
+
+  get canShowAll(): boolean {
+    const total = this.showCards.length + this.hideCards.length;
+    return this.hideCards.length > 0 &&
+      (this.maxVisible == null || total <= this.maxVisible) &&
+      (this.exactVisible == null || total <= this.exactVisible);
   }
 
   drop(event: CdkDragDrop<SummaryCardVisibilityOption[]>, destinationVisible: boolean): void {
@@ -148,15 +176,35 @@ export class SummaryCardVisibilityDialogComponent {
   }
 
   cancel(): void {
+    if (this.saving) return;
     this.dialogRef.close();
   }
 
   save(): void {
+    if (this.saving || !this.canApply) return;
     const result: SummaryCardVisibilityDialogResult = {
-      visibility: this.visibility,
+      visibility: { ...this.visibility },
       order: [...this.showCards, ...this.hideCards].map((card) => this.getCardId(card)),
     };
-    this.dialogRef.close(result);
+    if (!this.data.save) {
+      this.dialogRef.close(result);
+      return;
+    }
+    this.saving = true;
+    this.saveError = '';
+    const disableClose = this.dialogRef.disableClose;
+    this.dialogRef.disableClose = true;
+    defer(() => this.data.save!(result)).pipe(
+      take(1),
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => {
+        this.saving = false;
+        this.dialogRef.disableClose = disableClose;
+      })
+    ).subscribe({
+      next: () => this.dialogRef.close(result),
+      error: () => { this.saveError = 'Could not save changes. Please try again.'; }
+    });
   }
 
   private isVisible(label: string): boolean {
@@ -169,5 +217,19 @@ export class SummaryCardVisibilityDialogComponent {
 
   private setCardVisibility(card: SummaryCardVisibilityOption, visible: boolean): void {
     this.visibility = { ...this.visibility, [this.getCardId(card)]: visible };
+  }
+
+  private moveAll(visible: boolean): void {
+    const source = visible ? this.hideCards : this.showCards;
+    const destination = visible ? this.showCards : this.hideCards;
+    const visibility = { ...this.visibility };
+    for (const card of source) {
+      visibility[this.getCardId(card)] = visible;
+      destination.push(card);
+    }
+    source.length = 0;
+    this.visibility = visibility;
+    this.selectedShowId = null;
+    this.selectedHideId = null;
   }
 }

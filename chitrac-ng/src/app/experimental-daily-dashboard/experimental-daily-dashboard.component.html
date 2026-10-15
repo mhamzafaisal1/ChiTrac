@@ -23,6 +23,13 @@
         *ngFor="let tile of visibleChartTiles; trackBy: trackTile"
         cdkDrag
         [cdkDragDisabled]="!layoutEditing"
+        [attr.role]="layoutEditing ? null : 'button'"
+        [attr.tabindex]="layoutEditing ? null : 0"
+        [attr.aria-label]="'Enlarge ' + tile.title"
+        [attr.aria-haspopup]="layoutEditing ? null : 'dialog'"
+        (click)="openChartDetail(tile)"
+        (keydown.enter)="openChartDetail(tile)"
+        (keydown.space)="$event.preventDefault(); openChartDetail(tile)"
       >
         <button
           class="chart-drag-handle"
@@ -34,6 +41,23 @@
           <mat-icon>drag_indicator</mat-icon>
         </button>
 
+        @if (tile.id === 'machine-timeline') {
+          <app-chart-tile
+            [title]="tile.title" [icon]="tile.icon"
+            [subtitle]="chartSubtitle(tile)" [subtitleStrong]="chartSubtitleStrong(tile)"
+            [updatedAt]="cacheUpdatedAt" [chartWidth]="chartWidth" [chartHeight]="chartHeight"
+          >
+            <app-timeline-zoom-controls chartTileActions class="header-controls"
+              [canZoomIn]="timeline.canZoomIn" [canZoomOut]="timeline.canZoomOut"
+              (zoomIn)="timeline.zoomBy(2)" (zoomOut)="timeline.zoomBy(0.5)" (reset)="timeline.resetZoom()"
+            ></app-timeline-zoom-controls>
+            <app-machine-timeline-chart #timeline
+              [chartWidth]="chartWidth" [chartHeight]="chartHeight"
+              [preloadedData]="preloadedData?.machineTimeline"
+              [useExternalTitle]="useTileTitles" [controlsInHeader]="true"
+            ></app-machine-timeline-chart>
+          </app-chart-tile>
+        } @else {
         <app-chart-tile
           [title]="tile.title"
           [icon]="tile.icon"
@@ -50,14 +74,6 @@
             [preloadedData]="preloadedData?.machineStatus"
             [useExternalTitle]="useTileTitles"
           ></app-daily-machine-stacked-bar-chart>
-
-          <app-machine-timeline-chart
-            *ngIf="tile.id === 'machine-timeline'"
-            [chartWidth]="chartWidth"
-            [chartHeight]="chartHeight"
-            [preloadedData]="preloadedData?.machineTimeline"
-            [useExternalTitle]="useTileTitles"
-          ></app-machine-timeline-chart>
 
           <app-daily-machine-oee-bar-chart
             *ngIf="tile.id === 'machine-oee'"
@@ -103,6 +119,7 @@
             [useExternalTitle]="useTileTitles"
           ></app-daily-count-bar-chart>
         </app-chart-tile>
+        }
       </div>
     </div>
   </div>

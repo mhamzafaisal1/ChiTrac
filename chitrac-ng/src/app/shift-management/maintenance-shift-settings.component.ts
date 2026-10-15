@@ -10,6 +10,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MaintenanceShiftCrudComponent } from './maintenance-shift-crud.component';
 import { MaintenanceShiftDocument, ShiftService } from '../services/shift.service';
 import { formatTimeSafe } from './shift-time.utils';
+import { SettingsService } from '../services/settings.service';
 
 @Component({
   selector: 'app-maintenance-shift-settings',
@@ -55,6 +56,7 @@ import { formatTimeSafe } from './shift-time.utils';
   ],
 })
 export class MaintenanceShiftSettingsComponent implements OnInit {
+  private readonly settings = inject(SettingsService);
   private readonly shiftService = inject(ShiftService);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -95,7 +97,7 @@ export class MaintenanceShiftSettingsComponent implements OnInit {
     const name = shift.name?.trim() ? shift.name : 'Unnamed maintenance shift';
     const st = shift.startTime;
     const en = shift.endTime;
-    const timePart = `${formatTimeSafe(st)} - ${formatTimeSafe(en)}`;
+    const timePart = `${formatTimeSafe(st, this.settings.getTimeFormat())} - ${formatTimeSafe(en, this.settings.getTimeFormat())}`;
     const days = (shift.activeDays ?? [])
       .slice()
       .sort((a, b) => a - b)

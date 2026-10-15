@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { ServerLog } from '../../services/server-logs.service';
+import { SettingsService } from '../../services/settings.service';
 
 @Component({
   selector: 'app-log-detail-modal',
@@ -14,6 +15,7 @@ import { ServerLog } from '../../services/server-logs.service';
   styleUrls: ['./log-detail-modal.component.scss']
 })
 export class LogDetailModalComponent {
+  private readonly settings = inject(SettingsService);
   dialogRef = inject(MatDialogRef<LogDetailModalComponent>);
   logData: ServerLog = inject(MAT_DIALOG_DATA);
   private clipboard = inject(Clipboard);
@@ -78,7 +80,7 @@ export class LogDetailModalComponent {
    * Format timestamp for display
    */
   getFormattedTime(): string {
-    return new Date(this.logData.timestamp).toLocaleString();
+    return this.settings.formatTime(this.logData.timestamp, { year: 'numeric', month: 'short', day: 'numeric', second: '2-digit' });
   }
 
   /**

@@ -171,8 +171,9 @@ getItemsSummary(start: string, end: string, serial?: number, shiftId?: string | 
   }
 
   /** Fault report: summary across all machines by fault code (uses fault-session, no cache) */
-  getFaultReportSummary(start: string, end: string): Observable<{ context: any; summaries: any[] }> {
-    const params = new HttpParams().set('start', start).set('end', end);
+  getFaultReportSummary(start: string, end: string, shiftId?: string | null): Observable<{ context: any; summaries: any[] }> {
+    let params = new HttpParams().set('start', start).set('end', end);
+    if (shiftId) params = params.set('shiftId', shiftId);
     return this.http.get<{ context: any; summaries: any[] }>(`${this.faultApiUrl}/analytics/fault-report-summary`, { params });
   }
 

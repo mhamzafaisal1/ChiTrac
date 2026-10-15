@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/machine-fault-history/machine-fault-history.component.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

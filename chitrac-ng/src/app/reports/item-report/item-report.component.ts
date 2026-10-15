@@ -1,4 +1,6 @@
-import { Component, OnInit, OnDestroy, ElementRef, Renderer2 } from '@angular/core';
+import { Component, OnInit, OnDestroy, ElementRef, Renderer2, inject } from '@angular/core';
+import { ReportColumnLayoutService } from '../report-column-layout.service';
+import { reportCsv, reportPdfTable } from '../report-columns';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -11,7 +13,7 @@ import autoTable from 'jspdf-autotable';
 
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
-import { DateTimePickerComponent } from '../../../../arch/date-time-picker/date-time-picker.component';
+import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
 import { displayInteger } from '../../shared/utils/display-number';
 import { formatDurationParts } from '../../shared/utils/duration-format';
 
@@ -26,6 +28,7 @@ interface ItemSummary {
 }
 
 @Component({
+    providers: [ReportColumnLayoutService],
     selector: 'app-item-report',
     imports: [
         CommonModule,
@@ -36,7 +39,7 @@ interface ItemSummary {
         MatButtonModule,
         MatIconModule,
         BaseTableComponent,
-        DateTimePickerComponent
+        TimeframePickerComponent
     ],
     templateUrl: './item-report.component.html',
     styleUrls: ['./item-report.component.scss']
@@ -44,7 +47,10 @@ interface ItemSummary {
 export class ItemReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
-  columns: string[] = [];
+  selectedShiftId: string | null = null;
+  timeframeMode: TimeframePickerMode = 'custom';
+  readonly layout = inject(ReportColumnLayoutService);
+  get columns(): string[] { return this.layout.columns; }
   rows: any[] = [];
   columnTooltips: { [column: string]: string } = {
     'Worked Time': 'Amount of time item has been run across all machines.',
@@ -66,6 +72,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.layout.initialize('itemReport', 'Item Report');
     const end = new Date();
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -92,7 +99,18 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     this.isDarkTheme = isDark;
   }
 
+  applyTimeframe(selection: TimeframeSelection): void {
+    if (this.isLoading) return;
+    this.startTime = selection.start.toISOString();
+    this.endTime = selection.end.toISOString();
+    this.selectedShiftId = selection.shiftId;
+    this.timeframeMode = selection.mode || 'custom';
+    this.rows = [];
+    this.fetchAnalyticsData();
+  }
+
   fetchAnalyticsData(): void {
+    if (this.isLoading) return;
     if (!this.startTime || !this.endTime) return;
 
     this.isLoading = true;
@@ -102,7 +120,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     const formattedStart = new Date(this.startTime).toISOString();
     const formattedEnd = new Date(this.endTime).toISOString();
 
-    this.reportsService.getItemReport(formattedStart, formattedEnd).subscribe({
+    this.reportsService.getItemReport(formattedStart, formattedEnd, this.selectedShiftId).subscribe({
       next: (data: ItemSummary[] | { results?: ItemSummary[] }) => {
         const items = Array.isArray(data)
           ? data
@@ -118,7 +136,6 @@ export class ItemReportComponent implements OnInit, OnDestroy {
           '_tooltipItemId': item.itemId ?? ''
         }));
 
-        this.columns = ['Item Name', 'Worked Time', 'Count Total', 'PPH', 'Standard', 'Efficiency'];
         this.rows = formattedData;
         this.isLoading = false;
       },
@@ -143,15 +160,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
         doc.setFontSize(11);
         doc.text(`Date Range: ${this.startTime} to ${this.endTime}`, 14, 23);
 
-        const head = [['Item Name', 'Worked Time', 'Count Total', 'PPH', 'Standard', 'Efficiency']];
-        const body = this.rows.map(row => [
-          row['Item Name'],
-          row['Worked Time'],
-          row['Count Total'],
-          row['PPH'],
-          row['Standard'],
-          row['Efficiency']
-        ]);
+        const { head, body } = reportPdfTable('itemReport', this.columns, this.rows);
 
         autoTable(doc, {
           head,
@@ -159,14 +168,9 @@ export class ItemReportComponent implements OnInit, OnDestroy {
           startY: 30,
           styles: { fontSize: 8 },
           headStyles: { fillColor: [52, 73, 94], textColor: 255 },
-          columnStyles: {
-            0: { cellWidth: 50 }, // Item Name column wider
-            1: { cellWidth: 25 }, // Worked Time
-            2: { cellWidth: 20 }, // Count Total
-            3: { cellWidth: 20 }, // PPH
-            4: { cellWidth: 20 }, // Standard
-            5: { cellWidth: 20 }  // Efficiency
-          }
+          columnStyles: Object.fromEntries(this.columns.map((column, index) => [index, {
+            cellWidth: column === 'Item Name' ? 50 : column === 'Worked Time' ? 25 : 20
+          }]))
         });
 
         doc.save('item_summary_report.pdf');
@@ -189,23 +193,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
 
     setTimeout(() => {
       try {
-        const csvRows: string[] = [];
-      
-        // Header
-        csvRows.push(this.columns.join(','));
-      
-        // Rows
-        for (const row of this.rows) {
-          const rowData = this.columns.map(col => {
-            const cell = row[col];
-            return typeof cell === 'string' && cell.includes(',')
-              ? `"${cell.replace(/"/g, '""')}"` // Escape double quotes
-              : cell;
-          });
-          csvRows.push(rowData.join(','));
-        }
-      
-        const csvContent = csvRows.join('\n');
+        const csvContent = reportCsv(this.columns, this.rows);
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
       
@@ -227,12 +215,12 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     }, 100);
   }
 
-  getCellTooltip(row: any, column: string): string {
+  readonly getCellTooltip = (row: any, column: string): string => {
     if (column === 'Item Name' && row?._tooltipItemId != null && row._tooltipItemId !== '') {
       return `Item ID: ${row._tooltipItemId}`;
     }
     return '';
-  }
+  };
 
   private formatDateForInput(date: Date): string {
     const year = date.getFullYear();

@@ -19,6 +19,7 @@
       *ngFor="let card of summaryCards; trackBy: trackBySummaryCard"
       [ngClass]="card.tone"
       [class.has-sparkline]="card.sparklineLinePoints"
+      [class.time-range]="card.isTimeRange"
       [class.layout-editing]="layoutEditing"
       [cdkDragDisabled]="!layoutEditing"
       cdkDrag

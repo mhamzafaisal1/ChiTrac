@@ -1,3 +1,9 @@
+.controls > app-timeframe-picker {
+  flex: 0 0 100%;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 :host {
   display: block;
   width: 100%;
@@ -18,8 +24,9 @@
   gap: 1rem;
   align-items: center;
   padding: 1rem;
-  width: max-content;
+  width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
 
   app-date-time-picker {
     flex: 1;
@@ -120,6 +127,7 @@
 
 .fault-cell {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
@@ -131,6 +139,8 @@
 }
 
 .entity-name {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -138,7 +148,10 @@
 }
 
 .detail-count {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
   color: #d8f3ff;

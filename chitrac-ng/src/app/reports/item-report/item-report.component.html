@@ -9,25 +9,17 @@
   </div>
 
   <div class="controls">
-    <app-date-time-picker
-      label="Start Time"
-      [(value)]="startTime"
-    ></app-date-time-picker>
-    <app-date-time-picker
-      label="End Time"
-      [(value)]="endTime"
-    ></app-date-time-picker>
+    <app-timeframe-picker
+      confirmLabel="Generate Report"
+      [start]="startTime"
+      [end]="endTime"
+      [shiftId]="selectedShiftId"
+      [mode]="timeframeMode"
+      [disabled]="isLoading"
+      (confirmed)="applyTimeframe($event)"
+    ></app-timeframe-picker>
 
     <div class="button-group">
-      <button
-        mat-flat-button
-        color="primary"
-        (click)="fetchAnalyticsData()"
-        [disabled]="!startTime || !endTime || isLoading"
-      >
-        <mat-icon>refresh</mat-icon>
-        {{ isLoading && !isDownloading && !isDownloadingCsv ? "Loading..." : "Fetch Data" }}
-      </button>
       <button
         mat-flat-button
         color="primary"
@@ -62,7 +54,12 @@
       [columns]="columns"
       [rows]="rows"
       [columnTooltips]="columnTooltips"
-      [getCellTooltip]="getCellTooltip.bind(this)"
+      [getCellTooltip]="getCellTooltip"
+      [fillAvailableWidth]="true"
+      [columnEditMode]="layout.editing"
+      [columnReorderOnly]="true"
+      [columnOrder]="layout.columns"
+      (columnOrderChange)="layout.setOrder($event)"
       style="height:93%; border-radius: 4px;"
     >
     </base-table>

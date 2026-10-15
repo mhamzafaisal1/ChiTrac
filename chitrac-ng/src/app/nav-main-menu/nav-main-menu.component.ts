@@ -17,11 +17,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { trigger, style, animate, transition, query, group } from '@angular/animations';
 
-import { Observable, Subscription } from 'rxjs';
-import { map, shareReplay } from 'rxjs/operators';
+import { Observable, Subscription, combineLatest, of } from 'rxjs';
+import { map, shareReplay, switchMap, catchError, startWith, distinctUntilChanged, auditTime } from 'rxjs/operators';
+import { DateTimeService } from '../services/date-time.service';
+import { ShiftService } from '../services/shift.service';
+import { selectedTimeframeLabel } from '../utils/timeframe-label';
 
 import { PermissionLevels, UserService } from '../user.service';
 import { SettingsService } from '../services/settings.service';
+import { DisplayTimePipe } from '../pipes/display-time.pipe';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { LayoutEditContext, LayoutEditService } from '../services/layout-edit.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
@@ -48,6 +52,7 @@ const right = [
     templateUrl: './nav-main-menu.component.html',
     styleUrl: './nav-main-menu.component.scss',
     imports: [
+        DisplayTimePipe,
         CommonModule,
         RouterOutlet,
         RouterModule,
@@ -164,6 +169,8 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   private websocketStatusSub?: Subscription;
   private dashboardCacheSub?: Subscription;
   private layoutEditSub?: Subscription;
+  private timeframeSub?: Subscription;
+  selectedTimeframeLabel = 'Today';
 
   user: any;
   
@@ -174,7 +181,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   subscribeToUser(): void {
     this.userSub = this.userService.user.subscribe(x => {
-      if (x.username) {
+      if (x?.username) {
         this.user = x;
       } else {
         this.user = {
@@ -197,11 +204,34 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     private settingsService: SettingsService,
     private dialog: MatDialog,
     private websocketService: WebsocketService,
-    private layoutEditService: LayoutEditService
+    private layoutEditService: LayoutEditService,
+    private dateTimeService: DateTimeService,
+    private shiftService: ShiftService
   ) {}
 
   ngOnInit() {
     this.subscribeToUser();
+    const shifts$ = this.dateTimeService.shiftId$.pipe(
+      distinctUntilChanged(),
+      switchMap(id => id ? this.shiftService.getActiveShifts(true).pipe(
+        map(response => response.shifts || []),
+        catchError(() => of([])),
+        startWith([])
+      ) : of([]))
+    );
+    this.timeframeSub = combineLatest([
+      this.dateTimeService.timeframe$,
+      this.dateTimeService.shiftId$,
+      this.dateTimeService.liveMode$,
+      shifts$,
+      this.websocketService.dashboardCache$,
+    ]).pipe(
+      // A confirmation updates several subjects synchronously; render the completed selection.
+      auditTime(0),
+      map(([timeframe, shiftId, liveMode, shifts, cache]) =>
+        selectedTimeframeLabel(timeframe, shiftId, liveMode, shifts, cache)),
+      distinctUntilChanged()
+    ).subscribe(label => this.selectedTimeframeLabel = label);
     
     // Load system name from settings
     this.settingsSub = this.settingsService.settings$.subscribe(settings => {
@@ -232,6 +262,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.timeframeSub?.unsubscribe();
     this.userSub?.unsubscribe();
     this.settingsSub?.unsubscribe();
     this.dialogCloseSub?.unsubscribe();

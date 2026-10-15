@@ -8,12 +8,14 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UserService } from '../user.service';
+import { TimeFormatSettingComponent } from '../components/time-format-setting/time-format-setting.component';
 
 const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
 @Component({
   selector: 'app-user-profile',
   imports: [
+    TimeFormatSettingComponent,
     CommonModule,
     ReactiveFormsModule,
     MatButtonModule,

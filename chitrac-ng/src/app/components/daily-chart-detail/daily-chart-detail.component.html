@@ -1,0 +1,30 @@
+<div class="chart-viewport" #viewport *ngIf="state$ | async as state">
+  @if (chartId === 'machine-timeline') {
+    <app-chart-tile
+      [title]="title" [icon]="icon" [subtitle]="state.subtitle"
+      [subtitleStrong]="state.subtitleStrong" [updatedAt]="state.updatedAt"
+      [chartWidth]="chartWidth" [chartHeight]="chartHeight"
+    >
+      <app-timeline-zoom-controls chartTileActions class="header-controls"
+        [canZoomIn]="timeline.canZoomIn" [canZoomOut]="timeline.canZoomOut"
+        (zoomIn)="timeline.zoomBy(2)" (zoomOut)="timeline.zoomBy(0.5)" (reset)="timeline.resetZoom()"
+      ></app-timeline-zoom-controls>
+      <app-machine-timeline-chart #timeline
+        [chartWidth]="chartWidth" [chartHeight]="chartHeight"
+        [preloadedData]="$any(state.data)" [useExternalTitle]="true" [controlsInHeader]="true"
+      ></app-machine-timeline-chart>
+    </app-chart-tile>
+  } @else {
+  <app-chart-tile
+    [title]="title"
+    [icon]="icon"
+    [subtitle]="state.subtitle"
+    [subtitleStrong]="state.subtitleStrong"
+    [updatedAt]="state.updatedAt"
+    [chartWidth]="chartWidth"
+    [chartHeight]="chartHeight"
+  >
+    <ng-container *ngComponentOutlet="chartComponent; inputs: chartInputs(state)"></ng-container>
+  </app-chart-tile>
+  }
+</div>
