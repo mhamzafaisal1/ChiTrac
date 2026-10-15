@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": ["src/app/reports/report-columns.spec.ts", "src/app/reports/report-column-layout.service.spec.ts", "src/app/reports/item-report/item-report.component.spec.ts", "src/app/components/base-table/base-table.component.spec.ts", "src/app/components/base-table/base-table-groups.spec.ts", "src/**/*.d.ts"]
+}

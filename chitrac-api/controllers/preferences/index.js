@@ -7,6 +7,7 @@ const systemPreferences = require('../../modules/systemPreferences');
 const systemPreferencesSchema = require('../../schemas/system-preferences');
 const timestampsSchema = require('../../schemas/timestampsSchema');
 const { extractToken: extractApiToken } = require('../../utils/authMiddleware');
+const { sanitizeReportLayouts, reportLayoutUpdates } = require('../../utils/reportColumnLayouts');
 
 const SYSTEM_SINGLETON_ID = systemPreferences.SINGLETON_ID;
 
@@ -149,6 +150,7 @@ function constructor(server) {
 
   function sanitizeUserPreferences(input = {}, userId) {
     const preferences = {};
+    if (input.reportLayouts !== undefined) preferences.reportLayouts = sanitizeReportLayouts(input.reportLayouts);
     if (input.timeFormat !== undefined) {
       if (!['12h', '24h'].includes(input.timeFormat)) {
         const error = new Error("Invalid timeFormat. Must be '12h' or '24h'");
@@ -369,7 +371,7 @@ function constructor(server) {
   }
 
   function buildUserPreferenceUpdates(preferences = {}) {
-    const updates = {};
+    const updates = reportLayoutUpdates(preferences.reportLayouts);
     if (preferences.timeFormat !== undefined) updates.timeFormat = preferences.timeFormat;
 
     if (preferences.theme !== undefined) {
