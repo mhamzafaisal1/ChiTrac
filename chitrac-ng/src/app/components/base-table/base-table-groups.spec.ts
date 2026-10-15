@@ -1,5 +1,8 @@
 import { groupedTableRows, BaseTableGroup } from './base-table-groups';
 import { BaseTableComponent } from './base-table.component';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 
 describe('Shared grid report groups', () => {
   const columns = ['Machine', 'Worked Time', 'Efficiency'];
@@ -10,33 +13,32 @@ describe('Shared grid report groups', () => {
   ];
 
   it('shows collapsed summaries without changing export rows', () => {
-    const rows = groupedTableRows(groups, new Set(), columns, 'Machine');
+    const rows = groupedTableRows(groups, new Set(), 'Machine');
     expect(rows.length).toBe(2);
     expect(rows[0].Machine).toBe('Alpha');
     expect(groups[0].summary['__baseTableGroup']).toBeUndefined();
   });
-  it('puts summary, item heading and item values into the same grid columns', () => {
-    const rows = groupedTableRows(groups, new Set(['a']), ['Efficiency', 'Machine', 'Worked Time'], 'Machine');
-    expect(rows.map(row => row.__baseTableGroup.kind)).toEqual(['summary', 'detail-header', 'detail', 'summary']);
-    expect(rows[1].Machine).toBe('Item');
-    expect(rows[2].Machine).toBe('Sheets');
-    expect(rows[2]._tooltipItemId).toBe(7);
+  it('puts item values immediately after their summary without duplicate headings', () => {
+    const rows = groupedTableRows(groups, new Set(['a']), 'Machine');
+    expect(rows.map(row => row.__baseTableGroup.kind)).toEqual(['summary', 'detail', 'summary']);
+    expect(rows[1].Machine).toBe('Sheets');
+    expect(rows[1]._tooltipItemId).toBe(7);
     expect(rows[0].__baseTableGroup.singleItem).toBe('Sheets');
     expect(new Set(rows.map(row => row.__baseTableGroup.id)).size).toBe(rows.length);
   });
   it('preserves an explicit empty detail state', () => {
-    const rows = groupedTableRows(groups, new Set(['b']), columns, 'Machine');
+    const rows = groupedTableRows(groups, new Set(['b']), 'Machine');
     expect(rows.at(-1).Machine).toBe('No item details');
     expect(rows.at(-1).__baseTableGroup.kind).toBe('empty-detail');
   });
   it('keeps item rows attached to their sorted summaries', () => {
     const table = new BaseTableComponent({} as any);
     table.rowGroups = groups;
-    const rows = groupedTableRows(groups, new Set(['a']), columns, 'Machine');
-    const nodes = [rows[3], rows[2], rows[0], rows[1]].map(data => ({ data }));
+    const rows = groupedTableRows(groups, new Set(['a']), 'Machine');
+    const nodes = [rows[2], rows[1], rows[0]].map(data => ({ data }));
     table.postSortRows({ nodes } as any);
-    expect(nodes.map(node => node.data.__baseTableGroup.key)).toEqual(['b', 'a', 'a', 'a']);
-    expect(nodes.slice(1).map(node => node.data.__baseTableGroup.rank)).toEqual([0, 1, 2]);
+    expect(nodes.map(node => node.data.__baseTableGroup.key)).toEqual(['b', 'a', 'a']);
+    expect(nodes.slice(1).map(node => node.data.__baseTableGroup.rank)).toEqual([0, 1]);
   });
   it('leaves ordinary dashboard sorting untouched', () => {
     const table = new BaseTableComponent({} as any);
@@ -44,16 +46,21 @@ describe('Shared grid report groups', () => {
     table.postSortRows({ nodes } as any);
     expect(nodes[0].data.Machine).toBe('Beta');
   });
+  it('preserves ordinary dashboard row selection', () => {
+    const table = new BaseTableComponent({} as any);
+    table.selectedRow = { Machine: 'Alpha' };
+    expect(table.getRowClass({ data: table.selectedRow })).toContain('selected');
+    expect(table.getRowClass({ data: { Machine: 'Beta' } })).not.toContain('selected');
+  });
   it('maps detail identity tooltips to Item rather than Machine', () => {
     const table = new BaseTableComponent({} as any);
     table.groupIdentityColumn = 'Machine';
     table.getCellTooltip = (_row, column) => column;
-    const rows = groupedTableRows(groups, new Set(['a']), columns, 'Machine');
+    const rows = groupedTableRows(groups, new Set(['a']), 'Machine');
     expect(table.getTooltipForCell(rows[0], 'Machine')).toBe('Machine');
-    expect(table.getTooltipForCell(rows[2], 'Machine')).toBe('Item');
-    expect(table.getTooltipForCell(rows[1], 'Machine')).toBe('');
+    expect(table.getTooltipForCell(rows[1], 'Machine')).toBe('Item');
   });
-  it('does not apply numeric formatters to mixed report heading rows', () => {
+  it('keeps mixed summary and detail values free of inferred numeric formatting', () => {
     const table = new BaseTableComponent({} as any);
     table.columns = columns;
     table.rowGroups = groups;
@@ -102,3 +109,54 @@ describe('Shared grid report groups', () => {
     }
   });
 });
+
+for (const identity of ['Machine', 'Operator']) {
+  describe(`${identity} report rendered expansion`, () => {
+    beforeEach(() => TestBed.configureTestingModule({
+      imports: [BaseTableComponent],
+      providers: [provideNoopAnimations(), { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } }]
+    }));
+
+    it('keeps repeated and simultaneous expansions header-free and unselected with reordered columns', fakeAsync(() => {
+      const fixture = TestBed.createComponent(BaseTableComponent);
+      const groups: BaseTableGroup[] = ['Alpha', 'Beta'].map(key => ({
+        key, summary: { [identity]: key, Efficiency: '90%' },
+        details: [{ Item: 'Sheets', Efficiency: '95%' }, { Item: 'Towels', Efficiency: '85%' }]
+      }));
+      const source = JSON.stringify(groups);
+      fixture.componentRef.setInput('columns', [identity, 'Efficiency']);
+      fixture.componentRef.setInput('columnOrder', ['Efficiency', identity]);
+      fixture.componentRef.setInput('groupIdentityColumn', identity);
+      fixture.componentRef.setInput('rowGroups', groups);
+      fixture.componentRef.setInput('rows', groups.map(group => group.summary));
+      fixture.componentRef.setInput('enableToolbar', false);
+      fixture.nativeElement.style.width = '800px';
+      fixture.detectChanges(); tick(100); fixture.detectChanges();
+      const root: HTMLElement = fixture.nativeElement;
+      const emit = spyOn(fixture.componentInstance.rowClicked, 'emit');
+      const click = (index: number) => {
+        const button = root.querySelectorAll('.group-label')[index] as HTMLButtonElement;
+        const wasExpanded = button.getAttribute('aria-expanded') === 'true';
+        button.click();
+        fixture.detectChanges(); tick(100); fixture.detectChanges();
+        const refreshed = root.querySelectorAll('.group-label')[index];
+        expect(refreshed.getAttribute('aria-expanded')).toBe(String(!wasExpanded));
+        expect(refreshed.querySelector('mat-icon')!.textContent).toContain(wasExpanded ? 'chevron_right' : 'expand_more');
+        expect(root.querySelector('.report-detail-header')).toBeNull();
+        expect(root.querySelector('.ag-row.selected, .ag-row.ag-row-selected')).toBeNull();
+        expect(root.querySelectorAll('.ag-header-row').length).toBe(1);
+      };
+      for (let repeat = 0; repeat < 3; repeat++) {
+        click(0); click(1);
+        expect(root.querySelectorAll('.report-detail').length).toBe(4);
+        expect(root.querySelectorAll('.report-summary').length).toBe(2);
+        click(0); click(1);
+        expect(root.querySelectorAll('.report-detail').length).toBe(0);
+      }
+      expect(emit).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.columnDefs.map(column => column.colId)).toEqual(['Efficiency', identity]);
+      expect(JSON.stringify(groups)).toBe(source);
+      fixture.destroy();
+    }));
+  });
+}

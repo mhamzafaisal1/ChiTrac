@@ -92,7 +92,6 @@
         <button
           type="button"
           class="summary-row report-grid"
-          [class.expanded]="isGroupExpanded(group)"
           [attr.aria-expanded]="isGroupExpanded(group)"
           (click)="toggleGroup(group)"
         >
@@ -118,7 +117,7 @@
 
         <div class="detail-panel" *ngIf="isGroupExpanded(group)">
           <table class="detail-table" *ngIf="group.details.length; else noMachineDetails">
-            <thead>
+            <thead class="detail-column-labels">
               <tr>
                 <th
                   *ngFor="let column of detailColumns"
