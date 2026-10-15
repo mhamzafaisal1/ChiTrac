@@ -3,6 +3,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { tap, map, distinctUntilChanged } from 'rxjs/operators';
 import { TimeFormat, formatDisplayTime } from '../utils/time-format';
+import { ReportLayoutId } from '../reports/report-columns';
 
 export interface AppSettings {
   enableApiTokenCheck: boolean;
@@ -54,6 +55,7 @@ export interface DashboardLayoutPreferences {
 export type MachinePphDisplayMode = 'perMachine' | 'perStation';
 
 export interface UserPreferences {
+  reportLayouts?: Partial<Record<ReportLayoutId, { columnOrder: string[] }>>;
   timeFormat?: TimeFormat;
   userId?: string;
   theme?: 'light' | 'dark';
@@ -341,6 +343,12 @@ export class SettingsService {
         this.acceptUserPreferences(preferences);
       })
     );
+  }
+
+  saveReportColumnOrder(id: ReportLayoutId, columnOrder: string[]): Observable<UserPreferences> {
+    return this.http.put<UserPreferences>('/api/preferences/user', {
+      reportLayouts: { [id]: { columnOrder } }
+    }, this.preferenceRequestOptions).pipe(tap(preferences => this.acceptUserPreferences(preferences)));
   }
 
   private acceptUserPreferences(preferences: UserPreferences): void {

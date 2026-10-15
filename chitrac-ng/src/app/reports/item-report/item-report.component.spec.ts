@@ -1,4 +1,5 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
+import { Component, ElementRef } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
@@ -6,6 +7,8 @@ import { ItemReportComponent } from './item-report.component';
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
+import { ReportColumnLayoutService } from '../report-column-layout.service';
+import { REPORT_COLUMNS } from '../report-columns';
 
 @Component({
   standalone: true,
@@ -22,6 +25,9 @@ describe('Item report table sizing', () => {
     TestBed.configureTestingModule({
       imports: [ItemTableHost],
       providers: [provideNoopAnimations(),
+        { provide: ReportColumnLayoutService, useValue: {
+          columns: [...REPORT_COLUMNS.itemReport], initialize: () => {}
+        } },
         { provide: ReportsService, useValue: {} },
         { provide: PercentBreakpointService, useValue: { getDashboardColor: () => 'green' } }
       ]
@@ -31,7 +37,6 @@ describe('Item report table sizing', () => {
 
   it('uses flex columns without rebuilding their definitions on repeated checks', fakeAsync(() => {
     const fixture = TestBed.createComponent(ItemTableHost);
-    fixture.componentInstance.report.columns = ['Item Name', 'Worked Time', 'Count Total', 'PPH', 'Standard', 'Efficiency'];
     fixture.componentInstance.report.rows = [{ 'Item Name': 'Sheets', '_tooltipItemId': 1 }];
     fixture.detectChanges(); tick(32); fixture.detectChanges();
     const table = fixture.debugElement.query(By.directive(BaseTableComponent)).componentInstance as BaseTableComponent;
@@ -48,7 +53,8 @@ describe('Item report table sizing', () => {
 
   it('keeps report formatting and tooltip IDs on data regeneration', () => {
     const service = TestBed.inject(ReportsService);
-    const report = new ItemReportComponent(service, null!, new ElementRef(document.createElement('div')));
+    const report = TestBed.runInInjectionContext(() =>
+      new ItemReportComponent(service, null!, new ElementRef(document.createElement('div'))));
     service.getItemReport = jasmine.createSpy().and.returnValue(of([{ itemId: 7, itemName: 'Sheets',
       workedTimeFormatted: { hours: 1, minutes: 2 }, count: 500, pph: 480, standard: 450, efficiency: 106.67
     }]));
@@ -64,4 +70,3 @@ describe('Item report table sizing', () => {
     report.ngOnDestroy();
   });
 });
-import { Component, ElementRef } from '@angular/core';

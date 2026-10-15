@@ -65,96 +65,13 @@
   </div>
 
   <div class="table-container" [class.loading]="isLoading">
-    <div class="report-table" *ngIf="reportGroups.length">
-      <div class="report-header report-grid">
-        <button
-          type="button"
-          class="sort-header"
-          *ngFor="let column of summaryColumns"
-          (click)="sortBySummary(column)"
-          [matTooltip]="columnTooltips[column] || ''"
-          [matTooltipDisabled]="!columnTooltips[column]"
-          [matTooltipShowDelay]="700"
-          [attr.aria-label]="'Sort by ' + column"
-        >
-          <span>{{ column }}</span>
-          <mat-icon *ngIf="sortColumn === column">
-            {{ sortDirection === "asc" ? "arrow_upward" : "arrow_downward" }}
-          </mat-icon>
-        </button>
-      </div>
-
-      <div class="report-group" *ngFor="let group of reportGroups; trackBy: trackGroupByKey">
-        <button
-          type="button"
-          class="summary-row report-grid"
-          [class.expanded]="isGroupExpanded(group)"
-          [attr.aria-expanded]="isGroupExpanded(group)"
-          (click)="toggleGroup(group)"
-        >
-          <span
-            class="entity-cell"
-            [matTooltip]="getCellTooltip(group.summary, 'Machine')"
-            [matTooltipDisabled]="!getCellTooltip(group.summary, 'Machine')"
-            [matTooltipShowDelay]="700"
-          >
-            <mat-icon>{{ isGroupExpanded(group) ? "expand_more" : "chevron_right" }}</mat-icon>
-            <span class="entity-name">{{ group.summary["Machine"] }}</span>
-            <span class="detail-count" *ngIf="group.details.length"
-              [class.single-item]="group.details.length === 1"
-              [matTooltip]="group.details.length === 1 ? group.details[0]['Item'] || 'Unknown Item' : ''"
-              [matTooltipShowDelay]="700">
-              {{ group.details.length === 1 ? group.details[0]['Item'] || 'Unknown Item' : group.details.length + ' items' }}
-            </span>
-          </span>
-          <span>{{ group.summary["Total Time (Runtime)"] }}</span>
-          <span>{{ group.summary["Total Count"] }}</span>
-          <span>{{ group.summary["PPH"] }}</span>
-          <span>{{ group.summary["Standard"] }}</span>
-          <span [ngClass]="getEfficiencyClass(group.summary['Efficiency'], 'Efficiency')">
-            {{ group.summary["Efficiency"] }}
-          </span>
-        </button>
-
-        <div class="detail-panel" *ngIf="isGroupExpanded(group)">
-          <table class="detail-table" *ngIf="group.details.length; else noMachineDetails">
-            <thead>
-              <tr>
-                <th
-                  *ngFor="let column of detailColumns"
-                  [matTooltip]="columnTooltips[column] || ''"
-                  [matTooltipDisabled]="!columnTooltips[column]"
-                  [matTooltipShowDelay]="700"
-                >
-                  {{ column }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let detail of group.details">
-                <td
-                  [matTooltip]="getCellTooltip(detail, 'Item')"
-                  [matTooltipDisabled]="!getCellTooltip(detail, 'Item')"
-                  [matTooltipShowDelay]="700"
-                >
-                  {{ detail["Item"] }}
-                </td>
-                <td>{{ detail["Total Time (Runtime)"] }}</td>
-                <td>{{ detail["Total Count"] }}</td>
-                <td>{{ detail["PPH"] }}</td>
-                <td>{{ detail["Standard"] }}</td>
-                <td [ngClass]="getEfficiencyClass(detail['Efficiency'], 'Efficiency')">
-                  {{ detail["Efficiency"] }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <ng-template #noMachineDetails>
-      <div class="empty-details">No item details</div>
-    </ng-template>
+    <base-table *ngIf="reportGroups.length"
+      [columns]="summaryColumns" [rows]="rows"
+      [rowGroups]="reportGroups" groupIdentityColumn="Machine"
+      [columnTooltips]="columnTooltips" [getCellTooltip]="getCellTooltip"
+      [enableToolbar]="false" [fillAvailableWidth]="true"
+      [columnEditMode]="layout.editing" [columnReorderOnly]="true"
+      [columnOrder]="layout.columns" (columnOrderChange)="layout.setOrder($event)"
+    ></base-table>
   </div>
 </div>

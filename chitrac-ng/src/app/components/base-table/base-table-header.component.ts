@@ -5,6 +5,7 @@ import { IHeaderParams } from 'ag-grid-community';
 
 interface BaseTableHeaderParams extends IHeaderParams {
   editMode: boolean;
+  reorderOnly: boolean;
   toggleable: boolean;
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -18,7 +19,7 @@ interface BaseTableHeaderParams extends IHeaderParams {
     <div
       class="header-content"
       [class.header-content-editing]="params.editMode">
-      @if (params.editMode) {
+      @if (params.editMode && !params.reorderOnly) {
         <span class="visibility-toggle-slot" [attr.aria-hidden]="params.toggleable ? null : 'true'">
           @if (params.toggleable) {
             <mat-slide-toggle
