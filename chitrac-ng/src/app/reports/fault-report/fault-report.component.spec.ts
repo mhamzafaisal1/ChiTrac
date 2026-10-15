@@ -44,6 +44,23 @@ describe('Fault report labels', () => {
     expect(fixture.nativeElement.querySelector('.detail-table').textContent).toContain('SPL1');
   });
 
+  it('expands without persistent highlighting and retains meaningful fault-detail labels', () => {
+    show({ code: 11, name: 'Estop/Door', count: 1, faults: [fault('SPL1')] });
+    const summary = fixture.nativeElement.querySelector('.summary-row') as HTMLButtonElement;
+    const background = getComputedStyle(summary).backgroundColor;
+    for (let repeat = 0; repeat < 3; repeat++) {
+      summary.click(); fixture.detectChanges();
+      expect(summary.getAttribute('aria-expanded')).toBe('true');
+      expect(summary.classList.contains('expanded')).toBeFalse();
+      expect(getComputedStyle(summary).backgroundColor).toBe(background);
+      expect(fixture.nativeElement.querySelector('.detail-table thead').textContent).toContain('Timestamp');
+      summary.click(); fixture.detectChanges();
+      expect(summary.getAttribute('aria-expanded')).toBe('false');
+      expect(getComputedStyle(summary).backgroundColor).toBe(background);
+      expect(fixture.nativeElement.querySelector('.detail-table')).toBeNull();
+    }
+  });
+
   it('keeps multiple occurrences unchanged', () => {
     const label = show({ code: '34', name: 'Jam', count: 2, faults: [fault('SPL1'), fault('SPF1')] });
     expect(label).toContain('Jam (Code: 34)');

@@ -8,14 +8,14 @@ export interface BaseTableGroupRow {
   key: string;
   id: string;
   rank: number;
-  kind: 'summary' | 'detail-header' | 'detail' | 'empty-detail';
+  kind: 'summary' | 'detail' | 'empty-detail';
   summary: Record<string, any>;
   expanded: boolean;
   detailCount: number;
   singleItem: string;
 }
 
-export function groupedTableRows(groups: BaseTableGroup[], expanded: Set<string>, columns: string[], identity: string): any[] {
+export function groupedTableRows(groups: BaseTableGroup[], expanded: Set<string>, identity: string): any[] {
   return groups.flatMap(group => {
     const wrap = (data: Record<string, any>, kind: BaseTableGroupRow['kind'], rank: number) => ({
       ...data,
@@ -28,8 +28,7 @@ export function groupedTableRows(groups: BaseTableGroup[], expanded: Set<string>
     const summary = wrap(group.summary, 'summary', 0);
     if (!expanded.has(group.key)) return [summary];
     if (!group.details.length) return [summary, wrap({ [identity]: 'No item details' }, 'empty-detail', 1)];
-    const header = Object.fromEntries(columns.map(column => [column, column === identity ? 'Item' : column]));
-    return [summary, wrap(header, 'detail-header', 1), ...group.details.map((detail, index) =>
-      wrap({ ...detail, [identity]: detail['Item'] }, 'detail', index + 2))];
+    return [summary, ...group.details.map((detail, index) =>
+      wrap({ ...detail, [identity]: detail['Item'] }, 'detail', index + 1))];
   });
 }

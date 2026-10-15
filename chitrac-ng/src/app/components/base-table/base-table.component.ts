@@ -273,11 +273,10 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     const group = params.data?.__baseTableGroup;
     if (group) {
       classes.push(`report-${group.kind}`);
-      if (group.kind === 'summary' && group.expanded) classes.push('selected');
     }
     if (params.data?.cssClass) classes.push(params.data.cssClass);
     if (params.data?.isDummy) classes.push('dummy-row');
-    if (params.data === this.selectedRow) classes.push('selected');
+    if (!group && params.data === this.selectedRow) classes.push('selected');
     return classes;
   };
 
@@ -311,7 +310,6 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   getTooltipForCell(row: any, column: string): string {
-    if (row?.__baseTableGroup?.kind === 'detail-header') return '';
     if (row?.__baseTableGroup?.kind === 'detail' && column === this.groupIdentityColumn) column = 'Item';
     const cellTooltip = this.getCellTooltip ? this.getCellTooltip(row, column) : '';
     return cellTooltip || this.columnTooltips?.[column] || '';
@@ -341,6 +339,8 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
       field: column,
       headerName: column,
       cellDataType: this.rowGroups ? false : undefined,
+      // Expansion updates renderer metadata while the displayed identity stays the same.
+      equals: this.rowGroups && column === this.groupIdentityColumn ? () => false : undefined,
       headerTooltip: this.columnTooltips?.[column] || undefined,
       hide: !this.columnEditMode && (hiddenColumns.has(column) || !this.isColumnEnabled(column)),
       sortable: !this.disableSorting && !this.columnEditMode,
@@ -356,7 +356,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
         nodeB.data?.__baseTableGroup?.summary[column] ?? b) : this.getComparator(column),
       tooltipValueGetter: (params) => this.getTooltipForCell(params.data, column) || undefined,
       cellClass: (params: CellClassParams<any>) => {
-        const classes = params.data?.__baseTableGroup?.kind === 'detail-header' ? [] : [this.getCellClassForColumn(params.value, column)];
+        const classes = [this.getCellClassForColumn(params.value, column)];
         if (this.columnEditMode && this.isColumnToggleable(column) && !this.isColumnEnabled(column)) {
           classes.push('column-disabled');
         }
@@ -479,7 +479,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private refreshGroupedRows(): void {
-    this.groupedRows = groupedTableRows(this.rowGroups ?? [], this.expandedGroups, this.columns, this.groupIdentityColumn);
+    this.groupedRows = groupedTableRows(this.rowGroups ?? [], this.expandedGroups, this.groupIdentityColumn);
   }
 
   private toggleGroup(key: string): void {
@@ -492,7 +492,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
 
   readonly postSortRows = (params: PostSortRowsParams): void => {
     if (!this.rowGroups) return;
-    // Sort summaries with AG Grid, then keep each group's header and details attached.
+    // Sort summaries with AG Grid, then keep each group's details attached.
     const groups = new Map<string, typeof params.nodes>();
     for (const node of params.nodes) {
       const key = node.data.__baseTableGroup.key;
