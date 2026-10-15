@@ -5,6 +5,10 @@ const certificates = require("../../modules/certificates");
 const { ObjectId } = require("mongodb");
 const { assertPermissionLevel } = require("../../modules/permissions");
 const timestampsSchema = require("../../schemas/timestampsSchema");
+const authTokenSchema = require('../../schemas/auth-token');
+const { randomUUID } = require('node:crypto');
+const { tokenHashInput } = require('../../utils/apiTokenHash');
+const { controllers, controllerIds, validateAllowedControllers } = require('../../modules/apiTokenControllers');
 const {
   createVerifyJwtMiddleware,
   normalizeTokenUserId
@@ -34,7 +38,8 @@ function sanitizeToken(token, isActive = !isTokenDeactivated(token)) {
     timestamps: buildTokenTimestamps(token),
     isActive,
     lastUsed: token.lastUsed,
-    usageCount: token.usageCount
+    usageCount: token.usageCount,
+    allowedControllers: validateAllowedControllers(token.allowedControllers) ? token.allowedControllers : []
   };
 }
 
@@ -57,6 +62,9 @@ module.exports = function (server) {
   function requirePermissionLevel(requiredLevel) {
     return async function(req, res, next) {
       if (req.tokenPayload?.bypassed) return next();
+      if (req.tokenPayload?.type === 'permanent') {
+        return res.status(403).json({ error: 'A signed-in user is required' });
+      }
 
       try {
         const userId = normalizeTokenUserId(req.tokenPayload?.userId || req.tokenPayload?.createdBy);
@@ -98,7 +106,7 @@ module.exports = function (server) {
   });
 
   // Test endpoint to generate JWT tokens for testing
-  router.post("/generateTestToken", (req, res) => {
+  router.post("/generateTestToken", verifyJwtMiddleware, requirePermissionLevel(0), (req, res) => {
     try {
       const { username = "testuser", role = "user" } = req.body;
       const token = jwt.sign(
@@ -128,6 +136,9 @@ module.exports = function (server) {
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
         return res.status(400).json({ error: "Token name is required" });
       }
+      if (typeof description !== 'string') {
+        return res.status(400).json({ error: 'Description must be a string' });
+      }
 
       const db = server.db;
       const authTokensCollection = db.collection('auth-tokens');
@@ -151,13 +162,14 @@ module.exports = function (server) {
           name: name.trim(),
           createdBy
         },
-        config.jwtSecret
+        config.jwtSecret,
+        { jwtid: randomUUID() }
         // No expiresIn - permanent token
       );
 
       // Hash the token for storage (security)
       const bcrypt = require('bcryptjs');
-      const hashedToken = await bcrypt.hash(token, 10);
+      const hashedToken = await bcrypt.hash(tokenHashInput(token, 2), 10);
 
       // Store token info in database
       const now = new Date();
@@ -165,13 +177,17 @@ module.exports = function (server) {
         name: name.trim(),
         description: description.trim(),
         hashedToken: hashedToken,
+        hashedTokenVersion: 2,
         createdBy,
         createdByUsername: req.authUser?.username || req.tokenPayload.username,
         timestamps: timestampsSchema.utils.stampInit(now),
         isActive: true,
         lastUsed: null,
-        usageCount: 0
+        usageCount: 0,
+        allowedControllers: []
       };
+
+      if (!authTokenSchema.validate(tokenDoc)) throw new Error('Invalid API token record');
 
       const result = await authTokensCollection.insertOne(tokenDoc);
 
@@ -182,7 +198,8 @@ module.exports = function (server) {
           id: result.insertedId,
           name: tokenDoc.name,
           description: tokenDoc.description,
-          timestamps: tokenDoc.timestamps
+          timestamps: tokenDoc.timestamps,
+          allowedControllers: tokenDoc.allowedControllers
         }
       });
 
@@ -203,11 +220,37 @@ module.exports = function (server) {
         .sort({ "timestamps.create": -1, createdAt: -1 })
         .toArray();
 
-      res.json(partitionTokens(tokenRecords));
+      res.json({ ...partitionTokens(tokenRecords), controllers });
 
     } catch (err) {
       logger?.error?.("Error fetching tokens:", err);
       res.status(500).json({ error: "Failed to fetch tokens" });
+    }
+  });
+
+  router.put('/tokens/:id/controllers', verifyJwtMiddleware, requirePermissionLevel(1), async (req, res) => {
+    if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: 'Invalid token id' });
+    const allowedControllers = req.body?.allowedControllers;
+    if (!validateAllowedControllers(allowedControllers) ||
+        Object.keys(req.body).some(key => key !== 'allowedControllers')) {
+      return res.status(400).json({ error: 'allowedControllers must contain unique supported controller IDs' });
+    }
+    try {
+      const collection = server.db.collection('auth-tokens');
+      const _id = new ObjectId(req.params.id);
+      const token = await collection.findOne({ _id });
+      if (!token) return res.status(404).json({ error: 'Token not found' });
+      if (isTokenDeactivated(token)) return res.status(409).json({ error: 'Token is inactive' });
+      const orderedControllers = controllerIds.filter(id => allowedControllers.includes(id));
+      const result = await collection.updateOne(
+        { _id, isActive: true, 'timestamps.inactive': { $exists: false }, deactivatedAt: { $exists: false } },
+        { $set: { allowedControllers: orderedControllers, 'timestamps.update': new Date() } }
+      );
+      if (!result.matchedCount) return res.status(409).json({ error: 'Token is no longer active' });
+      return res.json({ success: true, allowedControllers: orderedControllers });
+    } catch (err) {
+      logger?.error?.('Error updating API token controller access:', err);
+      return res.status(500).json({ error: 'Failed to update controller access' });
     }
   });
 

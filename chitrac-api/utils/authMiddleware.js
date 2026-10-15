@@ -2,6 +2,9 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 const config = require("../modules/config");
+const { ObjectId } = require('mongodb');
+const verifiedRequest = Symbol('verifiedApiAuthentication');
+const { tokenHashInput } = require('./apiTokenHash');
 
 function extractToken(req) {
   const authHeader = req.headers["authorization"] || req.headers["Authorization"];
@@ -34,11 +37,14 @@ function createVerifyJwtMiddleware(server) {
         isActive: true
       });
 
-      if (!tokenDoc) {
+      if (!tokenDoc || tokenDoc.deactivatedAt || tokenDoc.timestamps?.inactive) {
         return res.status(401).json({ valid: false, error: "Token not found or inactive" });
       }
 
-      const isValidToken = await bcrypt.compare(token, tokenDoc.hashedToken);
+      if (tokenDoc.hashedTokenVersion != null && ![1, 2].includes(tokenDoc.hashedTokenVersion)) {
+        return res.status(401).json({ valid: false, error: 'Invalid token record' });
+      }
+      const isValidToken = await bcrypt.compare(tokenHashInput(token, tokenDoc.hashedTokenVersion), tokenDoc.hashedToken);
       if (!isValidToken) {
         return res.status(401).json({ valid: false, error: "Invalid token" });
       }
@@ -54,8 +60,10 @@ function createVerifyJwtMiddleware(server) {
       req.tokenPayload = {
         ...decoded,
         tokenId: tokenDoc._id,
-        tokenName: tokenDoc.name
+        tokenName: tokenDoc.name,
+        allowedControllers: tokenDoc.allowedControllers
       };
+      req[verifiedRequest] = true;
 
       return next();
     } catch (err) {
@@ -64,7 +72,8 @@ function createVerifyJwtMiddleware(server) {
     }
   }
 
-  return function verifyJwtMiddleware(req, res, next) {
+  return async function verifyJwtMiddleware(req, res, next) {
+    if (req[verifiedRequest]) return next();
     if (config.enableApiTokenCheck === false) {
       logger?.debug?.("API token check is disabled - bypassing authentication");
       req.tokenPayload = { bypassed: true };
@@ -73,19 +82,31 @@ function createVerifyJwtMiddleware(server) {
 
     try {
       const token = extractToken(req);
-      if (!token) return res.status(401).json({ valid: false, error: "Missing token" });
+      if (!token && !req.isAuthenticated?.()) {
+        return res.status(401).json({ valid: false, error: "Missing token" });
+      }
 
       if (!config.jwtSecret) {
         logger?.warn?.("JWT secret not configured (config.jwtSecret)");
         return res.status(500).json({ valid: false, error: "Server config error" });
       }
 
-      const decoded = jwt.verify(token, config.jwtSecret);
+      const decoded = token ? jwt.verify(token, config.jwtSecret) : { userId: String(req.user._id) };
       if (decoded.type === "permanent") {
         return verifyPermanentToken(req, res, next, token, decoded);
       }
 
+      const userId = normalizeTokenUserId(decoded.userId);
+      if (decoded.type || !userId || !ObjectId.isValid(userId)) {
+        return res.status(401).json({ valid: false, error: 'Invalid user token' });
+      }
+      const user = await server.db.collection(config.userCollectionName).findOne({ _id: new ObjectId(userId) });
+      if (!user || user.active === false) {
+        return res.status(401).json({ valid: false, error: 'User not found or inactive' });
+      }
+      req.authUser = user;
       req.tokenPayload = decoded;
+      req[verifiedRequest] = true;
       return next();
     } catch (err) {
       return res.status(401).json({ valid: false, error: "Invalid token" });

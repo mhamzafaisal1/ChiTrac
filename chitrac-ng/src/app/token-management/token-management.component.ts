@@ -15,6 +15,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatCardModule } from '@angular/material/card';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { SummaryCardVisibilityDialogComponent, SummaryCardVisibilityDialogResult } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 
 // rxjs Imports
@@ -22,7 +24,7 @@ import { EMPTY, Subscription, timer } from 'rxjs';
 import { catchError, switchMap, share } from 'rxjs/operators';
 
 // Service Imports
-import { TokenManagementService, PermanentToken } from '../services/token-management.service';
+import { TokenManagementService, PermanentToken, ApiControllerOption, TokenListResponse } from '../services/token-management.service';
 
 @Component({
   selector: 'app-token-management',
@@ -42,6 +44,7 @@ import { TokenManagementService, PermanentToken } from '../services/token-manage
     MatCardModule,
     MatSnackBarModule,
     MatDialogModule,
+    MatTooltipModule,
     ClipboardModule
   ],
   templateUrl: './token-management.component.html',
@@ -49,6 +52,8 @@ import { TokenManagementService, PermanentToken } from '../services/token-manage
 })
 export class TokenManagementComponent implements OnInit, OnDestroy {
   private readonly settings = inject(SettingsService);
+  private readonly dialog = inject(MatDialog);
+  controllers: ApiControllerOption[] = [];
   tokens: PermanentToken[] = [];
   deactivatedTokens: PermanentToken[] = [];
   dataSource: MatTableDataSource<PermanentToken>;
@@ -77,7 +82,8 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
     this.deactivatedDataSource = new MatTableDataSource<PermanentToken>([]);
   }
 
-  private getTokensSubFunction = (res: { tokens: PermanentToken[]; deactivatedTokens?: PermanentToken[] }) => {
+  private getTokensSubFunction = (res: TokenListResponse) => {
+    this.controllers = res.controllers || [];
     this.tokenLoadErrorShown = false;
     this.tokens = res.tokens;
     this.deactivatedTokens = res.deactivatedTokens || [];
@@ -127,16 +133,14 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
     });
 
     // Start polling after component initialization and auth is ready
-    setTimeout(() => {
-      this.sub = timer(0, 30 * 1000)
-        .pipe(
-          switchMap(() => this.tokenService.getTokens().pipe(
-            catchError(this.handleTokenLoadError)
-          )),
-          share()
-        )
-        .subscribe(this.getTokensSubFunction);
-    }, 1000);
+    this.sub = timer(1000, 30 * 1000)
+      .pipe(
+        switchMap(() => this.tokenService.getTokens().pipe(
+          catchError(this.handleTokenLoadError)
+        )),
+        share()
+      )
+      .subscribe(this.getTokensSubFunction);
   }
 
   onCreateToken() {
@@ -204,6 +208,32 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
         }
       });
     }
+  }
+
+  editControllerAccess(token: PermanentToken): void {
+    if (!token.isActive || !this.controllers.length) return;
+    const controllers = [...this.controllers];
+    const ref = this.dialog.open(SummaryCardVisibilityDialogComponent, {
+      width: '760px', maxWidth: '96vw',
+      data: {
+        title: `Controller Access: ${token.name}`,
+        description: '',
+        cards: controllers,
+        visibility: Object.fromEntries(controllers.map(controller =>
+          [controller.id, (token.allowedControllers || []).includes(controller.id)])),
+        showLabel: 'Allowed', hideLabel: 'Not Allowed',
+        emptyShownText: 'No controllers allowed', emptyHiddenText: 'All controllers allowed',
+        compactCards: true, applyLabel: 'Save',
+        save: (result: SummaryCardVisibilityDialogResult) => this.tokenService.updateControllerAccess(
+          token.id, controllers.filter(controller => result.visibility[controller.id] === true).map(controller => controller.id)
+        )
+      }
+    });
+    ref.afterClosed().subscribe(result => {
+      if (!result) return;
+      this.snackBar.open('Controller access updated', 'Close', { duration: 3000 });
+      this.refreshTable();
+    });
   }
 
   private refreshTable() {

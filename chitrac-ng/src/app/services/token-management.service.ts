@@ -2,6 +2,9 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
+export type ApiControllerId = 'general' | 'settings' | 'spindle' | 'milnor' | 'softrol';
+export interface ApiControllerOption { id: ApiControllerId; label: string; }
+
 export interface PermanentToken {
   id: string;
   name: string;
@@ -15,6 +18,7 @@ export interface PermanentToken {
   };
   lastUsed: Date | null;
   usageCount: number;
+  allowedControllers: ApiControllerId[];
 }
 
 export interface CreateTokenRequest {
@@ -30,10 +34,12 @@ export interface CreateTokenResponse {
     name: string;
     description: string;
     timestamps: PermanentToken['timestamps'];
+    allowedControllers: ApiControllerId[];
   };
 }
 
 export interface TokenListResponse {
+  controllers: ApiControllerOption[];
   tokens: PermanentToken[];
   deactivatedTokens: PermanentToken[];
 }
@@ -59,6 +65,13 @@ export class TokenManagementService {
 
   deleteToken(id: string): Observable<{ success: boolean; message: string }> {
     return this.http.delete<{ success: boolean; message: string }>(`${this.apiUrl}/tokens/${id}`);
+  }
+
+  updateControllerAccess(id: string, allowedControllers: ApiControllerId[]): Observable<{ success: boolean; allowedControllers: ApiControllerId[] }> {
+    return this.http.put<{ success: boolean; allowedControllers: ApiControllerId[] }>(
+      `${this.apiUrl}/tokens/${id}/controllers`, { allowedControllers },
+      { headers: { 'X-Skip-Error-Modal': 'true' } }
+    );
   }
 }
 
