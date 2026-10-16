@@ -1,10 +1,20 @@
 const { ObjectId } = require('mongodb');
 const config = require('../modules/config');
 
-function sessionShiftFilter(shiftId) {
+function sessionShiftFilter(shiftId, { includeUntagged = false } = {}) {
   if (!shiftId) return {};
   const id = String(shiftId);
-  return { 'shift._id': { $in: ObjectId.isValid(id) ? [id, new ObjectId(id)] : [id] } };
+  const candidates = ObjectId.isValid(id) ? [id, new ObjectId(id)] : [id];
+  if (!includeUntagged) return { 'shift._id': { $in: candidates } };
+  // Callers opting in must also clip sessions to the selected shift's time windows.
+  return {
+    $or: [
+      { 'shift._id': { $in: candidates } },
+      { 'shift.id': { $in: candidates } },
+      { shiftId: { $in: candidates } },
+      { $and: ['shift._id', 'shift.id', 'shiftId'].map(field => ({ [field]: { $in: [null, ''] } })) }
+    ]
+  };
 }
 
 function reportShiftMiddleware(db) {

@@ -62,7 +62,7 @@
           [class.light]="!isDarkTheme"
           [columns]="columns"
           [rows]="firstDisplayedRows"
-          [getCellClass]="getEfficiencyClass.bind(this)"
+          [getCellClass]="getEfficiencyClass"
           style="height:93%; border-radius: 4px;"
         >
         </base-table>
@@ -79,7 +79,7 @@
           [class.light]="!isDarkTheme"
           [columns]="columns"
           [rows]="secondDisplayedRows"
-          [getCellClass]="getEfficiencyClass.bind(this)"
+          [getCellClass]="getEfficiencyClass"
           style="height:93%; border-radius: 4px;"
         >
         </base-table>

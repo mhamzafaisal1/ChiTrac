@@ -37,6 +37,7 @@ const collection = {
   }
 };
 const server = {
+  passport: new (require('passport').Passport)(),
   db: { collection: name => name === 'auth-tokens' ? collection : { findOne: async query =>
     String(query._id) === String(adminId) ? user : null } },
   logger: { error() {}, info() {} }
@@ -68,6 +69,11 @@ before(async () => {
   app.use('/api', createApiControllerAccess(server));
   require('../controllers/alpha').registerMachineXmlRoutes(app, server);
   app.use('/api/auth', authController(server));
+  const passportRoutes = require('../controllers/passport')(server);
+  app.use('/api/passport', (req, res, next) => {
+    if (req.method === 'GET' && req.path === '/user') return passportRoutes(req, res, next);
+    return next();
+  });
   app.get('/api/double-check', createVerifyJwtMiddleware(server), (req, res) => res.json({ ok: true }));
   app.use('/api', (req, res) => res.json({ ok: true }));
   listener = app.listen(0, '127.0.0.1');
@@ -157,14 +163,54 @@ test('directly registered machine XML route is protected and still returns XML f
   assert.match(response.headers.get('content-type'), /xml/);
   assert.match(await response.text(), /<levelOne>/);
 });
-test('anonymous data access is denied; exact public bootstrap/login/reset routes remain accessible', async () => {
-  assert.equal((await request('/api/machine/config', null)).status, 401);
+test('public bootstrap routes remain accessible while private API routes reject anonymous access', async () => {
+  assert.equal((await request('/api/machine/config', null)).status, 200);
   for (const [method, path] of [['GET', '/utilities/settings'], ['POST', '/passport/user/login'],
-    ['GET', '/passport/user'], ['GET', '/passport/user/logout'], ['POST', '/users/password-reset/complete']]) {
+    ['GET', '/passport/user/logout'], ['POST', '/users/password-reset/complete']]) {
     assert.equal((await request('/api' + path, null, method, method === 'POST' ? {} : undefined)).status, 200);
   }
   assert.equal((await request('/api/utilities/settings/other', null)).status, 401);
   assert.equal((await request('/api/passport/user/register', null, 'POST', {})).status, 401);
+});
+
+test('public display reads work anonymously without exposing settings or mutations', async () => {
+  for (const path of ['/machine/analytics/machine-dashboard-daily-cached',
+    '/machine/analytics/machines-summary-daily-cached', '/machine/analytics/shift-projection-window',
+    '/operator/analytics/operators-summary-daily-cached', '/item/analytics/items-summary-daily-cache',
+    '/dashboard/analytics/daily-summary-dashboard/machines', '/reports/shifts', '/operator/config',
+    '/alpha/analytics/machine-hourly-states', '/fault/analytics/fault-sessions-history',
+    '/reports/analytics/machine-report-cache', '/reports/analytics/operator-item-sessions-summary-cache',
+    '/reports/analytics/item-sessions-summary-daily-cache', '/fault/analytics/fault-report-summary',
+    '/fault/analytics/fault-report-detailed', '/reports/report-subscriptions',
+    `/reports/report-subscriptions/${new ObjectId()}`]) {
+    assert.equal((await request('/api' + path, null)).status, 200, path);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      assert.equal((await request('/api' + path, null, method, {})).status, 401, `${method} ${path}`);
+    }
+  }
+  for (const path of ['/auth/tokens', '/users', '/preferences/user', '/preferences/system',
+    '/utilities/server-logs', '/alpha/shifts', '/alpha/repopulate-states',
+    '/system-preferences', '/milnor/data', '/spindle/data', '/softrol/data',
+    '/reports/report-subscriptions/not-an-id', '/reports/report-subscriptions/123/other',
+    '/machine/analytics/unknown']) {
+    assert.equal((await request('/api' + path, null)).status, 401, path);
+  }
+  assert.equal((await request('/api/reports/analytics/machine-report-email', null, 'POST', {})).status, 401);
+});
+
+test('public display endpoints still enforce supplied token validity and controller scope', async () => {
+  const path = '/api/machine/analytics/machine-dashboard-daily-cached';
+  await resetToken([]);
+  for (const header of ['authorization', 'x-api-key', 'x-api-token', 'api-key', 'apikey']) {
+    assert.equal((await request(path, permanent, 'GET', undefined, header)).status, 403);
+  }
+  assert.equal((await request(`${path}?token=${encodeURIComponent(permanent)}`, null)).status, 403);
+  tokenDoc.allowedControllers = ['general'];
+  assert.equal((await request(path)).status, 200);
+  tokenDoc.isActive = false;
+  assert.equal((await request(path)).status, 401);
+  assert.equal((await request(path, 'invalid-token')).status, 401);
+  await resetToken();
 });
 test('valid interactive users retain access; inactive, missing and fabricated user identities do not', async () => {
   assert.equal((await request('/api/milnor/data', userToken())).status, 200);
@@ -174,6 +220,33 @@ test('valid interactive users retain access; inactive, missing and fabricated us
   for (const payload of [{ userId: 'test-user-id' }, { userId: String(new ObjectId()) }, { type: 'other', userId: String(adminId) }]) {
     assert.equal((await request('/api/machine/config', jwt.sign(payload, config.jwtSecret))).status, 401);
   }
+});
+
+test('current user restores a valid login token without a Passport session', async () => {
+  const response = await request('/api/passport/user', userToken());
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.user.username, user.local.username);
+  assert.deepEqual(body.user.permissions, user.permissions);
+  assert.equal(body.user.password, undefined);
+  assert.equal((await request('/api/reports/shifts', userToken())).status, 200);
+});
+
+test('current user rejects anonymous, expired, inactive and permanent-token identities', async () => {
+  assert.equal((await request('/api/passport/user', null)).status, 401);
+  const expired = jwt.sign({ userId: String(adminId) }, config.jwtSecret, { expiresIn: -1 });
+  assert.equal((await request('/api/passport/user', expired)).status, 401);
+  assert.equal((await request('/api/passport/user', permanent)).status, 401);
+  user.active = false;
+  try {
+    assert.equal((await request('/api/passport/user', userToken())).status, 401);
+  } finally { user.active = true; }
+});
+
+test('current user retains cookie-session authentication without a login token', async () => {
+  const response = await fetch(base + '/api/passport/user', { headers: { 'x-test-session': 'active' } });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).user.username, user.local.username);
 });
 test('authenticated Passport sessions work without Bearer credentials, including nested admin checks', async () => {
   const response = await fetch(base + '/api/auth/tokens', { headers: { 'x-test-session': 'active' } });

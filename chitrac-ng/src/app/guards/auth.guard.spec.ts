@@ -4,6 +4,7 @@ import { firstValueFrom, of } from 'rxjs';
 
 import { AuthGuard } from './auth.guard';
 import { User, UserService } from '../user.service';
+import { routes } from '../app.routes';
 
 describe('AuthGuard', () => {
   let guard: AuthGuard;
@@ -53,6 +54,30 @@ describe('AuthGuard', () => {
 
     expect(result).toBeTrue();
     expect(userService.hasPermissionLevel).toHaveBeenCalledWith(0, user);
+  });
+
+  it('keeps report pages public', () => {
+    const reportRoutes = routes.filter(route => route.path?.startsWith('ng/reports/'));
+    expect(reportRoutes.length).toBe(7);
+    for (const reportRoute of reportRoutes) {
+      expect(reportRoute.canActivate).toBeUndefined();
+      expect(reportRoute.data?.['requiredPermissionLevel']).toBeUndefined();
+    }
+  });
+
+  it('keeps dashboard and production screens public while guarding settings', () => {
+    const publicPaths = ['ng/machineAnalytics', 'ng/operatorAnalytics', 'ng/itemAnalytics',
+      'ng/daily-summary', 'ng/comparison-dashboard', 'ng/lpls-efficiency-screen',
+      'ng/blanket-blaster-one', 'ng/spfs-efficiency-screen'];
+    for (const path of publicPaths) {
+      const publicRoute = routes.find(route => route.path === path);
+      expect(publicRoute).toBeDefined();
+      expect(publicRoute?.canActivate).toBeUndefined();
+    }
+    for (const settingsRoute of routes.filter(route => route.path?.startsWith('ng/settings/'))) {
+      expect(settingsRoute.canActivate).toContain(AuthGuard);
+      expect(settingsRoute.data?.['requiredPermissionLevel']).toEqual(jasmine.any(Number));
+    }
   });
 
   it('redirects authenticated users without the required permission', async () => {
