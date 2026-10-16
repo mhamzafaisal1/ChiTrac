@@ -160,6 +160,39 @@ test('missing historical cache falls back to selected-shift session windows', as
   assert.equal(result.body.results[0].machineSummary.totalCount, 1);
   assert.equal(h.shiftCacheQueries, 1);
 });
+
+test('multi-day shift counts equal historical daily totals plus the final partial day', async () => {
+  const h = harness({
+    cached: [...totals('06', 100), ...totals('07', 200)],
+    sessions: [session('08', ['05:30', '08:00', '09:00', '13:00'])]
+  });
+  const count = async (start, end) => {
+    const result = await h.request(start, end);
+    assert.equal(result.status, 200);
+    const summary = result.body.results[0].machineSummary;
+    assert.equal(summary.totalCount, summary.itemSummaries.Total.countTotal);
+    assert.equal(summary.totalCount, summary.itemSummaries['1'].countTotal);
+    return summary.totalCount;
+  };
+  const today = await count(instant('08', '00:00'), instant('08', '14:00'));
+  const yesterday = await count(instant('07', '00:00'), instant('08', '00:00'));
+  const previous = await count(instant('06', '00:00'), instant('07', '00:00'));
+  assert.equal(today, 2);
+  assert.equal(await count(instant('07', '00:00'), instant('08', '14:00')), yesterday + today);
+  assert.equal(await count(instant('06', '00:00'), instant('08', '14:00')), previous + yesterday + today);
+});
+
+test('includes today when a multi-day shift report end is clamped to now', async context => {
+  context.mock.method(Date, 'now', () => instant('08', '10:00').getTime());
+  const h = harness({ cached: totals('07', 100),
+    sessions: [session('08', ['08:00', '09:00', '11:00', '13:00'])] });
+  const result = await h.request(instant('07', '00:00'), instant('08', '23:00'));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.timeRange.end, instant('08', '10:00').toISOString());
+  assert.equal(result.body.results[0].machineSummary.totalCount, 102);
+  assert.equal(h.shiftCacheQueries, 1);
+  assert.equal(h.sessionQueries, 1);
+});
 test('empty shifts return a successful empty report rather than an error', async () => {
   const h = harness();
   const result = await h.request(instant('06', '00:00'), instant('06', '23:00'));
