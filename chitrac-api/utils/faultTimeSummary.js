@@ -1,4 +1,3 @@
-const { ObjectId } = require("mongodb");
 const { sessionShiftFilter } = require('./reportShiftFilter');
 const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
@@ -572,12 +571,9 @@ async function getMachineStateTimeBySerial(db, config, machineSerials, start, en
   };
 
   if (options.shiftId) {
-    const shiftId = String(options.shiftId);
-    sessionMatch.$and.push({
-      $or: ObjectId.isValid(shiftId)
-        ? [{ "shift._id": shiftId }, { "shift._id": new ObjectId(shiftId) }]
-        : [{ "shift._id": shiftId }],
-    });
+    sessionMatch.$and.push(sessionShiftFilter(options.shiftId, {
+      includeUntagged: options.includeUntaggedShift === true
+    }));
   }
 
   const machineSessions = await db

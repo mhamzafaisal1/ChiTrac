@@ -15,6 +15,7 @@ const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
 const { DateTime } = require("luxon");
 const { normalizeTotalsDocument } = require("./totalsSchema");
 const { mergeIntervals } = require("./faultTimeSummary");
+const { sessionShiftFilter } = require('./reportShiftFilter');
 
 // ---------------------------------------------------------------------------
 // Internal utility – overlap calculation (same logic used in machineFunctions
@@ -460,7 +461,7 @@ async function getCachedDataForDays(db, completeDays, serial) {
  * @param {import("mongodb").Db} db
  * @param {Array<{start: Date, end: Date}>} partialDays
  * @param {string|number|undefined} serial  Optional machine serial filter
- * @param {{ shiftId?: string }} [options] When shiftId is set, only sessions with matching persisted shift._id (string or ObjectId in DB)
+ * @param {{ shiftId?: string, includeUntaggedShift?: boolean, exclusiveEnd?: boolean }} [options] Untagged sessions require caller-supplied shift-clipped ranges.
  */
 async function getSessionDataForPartialDays(db, partialDays, serial, options = {}) {
   const machines = [];
@@ -489,11 +490,8 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
     }
 
     if (shiftIdOpt) {
-      if (ObjectId.isValid(shiftIdOpt)) {
-        match["shift._id"] = { $in: [shiftIdOpt, new ObjectId(shiftIdOpt)] };
-      } else {
-        match["shift._id"] = shiftIdOpt;
-      }
+      match.$and ||= [];
+      match.$and.push(sessionShiftFilter(shiftIdOpt, { includeUntagged: options.includeUntaggedShift === true }));
     }
 
     const sessions = await db
@@ -555,7 +553,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
                         in: {
                           $and: [
                             { $gte: ["$$countTs", partialDay.start] },
-                            { $lte: ["$$countTs", partialDay.end] },
+                            { [options.exclusiveEnd ? '$lt' : '$lte']: ["$$countTs", partialDay.end] },
                           ],
                         },
                       },
@@ -644,7 +642,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
             timestamp instanceof Date &&
             !Number.isNaN(timestamp.getTime()) &&
             timestamp >= partialDay.start &&
-            timestamp <= partialDay.end
+            (options.exclusiveEnd ? timestamp < partialDay.end : timestamp <= partialDay.end)
           );
         });
       if (!counts.length) continue;

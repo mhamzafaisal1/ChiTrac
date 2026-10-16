@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
 const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
+const { createVerifyJwtMiddleware } = require('../../utils/authMiddleware');
 
 module.exports = function(server) {
     return constructor(server);
@@ -18,6 +19,7 @@ function constructor(server) {
     const db = server.db;
     const logger = server.logger;
     const passport = server.passport;
+    const verifyJwt = createVerifyJwtMiddleware(server);
 
     function normalizePermissionLevel(value, defaultLevel = 3) {
         const parsed = Number(value);
@@ -199,10 +201,11 @@ function constructor(server) {
         })(req, res, next);
     })
 
-    router.get('/user', function(req, res) {
-        if (req.isAuthenticated()) {
+    router.get('/user', verifyJwt, function(req, res) {
+        const user = req.authUser || (req.isAuthenticated?.() ? req.user : null);
+        if (user && req.tokenPayload?.type !== 'permanent' && user.active !== false) {
             res.json({
-                user: sanitizeUser(req.user)
+                user: sanitizeUser(user)
             })
         } else {
             res.status(401).json({ user: null, error: 'Authentication required' })

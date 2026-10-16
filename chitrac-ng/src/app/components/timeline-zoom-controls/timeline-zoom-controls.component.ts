@@ -26,7 +26,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
     :host(.header-controls) .zoom-controls { height: 40px; }
     :host(.header-controls) button.mat-mdc-icon-button {
       flex-basis: 40px; width: 40px; height: 40px;
-      --mdc-icon-button-state-layer-size: 40px;
+      --mat-icon-button-state-layer-size: 40px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 0;
     }
     .zoom-controls { display: flex; justify-content: flex-end; align-items: center; height: 48px; gap: 4px; }
     button.mat-mdc-icon-button {

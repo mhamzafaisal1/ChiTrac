@@ -53,12 +53,12 @@ function calendarRange(value, unit = "day") {
 
 function dateCondition(value) {
   if (value && typeof value === "object" && "$in" in value) {
-    return {
-      $or: value.$in
-        .map((entry) => calendarRange(entry))
-        .filter(Boolean)
-        .map((range) => ({ "timestamps.create": range })),
-    };
+    const conditions = value.$in
+      .map((entry) => calendarRange(entry))
+      .filter(Boolean)
+      .map((range) => ({ "timestamps.create": range }));
+    // An empty date list must match nothing, not produce MongoDB's invalid $or: [].
+    return conditions.length ? { $or: conditions } : { "timestamps.create": { $in: [] } };
   }
   if (value && typeof value === "object" && !(value instanceof Date)) {
     const range = {};

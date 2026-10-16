@@ -18,7 +18,7 @@ const payload = { range: { start, end }, machines: [{ serial: 1, name: 'Test', s
   standalone: true,
   imports: [ChartTileComponent, TimelineZoomControlsComponent, MachineTimelineChartComponent],
   template: `
-    <app-chart-tile title="Machine Timeline">
+    <app-chart-tile title="Machine Timeline" subtitle="Today">
       <app-timeline-zoom-controls chartTileActions class="header-controls"
         [canZoomIn]="chart.canZoomIn" [canZoomOut]="chart.canZoomOut"
         (zoomIn)="chart.zoomBy(2)" (zoomOut)="chart.zoomBy(0.5)" (reset)="chart.resetZoom()"
@@ -53,6 +53,30 @@ describe('Machine timeline header and layout', () => {
     expect(d3.zoomTransform(svg).k).toBe(1);
     fixture.destroy();
   }));
+
+  for (const width of [640, 360]) {
+    it(`top-aligns header zoom icons with the title at ${width}px without shrinking buttons or plot space`, fakeAsync(() => {
+      const fixture = TestBed.createComponent(TimelineHost);
+      Object.assign(fixture.nativeElement.style, { display: 'block', width: `${width}px`, height: '440px' });
+      fixture.detectChanges(); tick(32); fixture.detectChanges();
+      const root: HTMLElement = fixture.nativeElement;
+      const title = root.querySelector('.chart-tile-title')!.getBoundingClientRect();
+      const buttons = root.querySelectorAll<HTMLButtonElement>('.chart-tile-actions button');
+      const header = root.querySelector('.chart-tile-header')!.getBoundingClientRect();
+      expect(buttons.length).toBe(3);
+      for (const button of Array.from(buttons)) {
+        const icon = button.querySelector('mat-icon')!.getBoundingClientRect();
+        expect(Math.abs(icon.top - title.top)).toBeLessThan(1);
+        expect(button.getBoundingClientRect().width).toBe(40);
+        expect(button.getBoundingClientRect().height).toBe(40);
+      }
+      expect(title.right).toBeLessThanOrEqual(buttons[0].getBoundingClientRect().left);
+      expect(header.height).toBe(48);
+      const chart = fixture.debugElement.query(By.directive(MachineTimelineChartComponent)).componentInstance;
+      expect(chart.plotTop).toBe(8);
+      fixture.destroy();
+    }));
+  }
 
   it('includes an explicit paused status alongside times and duration', fakeAsync(() => {
     const fixture = TestBed.createComponent(TimelineHost);
