@@ -5,6 +5,7 @@
   --selected-bg: var(--theme-color-primary-middle);
   --selected-hover: var(--theme-color-primary);
   --border-left: var(--theme-color-primary);
+  --detail-bg: var(--sg-color-blue-gray-light-300);
 
   &.dark {
     --hover-bg: rgba(255, 255, 255, 0.05);
@@ -146,7 +147,8 @@
     cursor: pointer;
     border-bottom: var(--mat-table-row-item-outline-width, 1px) solid
       var(--mat-table-row-item-outline-color, #8e909a);
-    border-left: 4px solid transparent;
+    border-left: 0;
+    border-right: 0;
     transition: background-color 0.2s ease;
   }
 
@@ -156,7 +158,7 @@
 
   .ag-row.selected {
     background-color: var(--selected-bg);
-    border-left-color: var(--border-left);
+    box-shadow: inset 4px 0 0 var(--border-left);
     font-weight: 600;
   }
 
@@ -173,7 +175,16 @@
   }
 
   .ag-row.report-summary .ag-cell { font-weight: 600; }
-  .ag-row.report-detail { cursor: default; }
+  .ag-row.report-detail,
+  .ag-row.report-empty-detail {
+    background-color: var(--detail-bg);
+    cursor: default;
+  }
+
+  .ag-row.report-detail:hover,
+  .ag-row.report-empty-detail:hover {
+    background-color: color-mix(in srgb, var(--theme-color-text) 5%, var(--detail-bg));
+  }
 
   .status-dot {
     display: inline-flex;

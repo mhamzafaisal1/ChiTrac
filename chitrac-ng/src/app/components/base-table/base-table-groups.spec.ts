@@ -117,6 +117,64 @@ for (const identity of ['Machine', 'Operator']) {
       providers: [provideNoopAnimations(), { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } }]
     }));
 
+    it('gives details and empty details a distinct themed background without a row-edge inset', fakeAsync(() => {
+      const fixture = TestBed.createComponent(BaseTableComponent);
+      const root: HTMLElement = fixture.nativeElement;
+      root.style.width = '800px';
+      root.style.setProperty('--theme-color-table-row-background', '#37414b');
+      root.style.setProperty('--sg-color-blue-gray-light-300', '#1e2832');
+      fixture.componentRef.setInput('columns', [identity, 'Efficiency']);
+      fixture.componentRef.setInput('groupIdentityColumn', identity);
+      fixture.componentRef.setInput('rowGroups', [
+        { key: 'a', summary: { [identity]: 'Alpha' }, details: [{ Item: 'Sheets' }] },
+        { key: 'b', summary: { [identity]: 'Beta' }, details: [] }
+      ]);
+      fixture.componentRef.setInput('enableToolbar', false);
+      fixture.detectChanges(); tick(100); fixture.detectChanges();
+      for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.group-label'))) {
+        button.click();
+        fixture.detectChanges(); tick(100); fixture.detectChanges();
+      }
+      const detail = root.querySelector<HTMLElement>('.report-detail')!;
+      const empty = root.querySelector<HTMLElement>('.report-empty-detail')!;
+      const summary = root.querySelector<HTMLElement>('.report-summary')!;
+      expect(getComputedStyle(detail).backgroundColor).toBe('rgb(30, 40, 50)');
+      expect(getComputedStyle(empty).backgroundColor).toBe('rgb(30, 40, 50)');
+      expect(getComputedStyle(summary).backgroundColor).toBe('rgb(55, 65, 75)');
+      for (const row of [summary, detail, empty]) {
+        expect(getComputedStyle(row).borderLeftWidth).toBe('0px');
+        expect(getComputedStyle(row).borderRightWidth).toBe('0px');
+        const firstCell = row.querySelector<HTMLElement>('.ag-cell[col-id="' + identity + '"]')!;
+        expect(firstCell.getBoundingClientRect().left).toBeCloseTo(row.getBoundingClientRect().left, 0);
+      }
+      detail.style.transition = 'none';
+      empty.style.transition = 'none';
+      root.style.setProperty('--sg-color-blue-gray-light-300', '#eef0f9');
+      expect(getComputedStyle(detail).backgroundColor).toBe('rgb(238, 240, 249)');
+      expect(getComputedStyle(empty).backgroundColor).toBe('rgb(238, 240, 249)');
+      fixture.destroy();
+    }));
+
+    it('preserves dashboard selection accents without consuming row width', fakeAsync(() => {
+      const fixture = TestBed.createComponent(BaseTableComponent);
+      const root: HTMLElement = fixture.nativeElement;
+      root.style.width = '800px';
+      root.style.setProperty('--border-left', '#00a6e7');
+      const row = { [identity]: 'Alpha' };
+      fixture.componentRef.setInput('columns', [identity]);
+      fixture.componentRef.setInput('rows', [row]);
+      fixture.componentRef.setInput('selectedRow', row);
+      fixture.componentRef.setInput('enableToolbar', false);
+      fixture.detectChanges(); tick(100); fixture.detectChanges();
+      const selected = root.querySelector<HTMLElement>('.ag-row.selected')!;
+      expect(getComputedStyle(selected).borderLeftWidth).toBe('0px');
+      expect(getComputedStyle(selected).boxShadow).toContain('inset');
+      expect(getComputedStyle(selected).boxShadow).toContain('4px');
+      expect(selected.querySelector('.ag-cell')!.getBoundingClientRect().left)
+        .toBeCloseTo(selected.getBoundingClientRect().left, 0);
+      fixture.destroy();
+    }));
+
     it('keeps repeated and simultaneous expansions header-free and unselected with reordered columns', fakeAsync(() => {
       const fixture = TestBed.createComponent(BaseTableComponent);
       const groups: BaseTableGroup[] = ['Alpha', 'Beta'].map(key => ({
