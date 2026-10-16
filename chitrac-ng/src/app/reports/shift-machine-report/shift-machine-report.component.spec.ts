@@ -40,4 +40,30 @@ describe('Shift machine report expansion', () => {
     }
     fixture.destroy();
   });
+
+  it('shows single item names, plural counts, and no badge for empty groups', async () => {
+    const fixture = TestBed.createComponent(ShiftMachineReportComponent);
+    const longName = 'Extra Long Sheets and Pillowcase Item Name';
+    fixture.componentInstance.reportGroups = [
+      { key: 'single', summary: { Machine: 'Blanket1' }, details: [{ Item: 'Sheets' }] },
+      { key: 'multiple', summary: { Machine: 'SPF1' }, details: [{ Item: 'Sheets' }, { Item: 'Towels' }] },
+      { key: 'empty', summary: { Machine: 'Empty' }, details: [] },
+      { key: 'unknown', summary: { Machine: 'Unnamed' }, details: [{ Item: '' }] },
+      { key: 'long', summary: { Machine: 'Long' }, details: [{ Item: longName }] }
+    ];
+    fixture.componentInstance.rows = fixture.componentInstance.reportGroups.map(group => group.summary);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const rows = fixture.nativeElement.querySelectorAll('.summary-row') as NodeListOf<HTMLElement>;
+    expect(rows[0].querySelector('.detail-count')!.textContent!.trim()).toBe('Sheets');
+    expect(rows[0].querySelector('.detail-count')!.getAttribute('title')).toBe('Sheets');
+    expect(rows[1].querySelector('.detail-count')!.textContent!.trim()).toBe('2 items');
+    expect(rows[1].querySelector('.detail-count')!.getAttribute('title')).toBeNull();
+    expect(rows[2].querySelector('.detail-count')).toBeNull();
+    expect(rows[3].querySelector('.detail-count')!.textContent!.trim()).toBe('Unknown Item');
+    const longBadge = rows[4].querySelector<HTMLElement>('.detail-count')!;
+    expect(longBadge.getAttribute('title')).toBe(longName);
+    expect(getComputedStyle(longBadge).textOverflow).toBe('ellipsis');
+    fixture.destroy();
+  });
 });

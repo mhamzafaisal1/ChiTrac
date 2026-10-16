@@ -15,6 +15,7 @@ const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftEl
 const {
   addDerivedShiftTimeComponents,
   getShiftTimeComponents,
+  getShiftStartMinutes,
 } = require("../../utils/shiftTimeComponents");
 const { normalizeTotalsDocument } = require("../../utils/totalsSchema");
 const {
@@ -190,9 +191,12 @@ module.exports = function (server) {
       const shifts = await db
         .collection(config.shiftCollectionName)
         .find({ active: true })
-        .sort({ name: 1 })
         .project({ name: 1, timestamps: 1, activeDays: 1, active: 1 })
         .toArray();
+      shifts.sort((a, b) =>
+        (getShiftStartMinutes(a) ?? Infinity) - (getShiftStartMinutes(b) ?? Infinity) ||
+        String(a.name || '').localeCompare(String(b.name || ''))
+      );
       res.json({
         shifts: shifts.map((s) => ({ ...addDerivedShiftTimeComponents(s), _id: String(s._id) })),
       });

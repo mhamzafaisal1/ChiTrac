@@ -359,25 +359,16 @@ function splitTimeRangeForHybridReport(start, end) {
         console.log(`[HYBRID-SPLIT] Day ${dateStr}: Partial (first day, starts mid-day)`);
       }
     } else if (isLastDay) {
-      // Last day of multi-day range
-      if (endIsAtMidnight || endDt >= dayEnd) {
-        // Ends at or after midnight - the previous day is complete
-        // This day itself is not included if it ends exactly at midnight
-        if (!endIsAtMidnight) {
-          // Ends mid-day
-          partialDays.push({
-            start: dayStart.toJSDate(),
-            end: end,
-            type: 'end'
-          });
-          console.log(`[HYBRID-SPLIT] Day ${dateStr}: Partial (last day, ends mid-day)`);
-        } else {
-          // Ends exactly at midnight - this day boundary is not included
-          console.log(`[HYBRID-SPLIT] Day ${dateStr}: Skipped (ends exactly at midnight of this day)`);
-        }
+      // Midnight is an exclusive boundary; otherwise retain the final day's live window.
+      if (endIsAtMidnight) {
+        console.log(`[HYBRID-SPLIT] Day ${dateStr}: Skipped (ends exactly at midnight of this day)`);
       } else {
-        // Shouldn't reach here if logic is correct
-        console.log(`[HYBRID-SPLIT] Day ${dateStr}: Unexpected condition in last day logic`);
+        partialDays.push({
+          start: dayStart.toJSDate(),
+          end: end,
+          type: 'end'
+        });
+        console.log(`[HYBRID-SPLIT] Day ${dateStr}: Partial (last day, ends mid-day)`);
       }
     } else {
       // Middle day - always complete

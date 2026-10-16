@@ -160,14 +160,17 @@
 }
 
 .detail-count {
-  flex: 0 0 auto;
-  min-width: 1.5rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
   height: 1.5rem;
   padding: 0 0.45rem;
   border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  line-height: 1.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: color-mix(in srgb, var(--theme-color-primary, #00a6e7) 16%, transparent);
   color: var(--theme-color-primary);
   font-size: 0.74rem;

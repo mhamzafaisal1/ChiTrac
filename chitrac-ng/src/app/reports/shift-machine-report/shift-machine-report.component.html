@@ -102,8 +102,9 @@
           >
             <mat-icon>{{ isGroupExpanded(group) ? "expand_more" : "chevron_right" }}</mat-icon>
             <span class="entity-name">{{ group.summary["Machine"] }}</span>
-            <span class="detail-count" *ngIf="group.details.length">
-              {{ group.details.length }} {{ group.details.length === 1 ? "item" : "items" }}
+            <span class="detail-count" *ngIf="group.details.length"
+              [attr.title]="group.details.length === 1 ? (group.details[0]['Item'] || 'Unknown Item') : null">
+              {{ group.details.length === 1 ? (group.details[0]['Item'] || 'Unknown Item') : group.details.length + ' items' }}
             </span>
           </span>
           <span>{{ group.summary["Total Time (Runtime)"] }}</span>
