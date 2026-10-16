@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/reports/shift-comparison-report/shift-comparison-report.component.spec.ts",
+    "src/app/user.service.spec.ts",
+    "src/app/guards/auth.guard.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

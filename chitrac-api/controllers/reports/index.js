@@ -1146,33 +1146,38 @@ module.exports = function (server) {
         shiftElapsedMs = computeShiftElapsedMs(overlayShifts, start, end, SYSTEM_TIMEZONE);
 
         const { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
-        const dateStrings = completeDays.map(day => day.dateStr);
-        const shiftIdCandidates = getShiftIdCandidates(shiftId);
-        const serialNumber = serial ? parseInt(serial, 10) : null;
-        const cacheQuery = buildTotalsCacheQuery(
-          dateStrings,
-          ['machine', 'machine-item'],
-          [
-            {
-              $or: [
-                { "shift._id": { $in: shiftIdCandidates } },
-                { "shift.id": { $in: shiftIdCandidates } },
-                { shiftId: { $in: shiftIdCandidates } },
-              ],
-            },
-            ...(serialNumber
-              ? [{ $or: [{ machineSerial: serialNumber }, { "machine.serial": serialNumber }, { "machine.id": serialNumber }] }]
-              : []),
-          ]
-        );
+        let cacheDocs = [];
+        if (completeDays.length > 0) {
+          const dateStrings = completeDays.map(day => day.dateStr);
+          const shiftIdCandidates = getShiftIdCandidates(shiftId);
+          const serialNumber = serial ? parseInt(serial, 10) : null;
+          const cacheQuery = buildTotalsCacheQuery(
+            dateStrings,
+            ['machine', 'machine-item'],
+            [
+              {
+                $or: [
+                  { "shift._id": { $in: shiftIdCandidates } },
+                  { "shift.id": { $in: shiftIdCandidates } },
+                  { shiftId: { $in: shiftIdCandidates } },
+                ],
+              },
+              ...(serialNumber
+                ? [{ $or: [{ machineSerial: serialNumber }, { "machine.serial": serialNumber }, { "machine.id": serialNumber }] }]
+                : []),
+            ]
+          );
 
-        const cacheDocs = filterTotalsDocsByPlantDate(
-          (await db.collection(config.totalsShiftCollectionName).find(cacheQuery).toArray()).map(normalizeTotalsDocument),
-          dateStrings
-        );
+          cacheDocs = filterTotalsDocsByPlantDate(
+            (await db.collection(config.totalsShiftCollectionName).find(cacheQuery).toArray()).map(normalizeTotalsDocument),
+            dateStrings
+          );
+        }
 
-        const sessionData = partialDays.length
-          ? await getSessionDataForPartialDays(db, partialDays, serial, { shiftId: String(shiftId) })
+        const sessionOptions = { shiftId: String(shiftId), includeUntaggedShift: true, exclusiveEnd: true };
+        const sessionWindows = partialDays.flatMap(day => buildShiftScopedSessionWindows(shiftDoc, day.start, day.end));
+        const sessionData = sessionWindows.length
+          ? await getSessionDataForPartialDays(db, sessionWindows, serial, sessionOptions)
           : { machines: [], machineItems: [] };
         const combined = combineHybridData(
           cacheDocs.filter(d => d.entityType === 'machine'),
@@ -1188,7 +1193,8 @@ module.exports = function (server) {
         };
 
         if (!machineRecords.length && !machineItemRecords.length) {
-          const sessionData = await getSessionDataForPartialDays(db, [{ start, end }], serial, { shiftId: String(shiftId) });
+          const fallbackWindows = buildShiftScopedSessionWindows(shiftDoc, start, end);
+          const sessionData = await getSessionDataForPartialDays(db, fallbackWindows, serial, sessionOptions);
 
           machineRecords = sessionData.machines || [];
           machineItemRecords = sessionData.machineItems || [];
@@ -1327,6 +1333,7 @@ module.exports = function (server) {
           activeShifts: overlayShifts,
           zone: SYSTEM_TIMEZONE,
           shiftId: shiftIdRaw,
+          includeUntaggedShift: Boolean(shiftIdRaw),
         }
       );
       for (const [serial, machineData] of machineMap) {

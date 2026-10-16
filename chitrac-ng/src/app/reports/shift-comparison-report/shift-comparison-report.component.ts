@@ -50,6 +50,7 @@ export class ShiftComparisonReportComponent implements OnInit, OnDestroy {
   isLoading = false;
   showSummaryOnly = false;
   shiftsLoadError: string | null = null;
+  private readonly summaryRowsCache = new WeakMap<any[], any[]>();
   private observer!: MutationObserver;
 
   get firstDisplayedRows(): any[] {
@@ -211,7 +212,11 @@ export class ShiftComparisonReportComponent implements OnInit, OnDestroy {
 
   private getDisplayedRows(rows: any[]): any[] {
     if (this.showSummaryOnly) {
-      return rows.filter((row) => row['Item'] === 'Total');
+      // Keep AG Grid's rowData stable until the source report rows change.
+      if (!this.summaryRowsCache.has(rows)) {
+        this.summaryRowsCache.set(rows, rows.filter((row) => row['Item'] === 'Total'));
+      }
+      return this.summaryRowsCache.get(rows)!;
     }
     return rows;
   }
