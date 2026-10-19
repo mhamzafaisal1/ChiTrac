@@ -8,9 +8,15 @@ export function selectedTimeframeLabel(
   shifts: ShiftListItem[] = [],
   cache?: DashboardCacheState
 ): string {
+  const labels: Record<string, string> = {
+    today: 'Today', thisWeek: 'This Week', thisMonth: 'This Month', thisYear: 'This Year',
+    yesterday: 'Yesterday', lastWeek: 'Last Week', lastMonth: 'Last Month', lastYear: 'Last Year',
+  };
+  const period = labels[timeframe] || (liveMode && !timeframe ? 'Today' : 'Custom');
+  const withShift = (name: string) => timeframe ? `${period} - ${name}` : name;
   if (shiftId) {
     const configuredName = shifts.find(shift => String(shift._id) === shiftId)?.name;
-    if (configuredName?.trim()) return configuredName.trim();
+    if (configuredName?.trim()) return withShift(configuredName.trim());
 
     const metadata = [
       cache?.currentShift?.meta,
@@ -21,11 +27,8 @@ export function selectedTimeframeLabel(
       cache?.activeShift,
     ];
     const match = metadata.find(value => String(value?.shiftId || '') === shiftId && value?.shift?.name?.trim());
-    return match?.shift?.name.trim() || 'Shift';
+    return withShift(match?.shift?.name.trim() || 'Shift');
   }
 
-  const labels: Record<string, string> = {
-    today: 'Today', thisWeek: 'This Week', thisMonth: 'This Month', thisYear: 'This Year',
-  };
-  return labels[timeframe] || (liveMode && !timeframe ? 'Today' : 'Custom');
+  return period;
 }

@@ -62,7 +62,7 @@ describe('TimeframePickerComponent', () => {
     expect(shifts).toHaveBeenCalledTimes(1);
   });
 
-  it('presets use local calendar boundaries and clear the shift filter', () => {
+  it('presets use local calendar boundaries and preserve the shift filter', () => {
     jasmine.clock().install();
     try {
       jasmine.clock().mockDate(new Date(2026, 9, 8, 13, 30));
@@ -71,9 +71,24 @@ describe('TimeframePickerComponent', () => {
         component.quickSelect(mode);
         expect(component.pickerStart).toEqual(new Date(2026, month, day));
         expect(component.pickerEnd).toEqual(new Date(2026, 9, 8, 13, 30));
-        expect(component.pickerShiftId).toBeNull();
+        expect(component.pickerShiftId).toBe('shift-one');
       }
     } finally { jasmine.clock().uninstall(); }
+  });
+
+  it('changing or clearing a shift preserves every preset and custom dates', () => {
+    for (const mode of ['today', 'thisWeek', 'thisMonth', 'thisYear', 'yesterday', 'lastWeek', 'lastMonth', 'lastYear', 'custom'] as const) {
+      component.quickSelect(mode);
+      const start = component.pickerStart!.getTime();
+      const end = component.pickerEnd!.getTime();
+      for (const shift of ['morning', 'afternoon', null]) {
+        component.selectShift(shift);
+        expect(component.pickerMode).toBe(mode);
+        expect(component.pickerStart!.getTime()).toBe(start);
+        expect(component.pickerEnd!.getTime()).toBe(end);
+        expect(component.manualEnabled).toBe(mode === 'custom');
+      }
+    }
   });
 
   it('does not emit or change presets while disabled', () => {
@@ -106,7 +121,7 @@ describe('TimeframePickerComponent', () => {
         component.quickSelect(mode);
         expect(component.pickerStart).toEqual(start);
         expect(component.pickerEnd).toEqual(end);
-        expect(component.pickerShiftId).toBeNull();
+        expect(component.pickerShiftId).toBe('shift-one');
         expect(component.pickerMode).toBe(mode);
         expect(component.valid).toBeTrue();
         expect(confirmed).not.toHaveBeenCalled();

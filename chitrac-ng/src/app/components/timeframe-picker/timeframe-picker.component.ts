@@ -59,7 +59,7 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
     this.pickerStart = this.start ? new Date(this.start) : this.startOfToday();
     this.pickerEnd = this.end ? new Date(this.end) : new Date();
     this.pickerShiftId = this.shiftId;
-    this.pickerMode = this.mode;
+    this.pickerMode = this.mode === 'shift' ? 'custom' : this.mode;
   }
 
   ngOnDestroy(): void { this.destroy$.next(); this.destroy$.complete(); }
@@ -75,12 +75,10 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
   selectShift(id: string | null): void {
     if (this.disabled) return;
     this.pickerShiftId = id;
-    this.pickerMode = id ? 'shift' : 'custom';
   }
 
   quickSelect(mode: TimeframePickerMode): void {
     if (this.disabled) return;
-    this.pickerShiftId = null;
     this.pickerMode = mode;
     if (mode === 'custom') return;
     const now = new Date();

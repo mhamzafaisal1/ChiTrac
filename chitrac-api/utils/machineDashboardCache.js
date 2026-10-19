@@ -3,6 +3,8 @@ const { DateTime } = require("luxon");
 const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
 const { loadActiveShifts, computeShiftElapsedMs, resolveShiftProjectionWindow } = require("./shiftElapsed");
 const { getSessionDataForPartialDays } = require("./reportFunctions");
+const { getShiftSummaryRecords } = require('./shiftSummaryRecords');
+const { buildShiftScopedSessionWindows } = require('./shiftWindows');
 const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
 const { getShiftTimeComponents, getShiftStartMinutes } = require("./shiftTimeComponents");
 const {
@@ -161,8 +163,8 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
   const useShiftElapsed = options.useShiftElapsed !== false;
   const shiftElapsedCache = new Map();
   const machineSerials = records.map((r) => Number(r.machineSerial)).filter(Number.isFinite);
-  const faultTimeBySerial = await getMachineFaultTimeBySerial(db, config, machineSerials, requestStart, requestEnd);
-  const faultSummariesBySerial = await getMachineFaultSummariesBySerial(db, config, machineSerials, requestStart, requestEnd);
+  const faultTimeBySerial = await getMachineFaultTimeBySerial(db, config, machineSerials, requestStart, requestEnd, options);
+  const faultSummariesBySerial = await getMachineFaultSummariesBySerial(db, config, machineSerials, requestStart, requestEnd, options);
   const configuredMachines = Array.isArray(options.configuredMachines)
     ? options.configuredMachines
     : await loadConfiguredMachines(db, config).catch(() => []);
@@ -577,53 +579,25 @@ async function buildMachineSummaryFromDailyCache(db, logger, config, options = {
 async function buildMachineSummaryFromShiftCache(db, logger, config, options) {
   const { shiftOid, shiftDoc, start, end } = options;
   const dateStr = options.dateStr || getPlantDateStr(start);
-  const filter = {
-    type: "machine",
-    "timestamps.create": calendarRange(dateStr),
-    $or: [
-      { "shift.id": String(shiftOid) },
-      { "shift._id": shiftOid },
-    ],
-  };
-  if (options.serial) {
-    filter["machine.id"] = parseInt(options.serial, 10);
-  }
-
-  const records = (await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray())
-    .map(normalizeTotalsDocument);
-  if (records.length > 0) {
-    const configuredMachines = await loadConfiguredMachines(db, config, options.serial);
-    const stationCountBySerial = buildStationCountBySerial(configuredMachines);
-    const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end, {
-      configuredMachines,
-      stationCountBySerial,
-    });
-    return {
-      data: await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial, { configuredMachines }),
-      source: TOTALS_SHIFT_COLLECTION,
-      found: true,
-      dateStr,
-      start,
-      end,
-      projectionWindow: resolveShiftProjectionWindow([shiftDoc], start, end, SYSTEM_TIMEZONE),
-      shiftId: String(shiftOid),
-      shift: shiftDoc,
-      recordCount: records.length,
-    };
-  }
-
-  const data = await buildMachineSummaryFromSessions(db, logger, config, start, end, options.serial, shiftOid, shiftDoc);
+  const records = await getShiftSummaryRecords(db, shiftDoc, start, end, 'machine', options.serial);
+  const configuredMachines = await loadConfiguredMachines(db, config, options.serial);
+  const stationCountBySerial = buildStationCountBySerial(configuredMachines);
+  const rows = await buildMachineSummaryRows(db, logger, config, records, [shiftDoc], start, end, {
+    configuredMachines,
+    stationCountBySerial,
+    shiftWindows: buildShiftScopedSessionWindows(shiftDoc, start, end),
+  });
   return {
-    data,
-    source: "session-machine",
-    found: data.length > 0,
+    data: await appendConfiguredOfflineMachineRows(db, config, rows, start, end, options.serial, { configuredMachines }),
+    source: 'hybrid-shift',
+    found: true,
     dateStr,
     start,
     end,
     projectionWindow: resolveShiftProjectionWindow([shiftDoc], start, end, SYSTEM_TIMEZONE),
     shiftId: String(shiftOid),
     shift: shiftDoc,
-    recordCount: 0,
+    recordCount: records.length,
   };
 }
 

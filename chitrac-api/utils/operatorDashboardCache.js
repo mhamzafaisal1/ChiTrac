@@ -2,8 +2,8 @@ const { formatDuration } = require("./time");
 const { formatHumanName } = require("./humanNames");
 const { loadActiveShifts, computeShiftElapsedMs } = require("./shiftElapsed");
 const { getOperatorSessionDataForPartialDays } = require("./reportFunctions");
+const { getShiftSummaryRecords } = require('./shiftSummaryRecords');
 const {
-  TOTALS_SHIFT_COLLECTION,
   getPlantDateStr,
   getTodayRange,
 } = require("./machineDashboardCache");
@@ -59,7 +59,7 @@ function operatorNameFromRecord(record) {
   return formatHumanName(record.operatorName);
 }
 
-async function buildOperatorSummaryRows(db, config, records, activeShifts, requestStart, requestEnd) {
+async function buildOperatorSummaryRows(db, config, records, activeShifts, requestStart, requestEnd, options = {}) {
   const operatorTickerMap = await buildOperatorTickerMap(db, config);
   const operatorIds = records.map((record) => record.operatorId).filter((id) => id && id !== -1);
   const sessionTimeByOperatorId = await getOperatorMachineStateTimeByOperatorId(
@@ -68,7 +68,7 @@ async function buildOperatorSummaryRows(db, config, records, activeShifts, reque
     operatorIds,
     requestStart,
     requestEnd,
-    { activeShifts }
+    { ...options, activeShifts }
   );
   const operatorMap = new Map();
 
@@ -297,44 +297,19 @@ async function buildOperatorSummaryFromDailyCache(db, logger, config, options = 
 async function buildOperatorSummaryFromShiftCache(db, logger, config, options) {
   const { shiftOid, shiftDoc, start, end } = options;
   const dateStr = options.dateStr || getPlantDateStr(start);
-  const filter = {
-    type: "operator-machine",
-    "timestamps.create": calendarRange(dateStr),
-    $or: [
-      { "shift.id": String(shiftOid) },
-      { "shift._id": shiftOid },
-    ],
-  };
-  if (options.operatorId) {
-    filter["operator.id"] = parseInt(options.operatorId, 10);
-  }
-
-  const records = (await db.collection(TOTALS_SHIFT_COLLECTION).find(filter).toArray())
-    .map(normalizeTotalsDocument);
-  if (records.length > 0) {
-    return {
-      data: await buildOperatorSummaryRows(db, config, records, [shiftDoc], start, end),
-      source: TOTALS_SHIFT_COLLECTION,
-      found: true,
-      dateStr,
-      start,
-      end,
-      shiftId: String(shiftOid),
-      shift: shiftDoc,
-      recordCount: records.length,
-    };
-  }
-
+  const records = await getShiftSummaryRecords(db, shiftDoc, start, end, 'operator-machine', options.operatorId);
   return {
-    data: await buildOperatorSummaryFromSessions(db, config, start, end, options.operatorId, shiftOid, shiftDoc),
-    source: "session-operator",
-    found: false,
+    data: await buildOperatorSummaryRows(db, config, records, [shiftDoc], start, end, {
+      shiftId: String(shiftOid), includeUntaggedShift: true,
+    }),
+    source: 'hybrid-shift',
+    found: true,
     dateStr,
     start,
     end,
     shiftId: String(shiftOid),
     shift: shiftDoc,
-    recordCount: 0,
+    recordCount: records.length,
   };
 }
 
