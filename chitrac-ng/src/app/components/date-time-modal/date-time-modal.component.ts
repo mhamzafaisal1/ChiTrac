@@ -110,9 +110,7 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     this.selectedShiftId = existing || null;
     const existingTimeframe = this.dateTimeService.getTimeframe();
     this.selectedTimeframe = existingTimeframe || '';
-    this.selectedOption = existing
-      ? `shift:${existing}`
-      : existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
+    this.selectedOption = existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
     this.cdr.markForCheck();
   }
 
@@ -130,30 +128,17 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
       start.setHours(0, 0, 0, 0);
       this.startDateTime = start;
       this.endDateTime = now;
-      this.selectedTimeframe = ''; // Clear timeframe selection when switching to live
-      this.selectedShiftId = null;
+      this.selectedTimeframe = 'today';
     }
   }
 
-  selectShift(shiftId: string): void {
-    const selectedShift = this.shifts.find((shift) => String(shift._id) === String(shiftId));
-
-    this.selectedOption = `shift:${shiftId}`;
+  selectShift(shiftId: string | null): void {
     this.selectedShiftId = shiftId;
-    this.selectedTimeframe = '';
-    this.mode = 'manual';
-
-    const range = selectedShift ? this.getShiftDateRange(selectedShift) : null;
-    if (range) {
-      this.startDateTime = range.start;
-      this.endDateTime = range.end;
-    }
-
     this.cdr.markForCheck();
   }
 
   isSelectedShift(shift: ShiftListItem): boolean {
-    return this.selectedOption === `shift:${shift._id}`;
+    return this.selectedShiftId === String(shift._id);
   }
 
   isCurrentShift(shift: ShiftListItem): boolean {
@@ -166,7 +151,6 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
 
   selectCustom(): void {
     this.selectedOption = 'custom';
-    this.selectedShiftId = null;
     this.selectedTimeframe = '';
     this.mode = 'manual';
     this.cdr.markForCheck();
@@ -175,11 +159,7 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
   onTimeframeSelect(timeframe: string): void {
     this.selectedOption = timeframe;
     this.selectedTimeframe = timeframe;
-    this.selectedShiftId = null;
-    this.mode = 'manual'; // Switch to manual mode when timeframe is selected
-    
-    // For display purposes, we can still show approximate dates
-    // but the actual API calls will use the timeframe parameter
+    this.mode = 'manual';
     const now = new Date();
     let start: Date;
     let end: Date;
@@ -209,6 +189,24 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
         start = new Date(now.getFullYear(), 0, 1);
         start.setHours(0, 0, 0, 0);
         end = now;
+        break;
+      case 'yesterday':
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        start = new Date(end);
+        start.setDate(start.getDate() - 1);
+        break;
+      case 'lastWeek':
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+        start = new Date(end);
+        start.setDate(start.getDate() - 7);
+        break;
+      case 'lastMonth':
+        end = new Date(now.getFullYear(), now.getMonth(), 1);
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        break;
+      case 'lastYear':
+        end = new Date(now.getFullYear(), 0, 1);
+        start = new Date(now.getFullYear() - 1, 0, 1);
         break;
       default:
         return; // Invalid timeframe
@@ -254,13 +252,15 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
       this.endDateTime = selection.end;
       this.selectedShiftId = selection.shiftId || null;
       this.mode = selection.mode === 'current' ? 'live' : 'manual';
-      this.selectedOption = selection.shiftId ? `shift:${selection.shiftId}` : 'today';
+      this.selectedOption = selection.mode === 'current' ? 'today' : 'custom';
       this.dateTimeService.setLiveMode(selection.mode === 'current');
       this.cdr.markForCheck();
     });
   }
 
   confirm(): void {
+    if (!Number.isFinite(this.startDateTime?.getTime()) ||
+        !Number.isFinite(this.endDateTime?.getTime()) || this.endDateTime <= this.startDateTime) return;
     this.dateTimeService.setStartTime(this.startDateTime.toISOString());
     this.dateTimeService.setEndTime(this.endDateTime.toISOString());
     this.dateTimeService.setLiveMode(this.selectedOption === 'today');
@@ -276,20 +276,4 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     return (Number(shift.startTime.hour) * 60) + Number(shift.startTime.minute);
   }
 
-  private getShiftDateRange(shift: ShiftListItem): { start: Date; end: Date } | null {
-    if (!shift.startTime || !shift.endTime) return null;
-
-    const reference = this.startDateTime ? new Date(this.startDateTime) : new Date();
-    const start = new Date(reference);
-    start.setHours(Number(shift.startTime.hour), Number(shift.startTime.minute), 0, 0);
-
-    const end = new Date(reference);
-    end.setHours(Number(shift.endTime.hour), Number(shift.endTime.minute), 0, 0);
-
-    if (end <= start) {
-      end.setDate(end.getDate() + 1);
-    }
-
-    return { start, end };
-  }
 }

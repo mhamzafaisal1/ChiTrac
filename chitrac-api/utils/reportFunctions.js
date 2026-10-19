@@ -901,7 +901,7 @@ async function getOperatorCachedDataForDays(db, completeDays, operatorId) {
  * @param {import("mongodb").Db} db
  * @param {Array<{start: Date, end: Date}>} partialDays
  * @param {string|number|undefined} operatorId  Optional operator filter
- * @param {{ shiftId?: string }} [options] When shiftId is set, only operator sessions with matching shift._id
+ * @param {{ shiftId?: string, includeUntaggedShift?: boolean, exclusiveEnd?: boolean }} [options] Untagged sessions require shift-clipped windows.
  */
 async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId, options = {}) {
   const operators = [];
@@ -924,11 +924,7 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
     };
 
     if (shiftIdOpt) {
-      if (ObjectId.isValid(shiftIdOpt)) {
-        match["shift._id"] = { $in: [shiftIdOpt, new ObjectId(shiftIdOpt)] };
-      } else {
-        match["shift._id"] = shiftIdOpt;
-      }
+      match.$and = [sessionShiftFilter(shiftIdOpt, { includeUntagged: options.includeUntaggedShift === true })];
     }
 
     // Just get the sessions with the fields we need
@@ -1003,6 +999,7 @@ async function getOperatorSessionDataForPartialDays(db, partialDays, operatorId,
 
         for (const count of getSessionCountsArray(session)) {
           if (!isTimestampInRange(getCountTimestamp(count), partialDay.start, partialDay.end)) continue;
+          if (options.exclusiveEnd && +new Date(getCountTimestamp(count)) === +partialDay.end) continue;
 
           const itemName = count.item?.name;
           if (!itemName) continue;

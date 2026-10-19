@@ -1,4 +1,5 @@
 const { sessionShiftFilter } = require('./reportShiftFilter');
+const { durationInWindows } = require('./shiftWindows');
 const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
 const { getShiftTimeComponents, getTimeComponentsFromTimestamp } = require("./shiftTimeComponents");
@@ -260,7 +261,7 @@ function clipInterval(interval, clipIntervals) {
   return clipIntervals.map((clip) => intersectInterval(interval, clip)).filter(Boolean);
 }
 
-async function getMachineFaultTimeBySerial(db, config, machineSerials, start, end) {
+async function getMachineFaultTimeBySerial(db, config, machineSerials, start, end, options = {}) {
   const serials = idVariants(machineSerials);
   if (!config.faultSessionCollectionName || serials.length === 0) return new Map();
 
@@ -285,14 +286,16 @@ async function getMachineFaultTimeBySerial(db, config, machineSerials, start, en
   for (const session of faultSessions) {
     const serial = serialFromEntity(session.machine);
     if (serial === null) continue;
-    const duration = overlapMs(session.timestamps?.start, session.timestamps?.end, start, end);
+    const duration = options.shiftWindows
+      ? durationInWindows(session.timestamps?.start, session.timestamps?.end || end, options.shiftWindows)
+      : overlapMs(session.timestamps?.start, session.timestamps?.end, start, end);
     faultTimeBySerial.set(serial, (faultTimeBySerial.get(serial) || 0) + duration);
   }
 
   return faultTimeBySerial;
 }
 
-async function getMachineFaultSummariesBySerial(db, config, machineSerials, start, end) {
+async function getMachineFaultSummariesBySerial(db, config, machineSerials, start, end, options = {}) {
   const serials = idVariants(machineSerials);
   if (!config.machineSessionCollectionName || serials.length === 0) return new Map();
 
@@ -334,7 +337,11 @@ async function getMachineFaultSummariesBySerial(db, config, machineSerials, star
     const code = sessionStateCode(session);
     if (NON_FAULT_CODES.has(code)) continue;
 
-    const durationSeconds = Math.max(0, Math.floor(clippedFaultSessionMs(session, start, end) / 1000));
+    const clippedMs = clippedFaultSessionMs(session, start, end);
+    const clippedStart = Math.max(+new Date(session.timestamps?.start), +start);
+    const durationMs = options.shiftWindows
+      ? durationInWindows(clippedStart, clippedStart + clippedMs, options.shiftWindows) : clippedMs;
+    const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
     if (durationSeconds <= 0) continue;
 
     if (!summariesBySerial.has(serial)) summariesBySerial.set(serial, new Map());
@@ -503,7 +510,7 @@ async function getOperatorMachineStateTimeByOperatorId(db, config, operatorIds, 
     .find({
       ...overlapQuery(start, end),
       "operators.id": { $in: ids },
-      ...sessionShiftFilter(options.shiftId),
+      $and: [sessionShiftFilter(options.shiftId, { includeUntagged: options.includeUntaggedShift === true })],
     })
     .project({ _id: 0, type: 1, status: 1, operators: 1, timestamps: 1 })
     .toArray();

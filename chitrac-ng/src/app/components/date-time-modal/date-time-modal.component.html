@@ -44,24 +44,22 @@
 
   <div class="mode-section">
     <div class="timeframe-buttons">
-      <button
-        mat-stroked-button
-        [class.selected]="selectedOption === 'today'"
-        (click)="selectToday()">
-        Today
+      <strong>Shift filter</strong>
+      <button mat-stroked-button [class.selected]="!selectedShiftId" (click)="selectShift(null)">
+        All data (no shift)
       </button>
-
-      <p class="shift-hint" *ngIf="shiftsLoadError">{{ shiftsLoadError }}</p>
       <button
-        *ngFor="let s of shifts; trackBy: trackByShiftId"
         mat-stroked-button
+        *ngFor="let s of shifts; trackBy: trackByShiftId"
         [class.selected]="isSelectedShift(s)"
         [class.current-shift]="isCurrentShift(s) && !isSelectedShift(s)"
         [class.current-shift-selected]="isCurrentShift(s) && isSelectedShift(s)"
         (click)="selectShift(s._id)">
         {{ s.name || 'Shift' }}
       </button>
-
+      <p class="shift-hint" *ngIf="shiftsLoadError">{{ shiftsLoadError }}</p>
+      <strong>Quick Select</strong>
+      <button mat-stroked-button [class.selected]="selectedOption === 'today'" (click)="selectToday()">Today</button>
       <button mat-stroked-button [class.selected]="selectedOption === 'thisWeek'" (click)="onTimeframeSelect('thisWeek')">
         This Week
       </button>
@@ -71,6 +69,10 @@
       <button mat-stroked-button [class.selected]="selectedOption === 'thisYear'" (click)="onTimeframeSelect('thisYear')">
         This Year
       </button>
+      <button mat-stroked-button [class.selected]="selectedOption === 'yesterday'" (click)="onTimeframeSelect('yesterday')">Yesterday</button>
+      <button mat-stroked-button [class.selected]="selectedOption === 'lastWeek'" (click)="onTimeframeSelect('lastWeek')">Last Week</button>
+      <button mat-stroked-button [class.selected]="selectedOption === 'lastMonth'" (click)="onTimeframeSelect('lastMonth')">Last Month</button>
+      <button mat-stroked-button [class.selected]="selectedOption === 'lastYear'" (click)="onTimeframeSelect('lastYear')">Last Year</button>
       <button mat-stroked-button [class.selected]="selectedOption === 'custom'" (click)="selectCustom()">
         Custom
       </button>

@@ -1,7 +1,7 @@
 :host {
   display: block;
   width: 100%;
-  min-width: 520px;
+  min-width: 0;
   max-width: 620px;
   overflow: visible;
 }
@@ -12,7 +12,8 @@
   padding: 1rem;
   background-color: var(--theme-color-surface);
   color: var(--theme-color-on-surface-variant);
-  min-width: 520px;
+  min-width: 0;
+  box-sizing: border-box;
   min-height: 350px;
   position: relative;
   overflow-x: hidden;
@@ -97,7 +98,7 @@
   // Responsive design for smaller screens
   @media (max-width: 768px) {
     flex-direction: column;
-    min-width: 400px;
+    min-width: 0;
     min-height: 500px;
 
     .divider {
@@ -115,6 +116,8 @@
         flex-direction: row;
         flex-wrap: wrap;
         max-height: none;
+
+        strong, .shift-hint { flex-basis: 100%; }
 
         button {
           flex: 1;

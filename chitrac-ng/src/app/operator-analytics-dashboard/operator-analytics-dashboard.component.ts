@@ -1056,7 +1056,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     }
 
     const shiftId = this.dateTimeService.getShiftId();
-    if (shiftId) {
+    if (shiftId && !this.dateTimeService.getTimeframe() && !this.dateTimeService.getConfirmed()) {
       return this.isToday(this.startTime);
     }
 
