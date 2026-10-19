@@ -57,6 +57,18 @@
   width: 100%;
 }
 
+.tracked-cell-tooltip {
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 8px 12px;
+  border: 1px solid var(--sg-color-blue-gray-medium-300);
+  border-radius: 4px;
+  background: var(--theme-color-surface-container);
+  color: var(--theme-color-text);
+  font: 12px/1.5 Montserrat, sans-serif;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+
 :host ::ng-deep .base-data-grid {
   --ag-background-color: var(--theme-color-table-row-background);
   --ag-data-background-color: var(--theme-color-table-row-background);

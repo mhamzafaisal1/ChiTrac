@@ -33,7 +33,7 @@
   [theme]="gridTheme"
   [modules]="modules"
   [rowData]="rowGroups ? groupedRows : rows"
-  [getRowId]="rowGroups ? getGroupedRowId : undefined"
+  [getRowId]="rowGroups ? getGroupedRowId : rowIdentity ? getDataRowId : undefined"
   [postSortRows]="postSortRows"
   [columnDefs]="columnDefs"
   [autoSizeStrategy]="fillAvailableWidth ? undefined : autoSizeStrategy"
@@ -46,8 +46,22 @@
   [enableBrowserTooltips]="false"
   [tooltipShowDelay]="700"
   [getRowClass]="getRowClass"
+  (cellMouseOver)="onCellMouseOver($event)"
+  (cellMouseOut)="closeCellTooltip()"
+  (mouseleave)="closeCellTooltip()"
+  (mousedown)="closeCellTooltip()"
+  (keydown)="closeCellTooltip()"
+  (sortChanged)="closeCellTooltip()"
+  (filterChanged)="closeCellTooltip()"
   (gridReady)="onGridReady($event)"
   (gridSizeChanged)="onGridSizeChanged($event)"
   (columnMoved)="onColumnMoved($event)"
   (rowClicked)="onGridRowClicked($event)">
 </ag-grid-angular>
+
+<ng-template cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="tooltipOrigin!"
+  [cdkConnectedOverlayOpen]="!!visibleTooltip"
+  [cdkConnectedOverlayPositions]="tooltipPositions">
+  <div class="tracked-cell-tooltip" role="tooltip" [id]="tooltipId">{{ visibleTooltip }}</div>
+</ng-template>
