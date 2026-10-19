@@ -122,6 +122,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   machineData: any[] = [];
   columns: string[] = [];
   rows: any[] = [];
+  private readonly transientRowIds = new WeakMap<object, string>();
+  private nextTransientRowId = 0;
+  readonly getMachineRowIdentity = (row: any): string => {
+    const serial = row["Serial Number"];
+    if (!row.isDummy && serial != null && String(serial).trim() !== "") {
+      return `machine:${String(serial).trim()}`;
+    }
+    // Loading rows and malformed records must never share a machine's identity.
+    let id = this.transientRowIds.get(row);
+    if (!id) {
+      id = `transient:${this.nextTransientRowId++}`;
+      this.transientRowIds.set(row, id);
+    }
+    return id;
+  };
   summaryCards: SummaryCard[] = [];
   allSummaryCards: SummaryCard[] = [];
   layoutEditing = false;
@@ -1885,7 +1900,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   onRowClick(row: any): void {
-    if (this.selectedRow === row) {
+    if (!row || (this.selectedRow && this.getMachineRowIdentity(this.selectedRow) === this.getMachineRowIdentity(row))) {
       this.selectedRow = null;
       return;
     }

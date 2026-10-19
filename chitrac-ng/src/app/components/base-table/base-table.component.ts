@@ -1,5 +1,6 @@
 import {
   Component,
+  ElementRef,
   EventEmitter,
   Input,
   OnChanges,
@@ -15,11 +16,13 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { AgGridAngular } from 'ag-grid-angular';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
   _ColumnMoveModule,
   _KeyboardNavigationModule,
   _SortModule,
   CellClassParams,
+  CellMouseOverEvent,
   CellStyleModule,
   ClientSideRowModelApiModule,
   ClientSideRowModelModule,
@@ -65,6 +68,8 @@ export function haveSameColumns(previous: string[] = [], current: string[] = [])
   return previous.length === current.length && previous.every((column, index) => column === current[index]);
 }
 
+let nextTooltipId = 0;
+
 @Component({
   selector: 'base-table',
   standalone: true,
@@ -76,6 +81,7 @@ export function haveSameColumns(previous: string[] = [], current: string[] = [])
     MatInputModule,
     MatButtonModule,
     AgGridAngular,
+    OverlayModule,
   ],
   templateUrl: './base-table.component.html',
   styleUrls: ['./base-table.component.scss'],
@@ -83,6 +89,8 @@ export function haveSameColumns(previous: string[] = [], current: string[] = [])
 export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   @Input() columns: string[] = [];
   @Input() rows: any[] = [];
+  /** Supply before grid creation when immutable refreshes should preserve row nodes. */
+  @Input() rowIdentity: ((row: any) => string) | null = null;
   @Input() selectedRow: any | null = null;
   @Input() disableSorting = false;
   @Input() getCellClass: ((value: any, column: string) => string) | null = null;
@@ -135,6 +143,17 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
 
   private gridApi: GridApi<any> | null = null;
   private lastGridWidth = 0;
+  tooltipOrigin: ElementRef<HTMLElement> | null = null;
+  visibleTooltip = '';
+  readonly tooltipId = `tracked-table-tooltip-${nextTooltipId++}`;
+  readonly tooltipPositions: ConnectedPosition[] = [
+    { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 8 },
+    { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -8 },
+  ];
+  private hoveredCell: { rowId: string; column: string; element: HTMLElement } | null = null;
+  private tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+  private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly dismissTooltipOnScroll = () => this.closeCellTooltip();
   private readonly durationColumns = new Set([
     'Duration',
     'Total Duration',
@@ -154,6 +173,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   ngOnInit(): void {
     if (!this.columnDefs.length) this.rebuildColumnDefs();
     window.addEventListener('resize', this.handleResize);
+    window.addEventListener('scroll', this.dismissTooltipOnScroll, true);
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -193,10 +213,15 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     if (changes['selectedRow'] && this.gridApi) {
       this.gridApi.redrawRows();
     }
+    if (changes['rows'] || changes['columnTooltips'] || changes['getCellTooltip']) {
+      this.refreshCellTooltip();
+    }
   }
 
   ngOnDestroy(): void {
     window.removeEventListener('resize', this.handleResize);
+    window.removeEventListener('scroll', this.dismissTooltipOnScroll, true);
+    this.closeCellTooltip();
   }
 
   onGridReady(event: GridReadyEvent<any>): void {
@@ -265,8 +290,17 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
 
   onRowClick(row: any): void {
     if (row?.isDummy) return;
-    this.rowClicked.emit(this.selectedRow !== row ? row : null);
+    this.rowClicked.emit(this.isSelectedRow(row) ? null : row);
   }
+
+  private isSelectedRow(row: any): boolean {
+    if (!row || !this.selectedRow) return false;
+    return this.rowIdentity
+      ? this.rowIdentity(row) === this.rowIdentity(this.selectedRow)
+      : row === this.selectedRow;
+  }
+
+  readonly getDataRowId = (params: GetRowIdParams): string => this.rowIdentity!(params.data);
 
   getRowClass = (params: { data?: any }): string[] => {
     const classes: string[] = [];
@@ -276,7 +310,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     }
     if (params.data?.cssClass) classes.push(params.data.cssClass);
     if (params.data?.isDummy) classes.push('dummy-row');
-    if (!group && params.data === this.selectedRow) classes.push('selected');
+    if (!group && this.isSelectedRow(params.data)) classes.push('selected');
     return classes;
   };
 
@@ -315,6 +349,55 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     return cellTooltip || this.columnTooltips?.[column] || '';
   }
 
+  onCellMouseOver(event: CellMouseOverEvent): void {
+    if (!this.rowIdentity || this.rowGroups || !event.data || event.data.isDummy) return;
+    const element = (event.event?.target as HTMLElement | null)?.closest<HTMLElement>('.ag-cell');
+    if (!element || this.hoveredCell?.element === element) return;
+    this.closeCellTooltip();
+    const column = event.column.getColId();
+    if (!this.getTooltipForCell(event.data, column)) return;
+    this.hoveredCell = { rowId: this.rowIdentity(event.data), column, element };
+    this.tooltipOrigin = new ElementRef(element);
+    this.tooltipTimer = setTimeout(() => {
+      this.tooltipTimer = null;
+      this.refreshCellTooltip(true);
+      // Match AG Grid's default maximum display time without restarting on refresh.
+      this.tooltipHideTimer = setTimeout(() => this.closeCellTooltip(), 10000);
+    }, 700);
+  }
+
+  closeCellTooltip(): void {
+    if (this.tooltipTimer !== null) clearTimeout(this.tooltipTimer);
+    if (this.tooltipHideTimer !== null) clearTimeout(this.tooltipHideTimer);
+    this.tooltipTimer = null;
+    this.tooltipHideTimer = null;
+    const element = this.hoveredCell?.element;
+    if (element) {
+      const descriptions = (element.getAttribute('aria-describedby') || '').split(/\s+/)
+        .filter(id => id && id !== this.tooltipId);
+      if (descriptions.length) element.setAttribute('aria-describedby', descriptions.join(' '));
+      else element.removeAttribute('aria-describedby');
+    }
+    this.visibleTooltip = '';
+    this.hoveredCell = null;
+    this.tooltipOrigin = null;
+  }
+
+  private refreshCellTooltip(show = false): void {
+    if (!this.hoveredCell || !this.rowIdentity) return;
+    const { rowId, column, element } = this.hoveredCell;
+    const currentRow = this.rows.find(row => this.rowIdentity!(row) === rowId);
+    const message = currentRow && this.getTooltipForCell(currentRow, column);
+    if (!message || !element.isConnected) {
+      this.closeCellTooltip();
+    } else if (show || this.visibleTooltip) {
+      this.visibleTooltip = message;
+      const descriptions = new Set((element.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+      descriptions.add(this.tooltipId);
+      element.setAttribute('aria-describedby', [...descriptions].join(' '));
+    }
+  }
+
   getStatusAriaLabel(status: string): string {
     switch (status) {
       case 'Running Dot':
@@ -331,6 +414,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private rebuildColumnDefs(): void {
+    this.closeCellTooltip();
     const hiddenColumns = this.getResponsiveHiddenColumns();
     const orderedColumns = reconcileColumnOrder(this.columns, this.columnOrder);
 
@@ -354,13 +438,20 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
       comparator: this.rowGroups ? (a, b, nodeA, nodeB) => this.getComparator(column)(
         nodeA.data?.__baseTableGroup?.summary[column] ?? a,
         nodeB.data?.__baseTableGroup?.summary[column] ?? b) : this.getComparator(column),
-      tooltipValueGetter: (params) => this.getTooltipForCell(params.data, column) || undefined,
+      // AG Grid hides its own cell tooltip on every refresh, even for identical text.
+      // Tracked tables use the connected overlay below, owned by the hover session.
+      tooltipValueGetter: this.rowIdentity && !this.rowGroups ? undefined
+        : (params) => this.getTooltipForCell(params.data, column) || undefined,
       cellClass: (params: CellClassParams<any>) => {
-        const classes = [this.getCellClassForColumn(params.value, column)];
-        if (this.columnEditMode && this.isColumnToggleable(column) && !this.isColumnEnabled(column)) {
-          classes.push('column-disabled');
-        }
-        return classes.filter(Boolean);
+        // These dynamic classes are managed by rules so reused cells lose old colors.
+        return this.getCellClassForColumn(params.value, column).split(/\s+/)
+          .filter(name => name && !['green', 'yellow', 'red', 'white', 'column-disabled'].includes(name));
+      },
+      cellClassRules: {
+        ...Object.fromEntries(['green', 'yellow', 'red', 'white'].map(name => [name,
+          (params: CellClassParams<any>) => this.getCellClassForColumn(params.value, column).split(/\s+/).includes(name)
+        ])),
+        'column-disabled': () => this.columnEditMode && this.isColumnToggleable(column) && !this.isColumnEnabled(column),
       },
       cellRenderer: this.rowGroups && column === this.groupIdentityColumn ? BaseTableGroupCellComponent
         : column === 'Status' ? (params: any) => this.createStatusCell(params.value) : undefined,

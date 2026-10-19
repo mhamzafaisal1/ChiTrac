@@ -68,6 +68,7 @@
         *ngIf="rows.length"
         [columns]="columns"
         [rows]="rows"
+        [rowIdentity]="getMachineRowIdentity"
         [columnTooltips]="columnTooltips"
         [selectedRow]="selectedRow"
         (rowClicked)="onRowClick($event)"
