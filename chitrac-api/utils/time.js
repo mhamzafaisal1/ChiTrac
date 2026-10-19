@@ -101,7 +101,17 @@ function resolveTimeframe(tf) {
       startDT = now.startOf('year');
       break;
     default:
-      throw new Error(`Unsupported timeframe '${tf}'`);
+      if (tf === 'yesterday') {
+        endDT = now.startOf('day'); startDT = endDT.minus({ days: 1 });
+      } else if (tf === 'lastWeek') {
+        endDT = now.startOf('day').minus({ days: now.weekday % 7 }); startDT = endDT.minus({ weeks: 1 });
+      } else if (tf === 'lastMonth') {
+        endDT = now.startOf('month'); startDT = endDT.minus({ months: 1 });
+      } else if (tf === 'lastYear') {
+        endDT = now.startOf('year'); startDT = endDT.minus({ years: 1 });
+      } else {
+        throw new Error(`Unsupported timeframe '${tf}'`);
+      }
   }
   return { startDT, endDT };
 }

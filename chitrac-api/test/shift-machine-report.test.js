@@ -60,12 +60,12 @@ function totals(day, count = 100) {
   }));
 }
 
-function harness({ sessions = [], cached = [] } = {}) {
+function harness({ sessions = [], cached = [], shiftDocs = shifts } = {}) {
   let shiftCacheQueries = 0;
   let sessionQueries = 0;
   const db = wrapDatabase({ collection(name) {
     if (name === config.shiftCollectionName || name === 'config-shift') return {
-      find: () => cursor(shifts), findOne: async query => shifts.find(shift => equal(shift._id, query._id)) || null
+      find: () => cursor(shiftDocs), findOne: async query => shiftDocs.find(shift => equal(shift._id, query._id)) || null
     };
     if (name === config.totalsShiftCollectionName || name === config.totalsDailyCollectionName) return {
       find(query) {
@@ -117,6 +117,20 @@ function harness({ sessions = [], cached = [] } = {}) {
     }
   };
 }
+
+test('overnight multi-day reports clip both boundaries and combine each machine once', async () => {
+  const night = { ...shifts[0], timestamps: { start: instant('06', '22:00'), end: instant('07', '06:00') } };
+  const data = { ...session('06', []), timestamps: { start: instant('05', '22:00'), end: instant('07', '06:00') },
+    counts: [['06', '02:00'], ['06', '13:00'], ['06', '23:00'], ['07', '01:00'], ['07', '02:00']].map(([day, time]) => ({
+      timestamps: { create: instant(day, time) }, item: { id: 1, name: 'Sheets', standard: 100 },
+    })) };
+  const h = harness({ sessions: [data], cached: totals('06'), shiftDocs: [night] });
+  const result = await h.request(instant('06', '00:00'), instant('07', '02:00'));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.results.length, 1);
+  assert.equal(result.body.results[0].machineSummary.totalCount, 3);
+  assert.equal(h.shiftCacheQueries, 0);
+});
 
 test('partial-only shifts bypass totals cache and separate untagged counts at a shared boundary', async () => {
   const h = harness({ sessions: [session('06', ['05:30', '06:00', '08:00', '12:00', '13:00', '18:00', '18:30'])] });

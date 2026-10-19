@@ -4,6 +4,7 @@ const config = require("../../modules/config");
 const { parseAndValidateQueryParams } = require("../../utils/time");
 const { formatHumanName } = require("../../utils/humanNames");
 const { reportShiftMiddleware, sessionShiftFilter } = require('../../utils/reportShiftFilter');
+const { buildShiftScopedSessionWindows, durationInWindows } = require('../../utils/shiftWindows');
 
 const NON_FAULT_CODES = [0, 1, "0", "1", null];
 
@@ -349,7 +350,8 @@ module.exports = function faultHistoryRoute(server) {
       const endDate = new Date(end);
 
       const match = buildFaultSessionMatch(startDate, endDate);
-      Object.assign(match, sessionShiftFilter(req.query.shiftId));
+      const windows = req.reportShift ? buildShiftScopedSessionWindows(req.reportShift, startDate, endDate) : null;
+      if (windows) match.$and.push(sessionShiftFilter(req.query.shiftId, { includeUntagged: true }));
 
       const raw = await db
         .collection(config.machineSessionCollectionName)
@@ -411,7 +413,9 @@ module.exports = function faultHistoryRoute(server) {
         const code = r.code ?? null;
         const name = r.name ?? "Fault";
         const key = `${code}|${name}`;
-        const durSec = Math.max(0, Math.floor((r.ovEnd - r.ovStart) / 1000));
+        const durationMs = windows ? durationInWindows(r.ovStart, r.ovEnd, windows) : r.ovEnd - r.ovStart;
+        if (windows && durationMs <= 0) continue;
+        const durSec = Math.max(0, Math.floor(durationMs / 1000));
         const prev = summaryMap.get(key) || {
           code,
           name,
@@ -485,7 +489,8 @@ module.exports = function faultHistoryRoute(server) {
       const endDate = new Date(end);
 
       const match = buildFaultSessionMatch(startDate, endDate);
-      Object.assign(match, sessionShiftFilter(req.query.shiftId));
+      const windows = req.reportShift ? buildShiftScopedSessionWindows(req.reportShift, startDate, endDate) : null;
+      if (windows) match.$and.push(sessionShiftFilter(req.query.shiftId, { includeUntagged: true }));
 
       const raw = await db
         .collection(config.machineSessionCollectionName)
@@ -559,7 +564,9 @@ module.exports = function faultHistoryRoute(server) {
         }
         const machineEntry = byMachine.get(key);
         const faultKey = `${code}|${name}`;
-        const durSec = Math.max(0, Math.floor((r.ovEnd - r.ovStart) / 1000));
+        const durationMs = windows ? durationInWindows(r.ovStart, r.ovEnd, windows) : r.ovEnd - r.ovStart;
+        if (windows && durationMs <= 0) continue;
+        const durSec = Math.max(0, Math.floor(durationMs / 1000));
         const prev = machineEntry.byFault.get(faultKey) || {
           code,
           name,

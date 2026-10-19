@@ -1,6 +1,12 @@
 import { selectedTimeframeLabel } from './timeframe-label';
 
 describe('selectedTimeframeLabel', () => {
+  it('labels the timeframe and shift independently', () => {
+    expect(selectedTimeframeLabel('lastWeek', 'morning', false, [
+      { _id: 'morning', id: 1, name: 'Morning Shift' }
+    ])).toBe('Last Week - Morning Shift');
+    expect(selectedTimeframeLabel('yesterday', '', false)).toBe('Yesterday');
+  });
   it('labels default and explicitly selected Today consistently', () => {
     expect(selectedTimeframeLabel('', '', true)).toBe('Today');
     expect(selectedTimeframeLabel('today', '', false)).toBe('Today');

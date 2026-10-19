@@ -25,6 +25,7 @@ const {
 } = require("../../utils/faultTimeSummary");
 const config = require("../../modules/config");
 const { reportShiftMiddleware } = require('../../utils/reportShiftFilter');
+const { buildShiftScopedSessionWindows } = require('../../utils/shiftWindows');
 
 function isValidMachineReportRecipientEmail(s) {
   if (typeof s !== "string") return false;
@@ -132,52 +133,6 @@ function getShiftIdCandidates(shiftId) {
     candidates.push(new ObjectId(String(shiftId)));
   }
   return candidates;
-}
-
-function buildShiftScopedSessionWindows(shiftDoc, start, end) {
-  const components = getShiftTimeComponents(shiftDoc);
-  const startDt = DateTime.fromJSDate(new Date(start), { zone: SYSTEM_TIMEZONE });
-  const endDt = DateTime.fromJSDate(new Date(end), { zone: SYSTEM_TIMEZONE });
-  if (!components || !startDt.isValid || !endDt.isValid || endDt <= startDt) return [];
-
-  const activeDays = Array.isArray(shiftDoc?.activeDays) && shiftDoc.activeDays.length
-    ? shiftDoc.activeDays
-    : [1, 2, 3, 4, 5, 6, 7];
-  const windows = [];
-  let dayCursor = startDt.startOf("day");
-  const lastDay = endDt.minus({ milliseconds: 1 }).startOf("day");
-
-  while (dayCursor <= lastDay) {
-    if (activeDays.includes(dayCursor.weekday)) {
-      const shiftStart = dayCursor.set({
-        hour: components.startTime.hour,
-        minute: components.startTime.minute,
-        second: 0,
-        millisecond: 0,
-      });
-      let shiftEnd = dayCursor.set({
-        hour: components.endTime.hour,
-        minute: components.endTime.minute,
-        second: 0,
-        millisecond: 0,
-      });
-      if (shiftEnd <= shiftStart) {
-        shiftEnd = shiftEnd.plus({ days: 1 });
-      }
-
-      const windowStart = DateTime.max(startDt, shiftStart);
-      const windowEnd = DateTime.min(endDt, shiftEnd);
-      if (windowEnd > windowStart) {
-        windows.push({
-          start: windowStart.toJSDate(),
-          end: windowEnd.toJSDate(),
-        });
-      }
-    }
-    dayCursor = dayCursor.plus({ days: 1 });
-  }
-
-  return windows;
 }
 
 module.exports = function (server) {
@@ -351,7 +306,12 @@ module.exports = function (server) {
       } else {
         // No complete days, use sessions for entire range
         console.log(`[OPERATOR-CACHE] No complete days, using sessions for entire range`);
-        sessionData = await getOperatorSessionDataForPartialDays(db,[{ start: exactStart, end: exactEnd }], operatorId, { shiftId: req.query.shiftId });
+        const windows = req.reportShift
+          ? buildShiftScopedSessionWindows(req.reportShift, exactStart, exactEnd)
+          : [{ start: exactStart, end: exactEnd }];
+        sessionData = await getOperatorSessionDataForPartialDays(db, windows, operatorId, {
+          shiftId: req.query.shiftId, includeUntaggedShift: Boolean(req.reportShift), exclusiveEnd: Boolean(req.reportShift),
+        });
         console.log(`[OPERATOR-CACHE] Sessions returned ${sessionData.operators.length} operators`);
       }
 
@@ -467,7 +427,7 @@ module.exports = function (server) {
         [...operatorDataMap.keys()],
         exactStart,
         exactEnd,
-        { activeShifts, zone: SYSTEM_TIMEZONE, shiftId: req.query.shiftId }
+        { activeShifts, zone: SYSTEM_TIMEZONE, shiftId: req.query.shiftId, includeUntaggedShift: Boolean(req.reportShift) }
       );
       for (const [opId, operatorData] of operatorDataMap) {
         const sessionTimes = lookupMergedTime(sessionTimeByOperatorId, opId);
@@ -949,8 +909,12 @@ module.exports = function (server) {
         console.log(`[item-sessions-summary-daily-cache] Reason: Querying partial day from the past requires session-level precision`);
 
         // Fall back to session-based approach
-        const partialDays = [{ start: exactStart, end: exactEnd }];
-        const sessionData = await getSessionDataForPartialDays(db, partialDays, undefined, { shiftId: req.query.shiftId });
+        const partialDays = req.reportShift
+          ? buildShiftScopedSessionWindows(req.reportShift, exactStart, exactEnd)
+          : [{ start: exactStart, end: exactEnd }];
+        const sessionData = await getSessionDataForPartialDays(db, partialDays, undefined, {
+          shiftId: req.query.shiftId, includeUntaggedShift: Boolean(req.reportShift), exclusiveEnd: Boolean(req.reportShift),
+        });
         const sessionItems = sessionData.machineItems || [];
 
         console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions`);
@@ -1149,7 +1113,13 @@ module.exports = function (server) {
         overlayShifts = [shiftDoc];
         shiftElapsedMs = computeShiftElapsedMs(overlayShifts, start, end, SYSTEM_TIMEZONE);
 
-        const { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
+        let { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
+        const times = getShiftTimeComponents(shiftDoc);
+        if (times && times.endTime.hour * 60 + times.endTime.minute <= times.startTime.hour * 60 + times.startTime.minute) {
+          // Calendar-day caches cannot safely represent a clipped overnight occurrence.
+          completeDays = [];
+          partialDays = [{ start, end }];
+        }
         let cacheDocs = [];
         if (completeDays.length > 0) {
           const dateStrings = completeDays.map(day => day.dateStr);
@@ -1200,8 +1170,9 @@ module.exports = function (server) {
           const fallbackWindows = buildShiftScopedSessionWindows(shiftDoc, start, end);
           const sessionData = await getSessionDataForPartialDays(db, fallbackWindows, serial, sessionOptions);
 
-          machineRecords = sessionData.machines || [];
-          machineItemRecords = sessionData.machineItems || [];
+          const fallback = combineHybridData([], [], sessionData);
+          machineRecords = fallback.machines;
+          machineItemRecords = fallback.machineItems;
 
           if (!machineRecords.length && !machineItemRecords.length) {
             return res.json({

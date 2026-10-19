@@ -218,7 +218,7 @@ export class ComparisonDashboardComponent implements OnInit {
     this.pickerStart = current?.start ? new Date(current.start) : this.startOfToday();
     this.pickerEnd = current?.end ? new Date(current.end) : new Date();
     this.pickerShiftId = current?.shiftId || null;
-    this.pickerMode = current?.mode || (current?.shiftId ? 'shift' : 'custom');
+    this.pickerMode = current?.mode && current.mode !== 'shift' ? current.mode : 'custom';
   }
 
   confirmPicker(selection: TimeframeSelection): void {

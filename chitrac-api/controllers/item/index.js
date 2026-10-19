@@ -12,6 +12,7 @@ const schedule = require('node-schedule');
 const config = require('../../modules/config');
 const timestampsSchema = require('../../schemas/timestampsSchema');
 const { parseAndValidateQueryParams } = require("../../utils/time");
+const { getShiftSummaryRecords } = require('../../utils/shiftSummaryRecords');
 const {
   buildItemSummaryRows,
   splitTimeRangeForHybridItems,
@@ -453,6 +454,12 @@ function constructor(server) {
       const shiftId = await resolveShiftIdString(req);
       const exactStart = new Date(start);
       const exactEnd = new Date(end);
+
+      if (shiftId) {
+        const shift = await db.collection(config.shiftCollectionName).findOne({ _id: new ObjectId(shiftId) });
+        const records = await getShiftSummaryRecords(db, shift, exactStart, exactEnd, 'machine-item');
+        return res.json(buildItemSummaryRows(records));
+      }
 
       const today = new Date();
       const todayDateStr = today.toISOString().split("T")[0];
