@@ -256,19 +256,22 @@
 
 
         <!-- Login Icon and Popup -->
-        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn" aria-label="Open login menu" [matMenuTriggerFor]="loginMenu"
-          *ngIf="!user?.username" (menuOpened)="closeMenu()">
-          <mat-icon>login</mat-icon>
-        </button>
-
-        <button mat-icon-button class="logout-btn" aria-label="Log out" *ngIf="user?.username" (click)="logout()">
-          <mat-icon>logout</mat-icon>
+        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn"
+          [attr.aria-label]="user?.username ? 'Open logout menu' : 'Open login menu'" [matMenuTriggerFor]="loginMenu"
+          (menuOpened)="closeMenu()">
+          <mat-icon>{{ user?.username ? 'logout' : 'login' }}</mat-icon>
         </button>
 
         <mat-menu #loginMenu="matMenu" class="login-menu-panel" [overlapTrigger]="false" xPosition="before"
-          yPosition="below" [hasBackdrop]="true" (closed)="closeMenu()" (keydown)="onKeyDown($event)">
+          yPosition="below" [hasBackdrop]="true" (closed)="onAuthenticationMenuClosed()" (keydown)="onKeyDown($event)">
           <div (click)="$event.stopPropagation()" (keydown)="onKeyDown($event)">
-            <app-user-login (closeModal)="onLoginModalClose()" />
+            <button *ngIf="user?.username; else loginForm" mat-menu-item (click)="logout(); onLoginModalClose()">
+              <mat-icon>logout</mat-icon>
+              <span>Log Out as {{ user?.username }}</span>
+            </button>
+            <ng-template #loginForm>
+              <app-user-login (closeModal)="onLoginModalClose()" />
+            </ng-template>
           </div>
         </mat-menu>
       </span>

@@ -22,7 +22,8 @@ describe('navbar timeframe indicator', () => {
       { status$: of('disconnected'), dashboardCache$: cache, ensureConnected() {} } as any,
       { context$: of(null), setEditing() {} } as any,
       dates,
-      { getActiveShifts: shifts } as any
+      { getActiveShifts: shifts } as any,
+      { requests$: new Subject() } as any
     ));
     component.ngOnInit();
     return { component, dates, shifts, cache };
@@ -31,7 +32,7 @@ describe('navbar timeframe indicator', () => {
   it('tracks applied defaults and confirmed selections', fakeAsync(() => {
     const { component, dates, shifts } = setup();
     tick();
-    expect(component.selectedTimeframeLabel).toBe('today');
+    expect(component.selectedTimeframeLabel).toBe('Today');
     expect(shifts).not.toHaveBeenCalled();
     dates.setLiveMode(false);
     dates.setShiftId('afternoon');

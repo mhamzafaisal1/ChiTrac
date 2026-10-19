@@ -108,7 +108,7 @@ export const routes: Routes = [
 	{ path: 'ng/eight-station-demo', component: EightStationDemoComponent },
 	
 	// Redirects
-	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
-	{ path: '', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' },
-	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }
+	{ path: 'ng/home', loadComponent: () => import('./home/home.component').then(m => m.HomeComponent) },
+	{ path: '', redirectTo: 'ng/home', pathMatch: 'full' },
+	{ path: '**', redirectTo: 'ng/home', pathMatch: 'full' }
 ];
