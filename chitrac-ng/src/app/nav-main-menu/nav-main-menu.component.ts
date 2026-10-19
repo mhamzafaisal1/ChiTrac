@@ -30,6 +30,7 @@ import { WebsocketConnectionStatus, WebsocketService } from '../services/websock
 import { LayoutEditContext, LayoutEditService } from '../services/layout-edit.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
 import { UserLoginComponent } from '../user-login/user-login.component';
+import { NavigationActionsService } from '../services/navigation-actions.service';
 
 const left = [
   query(':enter, :leave', style({ position: 'absolute', width: '15em' })),
@@ -164,6 +165,8 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     );
 
   private userSub?: Subscription;
+  private navigationActionsSub?: Subscription;
+  private settingsAfterLogin = false;
   private settingsSub?: Subscription;
   private dialogCloseSub?: Subscription;
   private websocketStatusSub?: Subscription;
@@ -206,11 +209,20 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     private websocketService: WebsocketService,
     private layoutEditService: LayoutEditService,
     private dateTimeService: DateTimeService,
-    private shiftService: ShiftService
+    private shiftService: ShiftService,
+    private navigationActions: NavigationActionsService
   ) {}
 
   ngOnInit() {
     this.subscribeToUser();
+    this.navigationActionsSub = this.navigationActions.requests$.subscribe(action => {
+      if (action === 'settings') {
+        this.openSettingsMenu();
+      } else {
+        this.settingsAfterLogin = false;
+        this.openAuthenticationMenu();
+      }
+    });
     const shifts$ = this.dateTimeService.shiftId$.pipe(
       distinctUntilChanged(),
       switchMap(id => id ? this.shiftService.getActiveShifts(true).pipe(
@@ -264,6 +276,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.timeframeSub?.unsubscribe();
     this.userSub?.unsubscribe();
+    this.navigationActionsSub?.unsubscribe();
     this.settingsSub?.unsubscribe();
     this.dialogCloseSub?.unsubscribe();
     this.websocketStatusSub?.unsubscribe();
@@ -278,6 +291,30 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         this.router.navigate(['/']);
       }
     });
+  }
+
+  private openAuthenticationMenu(): void {
+    this.closeMenu();
+    this.loginMenu?.openMenu();
+  }
+
+  private openSettingsMenu(): void {
+    if (!this.user?.username) {
+      this.settingsAfterLogin = true;
+      this.openAuthenticationMenu();
+      return;
+    }
+    if (!this.canAccess(this.permissionLevels.settings)) return;
+    this.closeMenu();
+    this.openMenu('main');
+    this.openMenu('settings');
+  }
+
+  onAuthenticationMenuClosed(): void {
+    this.closeMenu();
+    const openSettings = this.settingsAfterLogin && this.user?.username;
+    this.settingsAfterLogin = false;
+    if (openSettings) this.openSettingsMenu();
   }
 
   darkModeToggle() {
