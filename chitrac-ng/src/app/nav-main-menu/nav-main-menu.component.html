@@ -202,23 +202,16 @@
       </div>
       <span style="margin-left: 12px"><b><a href="/">{{ systemName }}</a></b></span>
 
-      <!-- Spacer -->
-
-      <!-- Spacer -->
-      <span class="spacer"></span>
+      <span class="connection-status" [ngClass]="websocketStatus"
+        [matTooltip]="getConnectionStatusTooltip()" matTooltipShowDelay="500"
+        role="status" aria-live="polite" aria-atomic="true">
+        <span class="connection-status-dot" aria-hidden="true"></span>
+        <span>{{ getConnectionStatusLabel() }}</span>
+      </span>
 
       <!-- Right: calendar + dark mode controls + login -->
       <span class="toolbar-actions">
-        <span
-          [class]="getLiveChipClass()"
-          [matTooltip]="getLiveChipTooltip()"
-          matTooltipShowDelay="500">
-          <mat-icon>{{ getLiveChipIcon() }}</mat-icon>
-          <span>{{ getLiveChipLabel() }}</span>
-          <small *ngIf="dashboardUpdatedAt">{{ dashboardUpdatedAt | displayTime }}</small>
-        </span>
-
-        <span class="live-chip timeframe-chip"
+        <span class="timeframe-chip"
           [matTooltip]="'Selected timeframe: ' + selectedTimeframeLabel"
           [attr.aria-label]="'Selected timeframe: ' + selectedTimeframeLabel"
           aria-live="polite"
@@ -255,11 +248,16 @@
         <mat-icon class="dark-icon">dark_mode</mat-icon>
 
 
-        <!-- Login Icon and Popup -->
-        <button #loginMenuTrigger="matMenuTrigger" mat-icon-button class="login-btn"
-          [attr.aria-label]="user?.username ? 'Open logout menu' : 'Open login menu'" [matMenuTriggerFor]="loginMenu"
+        <!-- User indicator and shared authentication popup -->
+        <button #loginMenuTrigger="matMenuTrigger" mat-button class="user-menu-button" type="button"
+          [attr.aria-label]="user?.username ? 'Open user menu for ' + user.username : 'Open login menu'"
+          [attr.title]="user?.username || 'Login'" [matMenuTriggerFor]="loginMenu"
           (menuOpened)="closeMenu()">
-          <mat-icon>{{ user?.username ? 'logout' : 'login' }}</mat-icon>
+          <span class="user-menu-content">
+            <mat-icon class="user-icon" aria-hidden="true">account_circle</mat-icon>
+            <span class="user-menu-label">{{ user?.username || 'Login' }}</span>
+            <mat-icon class="user-menu-chevron" aria-hidden="true">expand_more</mat-icon>
+          </span>
         </button>
 
         <mat-menu #loginMenu="matMenu" class="login-menu-panel" [overlapTrigger]="false" xPosition="before"
