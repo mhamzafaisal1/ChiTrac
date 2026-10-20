@@ -64,7 +64,8 @@ describe('DMC navigation indicators', () => {
       status.next(state);
       fixture.detectChanges();
       const indicator = fixture.nativeElement.querySelector('.connection-status');
-      expect(indicator.textContent.trim()).toBe(label);
+      expect(indicator.querySelector('.connection-status-label').textContent.trim()).toBe(label);
+      expect(indicator.querySelector('.timeframe-label').textContent.trim()).toBe('Today');
       expect(indicator.classList.contains(state)).toBeTrue();
       expect(indicator.getAttribute('role')).toBe('status');
       expect(indicator.querySelector('.connection-status-dot')).not.toBeNull();

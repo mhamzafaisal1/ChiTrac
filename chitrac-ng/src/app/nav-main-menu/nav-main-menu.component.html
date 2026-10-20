@@ -206,19 +206,18 @@
         [matTooltip]="getConnectionStatusTooltip()" matTooltipShowDelay="500"
         role="status" aria-live="polite" aria-atomic="true">
         <span class="connection-status-dot" aria-hidden="true"></span>
-        <span>{{ getConnectionStatusLabel() }}</span>
-      </span>
-
-      <!-- Right: calendar + dark mode controls + login -->
-      <span class="toolbar-actions">
-        <span class="timeframe-chip"
+        <span class="connection-status-label">{{ getConnectionStatusLabel() }}</span>
+        <span class="timeframe-label"
           [matTooltip]="'Selected timeframe: ' + selectedTimeframeLabel"
           [attr.aria-label]="'Selected timeframe: ' + selectedTimeframeLabel"
           aria-live="polite"
           matTooltipShowDelay="500">
-          <span class="timeframe-label">{{ selectedTimeframeLabel }}</span>
+          {{ selectedTimeframeLabel }}
         </span>
+      </span>
 
+      <!-- Right: calendar + dark mode controls + login -->
+      <span class="toolbar-actions">
         <button
           mat-icon-button
           class="layout-edit-btn"

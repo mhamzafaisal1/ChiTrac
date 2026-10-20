@@ -5,12 +5,14 @@
       <span class="tile-label">{{ destination.label }}</span>
       <mat-icon aria-hidden="true">{{ destination.icon }}</mat-icon>
     </a>
+    @if (user?.username) {
     <button type="button" class="home-tile" (click)="navigation.openSettings()"
       [disabled]="!!user?.username && !userService.hasPermissionLevel(permissionLevels.settings, user)"
       [attr.title]="user?.username && !userService.hasPermissionLevel(permissionLevels.settings, user) ? 'You do not have permission to access Settings' : null">
       <span class="tile-label">Settings</span>
       <mat-icon aria-hidden="true">settings</mat-icon>
     </button>
+    }
     <button type="button" class="home-tile" (click)="navigation.openAuthentication()" aria-haspopup="menu">
       <span class="tile-label">{{ user?.username ? 'Log Out' : 'Log In' }}</span>
       <mat-icon aria-hidden="true">{{ user?.username ? 'logout' : 'login' }}</mat-icon>

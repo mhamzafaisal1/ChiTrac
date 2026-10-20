@@ -126,29 +126,21 @@
   background: currentColor;
 }
 
-.timeframe-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 30px;
-  padding: 0 0.65rem;
-  border-radius: 999px;
-  border: 1px solid var(--sg-color-blue-gray-medium-300);
-  background: var(--sg-color-blue-gray-light-500);
-  color: var(--theme-color-on-surface-variant);
-  font-size: 0.8rem;
-  font-weight: 600;
-  line-height: 1;
-
-  max-width: 180px;
+.connection-status-label {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .timeframe-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.timeframe-label {
+  margin-left: auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sg-color-white);
 }
 
 .calendar-btn {
@@ -314,10 +306,6 @@
 
   .calendar-btn, .user-menu-button, .dark-toggle {
     margin: 0;
-  }
-
-  .timeframe-chip {
-    max-width: 110px;
   }
 
   .user-menu-label {

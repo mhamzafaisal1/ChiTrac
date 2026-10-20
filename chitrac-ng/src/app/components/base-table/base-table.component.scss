@@ -79,6 +79,8 @@
   --ag-header-text-color: var(--mat-table-header-headline-color, #e3e2e7);
   --ag-border-color: var(--mat-table-row-item-outline-color, #8e909a);
   --ag-row-border-color: var(--mat-table-row-item-outline-color, #8e909a);
+  // Row separators are drawn once on .ag-row, not again on AG Grid's inner cells.
+  --ag-row-border: none;
   --ag-selected-row-background-color: var(--selected-bg, rgba(0, 183, 232, 0.18));
   --ag-header-column-resize-handle-color: transparent;
   --ag-wrapper-border-radius: 0;
@@ -101,8 +103,9 @@
   }
 
   .ag-header {
-    border-bottom: 0;
-    box-shadow: inset 0 -1px var(--mat-table-row-item-outline-color, #8e909a);
+    border-bottom: var(--mat-table-row-item-outline-width, 1px) solid
+      var(--mat-table-row-item-outline-color, #8e909a);
+    box-shadow: none;
   }
 
   .ag-header-cell,
@@ -157,11 +160,17 @@
   .ag-row {
     background-color: var(--theme-color-table-row-background);
     cursor: pointer;
+    border-top: 0;
     border-bottom: var(--mat-table-row-item-outline-width, 1px) solid
       var(--mat-table-row-item-outline-color, #8e909a);
     border-left: 0;
     border-right: 0;
     transition: background-color 0.2s ease;
+  }
+
+  // AG Grid maintains this class in display order, including after sorting/filtering.
+  .ag-row.ag-row-last {
+    border-bottom: 0;
   }
 
   .ag-row:hover {
