@@ -48,6 +48,7 @@ import { VisualOpsDashboardComponent } from './visual-ops-dashboard/visual-ops-d
 
 export const routes: Routes = [
 	// Settings pages
+	{ path: 'ng/settings', pathMatch: 'full', loadComponent: () => import('./settings-menu/settings-menu.component').then(m => m.SettingsMenuComponent), canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.operators } },
 	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },

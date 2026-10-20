@@ -6,7 +6,7 @@
       <mat-icon aria-hidden="true">{{ destination.icon }}</mat-icon>
     </a>
     @if (user?.username) {
-    <button type="button" class="home-tile" (click)="navigation.openSettings()"
+    <button type="button" class="home-tile" routerLink="/ng/settings"
       [disabled]="!!user?.username && !userService.hasPermissionLevel(permissionLevels.settings, user)"
       [attr.title]="user?.username && !userService.hasPermissionLevel(permissionLevels.settings, user) ? 'You do not have permission to access Settings' : null">
       <span class="tile-label">Settings</span>
