@@ -300,6 +300,15 @@ function constructor(server) {
         const chartVisibility = experimentalDailyDashboard.chartVisibility;
         const experimentalUpdates = {};
 
+        if (experimentalDailyDashboard.gridLayout !== undefined) {
+          if (!['3x2', '2x2'].includes(experimentalDailyDashboard.gridLayout)) {
+            const error = new Error('Invalid gridLayout. Must be 3x2 or 2x2');
+            error.status = 400;
+            throw error;
+          }
+          experimentalUpdates.gridLayout = experimentalDailyDashboard.gridLayout;
+        }
+
         if (chartOrder !== undefined) {
           if (!Array.isArray(chartOrder)) {
             const error = new Error('Invalid chartOrder. Must be an array of strings');
@@ -440,6 +449,11 @@ function constructor(server) {
     if (preferences.dashboardLayouts?.experimentalDailyDashboard?.chartVisibility) {
       updates['dashboardLayouts.experimentalDailyDashboard.chartVisibility'] =
         preferences.dashboardLayouts.experimentalDailyDashboard.chartVisibility;
+    }
+
+    if (preferences.dashboardLayouts?.experimentalDailyDashboard?.gridLayout) {
+      updates['dashboardLayouts.experimentalDailyDashboard.gridLayout'] =
+        preferences.dashboardLayouts.experimentalDailyDashboard.gridLayout;
     }
 
     return updates;

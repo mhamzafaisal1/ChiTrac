@@ -5,14 +5,16 @@
       type="button"
       *ngIf="layoutEditing"
       (click)="openChartVisibilityDialog()"
-      aria-label="Show or hide charts"
+      aria-label="Edit chart layout"
     >
-      <mat-icon>visibility</mat-icon>
-      <span>Show/Hide Charts</span>
+      <mat-icon>dashboard_customize</mat-icon>
+      <span>Edit Layout</span>
     </button>
 
     <div
       class="charts-grid"
+      [class.layout-two-by-two]="gridLayout === '2x2'"
+      [style.--chart-columns]="gridLayout === '2x2' ? 2 : 3"
       #chartsGrid
       cdkDropList
       cdkDropListOrientation="mixed"

@@ -98,6 +98,7 @@ const dashboardLayoutsSchema = {
     experimentalDailyDashboard: {
       type: 'object',
       properties: {
+        gridLayout: { type: 'string', enum: ['3x2', '2x2'] },
         chartOrder: {
           type: 'array',
           maxItems: 20,
