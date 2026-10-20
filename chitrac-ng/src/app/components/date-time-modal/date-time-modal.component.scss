@@ -95,6 +95,12 @@
     }
   }
 
+  .future-timeframe-error {
+    margin: -0.5rem 0 0;
+    color: var(--sg-color-red);
+    font-size: 0.8rem;
+  }
+
   // Responsive design for smaller screens
   @media (max-width: 768px) {
     flex-direction: column;

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.timeframe-picker.spec.json",
+  "include": [
+    "src/app/machine-dashboard/machine-dashboard-count-sparkline.spec.ts",
+    "src/app/components/date-time-modal/future-timeframe.spec.ts",
+    "src/app/components/date-time-modal/date-time-modal.component.spec.ts",
+    "src/app/components/timeframe-picker/timeframe-picker.component.spec.ts",
+    "src/app/utils/timeframe-label.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

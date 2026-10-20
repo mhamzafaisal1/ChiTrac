@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Optional, Output, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -10,6 +10,8 @@ import { MatTimepickerModule } from '@angular/material/timepicker';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { Subject, takeUntil } from 'rxjs';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
+import { futureTodayShiftStart } from '../../utils/future-shift';
+import { ShiftTimeRange } from '../../utils/shift-time-range';
 
 export type TimeframePickerMode = 'custom' | 'shift' | 'today' | 'thisWeek' | 'thisMonth' | 'thisYear' |
   'yesterday' | 'lastWeek' | 'lastMonth' | 'lastYear';
@@ -43,26 +45,49 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
   pickerShiftId: string | null = null;
   pickerMode: TimeframePickerMode = 'custom';
   private destroy$ = new Subject<void>();
+  private futureShiftTimer?: ReturnType<typeof setTimeout>;
+  private shiftTimeRange = new ShiftTimeRange();
 
-  constructor(private shiftService: ShiftService) {}
+  private applyShiftTimes(): void {
+    if (!this.pickerStart || !this.pickerEnd) return;
+    const shift = this.shifts?.find(s => String(s._id) === this.pickerShiftId);
+    const range = this.shiftTimeRange.apply(this.pickerStart, this.pickerEnd, this.pickerMode, shift);
+    this.pickerStart = range.start;
+    this.pickerEnd = range.end;
+  }
+
+  get isFutureTimeframe(): boolean {
+    return futureTodayShiftStart(this.pickerMode, this.pickerShiftId, this.shifts) !== null;
+  }
+
+  private scheduleShiftStartCheck(): void {
+    clearTimeout(this.futureShiftTimer);
+    const start = futureTodayShiftStart(this.pickerMode, this.pickerShiftId, this.shifts);
+    if (start !== null) this.futureShiftTimer = setTimeout(() => this.cdr?.markForCheck(), start - Date.now());
+  }
+
+  constructor(private shiftService: ShiftService, @Optional() private cdr?: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     if (this.shifts !== null) return;
     this.shiftService.getActiveShifts().pipe(takeUntil(this.destroy$)).subscribe({
-      next: res => this.shifts = res.shifts || [],
+      next: res => { this.shifts = res.shifts || []; this.scheduleShiftStartCheck(); },
       error: () => { this.shifts = []; this.shiftsLoadError = 'Could not load shifts'; },
     });
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['shifts']) this.scheduleShiftStartCheck();
     if (!['start', 'end', 'shiftId', 'mode'].some(key => changes[key])) return;
     this.pickerStart = this.start ? new Date(this.start) : this.startOfToday();
     this.pickerEnd = this.end ? new Date(this.end) : new Date();
     this.pickerShiftId = this.shiftId;
     this.pickerMode = this.mode === 'shift' ? 'custom' : this.mode;
+    this.shiftTimeRange.reset();
+    this.scheduleShiftStartCheck();
   }
 
-  ngOnDestroy(): void { this.destroy$.next(); this.destroy$.complete(); }
+  ngOnDestroy(): void { clearTimeout(this.futureShiftTimer); this.destroy$.next(); this.destroy$.complete(); }
 
   get valid(): boolean {
     return !!this.pickerStart && !!this.pickerEnd &&
@@ -74,12 +99,18 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
 
   selectShift(id: string | null): void {
     if (this.disabled) return;
+    const hasSchedule = this.shifts?.some(s => s.startTime && s.endTime &&
+      [this.pickerShiftId, id].includes(String(s._id)));
     this.pickerShiftId = id;
+    if (this.pickerMode === 'custom' || !hasSchedule) this.applyShiftTimes();
+    else this.quickSelect(this.pickerMode);
+    this.scheduleShiftStartCheck();
   }
 
   quickSelect(mode: TimeframePickerMode): void {
     if (this.disabled) return;
     this.pickerMode = mode;
+    this.scheduleShiftStartCheck();
     if (mode === 'custom') return;
     const now = new Date();
     const start = new Date(now);
@@ -117,10 +148,14 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
     }
     this.pickerStart = start;
     this.pickerEnd = end;
+    this.shiftTimeRange.reset();
+    this.applyShiftTimes();
   }
 
   confirm(): void {
-    if (this.disabled || !this.valid) return;
+    if (this.disabled || this.isFutureTimeframe) return;
+    if (this.pickerMode === 'today' && !this.pickerShiftId) this.pickerEnd = new Date();
+    if (!this.valid) return;
     this.confirmed.emit({ start: new Date(this.pickerStart!), end: new Date(this.pickerEnd!), shiftId: this.pickerShiftId, mode: this.pickerMode });
   }
 

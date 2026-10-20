@@ -26,6 +26,8 @@ import { DateTimeService } from '../../services/date-time.service';
 import { DashboardTimeframeService } from '../../services/dashboard-timeframe.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
 import { WebsocketService } from '../../services/websocket.service';
+import { futureTodayShiftStart } from '../../utils/future-shift';
+import { ShiftTimeRange } from '../../utils/shift-time-range';
 
 @Component({
   selector: 'app-date-time-modal',
@@ -66,6 +68,27 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
   currentShiftId: string | null = null;
   shiftsLoadError: string | null = null;
   private dashboardCacheSub?: Subscription;
+  private futureShiftTimer?: ReturnType<typeof setTimeout>;
+  private shiftTimeRange = new ShiftTimeRange();
+
+  private applyShiftTimes(): void {
+    const shift = this.shifts.find(s => String(s._id) === this.selectedShiftId);
+    const range = this.shiftTimeRange.apply(this.startDateTime, this.endDateTime, this.selectedOption, shift);
+    this.startDateTime = range.start;
+    this.endDateTime = range.end;
+  }
+
+  get isFutureTimeframe(): boolean {
+    return futureTodayShiftStart(this.selectedOption, this.selectedShiftId, this.shifts) !== null;
+  }
+
+  private scheduleShiftStartCheck(): void {
+    clearTimeout(this.futureShiftTimer);
+    const start = futureTodayShiftStart(this.selectedOption, this.selectedShiftId, this.shifts);
+    if (start !== null) {
+      this.futureShiftTimer = setTimeout(() => this.cdr.markForCheck(), start - Date.now());
+    }
+  }
 
   ngOnInit(): void {
     this.resetDraftFromCommittedSelection();
@@ -76,6 +99,7 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
           (a, b) => this.shiftStartMinutes(a) - this.shiftStartMinutes(b)
         );
         this.shiftsLoadError = null;
+        this.scheduleShiftStartCheck();
         this.cdr.markForCheck();
       },
       error: () => {
@@ -101,9 +125,11 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.dashboardCacheSub?.unsubscribe();
+    clearTimeout(this.futureShiftTimer);
   }
 
   resetDraftFromCommittedSelection(): void {
+    this.shiftTimeRange.reset();
     this.initializePickerDates();
     this.mode = this.dateTimeService.getLiveMode() ? 'live' : 'manual';
     const existing = this.dateTimeService.getShiftId();
@@ -111,6 +137,7 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     const existingTimeframe = this.dateTimeService.getTimeframe();
     this.selectedTimeframe = existingTimeframe || '';
     this.selectedOption = existingTimeframe || (this.dateTimeService.getLiveMode() ? 'today' : 'custom');
+    this.scheduleShiftStartCheck();
     this.cdr.markForCheck();
   }
 
@@ -129,11 +156,19 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
       this.startDateTime = start;
       this.endDateTime = now;
       this.selectedTimeframe = 'today';
+      this.shiftTimeRange.reset();
+      this.applyShiftTimes();
     }
+    this.scheduleShiftStartCheck();
   }
 
   selectShift(shiftId: string | null): void {
+    const hasSchedule = this.shifts.some(s => s.startTime && s.endTime &&
+      [this.selectedShiftId, shiftId].includes(String(s._id)));
     this.selectedShiftId = shiftId;
+    if (this.selectedOption === 'custom' || !hasSchedule) this.applyShiftTimes();
+    else this.onTimeframeSelect(this.selectedOption);
+    this.scheduleShiftStartCheck();
     this.cdr.markForCheck();
   }
 
@@ -153,6 +188,7 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     this.selectedOption = 'custom';
     this.selectedTimeframe = '';
     this.mode = 'manual';
+    this.scheduleShiftStartCheck();
     this.cdr.markForCheck();
   }
 
@@ -214,6 +250,9 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
 
     this.startDateTime = start;
     this.endDateTime = end;
+    this.shiftTimeRange.reset();
+    this.applyShiftTimes();
+    this.scheduleShiftStartCheck();
   }
 
   selectToday(): void {
@@ -254,11 +293,14 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
       this.mode = selection.mode === 'current' ? 'live' : 'manual';
       this.selectedOption = selection.mode === 'current' ? 'today' : 'custom';
       this.dateTimeService.setLiveMode(selection.mode === 'current');
+      this.scheduleShiftStartCheck();
       this.cdr.markForCheck();
     });
   }
 
   confirm(): void {
+    if (this.isFutureTimeframe) return;
+    if (this.selectedOption === 'today' && !this.selectedShiftId) this.endDateTime = new Date();
     if (!Number.isFinite(this.startDateTime?.getTime()) ||
         !Number.isFinite(this.endDateTime?.getTime()) || this.endDateTime <= this.startDateTime) return;
     this.dateTimeService.setStartTime(this.startDateTime.toISOString());
