@@ -24,13 +24,13 @@ describe('HomeComponent', () => {
     });
   });
 
-  it('shows the six destinations in the requested order, followed by Settings and Log In', () => {
+  it('shows the six destinations followed by Log In, with Settings hidden when signed out', () => {
     const fixture = TestBed.createComponent(HomeComponent);
     fixture.detectChanges();
     const tiles = Array.from(fixture.nativeElement.querySelectorAll('.home-tile')) as HTMLElement[];
     expect(tiles.map(tile => tile.querySelector('.tile-label')?.textContent?.trim())).toEqual([
       'Daily Dashboard', 'Machine Dashboard', 'Operator Dashboard', 'Comparison Dashboard',
-      'Machine Report', 'Operator Report', 'Settings', 'Log In'
+      'Machine Report', 'Operator Report', 'Log In'
     ]);
     expect(tiles.slice(0, 6).map(tile => tile.getAttribute('href'))).toEqual([
       '/ng/experimental/daily-dashboard', '/ng/analytics/machine-dashboard', '/ng/operatorAnalytics',
@@ -38,19 +38,30 @@ describe('HomeComponent', () => {
     ]);
   });
 
-  it('requests shell menus and updates the authentication label with the session', () => {
+  it('shows Settings after login, opens shell menus, and hides Settings again after logout', () => {
     const actions = TestBed.inject(NavigationActionsService);
     const requests: string[] = [];
     const subscription = actions.requests$.subscribe(request => requests.push(request));
     const fixture = TestBed.createComponent(HomeComponent);
     fixture.detectChanges();
-    const buttons = fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
+    let buttons = fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
+    expect(buttons.length).toBe(1);
     buttons[0].click();
-    buttons[1].click();
-    expect(requests).toEqual(['settings', 'authentication']);
+    expect(requests).toEqual(['authentication']);
     user$.next({ username: 'admin', permissions: { level: 0 } });
     fixture.detectChanges();
+    buttons = fixture.nativeElement.querySelectorAll('button');
+    expect(buttons.length).toBe(2);
+    expect(buttons[0].querySelector('.tile-label')?.textContent?.trim()).toBe('Settings');
     expect(buttons[1].querySelector('.tile-label')?.textContent?.trim()).toBe('Log Out');
+    buttons[0].click();
+    buttons[1].click();
+    expect(requests).toEqual(['authentication', 'settings', 'authentication']);
+    user$.next(null);
+    fixture.detectChanges();
+    buttons = fixture.nativeElement.querySelectorAll('button');
+    expect(buttons.length).toBe(1);
+    expect(buttons[0].querySelector('.tile-label')?.textContent?.trim()).toBe('Log In');
     subscription.unsubscribe();
   });
 
