@@ -48,5 +48,7 @@
       <button mat-stroked-button type="button" [disabled]="disabled" [class.selected]="pickerMode === 'custom'" (click)="quickSelect('custom')">Custom</button>
     </div>
   </div>
-  <div class="picker-actions"><button mat-flat-button color="primary" type="button" [disabled]="disabled || !valid" (click)="confirm()"><mat-icon>done</mat-icon>{{ confirmLabel }}</button></div>
+  <div class="picker-actions"><button mat-flat-button color="primary" type="button" [disabled]="disabled || !valid || isFutureTimeframe" (click)="confirm()"
+    [attr.aria-describedby]="isFutureTimeframe ? 'picker-future-timeframe-error' : null"><mat-icon>done</mat-icon>{{ confirmLabel }}</button></div>
+  <p *ngIf="isFutureTimeframe" class="future-timeframe-error" id="picker-future-timeframe-error" role="alert">Cannot select a timeframe in the future</p>
 </section>

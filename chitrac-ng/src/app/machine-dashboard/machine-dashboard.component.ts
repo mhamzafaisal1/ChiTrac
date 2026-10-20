@@ -824,7 +824,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const shiftProjection = this.getShiftProjection(responses, cache);
     const shiftProjectionTone = shiftProjection.tone;
     const shiftInfoCard = this.getShiftInfoCard(cache);
-    const countSparklineData = this.getCountSparklineData(cache);
 
     const summaryCards = [
       { label: "Machines", value: machineCounts.total, icon: "precision_manufacturing", tone: "neutral" },
@@ -845,14 +844,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       { label: "Paused Operators", value: operatorCounts.paused, icon: "pause_circle", tone: operatorCounts.paused > 0 ? "warn" : "neutral" },
       { label: "Idle/Paused Operators", value: operatorCounts.idlePaused, icon: "person_off", tone: operatorCounts.idlePaused > 0 ? "warn" : "neutral" },
       { label: "Down Operators", value: operatorCounts.down, icon: "do_not_disturb_on", tone: operatorCounts.down > 0 ? "warn" : "neutral" },
-      this.withSparkline({
-        label: "Total Count",
-        value: totalCount.toLocaleString(),
-        icon: "tag",
-        tone: "neutral",
-        sparklineData: countSparklineData || this.getMockCountSparklineData(totalCount, currentPph),
-        comparisonSparklineData: countSparklineData ? this.getYesterdayCountSparklineData(cache) || undefined : undefined,
-      }),
+      this.getTotalCountCard(totalCount, currentPph, cache),
       { label: "Current Pace", value: `${currentPph.toLocaleString()} PPH`, icon: "trending_up", tone: currentPph > 0 ? "good" : "warn" },
       ...(shiftInfoCard ? [shiftInfoCard] : []),
       { label: this.allDayProjectedCountLabel, value: projectedCount.toLocaleString(), icon: "flag", tone: projectedCount >= allDayTotalCount ? "good" : "neutral" },
@@ -1078,6 +1070,22 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           this.updateSummaryCards(this.machineData, this.websocketService.getDashboardCacheSnapshot());
         },
       });
+  }
+
+  private getTotalCountCard(totalCount: number, currentPph: number, cache?: DashboardCacheState | null): SummaryCard {
+    const card: SummaryCard = { label: "Total Count", value: totalCount.toLocaleString(), icon: "tag", tone: "neutral" };
+    const timeframe = this.dateTimeService.getTimeframe();
+    // Explicit historical/custom selections must not reuse today's cache or mock line.
+    const showSparkline = timeframe === "today" ||
+      (!timeframe && (this.dateTimeService.getLiveMode() ||
+        (!this.dateTimeService.getConfirmed() && this.isCurrentDayView())));
+    if (!showSparkline) return card;
+    const data = this.getCountSparklineData(cache);
+    return this.withSparkline({
+      ...card,
+      sparklineData: data || this.getMockCountSparklineData(totalCount, currentPph),
+      comparisonSparklineData: data ? this.getYesterdayCountSparklineData(cache) || undefined : undefined,
+    });
   }
 
   private getMockCountSparklineData(totalCount: number, currentPph: number): SparklineDataPoint[] {

@@ -33,11 +33,15 @@
     </mat-form-field>
 
     <div class="action-row">
-      <button mat-flat-button color="primary" (click)="confirm()">
+      <button mat-flat-button color="primary" (click)="confirm()" [disabled]="isFutureTimeframe"
+        [attr.aria-describedby]="isFutureTimeframe ? 'dashboard-future-timeframe-error' : null">
         <mat-icon>done</mat-icon>
         Confirm
       </button>
     </div>
+    <p *ngIf="isFutureTimeframe" class="future-timeframe-error" id="dashboard-future-timeframe-error" role="alert">
+      Cannot select a timeframe in the future
+    </p>
   </div>
 
   <div class="divider"></div>

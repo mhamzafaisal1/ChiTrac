@@ -30,3 +30,8 @@ h4 { margin: 0; font-size: 0.92rem; font-weight: 700; }
   .picker-fields { grid-template-columns: 1fr; }
   .picker-actions { flex-direction: column; }
 }
+:host .future-timeframe-error {
+  margin: 0.5rem 0 0;
+  color: var(--sg-color-red);
+  font-size: 0.8rem;
+}
