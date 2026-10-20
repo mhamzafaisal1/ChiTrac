@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { HomeComponent } from './home.component';
 import { NavigationActionsService } from '../services/navigation-actions.service';
@@ -13,7 +13,7 @@ describe('HomeComponent', () => {
     user$.next(null);
     TestBed.configureTestingModule({
       imports: [HomeComponent],
-      providers: [provideRouter([]), {
+      providers: [provideRouter([{ path: 'ng/settings', children: [] }]), {
         provide: UserService,
         useValue: {
           user: user$.asObservable(),
@@ -38,7 +38,8 @@ describe('HomeComponent', () => {
     ]);
   });
 
-  it('shows Settings after login, opens shell menus, and hides Settings again after logout', () => {
+  it('routes Settings to its submenu, keeps authentication in the shell, and hides Settings after logout', async () => {
+    const navigate = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
     const actions = TestBed.inject(NavigationActionsService);
     const requests: string[] = [];
     const subscription = actions.requests$.subscribe(request => requests.push(request));
@@ -56,7 +57,10 @@ describe('HomeComponent', () => {
     expect(buttons[1].querySelector('.tile-label')?.textContent?.trim()).toBe('Log Out');
     buttons[0].click();
     buttons[1].click();
-    expect(requests).toEqual(['authentication', 'settings', 'authentication']);
+    await fixture.whenStable();
+    expect(navigate).toHaveBeenCalled();
+    expect(TestBed.inject(Router).serializeUrl(navigate.calls.mostRecent().args[0] as any)).toBe('/ng/settings');
+    expect(requests).toEqual(['authentication', 'authentication']);
     user$.next(null);
     fixture.detectChanges();
     buttons = fixture.nativeElement.querySelectorAll('button');

@@ -2,6 +2,7 @@
   "extends": "./tsconfig.spec.json",
   "include": [
     "src/app/home/home.component.spec.ts",
+    "src/app/settings-menu/settings-menu.component.spec.ts",
     "src/app/nav-main-menu/nav-main-menu.component.spec.ts",
     "src/app/nav-main-menu/timeframe-indicator.spec.ts",
     "src/app/guards/auth.guard.spec.ts",
