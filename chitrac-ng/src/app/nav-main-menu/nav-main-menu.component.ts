@@ -25,7 +25,6 @@ import { selectedTimeframeLabel } from '../utils/timeframe-label';
 
 import { PermissionLevels, UserService } from '../user.service';
 import { SettingsService } from '../services/settings.service';
-import { DisplayTimePipe } from '../pipes/display-time.pipe';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { LayoutEditContext, LayoutEditService } from '../services/layout-edit.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
@@ -53,7 +52,6 @@ const right = [
     templateUrl: './nav-main-menu.component.html',
     styleUrl: './nav-main-menu.component.scss',
     imports: [
-        DisplayTimePipe,
         CommonModule,
         RouterOutlet,
         RouterModule,
@@ -413,29 +411,18 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     });
   }
 
-  getLiveChipClass(): string {
-    return `live-chip ${this.websocketStatus}`;
-  }
-
-  getLiveChipIcon(): string {
-    if (this.websocketStatus === 'connected') return 'bolt';
-    if (this.websocketStatus === 'connecting') return 'sync';
-    if (this.websocketStatus === 'error') return 'error';
-    return 'cloud_off';
-  }
-
-  getLiveChipLabel(): string {
-    if (this.websocketStatus === 'connected') return 'Live';
+  getConnectionStatusLabel(): string {
+    if (this.websocketStatus === 'connected') return 'Connected';
     if (this.websocketStatus === 'connecting') return 'Connecting';
-    if (this.websocketStatus === 'error') return 'Fallback';
-    return 'Offline';
+    if (this.websocketStatus === 'error') return 'Connection Error';
+    return 'Disconnected';
   }
 
-  getLiveChipTooltip(): string {
+  getConnectionStatusTooltip(): string {
     const updated = this.dashboardUpdatedAt
       ? `Last dashboard cache update: ${this.dashboardUpdatedAt.toLocaleString()}`
       : 'No dashboard cache update received yet';
-    return `${this.getLiveChipLabel()} feed. ${updated}.`;
+    return `${this.getConnectionStatusLabel()}. ${updated}.`;
   }
 
   toggleLayoutEdit(): void {

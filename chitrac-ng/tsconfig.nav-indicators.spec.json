@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.home.spec.json",
+  "include": [
+    "src/app/nav-main-menu/nav-indicators.spec.ts",
+    "src/app/nav-main-menu/nav-main-menu.component.spec.ts",
+    "src/app/nav-main-menu/timeframe-indicator.spec.ts",
+    "src/app/home/home.component.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}
