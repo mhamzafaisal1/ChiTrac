@@ -31,6 +31,8 @@ export interface SummaryCardVisibilityDialogData {
   compactCards?: boolean;
   maxVisible?: number;
   exactVisible?: number;
+  layoutOptions?: Array<{ id: string; label: string; exactVisible: number }>;
+  layout?: string;
   dragDropEnabled?: boolean;
   applyLabel?: string;
   save?: (result: SummaryCardVisibilityDialogResult) => Observable<unknown>;
@@ -39,6 +41,7 @@ export interface SummaryCardVisibilityDialogData {
 export interface SummaryCardVisibilityDialogResult {
   visibility: Record<string, boolean>;
   order: string[];
+  layout?: string;
 }
 
 @Component({
@@ -61,6 +64,8 @@ export class SummaryCardVisibilityDialogComponent {
   compactCards = false;
   maxVisible: number | null = null;
   exactVisible: number | null = null;
+  layoutOptions: NonNullable<SummaryCardVisibilityDialogData['layoutOptions']> = [];
+  selectedLayout: string | null = null;
   dragDropEnabled = false;
   selectedShowId: string | null = null;
   selectedHideId: string | null = null;
@@ -83,6 +88,11 @@ export class SummaryCardVisibilityDialogComponent {
     this.compactCards = data.compactCards === true;
     this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
     this.exactVisible = typeof data.exactVisible === 'number' ? data.exactVisible : null;
+    this.layoutOptions = data.layoutOptions || [];
+    if (this.layoutOptions.length) {
+      this.selectLayout(data.layout || this.layoutOptions[0].id);
+      if (!this.selectedLayout) this.selectLayout(this.layoutOptions[0].id);
+    }
     this.dragDropEnabled = data.dragDropEnabled === true;
     this.applyLabel = data.applyLabel || this.applyLabel;
     this.showCards = (data.cards || []).filter((card) => this.isVisible(this.getCardId(card)));
@@ -92,6 +102,15 @@ export class SummaryCardVisibilityDialogComponent {
   selectShow(card: SummaryCardVisibilityOption): void {
     this.selectedShowId = this.getCardId(card);
     this.selectedHideId = null;
+  }
+
+  selectLayout(id: string): void {
+    if (this.saving) return;
+    const option = this.layoutOptions.find(option => option.id === id);
+    if (!option) return;
+    this.selectedLayout = option.id;
+    this.exactVisible = option.exactVisible;
+    this.maxVisible = option.exactVisible;
   }
 
   selectHide(card: SummaryCardVisibilityOption): void {
@@ -185,6 +204,7 @@ export class SummaryCardVisibilityDialogComponent {
     const result: SummaryCardVisibilityDialogResult = {
       visibility: { ...this.visibility },
       order: [...this.showCards, ...this.hideCards].map((card) => this.getCardId(card)),
+      ...(this.selectedLayout ? { layout: this.selectedLayout } : {}),
     };
     if (!this.data.save) {
       this.dialogRef.close(result);

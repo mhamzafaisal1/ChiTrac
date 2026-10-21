@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { createRequire } = require('node:module');
 const jwt = require('jsonwebtoken');
+const systemPreferencesSchema = require('../schemas/system-preferences');
 
 function harness() {
   const routes = new Map();
@@ -82,4 +83,39 @@ test('report orders survive partial updates and remain isolated per user and rep
   assert.equal((await h.request('put', null, { reportLayouts: { itemReport: { columnOrder: [] } } })).status, 401);
   assert.equal((await h.request('put', 'alice', { reportLayouts: { itemReport: { columnOrder: [false] } } })).status, 400);
   assert.equal((await h.request('get', 'alice')).payload.reportLayouts.itemReport.columnOrder[0], 'PPH');
+});
+
+test('experimental grid layout survives saving, reloading and unrelated partial preference updates', async () => {
+  const h = harness();
+  const layout = { gridLayout: '2x2', chartOrder: ['machine-status', 'machine-oee'], chartVisibility: { 'machine-status': true, 'machine-oee': true } };
+  const saved = await h.request('put', 'alice', { dashboardLayouts: { experimentalDailyDashboard: layout } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.payload.dashboardLayouts.experimentalDailyDashboard.gridLayout, '2x2');
+  await h.request('put', 'alice', { timeFormat: '24h' });
+  const reloaded = (await h.request('get', 'alice')).payload.dashboardLayouts.experimentalDailyDashboard;
+  assert.equal(reloaded.gridLayout, '2x2');
+  assert.equal(reloaded.chartOrder.length, 2);
+  assert.equal((await h.request('get', 'bob')).payload.dashboardLayouts, undefined);
+  await h.request('put', 'alice', { dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '3x2' } } });
+  assert.equal((await h.request('get', 'alice')).payload.dashboardLayouts.experimentalDailyDashboard.gridLayout, '3x2');
+});
+
+test('experimental layout rejects invalid grids and keeps legacy preferences compatible', async () => {
+  const h = harness();
+  for (const gridLayout of ['4x4', '', 4, null]) {
+    const result = await h.request('put', 'alice', { dashboardLayouts: { experimentalDailyDashboard: { gridLayout } } });
+    assert.equal(result.status, 400);
+  }
+  const result = await h.request('put', 'alice', { dashboardLayouts: { experimentalDailyDashboard: { chartOrder: ['machine-oee'] } } });
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.dashboardLayouts.experimentalDailyDashboard.gridLayout, undefined);
+  assert.equal((await h.request('put', null, { dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '2x2' } } })).status, 401);
+});
+
+test('system layout schema supports promoted 2x2 defaults and rejects invalid layouts', () => {
+  for (const gridLayout of ['2x2', '3x2']) {
+    const preferences = systemPreferencesSchema.utils.normalizePreferences({ dashboardLayouts: { experimentalDailyDashboard: { gridLayout } } });
+    assert.equal(preferences.dashboardLayouts.experimentalDailyDashboard.gridLayout, gridLayout);
+  }
+  assert.throws(() => systemPreferencesSchema.utils.normalizePreferences({ dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '4x4' } } }), /Schema validation failed/);
 });

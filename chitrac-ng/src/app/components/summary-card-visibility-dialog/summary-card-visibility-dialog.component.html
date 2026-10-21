@@ -7,10 +7,19 @@
   </header>
 
   <mat-dialog-content>
+    <fieldset class="layout-options" *ngIf="layoutOptions.length" [disabled]="saving">
+      <legend>Chart layout</legend>
+      <label *ngFor="let option of layoutOptions" [class.selected]="selectedLayout === option.id">
+        <input type="radio" name="chart-layout" [value]="option.id"
+          [checked]="selectedLayout === option.id" (change)="selectLayout(option.id)" />
+        <span>{{ option.label }}</span>
+      </label>
+    </fieldset>
     <div
       class="limit-message"
       *ngIf="visibleCountMessage"
       [class.invalid]="!canApply"
+      role="status"
     >
       {{ visibleCountMessage }}
     </div>
