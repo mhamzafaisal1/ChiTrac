@@ -30,6 +30,7 @@ export interface SummaryCardVisibilityDialogData {
   emptyHiddenText?: string;
   compactCards?: boolean;
   maxVisible?: number;
+  minVisible?: number;
   exactVisible?: number;
   layoutOptions?: Array<{ id: string; label: string; exactVisible: number }>;
   layout?: string;
@@ -63,6 +64,7 @@ export class SummaryCardVisibilityDialogComponent {
   emptyHiddenText = 'No infoboxes hidden';
   compactCards = false;
   maxVisible: number | null = null;
+  minVisible: number | null = null;
   exactVisible: number | null = null;
   layoutOptions: NonNullable<SummaryCardVisibilityDialogData['layoutOptions']> = [];
   selectedLayout: string | null = null;
@@ -87,6 +89,7 @@ export class SummaryCardVisibilityDialogComponent {
     this.emptyHiddenText = data.emptyHiddenText || this.emptyHiddenText;
     this.compactCards = data.compactCards === true;
     this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
+    this.minVisible = typeof data.minVisible === 'number' ? data.minVisible : null;
     this.exactVisible = typeof data.exactVisible === 'number' ? data.exactVisible : null;
     this.layoutOptions = data.layoutOptions || [];
     if (this.layoutOptions.length) {
@@ -183,12 +186,17 @@ export class SummaryCardVisibilityDialogComponent {
   }
 
   get canApply(): boolean {
-    return this.exactVisible == null || this.showCards.length === this.exactVisible;
+    return (this.exactVisible == null || this.showCards.length === this.exactVisible) &&
+      (this.minVisible == null || this.showCards.length >= this.minVisible) &&
+      (this.maxVisible == null || this.showCards.length <= this.maxVisible);
   }
 
   get visibleCountMessage(): string | null {
     if (this.exactVisible != null) {
       return `${this.showCards.length} selected. Exactly ${this.exactVisible} required.`;
+    }
+    if (this.minVisible != null) {
+      return `${this.showCards.length} selected. Choose ${this.minVisible}${this.maxVisible != null ? '–' + this.maxVisible : ' or more'}.`;
     }
     if (this.maxVisible == null || this.canShowMore) return null;
     return `Maximum visible: ${this.maxVisible}`;

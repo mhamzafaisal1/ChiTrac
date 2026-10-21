@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { SpfLayout } from '../efficiency-screens/experimental-spf/spf-stations';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { tap, map, distinctUntilChanged } from 'rxjs/operators';
@@ -30,6 +31,7 @@ export interface ThemeResponse {
 }
 
 export interface DashboardLayoutPreferences {
+  experimentalSpf?: SpfLayout;
   summaryDashboard?: {
     summaryCardOrder?: string[];
     summaryCardVisibility?: Record<string, boolean>;
@@ -350,6 +352,12 @@ export class SettingsService {
     );
   }
 
+  saveExperimentalSpfLayout(layout: SpfLayout): Observable<UserPreferences> {
+    return this.http.put<UserPreferences>('/api/preferences/user', {
+      dashboardLayouts: { experimentalSpf: layout }
+    }, this.preferenceRequestOptions).pipe(tap(preferences => this.acceptUserPreferences(preferences)));
+  }
+
   saveReportColumnOrder(id: ReportLayoutId, columnOrder: string[]): Observable<UserPreferences> {
     return this.http.put<UserPreferences>('/api/preferences/user', {
       reportLayouts: { [id]: { columnOrder } }
@@ -386,17 +394,18 @@ export class SettingsService {
       'summaryDashboard',
       'machineDashboard',
       'operatorDashboard',
-      'experimentalDailyDashboard'
+      'experimentalDailyDashboard',
+      'experimentalSpf'
     ];
 
     for (const dashboardName of dashboardNames) {
       const systemLayout = systemLayouts?.[dashboardName];
       const userLayout = userLayouts?.[dashboardName];
       if (!systemLayout && !userLayout) continue;
-      dashboardLayouts[dashboardName] = {
+      Object.assign(dashboardLayouts, { [dashboardName]: {
         ...(systemLayout || {}),
         ...(userLayout || {})
-      } as DashboardLayoutPreferences[typeof dashboardName];
+      } });
     }
 
     return Object.keys(dashboardLayouts).length ? dashboardLayouts : undefined;
