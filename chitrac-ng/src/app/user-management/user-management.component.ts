@@ -25,12 +25,14 @@ import {
   UserSaveRequest
 } from '../services/user-management.service';
 import { UserService } from '../user.service';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
 @Component({
   selector: 'app-user-management',
   imports: [
+    PageLoadStateComponent,
     CommonModule,
     ReactiveFormsModule,
     MatButtonModule,

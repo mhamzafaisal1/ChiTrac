@@ -5,7 +5,9 @@
 
   <app-time-format-setting></app-time-format-setting>
 
-  <form [formGroup]="profileFormGroup" (ngSubmit)="saveProfile()" class="profile-form">
+  <app-page-load-state [loading]="isLoading" [error]="loadError" label="Loading profile…" (retry)="loadProfile()"></app-page-load-state>
+  <form [formGroup]="profileFormGroup" (ngSubmit)="saveProfile()" class="profile-form"
+    [attr.inert]="isLoading || loadError ? '' : null" [attr.aria-busy]="isLoading">
     <section class="form-section">
       <h3>Account</h3>
 

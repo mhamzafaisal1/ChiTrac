@@ -14,8 +14,9 @@ import { SelectionModel } from '@angular/cdk/collections';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
 /*** rxjs Imports */
-import { Subscription, timer } from 'rxjs';
-import { switchMap, retry, share, catchError } from 'rxjs/operators';
+import { EMPTY, Subscription, timer } from 'rxjs';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
+import { switchMap, share, catchError } from 'rxjs/operators';
 
 /*** Model Imports */
 import { ItemConfig } from '../shared/models/item.model';
@@ -30,6 +31,7 @@ import { ConfigurationService } from '../configuration.service';
   selector: 'app-item-grid',
   standalone: true,
   imports: [
+    PageLoadStateComponent,
     CommonModule,
     MatTableModule,
     MatPaginator,
@@ -47,7 +49,8 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   page: number = 1;
   paginationSize: number = 10;
   displayedColumns: string[] = ['photo', 'id', 'name', 'standard', 'active'];
-  dataSource: MatTableDataSource<ItemConfig>;
+  dataSource = new MatTableDataSource<ItemConfig>([]);
+  isLoading = true;
 
   sub: Subscription;
   items: ItemConfig[];
@@ -96,6 +99,7 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   }
 
   private getItemsSubFunction = (res: ItemConfig[]) => {
+    this.isLoading = false;
     this.error = null;
     this.items = res;
     this.dataSource = new MatTableDataSource(res);
@@ -103,17 +107,17 @@ export class ItemGridComponent implements OnInit, OnDestroy {
     this.dataSource.sort = this.sort;
   };
 
-  private handleError = (error: any): ItemConfig[] => {
+  private handleError = (error: any) => {
     console.error('Error fetching items:', error);
     this.error = 'Failed to load items. Please try again.';
-    return [];
+    this.isLoading = false;
+    return EMPTY;
   };
 
   private getItems = timer(1, 30 * 1000).pipe(
     switchMap(() => this.configurationService.getItemConfigs().pipe(
       catchError(this.handleError)
     )),
-    retry({ delay: 5000 }),
     share()
   );
 
@@ -131,6 +135,8 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   }
 
   private refreshTable() {
+    this.isLoading = true;
+    this.error = null;
     if (this.sub) this.sub.unsubscribe();
     this.sub = this.getItems.subscribe({
       next: (res: ItemConfig | ItemConfig[]) => {
@@ -143,6 +149,8 @@ export class ItemGridComponent implements OnInit, OnDestroy {
       }
     });
   }
+
+  retryLoad(): void { this.refreshTable(); }
 
   handlePageEvent(e: PageEvent) {
     this.page = e.pageIndex;

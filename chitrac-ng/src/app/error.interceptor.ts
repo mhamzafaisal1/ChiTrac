@@ -3,15 +3,23 @@ import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HttpErrorResponse
 import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { ErrorQueueService } from './services/error-queue.service';
+import { UserService } from './user.service';
 
 @Injectable()
 export class ErrorInterceptor implements HttpInterceptor {
   
-  constructor(private errorQueueService: ErrorQueueService) {}
+  constructor(private errorQueueService: ErrorQueueService, private userService: UserService) {}
   
   intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
     return next.handle(req).pipe(
       catchError((error: HttpErrorResponse) => {
+        const sentToken = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') || null;
+        if (error.status === 401 && req.url.startsWith('/api/') &&
+            !req.url.includes('/passport/user/login') && sentToken === this.userService.getToken()) {
+          this.userService.clearStoredSession();
+        } else if (error.status === 403 && req.url.startsWith('/api/') && sentToken === this.userService.getToken()) {
+          this.userService.invalidateSessionVerification();
+        }
         if (req.headers.has('X-Skip-Error-Modal')) {
           return throwError(() => error);
         }

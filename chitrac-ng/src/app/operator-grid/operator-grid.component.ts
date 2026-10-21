@@ -16,8 +16,9 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 
 
 /*** rxjs Imports */
-import { Subscription, timer } from 'rxjs';
-import { startWith, switchMap, share, retry, take } from 'rxjs/operators';
+import { EMPTY, Subscription, timer } from 'rxjs';
+import { startWith, switchMap, share, catchError, take } from 'rxjs/operators';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 /*** PDF Imports */
 import jsPDF from 'jspdf';
@@ -35,13 +36,15 @@ import { ConfigurationService } from '../configuration.service';
 
 @Component({
     selector: 'operator-grid',
-    imports: [CommonModule, MatTableModule, MatPaginatorModule, MatSortModule, MatCheckboxModule, MatDividerModule, MatButtonModule, MatIconModule],
+    imports: [PageLoadStateComponent, CommonModule, MatTableModule, MatPaginatorModule, MatSortModule, MatCheckboxModule, MatDividerModule, MatButtonModule, MatIconModule],
     templateUrl: './operator-grid.component.html',
     styleUrl: './operator-grid.component.scss'
 })
 export class OperatorGridComponent implements OnInit, OnDestroy {
   operators: OperatorConfig[];
-  dataSource: MatTableDataSource<OperatorConfig>;
+  dataSource = new MatTableDataSource<OperatorConfig>([]);
+  isLoading = true;
+  error: string | null = null;
   selectionModel = new SelectionModel<OperatorConfig>(false, []);
 
   sub: Subscription;
@@ -61,6 +64,8 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
    }
 
   private getOpsSubFunction = (res: OperatorConfig[]) => {
+    this.isLoading = false;
+    this.error = null;
     this.operators = res;
     if (!this.dataSource) this.dataSource = new MatTableDataSource<OperatorConfig>(res);
     else this.dataSource.data = res;
@@ -70,8 +75,13 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
 
   private getOps = timer(1, (30 * 1000))
     .pipe(
-      switchMap(() => this.configurationService.getOperatorConfigs()),
-      retry(),
+      switchMap(() => this.configurationService.getOperatorConfigs().pipe(
+        catchError(() => {
+          this.isLoading = false;
+          this.error = 'Failed to load operators. Please try again.';
+          return EMPTY;
+        })
+      )),
       share()
   );
 
@@ -88,9 +98,13 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
   }
 
   private refreshTable() {
+    this.isLoading = true;
+    this.error = null;
     if (this.sub) this.sub.unsubscribe();
     this.sub = this.getOps.subscribe(this.getOpsSubFunction);
   }
+
+  retryLoad(): void { this.refreshTable(); }
 
   private applyLocalUpdate(updated: OperatorConfig) {
     const arr = this.dataSource?.data ?? [];
