@@ -160,3 +160,11 @@ test('production layouts save exact active configured stations and reject unknow
   assert.equal((await h.request('get','alice')).payload.dashboardLayouts.experimentalSpf.stationOrder[0],'80000:4');
   assert.equal((await h.request('get','bob')).payload.dashboardLayouts,undefined);
 });
+
+
+test('ordinary production layout saves clear a named default reference and preserve the named library',async()=>{
+ const h=harness();const id='a'.repeat(64);h.users.get('alice').productionScreenLayouts={[id]:{id,name:'Private',stationIds:['80000:1','80000:2','80000:4'],createdAt:new Date().toISOString()}};
+ h.users.get('alice').defaultProductionScreenLayout={scope:'user',id};
+ const saved=await h.request('put','alice',{dashboardLayouts:{experimentalSpf:{stationOrder:['80000:4','80000:1','80000:2'],stationVisibility:{}}}});
+ assert.equal(saved.status,200);assert.equal(saved.payload.defaultProductionScreenLayout,null);assert.equal(saved.payload.productionScreenLayouts[id].stationIds[0],'80000:1');
+});

@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import type { NamedProductionLayout, ProductionLayoutActivation, ProductionLayoutLibrary, ProductionLayoutReference, ProductionLayoutScope } from './production-layout.models';
 import { SpfLayout } from '../efficiency-screens/experimental-spf/spf-stations';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
@@ -7,6 +8,7 @@ import { TimeFormat, formatDisplayTime } from '../utils/time-format';
 import { ReportLayoutId } from '../reports/report-columns';
 
 export interface AppSettings {
+  productionScreenLayouts?: Record<string, Omit<NamedProductionLayout, 'scope'>>;
   enableApiTokenCheck: boolean;
   showErrorModals: boolean;
   defaultTheme: 'light' | 'dark';
@@ -60,6 +62,8 @@ export type ExperimentalDashboardGridLayout = '3x2' | '2x2';
 export type MachinePphDisplayMode = 'perMachine' | 'perStation';
 
 export interface UserPreferences {
+  productionScreenLayouts?: Record<string, Omit<NamedProductionLayout, 'scope'>>;
+  defaultProductionScreenLayout?: ProductionLayoutReference | null;
   reportLayouts?: Partial<Record<ReportLayoutId, { columnOrder: string[] }>>;
   timeFormat?: TimeFormat;
   userId?: string;
@@ -350,6 +354,20 @@ export class SettingsService {
         this.acceptUserPreferences(preferences);
       })
     );
+  }
+
+  getProductionLayouts(): Observable<ProductionLayoutLibrary> {
+    return this.http.get<ProductionLayoutLibrary>('/api/preferences/production-layouts', this.preferenceRequestOptions);
+  }
+
+  createProductionLayout(scope: ProductionLayoutScope, name: string, stationIds: string[]): Observable<ProductionLayoutActivation> {
+    return this.http.post<ProductionLayoutActivation>('/api/preferences/production-layouts/' + scope, {name,stationIds}, this.preferenceRequestOptions)
+      .pipe(tap(result => this.acceptUserPreferences(result.preferences)));
+  }
+
+  loadProductionLayout(reference: ProductionLayoutReference): Observable<ProductionLayoutActivation> {
+    return this.http.post<ProductionLayoutActivation>('/api/preferences/production-layouts/load', reference, this.preferenceRequestOptions)
+      .pipe(tap(result => this.acceptUserPreferences(result.preferences)));
   }
 
   saveExperimentalSpfLayout(layout: SpfLayout): Observable<UserPreferences> {

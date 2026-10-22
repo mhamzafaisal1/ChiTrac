@@ -4,6 +4,8 @@
       <mat-icon>dashboard_customize</mat-icon> Edit Layout
     </button>
     <span>Drag stations to reorder, or use the arrow buttons. Lock the layout to save.</span>
+    <button mat-stroked-button type="button" [disabled]="catalogLoading" (click)="openLoadLayout()">Load Layout</button>
+    <button mat-stroked-button type="button" [disabled]="catalogLoading || visibleStationIds.length < 3 || visibleStationIds.length > 6" (click)="openCreateLayout()">Create Layout</button>
   </div>
   <div class="loading-state" *ngIf="isLoading" role="status" aria-live="polite"><mat-spinner diameter="40" aria-label="Loading SPF stations"></mat-spinner><p>Loading SPF stations…</p></div>
   <div class="catalog-message" *ngIf="catalogError" role="alert">
