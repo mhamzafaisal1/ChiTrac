@@ -1,11 +1,17 @@
 <div class="screen-container" [class.layout-editing]="layoutEditing">
   <div class="layout-toolbar" *ngIf="layoutEditing">
-    <button mat-stroked-button type="button" (click)="openLayout()">
+    <button mat-stroked-button type="button" [disabled]="catalogLoading" (click)="openLayout()">
       <mat-icon>dashboard_customize</mat-icon> Edit Layout
     </button>
     <span>Drag stations to reorder, or use the arrow buttons. Lock the layout to save.</span>
   </div>
   <div class="loading-state" *ngIf="isLoading" role="status" aria-live="polite"><mat-spinner diameter="40" aria-label="Loading SPF stations"></mat-spinner><p>Loading SPF stations…</p></div>
+  <div class="catalog-message" *ngIf="catalogError" role="alert">
+    <p>{{ catalogError }}</p><button mat-stroked-button type="button" (click)="loadStations()">Retry</button>
+  </div>
+  <p class="catalog-message" *ngIf="!catalogLoading && !catalogError && stations.length < 3" role="status">
+    {{ stations.length }} active configured stations available. At least 3 are required to save a layout.
+  </p>
   <div class="lanes-wrapper" *ngIf="!isLoading" cdkDropList cdkDropListOrientation="horizontal"
     [cdkDropListData]="visibleStationIds" [cdkDropListDisabled]="!layoutEditing" (cdkDropListDropped)="onDrop($event)"
     aria-label="Experimental SPF stations">

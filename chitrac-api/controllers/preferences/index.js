@@ -1,5 +1,5 @@
 const express = require('express');
-const { sanitizeSpfLayout } = require('../../utils/spfLayout');
+const { sanitizeSpfLayout, configuredProductionStations } = require('../../utils/spfLayout');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
@@ -606,6 +606,12 @@ function constructor(server) {
       }
 
       const preferences = sanitizeUserPreferences(req.body, req.authUserId);
+      if (preferences.dashboardLayouts?.experimentalSpf) {
+        const machines = await db.collection(config.machineCollectionName || 'config-machine').find({ active: true }).toArray();
+        preferences.dashboardLayouts.experimentalSpf = sanitizeSpfLayout(
+          preferences.dashboardLayouts.experimentalSpf, configuredProductionStations(machines)
+        );
+      }
       const updates = buildUserPreferenceUpdates(preferences);
       const existing = await userPreferencesCollection.findOne({ userId: req.authUserId });
       updates.timestamps = buildUserPreferenceTimestamps(existing || {});

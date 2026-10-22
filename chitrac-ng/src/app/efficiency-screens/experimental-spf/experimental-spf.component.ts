@@ -4,7 +4,8 @@ import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { Subject, catchError, distinctUntilChanged, exhaustMap, forkJoin, map, of, takeUntil, tap, timer, throwError } from 'rxjs';
+import { Subject, Subscription, distinctUntilChanged, exhaustMap, finalize, map, takeUntil, tap, timer, throwError } from 'rxjs';
+import { ConfigurationService } from '../../configuration.service';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
 import { LayoutEditService } from '../../services/layout-edit.service';
 import { SettingsService } from '../../services/settings.service';
@@ -13,7 +14,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { openLayoutSaveConfirmDialog } from '../../components/layout-save-confirm/layout-save-confirm.component';
 import { SummaryCardVisibilityDialogComponent, SummaryCardVisibilityDialogResult } from '../../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { EfficiencyScreenLaneComponent, EfficiencyScreenLaneMode } from '../efficiency-screen-lane/efficiency-screen-lane.component';
-import { normalizeSpfLayout, SPF_STATION_SERIALS, SpfLayout } from './spf-stations';
+import { configuredProductionStations, normalizeSpfLayout, ProductionStation, SpfLayout } from './spf-stations';
 
 @Component({
   selector: 'app-experimental-spf',
@@ -24,7 +25,14 @@ import { normalizeSpfLayout, SPF_STATION_SERIALS, SpfLayout } from './spf-statio
 })
 export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   readonly layoutContextId = 'experimentalSpf';
-  layout = normalizeSpfLayout();
+  stations: ProductionStation[] = [];
+  layout = normalizeSpfLayout(null, []);
+  catalogLoading = false;
+  catalogError = '';
+  private hasCatalog = false;
+  private savedLayout: SpfLayout | null = null;
+  private catalogRequest?: Subscription;
+  private polling?: Subscription;
   layoutEditing = false;
   isLoading = true;
   lanes: Record<string, any> = {};
@@ -35,6 +43,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
 
   constructor(
     private readonly efficiency: EfficiencyScreensService,
+    private readonly configuration: ConfigurationService,
     private readonly settings: SettingsService,
     private readonly user: UserService,
     private readonly editor: LayoutEditService,
@@ -56,34 +65,58 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
       this.saveDialog?.close();
       this.editor.setEditing(false);
       this.snapshot = null;
-      this.layout = normalizeSpfLayout();
+      this.savedLayout = null;
+      this.layout = normalizeSpfLayout(null, this.stations);
+      if (this.hasCatalog) this.startPolling();
     });
     this.settings.userPreferences$.pipe(takeUntil(this.destroyed$)).subscribe(preferences => {
-      if (!this.layoutEditing) this.layout = normalizeSpfLayout(preferences?.dashboardLayouts?.experimentalSpf);
+      this.savedLayout = preferences?.dashboardLayouts?.experimentalSpf || null;
+      if (!this.layoutEditing) {
+        this.layout = normalizeSpfLayout(this.savedLayout, this.stations);
+        if (this.hasCatalog) this.startPolling();
+      }
     });
-    // Read the same shared live cache as the original screen; preserve identity across updates.
-    timer(0, 6000).pipe(
-      exhaustMap(() => forkJoin(SPF_STATION_SERIALS.map(serial =>
-        this.efficiency.getLiveEfficiencySummary(serial).pipe(catchError(() => of({ flipperData: [] })))
-      ))),
+    this.loadStations();
+  }
+
+  loadStations(openPicker = false): void {
+    if (this.catalogLoading) return;
+    this.catalogLoading = true;
+    this.catalogError = '';
+    this.catalogRequest = this.configuration.getMachineConfigs().pipe(
+      finalize(() => this.catalogLoading = false), takeUntil(this.destroyed$),
+    ).subscribe({
+      next: machines => {
+        this.stations = configuredProductionStations(machines);
+        this.layout = normalizeSpfLayout(this.hasCatalog && this.layoutEditing ? this.layout : this.savedLayout, this.stations);
+        if (this.snapshot) this.snapshot = normalizeSpfLayout(this.snapshot, this.stations);
+        this.hasCatalog = true;
+        this.startPolling();
+        if (openPicker && this.layoutEditing) this.showPicker();
+      },
+      error: () => {
+        this.isLoading = false;
+        this.catalogError = 'Could not load configured stations. Please try again.';
+      },
+    });
+  }
+
+  private startPolling(): void {
+    this.polling?.unsubscribe();
+    const selected = this.stations.filter(station => this.visibleStationIds.includes(station.id));
+    this.isLoading = selected.length > 0 && selected.some(station => !this.lanes[station.id]);
+    if (!selected.length) { this.lanes = {}; return; }
+    this.polling = timer(0, 6000).pipe(
+      exhaustMap(() => this.efficiency.getProductionStationSummaries(selected)),
       takeUntil(this.destroyed$),
-    ).subscribe(responses => {
-      this.lanes = Object.fromEntries(SPF_STATION_SERIALS.map((serial, index) => {
-        const lane = responses[index]?.flipperData?.[0];
-        return [String(serial), lane ? { ...lane, serial } : {
-          serial, machine: `Serial ${serial}`, status: -1, fault: 'Offline',
-          operator: null, efficiency: {}, oee: {}, batch: {}, displayTimers: {},
-        }];
-      }));
-      this.isLoading = false;
-    });
+    ).subscribe(lanes => { this.lanes = lanes; this.isLoading = false; });
   }
 
   get visibleStationIds(): string[] {
     return this.layout.stationOrder.filter(id => this.layout.stationVisibility[id]);
   }
 
-  stationLabel(id: string): string { return this.lanes[id]?.machine || `Serial ${id}`; }
+  stationLabel(id: string): string { return this.stations.find(station => station.id === id)?.label || id; }
   trackStation(_index: number, id: string): string { return id; }
   laneMode(id: string): EfficiencyScreenLaneMode {
     const status = this.lanes[id]?.status;
@@ -102,7 +135,11 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   }
 
   openLayout(): void {
-    if (!this.layoutEditing || this.picker) return;
+    if (!this.layoutEditing || this.picker || this.catalogLoading) return;
+    this.loadStations(true);
+  }
+
+  private showPicker(): void {
     const ref = this.dialog.open(SummaryCardVisibilityDialogComponent, {
       width: '800px', maxWidth: '94vw', autoFocus: false,
       data: {
@@ -117,8 +154,9 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     ref.afterClosed().pipe(takeUntil(this.destroyed$)).subscribe((result: SummaryCardVisibilityDialogResult | undefined) => {
       this.picker = undefined;
       if (!result || !this.layoutEditing) return;
-      this.layout = normalizeSpfLayout({ stationOrder: result.order, stationVisibility: result.visibility });
+      this.layout = normalizeSpfLayout({ stationOrder: result.order, stationVisibility: result.visibility }, this.stations);
       this.editor.markEditsMade();
+      this.startPolling();
     });
   }
 
@@ -131,11 +169,13 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
         this.layout = this.snapshot;
         this.snapshot = null;
         this.editor.setEditing(false);
+        this.startPolling();
       }
     });
   }
 
   private saveLayout() {
+    if (this.visibleStationIds.length < 3 || this.visibleStationIds.length > 6) return throwError(() => new Error('Choose 3–6 active configured stations before saving.'));
     if (!this.user.getToken()) return throwError(() => new Error('Please log in to save a layout.'));
     return this.settings.saveExperimentalSpfLayout(this.copyLayout()).pipe(tap(() => {
       this.snapshot = null;
@@ -149,6 +189,8 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.picker?.close();
+    this.catalogRequest?.unsubscribe();
+    this.polling?.unsubscribe();
     this.destroyed$.next();
     this.destroyed$.complete();
     this.editor.unregister(this.layoutContextId);
