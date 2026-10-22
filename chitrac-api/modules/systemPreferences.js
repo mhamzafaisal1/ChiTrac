@@ -24,7 +24,7 @@ async function ensureSystemPreferences(db, config = {}) {
       const preferences = systemPreferencesSchema.utils.normalizePreferences({}, existing, config, {
         preserveExistingSystemName
       });
-      const { _id, ...updates } = preferences;
+      const { _id, productionScreenLayouts, ...updates } = preferences;
       const unsetFields = { createdAt: '', updatedAt: '' };
       if (!preserveExistingSystemName) {
         unsetFields.systemName = '';
@@ -42,7 +42,7 @@ async function ensureSystemPreferences(db, config = {}) {
   }
 
   const preferences = systemPreferencesSchema.utils.normalizePreferences({}, {}, config);
-  const { _id, ...updates } = preferences;
+  const { _id, productionScreenLayouts, ...updates } = preferences;
   await collection.updateOne(
     { _id },
     {

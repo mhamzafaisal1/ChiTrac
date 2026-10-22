@@ -30,7 +30,7 @@ describe('Configured production station layouts', () => {
     ref = { close: jasmine.createSpy('close'), afterClosed: () => closed }; dialog = { openDialogs: [], open: jasmine.createSpy().and.returnValue(ref) };
     TestBed.configureTestingModule({ imports: [ExperimentalSpfComponent], providers: [provideNoopAnimations(),
       { provide: EfficiencyScreensService, useValue: service }, { provide: ConfigurationService, useValue: config },
-      { provide: SettingsService, useValue: settings }, { provide: UserService, useValue: { user: identity, getToken: () => identity.value ? 'token' : null } },
+      { provide: SettingsService, useValue: settings }, { provide: UserService, useValue: { user: identity, getToken: () => identity.value ? 'token' : null, hasPermissionLevel: () => !!identity.value } },
       { provide: MatDialog, useValue: dialog }, { provide: PercentBreakpointService, useValue: { getDashboardColor: () => 'green', getOeDashboardColor: () => 'green' } },
     ] });
     editor = TestBed.inject(LayoutEditService); fixture = TestBed.createComponent(ExperimentalSpfComponent); component = fixture.componentInstance;
@@ -114,6 +114,20 @@ describe('Configured production station layouts', () => {
     expect(component.visibleStationIds).toEqual(originalIds); editor.toggle(); expect(component.layoutEditing).toBeFalse();
     identity.next({username:'bob'}); preferences.next({dashboardLayouts:{experimentalSpf:{stationOrder:['80000:4','90001:1','90002:1'],stationVisibility:{}}}});
     expect(component.visibleStationIds).toEqual(['80000:4','90001:1','90002:1']);
+  }));
+
+  it('opens named load with true unsaved-change detection and leaves cancellation untouched', fakeAsync(()=>{
+    load();editor.toggle();expect(component.hasUnsavedChanges()).toBeFalse();component.moveStation(0,1);component.openLoadLayout();
+    expect(dialog.open.calls.mostRecent().args[1].data.hasUnsavedChanges).toBeTrue();closed.next(undefined);
+    expect(component.visibleStationIds[0]).toBe('90002:1');expect(component.layoutEditing).toBeTrue();
+    component.moveStation(0,1);expect(component.hasUnsavedChanges()).toBeFalse();
+  }));
+  it('creates a named snapshot from visible stations and applies the fresh catalog returned by activation',fakeAsync(()=>{
+    load();editor.toggle();component.openCreateLayout();const data=dialog.open.calls.mostRecent().args[1].data;
+    expect(data.stationIds).toEqual(originalIds);expect(data.systemAllowed).toBeTrue();
+    const stations=configuredProductionStations([{id:555,name:'New machine',active:true,stations:[1,2,3]}]as any);
+    closed.next({layout:{scope:'system',id:'a'},stations,preferences:{defaultProductionScreenLayout:{scope:'system',id:'a'},dashboardLayouts:{experimentalSpf:{stationOrder:['555:3','555:1','555:2'],stationVisibility:{}}}}});tick(0);
+    expect(component.layoutEditing).toBeFalse();expect(component.visibleStationIds).toEqual(['555:3','555:1','555:2']);expect(component.hasUnsavedChanges()).toBeFalse();
   }));
 
   it('cancels in-flight cache reads and configuration loads when leaving', fakeAsync(() => {

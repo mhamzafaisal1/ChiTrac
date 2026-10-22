@@ -8,7 +8,7 @@ function configuredProductionStations(machines) {
     for (const station of Array.isArray(machine.stations) ? machine.stations : []) {
       if (!Number.isSafeInteger(station)) continue;
       const id = machine.id + ':' + station;
-      stations.set(id, { id, machineId: machine.id, station });
+      stations.set(id, { id, machineId: machine.id, station, label: (machine.name || 'Machine ' + machine.id) + ' — Station ' + station });
     }
   }
   return [...stations.values()].sort((a,b) => a.machineId - b.machineId || a.station - b.station);

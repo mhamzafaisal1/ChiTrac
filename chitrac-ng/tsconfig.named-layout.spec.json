@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/efficiency-screens/experimental-spf/production-layout-dialogs.component.spec.ts",
+    "src/app/services/settings-named-production-layouts.spec.ts",
+    "src/app/services/efficiency-station-summary.spec.ts",
+    "src/app/efficiency-screens/experimental-spf/experimental-spf.component.spec.ts",
+    "src/app/services/settings-spf-layout.spec.ts",
+    "src/app/experimental-daily-dashboard/experimental-daily-dashboard.layout.spec.ts",
+    "src/app/experimental-daily-dashboard/experimental-daily-dashboard.chart-detail.spec.ts",
+    "src/app/components/summary-card-visibility-dialog/summary-card-visibility-dialog.component.spec.ts",
+    "src/app/components/layout-save-confirm/layout-save-confirm.component.spec.ts",
+    "src/app/services/settings-experimental-layout.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

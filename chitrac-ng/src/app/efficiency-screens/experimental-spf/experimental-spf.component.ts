@@ -1,3 +1,5 @@
+import { CreateProductionLayoutDialogComponent, LoadProductionLayoutDialogComponent } from './production-layout-dialogs.component';
+import { ProductionLayoutActivation } from '../../services/production-layout.models';
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
@@ -40,6 +42,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   private readonly destroyed$ = new Subject<void>();
   private picker?: MatDialogRef<SummaryCardVisibilityDialogComponent>;
   private saveDialog?: MatDialogRef<any>;
+  private namedDialog?: MatDialogRef<any>;
 
   constructor(
     private readonly efficiency: EfficiencyScreensService,
@@ -63,6 +66,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     this.user.user.pipe(map(user => user?.username || null), distinctUntilChanged(), takeUntil(this.destroyed$)).subscribe(() => {
       this.picker?.close();
       this.saveDialog?.close();
+      this.namedDialog?.close();
       this.editor.setEditing(false);
       this.snapshot = null;
       this.savedLayout = null;
@@ -160,6 +164,42 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     });
   }
 
+  hasUnsavedChanges(): boolean {
+    const saved=normalizeSpfLayout(this.savedLayout,this.stations);
+    const savedIds=saved.stationOrder.filter(id=>saved.stationVisibility[id]);
+    return JSON.stringify(this.visibleStationIds)!==JSON.stringify(savedIds);
+  }
+
+  openLoadLayout(): void {
+    if(!this.layoutEditing || this.namedDialog || this.catalogLoading || !this.user.getToken())return;
+    this.openNamedDialog(this.dialog.open(LoadProductionLayoutDialogComponent,{
+      width:'520px',maxWidth:'94vw',autoFocus:false,data:{hasUnsavedChanges:this.hasUnsavedChanges()}
+    }));
+  }
+
+  openCreateLayout(): void {
+    if(!this.layoutEditing || this.namedDialog || this.catalogLoading || !this.user.getToken() || this.visibleStationIds.length<3 || this.visibleStationIds.length>6)return;
+    this.openNamedDialog(this.dialog.open(CreateProductionLayoutDialogComponent,{
+      width:'520px',maxWidth:'94vw',autoFocus:false,
+      data:{stationIds:[...this.visibleStationIds],systemAllowed:this.user.hasPermissionLevel(7)}
+    }));
+  }
+
+  private openNamedDialog(ref: MatDialogRef<any>): void {
+    this.namedDialog=ref;
+    ref.afterClosed().pipe(takeUntil(this.destroyed$)).subscribe((result:ProductionLayoutActivation | undefined)=>{
+      this.namedDialog=undefined;
+      if(!result)return;
+      // The activation response includes the fresh catalog used by server validation.
+      this.stations=result.stations;
+      this.savedLayout=result.preferences.dashboardLayouts!.experimentalSpf!;
+      this.layout=normalizeSpfLayout(this.savedLayout,this.stations);
+      this.snapshot=null;
+      this.editor.setEditing(false);
+      this.startPolling();
+    });
+  }
+
   private confirmSave(): void {
     const ref = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayout(), this.destroyed$);
     this.saveDialog = ref;
@@ -189,6 +229,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.picker?.close();
+    this.namedDialog?.close();
     this.catalogRequest?.unsubscribe();
     this.polling?.unsubscribe();
     this.destroyed$.next();
