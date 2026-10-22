@@ -5,11 +5,12 @@ import { SettingsService } from './services/settings.service';
 import { ErrorQueueService } from './services/error-queue.service';
 import { UserService } from './user.service';
 import { WebsocketService } from './services/websocket.service';
-import { Subject, filter, take, takeUntil } from 'rxjs';
+import { Subject, distinctUntilChanged, filter, take, takeUntil } from 'rxjs';
+import { NavigationFeedbackComponent } from './components/navigation-feedback/navigation-feedback.component';
 
 @Component({
     selector: 'ct-root',
-    imports: [NavMainMenuComponent, RouterOutlet],
+    imports: [NavMainMenuComponent, RouterOutlet, NavigationFeedbackComponent],
     templateUrl: './app.component.html',
     styleUrl: './app.component.scss'
 })
@@ -37,7 +38,10 @@ export class AppComponent implements OnInit, OnDestroy {
     this.loadSettings();
     
     // Watch for user login/logout and load theme accordingly
-    this.userService.user.pipe(takeUntil(this.destroy$)).subscribe(user => {
+    this.userService.user.pipe(
+      distinctUntilChanged((previous, next) => previous?.username === next?.username),
+      takeUntil(this.destroy$)
+    ).subscribe(user => {
       if (user && user.username) {
         // User is logged in, load their theme preference
         this.loadUserPreferences();
@@ -54,7 +58,7 @@ export class AppComponent implements OnInit, OnDestroy {
     // Protected routes share this in-flight request through UserService.
     this.userService.getCurrentUser()
       .pipe(take(1), takeUntil(this.destroy$))
-      .subscribe();
+      .subscribe({ error: () => {} });
   }
 
   ngOnDestroy(): void {

@@ -3,7 +3,8 @@
     <h2>User Management</h2>
   </div>
 
-  <div class="layout">
+  <app-page-load-state [loading]="isLoading" label="Loading users…"></app-page-load-state>
+  <div class="layout" [attr.inert]="isLoading ? '' : null" [attr.aria-busy]="isLoading">
     <section class="table-panel">
       <div class="table-header">
         <h3>Users</h3>

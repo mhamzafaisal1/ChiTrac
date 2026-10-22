@@ -1,3 +1,5 @@
+<app-page-load-state [loading]="isLoading" [error]="error" label="Loading machines…" (retry)="retryLoad()"></app-page-load-state>
+<div [attr.inert]="isLoading || error ? '' : null" [attr.aria-busy]="isLoading">
 <table mat-table [dataSource]="dataSource" matSort>
   <ng-container matColumnDef="id">
     <th mat-header-cell *matHeaderCellDef mat-sort-header>ID</th>
@@ -84,4 +86,4 @@
   </button>
 </div>
 
-<div *ngIf="error" class="error-message">{{ error }}</div>
+</div>

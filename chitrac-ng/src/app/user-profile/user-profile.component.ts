@@ -9,12 +9,14 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { UserService } from '../user.service';
 import { TimeFormatSettingComponent } from '../components/time-format-setting/time-format-setting.component';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
 @Component({
   selector: 'app-user-profile',
   imports: [
+    PageLoadStateComponent,
     TimeFormatSettingComponent,
     CommonModule,
     ReactiveFormsModule,
@@ -29,6 +31,7 @@ const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-
 })
 export class UserProfileComponent implements OnInit {
   isLoading = false;
+  loadError: string | null = null;
   isSaving = false;
 
   profileFormGroup = new FormGroup({
@@ -49,6 +52,7 @@ export class UserProfileComponent implements OnInit {
 
   loadProfile(): void {
     this.isLoading = true;
+    this.loadError = null;
     this.userService.getProfile().subscribe({
       next: (res) => {
         this.isLoading = false;
@@ -62,6 +66,7 @@ export class UserProfileComponent implements OnInit {
       },
       error: (err) => {
         this.isLoading = false;
+        this.loadError = 'Failed to load your profile. Please try again.';
         this.showError(err, 'Failed to load profile');
       }
     });

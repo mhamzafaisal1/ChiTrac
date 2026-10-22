@@ -11,11 +11,13 @@ import { ShiftCrudComponent } from './shift-crud.component';
 import { ShiftDocument, ShiftService, ShiftTimeValue } from '../services/shift.service';
 import { formatTimeSafe } from './shift-time.utils';
 import { SettingsService } from '../services/settings.service';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 @Component({
   selector: 'app-shift-settings',
   standalone: true,
   imports: [
+    PageLoadStateComponent,
     CommonModule,
     MatTableModule,
     MatButtonModule,

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/user-session-navigation.spec.ts",
+    "src/app/user.service.spec.ts",
+    "src/app/guards/auth.guard.spec.ts",
+    "src/app/settings-navigation-loading.spec.ts",
+    "src/app/components/navigation-feedback/navigation-feedback.component.spec.ts",
+    "src/app/app-session-startup.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

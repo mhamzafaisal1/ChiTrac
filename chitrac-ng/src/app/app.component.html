@@ -1,2 +1,6 @@
 <nav-main-menu (darkModeToggleEvent)="onThemeChanged()" [isDarkMode]="isDarkMode"></nav-main-menu>
-<router-outlet></router-outlet>
+<app-navigation-feedback #navigationFeedback></app-navigation-feedback>
+<div style="display: contents" [attr.inert]="navigationFeedback.pending() ? '' : null"
+  [attr.aria-busy]="navigationFeedback.pending()">
+  <router-outlet></router-outlet>
+</div>
