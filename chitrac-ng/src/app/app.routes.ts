@@ -105,6 +105,7 @@ export const routes: Routes = [
 	{ path: 'ng/spf-col-efficiency-screen', component: SpfColEfficiencyScreenComponent },
 	{ path: 'ng/lpls-efficiency-screen', component: LPLsEfficiencyScreenComponent },
 	{ path: 'ng/spfs-efficiency-screen', component: SPFsEfficiencyScreenComponent },
+	{ path: 'ng/experimental/spf', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent) },
 	{ path: 'ng/blanket-blasters-efficiency-screen', component: BlanketBlastersEfficiencyScreenComponent },
 	{ path: 'ng/eight-station-demo', component: EightStationDemoComponent },
 	

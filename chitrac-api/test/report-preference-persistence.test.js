@@ -119,3 +119,24 @@ test('system layout schema supports promoted 2x2 defaults and rejects invalid la
   }
   assert.throws(() => systemPreferencesSchema.utils.normalizePreferences({ dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '4x4' } } }), /Schema validation failed/);
 });
+
+
+test('SPF selection and order persist per user without overwriting other layouts or preferences', async () => {
+  const h = harness();
+  const ids = ['90001','90002','90003','90004','90005','90006'];
+  const layout = { stationOrder: [...ids].reverse(), stationVisibility: Object.fromEntries(ids.map((id,i) => [id, i < 3])) };
+  const saved = await h.request('put', 'alice', { dashboardLayouts: { experimentalSpf: layout } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.payload.dashboardLayouts.experimentalSpf.stationOrder[0], '90006');
+  assert.equal(saved.payload.theme, 'dark');
+  await h.request('put', 'alice', { dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '2x2' } } });
+  await h.request('put', 'alice', { timeFormat: '24h' });
+  const preferences = (await h.request('get', 'alice')).payload;
+  assert.equal(Object.values(preferences.dashboardLayouts.experimentalSpf.stationVisibility).filter(Boolean).length, 3);
+  assert.equal(preferences.dashboardLayouts.experimentalDailyDashboard.gridLayout, '2x2');
+  assert.equal((await h.request('get', 'bob')).payload.dashboardLayouts, undefined);
+  assert.equal((await h.request('put', null, { dashboardLayouts: { experimentalSpf: layout } })).status, 401);
+  const bad = { ...layout, stationVisibility: Object.fromEntries(ids.map(id => [id,false])) };
+  assert.equal((await h.request('put', 'alice', { dashboardLayouts: { experimentalSpf: bad } })).status, 400);
+  assert.equal((await h.request('get', 'alice')).payload.dashboardLayouts.experimentalSpf.stationOrder[0], '90006');
+});

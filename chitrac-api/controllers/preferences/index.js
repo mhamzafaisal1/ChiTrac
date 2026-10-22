@@ -1,4 +1,5 @@
 const express = require('express');
+const { sanitizeSpfLayout } = require('../../utils/spfLayout');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
@@ -180,6 +181,9 @@ function constructor(server) {
 
     if (input.dashboardLayouts && typeof input.dashboardLayouts === 'object' && !Array.isArray(input.dashboardLayouts)) {
       const dashboardLayouts = {};
+      if (input.dashboardLayouts.experimentalSpf !== undefined) {
+        dashboardLayouts.experimentalSpf = sanitizeSpfLayout(input.dashboardLayouts.experimentalSpf);
+      }
       const summaryDashboard = input.dashboardLayouts.summaryDashboard;
       const machineDashboard = input.dashboardLayouts.machineDashboard;
       const operatorDashboard = input.dashboardLayouts.operatorDashboard;
@@ -456,6 +460,9 @@ function constructor(server) {
         preferences.dashboardLayouts.experimentalDailyDashboard.gridLayout;
     }
 
+    if (preferences.dashboardLayouts?.experimentalSpf) {
+      updates['dashboardLayouts.experimentalSpf'] = preferences.dashboardLayouts.experimentalSpf;
+    }
     return updates;
   }
 
@@ -478,7 +485,7 @@ function constructor(server) {
 
   function mergeDashboardLayouts(systemLayouts = {}, userLayouts = {}) {
     const merged = { ...systemLayouts };
-    for (const dashboardName of ['summaryDashboard', 'machineDashboard', 'operatorDashboard', 'experimentalDailyDashboard']) {
+    for (const dashboardName of ['summaryDashboard', 'machineDashboard', 'operatorDashboard', 'experimentalDailyDashboard', 'experimentalSpf']) {
       const userLayout = userLayouts[dashboardName];
       if (!userLayout || typeof userLayout !== 'object' || Array.isArray(userLayout)) continue;
       merged[dashboardName] = {

@@ -35,9 +35,18 @@ const booleanMapSchema = {
   additionalProperties: { type: 'boolean' }
 };
 
+const { SPF_STATION_IDS, sanitizeSpfLayout } = require('../utils/spfLayout');
+
 const dashboardLayoutsSchema = {
   type: 'object',
   properties: {
+    experimentalSpf: {
+      type: 'object', required: ['stationOrder', 'stationVisibility'], additionalProperties: false,
+      properties: {
+        stationOrder: { type: 'array', minItems: 6, maxItems: 6, uniqueItems: true, items: { enum: SPF_STATION_IDS } },
+        stationVisibility: { type: 'object', propertyNames: { enum: SPF_STATION_IDS }, additionalProperties: { type: 'boolean' } }
+      }
+    },
     summaryDashboard: {
       type: 'object',
       properties: {
@@ -314,6 +323,7 @@ function validatePercentBreakpointOrder(preferences, fieldName = 'percentBreakpo
 
 function normalizeDashboardLayouts(layouts = {}) {
   const normalized = JSON.parse(JSON.stringify(layouts || {}));
+  if (normalized.experimentalSpf) normalized.experimentalSpf = sanitizeSpfLayout(normalized.experimentalSpf);
   if (normalized.machineDashboard) {
     delete normalized.machineDashboard.pphDisplayMode;
   }

@@ -133,6 +133,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/spf-col-efficiency-screen',
         '/ng/lpls-efficiency-screen',
         '/ng/spfs-efficiency-screen',
+        '/ng/experimental/spf',
         '/ng/blanket-blasters-efficiency-screen'
       ]
     },
