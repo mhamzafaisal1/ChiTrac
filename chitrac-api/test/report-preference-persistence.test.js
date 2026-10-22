@@ -6,11 +6,15 @@ const { createRequire } = require('node:module');
 const jwt = require('jsonwebtoken');
 const systemPreferencesSchema = require('../schemas/system-preferences');
 
-function harness() {
+function harness(machines = [
+  ...[90001,90002,90003,90004,90005,90006].map(id => ({id,active:true,stations:[1]})),
+  {id:80000,active:true,stations:[1,2,4]}, {id:70000,active:false,stations:[1,2]}
+]) {
   const routes = new Map();
   const users = new Map([['alice', { userId: 'alice', theme: 'dark' }]]);
   const collection = {
     async createIndex() {},
+    find() { return { async toArray() { return machines; } }; },
     async findOne({ userId }) { return users.get(userId) || null; },
     async updateOne({ userId }, { $set }) {
       const user = structuredClone(users.get(userId) || {});
@@ -127,7 +131,7 @@ test('SPF selection and order persist per user without overwriting other layouts
   const layout = { stationOrder: [...ids].reverse(), stationVisibility: Object.fromEntries(ids.map((id,i) => [id, i < 3])) };
   const saved = await h.request('put', 'alice', { dashboardLayouts: { experimentalSpf: layout } });
   assert.equal(saved.status, 200);
-  assert.equal(saved.payload.dashboardLayouts.experimentalSpf.stationOrder[0], '90006');
+  assert.equal(saved.payload.dashboardLayouts.experimentalSpf.stationOrder[0], '90006:1');
   assert.equal(saved.payload.theme, 'dark');
   await h.request('put', 'alice', { dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '2x2' } } });
   await h.request('put', 'alice', { timeFormat: '24h' });
@@ -138,5 +142,21 @@ test('SPF selection and order persist per user without overwriting other layouts
   assert.equal((await h.request('put', null, { dashboardLayouts: { experimentalSpf: layout } })).status, 401);
   const bad = { ...layout, stationVisibility: Object.fromEntries(ids.map(id => [id,false])) };
   assert.equal((await h.request('put', 'alice', { dashboardLayouts: { experimentalSpf: bad } })).status, 400);
-  assert.equal((await h.request('get', 'alice')).payload.dashboardLayouts.experimentalSpf.stationOrder[0], '90006');
+  assert.equal((await h.request('get', 'alice')).payload.dashboardLayouts.experimentalSpf.stationOrder[0], '90006:1');
+});
+
+
+test('production layouts save exact active configured stations and reject unknown, inactive or excessive selections', async () => {
+  const h=harness();const ids=['80000:4','80000:1','90001:1'];
+  const layout={stationOrder:ids,stationVisibility:Object.fromEntries(ids.map(id=>[id,true]))};
+  const saved=await h.request('put','alice',{dashboardLayouts:{experimentalSpf:layout}});
+  assert.equal(saved.status,200);assert.equal(saved.payload.dashboardLayouts.experimentalSpf.stationOrder[0],'80000:4');
+  for (const invalid of ['80000:3','70000:1','12345:1']) {
+    const bad={stationOrder:[invalid,...ids.slice(1)],stationVisibility:{}};
+    assert.equal((await h.request('put','alice',{dashboardLayouts:{experimentalSpf:bad}})).status,400);
+  }
+  const many={stationOrder:['80000:1','80000:2','80000:4','90001:1','90002:1','90003:1','90004:1'],stationVisibility:{}};
+  assert.equal((await h.request('put','alice',{dashboardLayouts:{experimentalSpf:many}})).status,400);
+  assert.equal((await h.request('get','alice')).payload.dashboardLayouts.experimentalSpf.stationOrder[0],'80000:4');
+  assert.equal((await h.request('get','bob')).payload.dashboardLayouts,undefined);
 });

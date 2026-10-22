@@ -18,3 +18,5 @@ button:focus-visible { outline: 2px solid var(--theme-color-primary); outline-of
 @media (max-width: 599px) { :host { height: calc(100dvh - 56px); } }
 
 .loading-state { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+
+.catalog-message { padding: 12px; margin: 0; }

@@ -1,3 +1,4 @@
+import { ProductionStation } from '../efficiency-screens/experimental-spf/spf-stations';
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
@@ -51,6 +52,27 @@ export class EfficiencyScreensService {
           || lanes.find(lane => lane.operator == null)
           || null;
       })
+    );
+  }
+
+  /** Resolve an exact machine/station pair; never borrow an operator from another station. */
+  getProductionStationSummaries(stations: ProductionStation[]): Observable<Record<string, any>> {
+    this.websocketService.ensureConnected();
+    return this.websocketService.dashboardCache$.pipe(
+      filter(cache => !!cache.dashboard?.production), take(1),
+      map(cache => {
+        const production = cache.dashboard!.production!;
+        return Object.fromEntries(stations.map(station => {
+          const machine = production.machines[String(station.machineId)];
+          const operator = (machine?.activeOperatorKeys || []).map(key => production.operators[key])
+            .find(entity => entity?.operator?.station != null && Number(entity.operator.station) === station.station &&
+              Number(entity.machine?.id ?? entity.machine?.serial) === station.machineId);
+          const lane = operator ? this.toLane(operator) : machine ? {
+            ...this.toLane(machine), operator: null, operatorId: null, efficiency: {}, oee: {},
+          } : { status: -1, fault: 'Offline', operator: null, efficiency: {}, oee: {}, batch: {}, displayTimers: {} };
+          return [station.id, { ...lane, serial: station.machineId, station: station.station, machine: station.label }];
+        }));
+      }),
     );
   }
 

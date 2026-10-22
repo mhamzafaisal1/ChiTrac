@@ -35,7 +35,7 @@ const booleanMapSchema = {
   additionalProperties: { type: 'boolean' }
 };
 
-const { SPF_STATION_IDS, sanitizeSpfLayout } = require('../utils/spfLayout');
+const { STATION_ID_PATTERN, sanitizeSpfLayout } = require('../utils/spfLayout');
 
 const dashboardLayoutsSchema = {
   type: 'object',
@@ -43,8 +43,8 @@ const dashboardLayoutsSchema = {
     experimentalSpf: {
       type: 'object', required: ['stationOrder', 'stationVisibility'], additionalProperties: false,
       properties: {
-        stationOrder: { type: 'array', minItems: 6, maxItems: 6, uniqueItems: true, items: { enum: SPF_STATION_IDS } },
-        stationVisibility: { type: 'object', propertyNames: { enum: SPF_STATION_IDS }, additionalProperties: { type: 'boolean' } }
+        stationOrder: { type: 'array', minItems: 3, maxItems: 10000, uniqueItems: true, items: { type: 'string', pattern: STATION_ID_PATTERN, maxLength: 40 } },
+        stationVisibility: { type: 'object', maxProperties: 10000, propertyNames: { pattern: STATION_ID_PATTERN }, additionalProperties: { type: 'boolean' } }
       }
     },
     summaryDashboard: {
