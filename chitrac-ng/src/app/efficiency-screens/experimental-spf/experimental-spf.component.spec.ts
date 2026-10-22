@@ -43,6 +43,7 @@ describe('Configured production station layouts', () => {
     expect(component.stations.some(s => s.machineId === 70000)).toBeFalse();
     editor.toggle(); component.openLayout(); const data = dialog.open.calls.mostRecent().args[1].data;
     expect(data.minVisible).toBe(3); expect(data.maxVisible).toBe(6); expect(data.cards.length).toBe(9);
+    expect(data.allowTemporaryOverLimit).toBeTrue();
     expect(data.cards.find((card: any) => card.id === '80000:4').label).toContain('Station 4');
     expect(config.getMachineConfigs).toHaveBeenCalledTimes(2);
   }));
@@ -154,16 +155,20 @@ describe('Production station catalog and layout repair', () => {
 });
 
 describe('Station selection count limits', () => {
-  it('allows only 3–6 selections when the catalog contains more than six', () => {
+  it('allows temporary selections outside 3–6 but only applies valid selections', () => {
     const close=jasmine.createSpy(); const ids=['a','b','c','d','e','f','g','h'];
     TestBed.configureTestingModule({imports:[SummaryCardVisibilityDialogComponent],providers:[provideNoopAnimations(),
-      {provide:MatDialogRef,useValue:{close}}, {provide:MAT_DIALOG_DATA,useValue:{cards:ids.map(id=>({id,label:id})),visibility:{g:false,h:false},minVisible:3,maxVisible:6,dragDropEnabled:true}},
+      {provide:MatDialogRef,useValue:{close}}, {provide:MAT_DIALOG_DATA,useValue:{cards:ids.map(id=>({id,label:id})),visibility:{g:false,h:false},minVisible:3,maxVisible:6,allowTemporaryOverLimit:true,dragDropEnabled:true}},
     ]});
     const fixture=TestBed.createComponent(SummaryCardVisibilityDialogComponent); const picker=fixture.componentInstance; fixture.detectChanges();
-    picker.selectHide(picker.hideCards[0]); picker.showSelected(); expect(picker.showCards.length).toBe(6);
+    picker.selectHide(picker.hideCards[0]); picker.showSelected(); expect(picker.showCards.length).toBe(7);
+    fixture.detectChanges(); expect(picker.canApply).toBeFalse(); picker.save(); expect(close).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('mat-dialog-actions button:last-child').disabled).toBeTrue();
+    picker.selectShow(picker.showCards[0]); picker.hideSelected(); expect(picker.showCards.length).toBe(6);
     for(let i=0;i<4;i++){picker.selectShow(picker.showCards[0]);picker.hideSelected();}
     fixture.detectChanges(); expect(picker.canApply).toBeFalse(); picker.save(); expect(close).not.toHaveBeenCalled();
     picker.selectHide(picker.hideCards[0]);picker.showSelected();fixture.detectChanges();expect(picker.canApply).toBeTrue();
+    expect(fixture.nativeElement.querySelector('mat-dialog-actions button:last-child').disabled).toBeFalse();
     picker.save(); expect(close.calls.mostRecent().args[0].order.length).toBe(8); fixture.destroy();
   });
 });

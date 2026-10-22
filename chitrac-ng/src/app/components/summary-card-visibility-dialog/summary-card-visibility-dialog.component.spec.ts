@@ -91,6 +91,37 @@ describe('SummaryCardVisibilityDialogComponent', () => {
     expect(component.selectedHideId).toBeNull();
   });
 
+  it('allows temporary transfers above the limit but blocks applying until corrected', () => {
+    const component = createComponent({ minVisible: 1, maxVisible: 2, allowTemporaryOverLimit: true });
+    expect(component.canEnterShow({ dropContainer: {} } as any, {} as any)).toBeTrue();
+    component.drop(dropEvent(component.hideCards, component.showCards, 0, 1), true);
+    expect(component.showCards.map(card => card.id)).toEqual(['first', 'third', 'second']);
+    expect(component.canApply).toBeFalse();
+    component.save();
+    expect(close).not.toHaveBeenCalled();
+    component.selectShow(component.showCards[0]);
+    component.hideSelected();
+    expect(component.canApply).toBeTrue();
+    component.save();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('allows arrow and bulk transfers beyond the limit while retaining minimum validation', () => {
+    const component = createComponent({ minVisible: 2, maxVisible: 2, allowTemporaryOverLimit: true });
+    component.selectHide(component.hideCards[0]);
+    component.showSelected();
+    expect(component.showCards.length).toBe(3);
+    expect(component.canApply).toBeFalse();
+    component.hideAll();
+    expect(component.canApply).toBeFalse();
+    expect(component.canShowAll).toBeTrue();
+    component.showAll();
+    expect(component.showCards.length).toBe(3);
+    expect(component.canApply).toBeFalse();
+    component.save();
+    expect(close).not.toHaveBeenCalled();
+  });
+
   it('shows all, preserves destination order and saves all IDs once', () => {
     const component = createComponent();
     component.selectHide(component.hideCards[0]);
