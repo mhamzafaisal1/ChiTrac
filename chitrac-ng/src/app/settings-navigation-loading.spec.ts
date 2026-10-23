@@ -3,7 +3,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { of, Subject } from 'rxjs';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 import { ConfigurationService } from './configuration.service';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
 import { ItemGridComponent } from './item-grid/item-grid.component';
@@ -19,11 +19,12 @@ import { UserService } from './user.service';
 import { AuthGuard } from './guards/auth.guard';
 import { NavigationFeedbackComponent } from './components/navigation-feedback/navigation-feedback.component';
 import { UserProfileComponent } from './user-profile/user-profile.component';
+import { ConfigurationCacheService } from './services/configuration-cache.service';
 
 for (const [type, method, name] of [
-  [MachineGridComponent, 'getMachineConfigs', 'machines'],
-  [ItemGridComponent, 'getItemConfigs', 'items'],
-  [OperatorGridComponent, 'getOperatorConfigs', 'operators'],
+  [MachineGridComponent, 'watchMachineConfigs', 'machines'],
+  [ItemGridComponent, 'watchItemConfigs', 'items'],
+  [OperatorGridComponent, 'watchOperatorConfigs', 'operators'],
 ] as const) {
   describe(`${name} settings loading`, () => {
     let response: Subject<any>;
@@ -35,7 +36,7 @@ for (const [type, method, name] of [
         { provide: MatDialog, useValue: {} },
       ] });
     });
-    it('renders the page and a spinner before a slow REST response, then enables editing', fakeAsync(() => {
+    it('renders the page and a spinner before configuration sync, then enables editing', fakeAsync(() => {
       const fixture = TestBed.createComponent(type as any);
       try {
         fixture.detectChanges(); tick(1);
@@ -61,6 +62,21 @@ for (const [type, method, name] of [
         expect(get).toHaveBeenCalledTimes(2);
         response.next([]); fixture.detectChanges();
         expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+      } finally { fixture.destroy(); }
+    }));
+    it('connects pagination and sorting when configuration was cached before navigation', fakeAsync(() => {
+      response = new BehaviorSubject([]);
+      const fixture = TestBed.createComponent(type as any);
+      try {
+        fixture.detectChanges(); tick(); fixture.detectChanges();
+        const page: any = fixture.componentInstance;
+        expect(page.paginator).toBeDefined();
+        expect(page.sort).toBeDefined();
+        expect(page.dataSource.paginator).toBe(page.paginator);
+        expect(page.dataSource.sort).toBe(page.sort);
+        expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+        tick(60000);
+        expect(get).toHaveBeenCalledTimes(1);
       } finally { fixture.destroy(); }
     }));
   });
@@ -93,14 +109,17 @@ class DashboardStub {}
   '<app-navigation-feedback #feedback/><div [attr.inert]="feedback.pending() ? \'\' : null"><router-outlet/></div>' })
 class NavigationTestShell {}
 
-describe('Dashboard to settings with delayed REST responses', () => {
+describe('Dashboard to settings with delayed configuration sync', () => {
+  let configurationRows: Subject<any[]>;
   beforeEach(() => {
+    configurationRows = new Subject();
     localStorage.setItem('token', 'test-token');
     TestBed.configureTestingModule({ imports: [NavigationTestShell], providers: [
       provideNoopAnimations(), provideHttpClient(), provideHttpClientTesting(),
       provideRouter([{ path: 'dashboard', component: DashboardStub },
         { path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: 7 } }]),
       { provide: MatDialog, useValue: {} },
+      { provide: ConfigurationCacheService, useValue: { watch: () => configurationRows } },
     ] });
   });
   afterEach(() => localStorage.removeItem('token'));
@@ -118,13 +137,13 @@ describe('Dashboard to settings with delayed REST responses', () => {
       tick(1); // ngOnInit schedules the initial table request after the first render.
       expect(router.url).toBe('/ng/settings/machines');
       http.expectNone('/api/passport/user');
-      const data = http.expectOne('/api/machine/config');
+      http.expectNone('/api/machine/config');
       expect(fixture.nativeElement.querySelector('machine-grid')).not.toBeNull();
       expect(fixture.nativeElement.querySelector('.navigation-loading')).toBeNull();
       expect(fixture.nativeElement.querySelector('app-page-load-state [role="status"]').textContent).toContain('Loading machines');
       tick(5000); fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('mat-spinner')).not.toBeNull();
-      data.flush([]); tick(); fixture.detectChanges();
+      configurationRows.next([]); tick(); fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull(); http.verify();
     } finally { fixture.destroy(); }
   }));
@@ -144,7 +163,7 @@ describe('Dashboard to settings with delayed REST responses', () => {
       expect(router.url).toBe('/ng/settings/machines');
       expect(fixture.nativeElement.querySelector('.navigation-loading')).toBeNull();
       expect(fixture.nativeElement.querySelector('app-page-load-state [role="status"]')).not.toBeNull();
-      http.expectOne('/api/machine/config').flush([]); tick(); http.verify();
+      http.expectNone('/api/machine/config'); configurationRows.next([]); tick(); http.verify();
     } finally { fixture.destroy(); }
   }));
 });

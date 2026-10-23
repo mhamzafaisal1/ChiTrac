@@ -6,7 +6,7 @@ import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { Subject, Subscription, distinctUntilChanged, exhaustMap, finalize, map, takeUntil, tap, timer, throwError } from 'rxjs';
+import { Subject, Subscription, distinctUntilChanged, exhaustMap, map, takeUntil, tap, timer, throwError } from 'rxjs';
 import { ConfigurationService } from '../../configuration.service';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
 import { LayoutEditService } from '../../services/layout-edit.service';
@@ -85,12 +85,18 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
 
   loadStations(openPicker = false): void {
     if (this.catalogLoading) return;
+    if (this.hasCatalog) {
+      if (openPicker && this.layoutEditing) this.showPicker();
+      return;
+    }
     this.catalogLoading = true;
     this.catalogError = '';
-    this.catalogRequest = this.configuration.getMachineConfigs().pipe(
-      finalize(() => this.catalogLoading = false), takeUntil(this.destroyed$),
+    this.catalogRequest?.unsubscribe();
+    this.catalogRequest = this.configuration.watchMachineConfigs().pipe(
+      takeUntil(this.destroyed$),
     ).subscribe({
       next: machines => {
+        this.catalogLoading = false;
         this.stations = configuredProductionStations(machines);
         this.layout = normalizeSpfLayout(this.hasCatalog && this.layoutEditing ? this.layout : this.savedLayout, this.stations);
         if (this.snapshot) this.snapshot = normalizeSpfLayout(this.snapshot, this.stations);
@@ -99,6 +105,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
         if (openPicker && this.layoutEditing) this.showPicker();
       },
       error: () => {
+        this.catalogLoading = false;
         this.isLoading = false;
         this.catalogError = 'Could not load configured stations. Please try again.';
       },

@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { ConfigurationService } from '../configuration.service';
 
 @Injectable({
   providedIn: 'root'
@@ -10,10 +11,10 @@ export class MachineAnalyticsService {
   private machineApiUrl = '/api/machine';
   private reportsApiUrl = '/api/reports';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private readonly configuration: ConfigurationService) {}
 
   getMachines(): Observable<any> {
-    return this.http.get(`${this.machineApiUrl}/config`);
+    return this.configuration.getMachineConfigs();
   }
 
   getMachineHourlyStates(machineSerial: string, endTime: string): Observable<any> {
