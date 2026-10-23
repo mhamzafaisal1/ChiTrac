@@ -126,6 +126,19 @@
   background: currentColor;
 }
 
+.connection-status-tooltip {
+  max-width: min(200px, calc(100vw - 16px));
+  padding: 4px 8px;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  background: var(--mat-tooltip-container-color, var(--mat-sys-inverse-surface));
+  color: var(--mat-tooltip-supporting-text-color, var(--mat-sys-inverse-on-surface));
+  border-radius: var(--mat-tooltip-container-shape, var(--mat-sys-corner-extra-small));
+  font-family: var(--mat-tooltip-supporting-text-font, var(--mat-sys-body-small-font));
+  font-size: var(--mat-tooltip-supporting-text-size, var(--mat-sys-body-small-size));
+  line-height: var(--mat-tooltip-supporting-text-line-height, var(--mat-sys-body-small-line-height));
+}
+
 .connection-status-label {
   min-width: 0;
   overflow: hidden;

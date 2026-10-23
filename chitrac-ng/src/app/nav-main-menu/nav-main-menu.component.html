@@ -206,7 +206,10 @@
       <span style="margin-left: 12px"><b><a href="/">{{ systemName }}</a></b></span>
 
       <span class="connection-status" [ngClass]="websocketStatus"
-        [matTooltip]="getConnectionStatusTooltip()" matTooltipShowDelay="500"
+        (mouseenter)="enterConnectionTooltip($event)" (mousemove)="moveConnectionTooltip($event)"
+        (mouseleave)="hideConnectionTooltip()" (focus)="focusConnectionTooltip($event)"
+        (blur)="hideConnectionTooltip()" (keydown.escape)="hideConnectionTooltip(true)"
+        tabindex="0" [attr.aria-describedby]="connectionTooltipVisible ? 'connection-status-tooltip' : null"
         role="status" aria-live="polite" aria-atomic="true">
         <span class="connection-status-dot" aria-hidden="true"></span>
         <span class="connection-status-label">{{ getConnectionStatusLabel() }}</span>
@@ -283,3 +286,11 @@
     </div>
   </mat-sidenav-content>
 </mat-sidenav-container>
+
+<ng-template cdkConnectedOverlay [cdkConnectedOverlayOrigin]="connectionTooltipOrigin"
+  [cdkConnectedOverlayOpen]="connectionTooltipVisible" [cdkConnectedOverlayPositions]="connectionTooltipPositions"
+  [cdkConnectedOverlayViewportMargin]="8" [cdkConnectedOverlayPush]="true"
+  [cdkConnectedOverlayScrollStrategy]="connectionTooltipScrollStrategy"
+  cdkConnectedOverlayPanelClass="connection-status-tooltip-panel" (detach)="hideConnectionTooltip()">
+  <div id="connection-status-tooltip" class="connection-status-tooltip" role="tooltip">{{ getConnectionStatusTooltip() }}</div>
+</ng-template>
