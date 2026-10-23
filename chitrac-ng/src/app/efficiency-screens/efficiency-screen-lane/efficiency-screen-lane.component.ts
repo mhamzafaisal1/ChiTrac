@@ -24,10 +24,11 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   @Input() lane: any;
   @Input() mode: EfficiencyScreenLaneMode = 'operator';
 
-  /** Elapsed time display string, updated every second when in fault (latestFaultStart) or paused (latestPausedStart) */
+  /** Elapsed time in the current fault or paused state, updated every second. */
   elapsedDisplay = '';
   private destroy$ = new Subject<void>();
   private timerSub: Subscription | null = null;
+  private elapsedAnchor?: { key: string; asOf: number; elapsedMs: number; receivedAt: number };
 
   constructor(
     private cdr: ChangeDetectorRef,
@@ -51,6 +52,17 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
   }
 
   private syncElapsedTimer(): void {
+    const start = this.elapsedStart();
+    if (start !== null) {
+      const snapshotValue = this.lane?.elapsedAsOf;
+      const snapshot = snapshotValue == null ? NaN : new Date(snapshotValue).getTime();
+      const key = `${this.lane?.serial}:${this.lane?.station}:${this.mode}:${this.lane?.status}:${start}`;
+      if (Number.isFinite(snapshot)) {
+        if (!this.elapsedAnchor || this.elapsedAnchor.key !== key || snapshot > this.elapsedAnchor.asOf) {
+          this.elapsedAnchor = { key, asOf: snapshot, elapsedMs: Math.max(0, snapshot - start), receivedAt: performance.now() };
+        }
+      } else this.elapsedAnchor = undefined;
+    } else this.elapsedAnchor = undefined;
     this.updateElapsedDisplay();
     if (this.shouldShowDynamicElapsed()) {
       if (!this.timerSub) {
@@ -73,30 +85,33 @@ export class EfficiencyScreenLaneComponent implements OnInit, OnChanges, OnDestr
     }
   }
 
-  /** Show ticking elapsed when faulted (use latestFaultStart) or paused/offline (use latestPausedStart or latestFaultStart). */
+  private elapsedStart(): number | null {
+    const value = this.mode === 'fault' ? this.lane?.latestFaultStart
+      : this.mode === 'offline' ? this.lane?.latestPausedStart : null;
+    if (value == null) return null;
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
   private shouldShowDynamicElapsed(): boolean {
-    if (this.mode === 'fault') return !!this.lane?.latestFaultStart;
-    if (this.mode === 'offline') return !!(this.lane?.latestPausedStart || this.lane?.latestFaultStart);
-    return false;
+    return this.elapsedStart() !== null;
   }
 
   private updateElapsedDisplay(): void {
-    if (this.mode === 'fault' && this.lane?.latestFaultStart) {
-      this.elapsedDisplay = this.formatElapsedFromStart(this.lane.latestFaultStart);
-    } else if (this.mode === 'offline' && this.lane?.latestPausedStart) {
-      this.elapsedDisplay = this.formatElapsedFromStart(this.lane.latestPausedStart);
-    } else if (this.mode === 'offline' && this.lane?.latestFaultStart) {
-      this.elapsedDisplay = this.formatElapsedFromStart(this.lane.latestFaultStart);
-    } else {
+    const start = this.elapsedStart();
+    if (start !== null) this.elapsedDisplay = this.formatElapsedFromStart(start);
+    else if (this.mode === 'fault' || this.mode === 'offline') this.elapsedDisplay = '—';
+    else {
       this.elapsedDisplay = this.lane?.displayTimers?.on ?? '';
     }
   }
 
-  /** Format elapsed seconds as "Xh Ym Zs" from given start to now */
-  private formatElapsedFromStart(isoOrDate: string | Date): string {
-    const start = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
-    if (!start || isNaN(start.getTime())) return '0s';
-    const totalSec = Math.max(0, Math.floor((Date.now() - start.getTime()) / 1000));
+  /** Advance the source clock locally without depending on the browser's wall clock. */
+  private formatElapsedFromStart(start: number): string {
+    const elapsedMs = this.elapsedAnchor
+      ? this.elapsedAnchor.elapsedMs + performance.now() - this.elapsedAnchor.receivedAt
+      : Date.now() - start;
+    const totalSec = Math.max(0, Math.floor(elapsedMs / 1000));
     if (totalSec <= 0) return '0s';
     const h = Math.floor(totalSec / 3600);
     const m = Math.floor((totalSec % 3600) / 60);

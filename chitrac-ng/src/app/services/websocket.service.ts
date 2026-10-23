@@ -89,6 +89,7 @@ export interface ProductionEntity {
 
 export interface ProductionStatsCache {
   updatedAt: string | Date;
+  elapsedAsOf?: string | Date;
   windows: Record<string, { key: string; label: string; start: string | Date; end: string | Date }>;
   machines: Record<string, ProductionEntity>;
   operators: Record<string, ProductionEntity>;

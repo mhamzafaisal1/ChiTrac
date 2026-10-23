@@ -288,7 +288,7 @@ async function refreshCountSparklineCache(server, options = {}) {
 }
 
 async function refreshProductionStatsCache(server, options = {}) {
-  const nextCache = await loadProductionStatsCache(server.db, server.config, options.now || new Date());
+  const nextCache = await loadProductionStatsCache(server.db, server.config, options.now);
   ensureCache(server);
   server.cache.dashboard.production = nextCache;
 
