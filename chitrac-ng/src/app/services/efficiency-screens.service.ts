@@ -67,8 +67,8 @@ export class EfficiencyScreensService {
           const operator = (machine?.activeOperatorKeys || []).map(key => production.operators[key])
             .find(entity => entity?.operator?.station != null && Number(entity.operator.station) === station.station &&
               Number(entity.machine?.id ?? entity.machine?.serial) === station.machineId);
-          const lane = operator ? this.toLane(operator) : machine ? {
-            ...this.toLane(machine), operator: null, operatorId: null, efficiency: {}, oee: {},
+          const lane = operator ? this.toLane(operator, production.elapsedAsOf ?? production.updatedAt) : machine ? {
+            ...this.toLane(machine, production.elapsedAsOf ?? production.updatedAt), operator: null, operatorId: null, efficiency: {}, oee: {},
           } : { status: -1, fault: 'Offline', operator: null, efficiency: {}, oee: {}, batch: {}, displayTimers: {} };
           return [station.id, { ...lane, serial: station.machineId, station: station.station, machine: station.label }];
         }));
@@ -89,18 +89,18 @@ export class EfficiencyScreensService {
       .map(key => cache.operators[key])
       .filter((operator): operator is ProductionEntity => !!operator);
     if (activeOperators.length) {
-      return activeOperators.map(operator => this.toLane(operator));
+      return activeOperators.map(operator => this.toLane(operator, cache.elapsedAsOf ?? cache.updatedAt));
     }
-    return [this.toLane(machine)];
+    return [this.toLane(machine, cache.elapsedAsOf ?? cache.updatedAt)];
   }
 
   private machineLane(cache: ProductionStatsCache | undefined, serial: number): any | null {
     if (!cache) return null;
     const machine = cache.machines[String(serial)];
-    return machine ? this.toLane(machine) : null;
+    return machine ? this.toLane(machine, cache.elapsedAsOf ?? cache.updatedAt) : null;
   }
 
-  private toLane(entity: ProductionEntity): any {
+  private toLane(entity: ProductionEntity, elapsedAsOf?: string | Date): any {
     const status = Number(entity.status ?? -1);
     const statusSince = entity.statusSince || null;
     return {
@@ -113,6 +113,7 @@ export class EfficiencyScreensService {
       machine: entity.machine?.name || `Serial ${entity.machine?.serial ?? entity.machine?.id}`,
       latestFaultStart: status > 1 ? statusSince : null,
       latestPausedStart: status <= 0 ? statusSince : null,
+      elapsedAsOf,
       timers: { on: 0, ready: 0 },
       displayTimers: { on: '', run: '' },
       efficiency: this.metricSlots(entity, 'efficiencyPercent'),

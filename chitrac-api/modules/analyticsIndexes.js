@@ -1,3 +1,5 @@
+const { ensureProductionIngestionIndexes } = require('./productionIngestionIndexes');
+
 async function createIndex(collection, keys, options, logger) {
   try {
     await collection.createIndex(keys, { background: true, ...options });
@@ -50,6 +52,7 @@ async function ensureAnalyticsIndexes(db, config, logger) {
 
   await Promise.all([
     ensureRuntimeCollectionIndexes(db, config, logger),
+    ensureProductionIngestionIndexes(db, config),
     createIndex(
       totalsDaily,
       { type: 1, "timestamps.create": 1, "machine.id": 1 },

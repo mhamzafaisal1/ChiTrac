@@ -270,7 +270,7 @@ function tickerItem(ticker, operator) {
     || items[0];
 }
 
-function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Date()) {
+function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Date(), currentSessions = []) {
   const windows = productionWindowRanges(nowInput);
   const breakTimes = Object.fromEntries(
     Object.entries(windows).map(([key, range]) => [key, scheduledBreakMs(shifts, range.start, range.end)])
@@ -280,6 +280,15 @@ function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Da
   );
   const machines = {};
   const operators = {};
+  const sessionsByMachine = new Map();
+  for (const session of currentSessions) {
+    const serial = serialFromMachine(session.machine);
+    const start = new Date(session.timestamps?.start);
+    if (serial === null || !session.timestamps?.start || !Number.isFinite(start.getTime()) || start > new Date(nowInput)) continue;
+    if (session.timestamps?.end != null) continue;
+    const previous = sessionsByMachine.get(serial);
+    if (!previous || start > new Date(previous.timestamps.start)) sessionsByMachine.set(serial, session);
+  }
 
   for (const document of Array.isArray(documents) ? documents : []) {
     const timestamp = new Date(document?.timestamps?.start || document?.timestamps?.create);
@@ -303,10 +312,12 @@ function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Da
     const status = Number(ticker?.status?.id ?? ticker?.status?.code ?? 0);
     machineEntity.status = status;
     machineEntity.fault = ticker?.status?.name || "Unknown";
-    machineEntity.statusSince = ticker?.timestamps?.active
-      || ticker?.timestamps?.create
-      || ticker?.timestamps?.update
-      || null;
+    const session = sessionsByMachine.get(serialFromMachine(ticker.machine));
+    const sessionStatus = session?.status?.id ?? session?.status?.code
+      ?? session?.startState?.status?.id ?? session?.startState?.status?.code ?? session?.type;
+    // Event activity changes on every count; only the matching state session defines its start.
+    machineEntity.statusSince = session && Number(sessionStatus) === status
+      ? session.timestamps.start : null;
     machineEntity.activeOperatorKeys = [];
 
     for (const operator of Array.isArray(ticker?.operators) ? ticker.operators : []) {
@@ -333,13 +344,18 @@ function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Da
 
   return {
     updatedAt: new Date(nowInput),
+    elapsedAsOf: new Date(nowInput),
     windows,
     machines: Object.fromEntries(Object.entries(machines).map(([key, entity]) => [key, finalize(entity)])),
     operators: Object.fromEntries(Object.entries(operators).map(([key, entity]) => [key, finalize(entity)])),
   };
 }
 
-async function loadProductionStatsCache(db, config, nowInput = new Date()) {
+async function loadProductionStatsCache(db, config, nowInput) {
+  // Use the source database clock, rather than the browser/API host clock, for elapsed time.
+  const useSourceClock = nowInput === undefined;
+  if (nowInput === undefined) nowInput = (await db.command({ hello: 1 })).localTime;
+  const clockStartedAt = performance.now();
   const windows = productionWindowRanges(nowInput);
   const earliestStart = windows.last24Hours.start;
   const [documents, tickers, shifts] = await Promise.all([
@@ -350,7 +366,15 @@ async function loadProductionStatsCache(db, config, nowInput = new Date()) {
     db.collection(config.stateTickerCollectionName).find({}).toArray(),
     db.collection(config.shiftCollectionName).find({ active: true }).toArray(),
   ]);
-  return buildProductionStatsCache(documents, tickers, shifts, nowInput);
+  const serials = tickers.map(ticker => serialFromMachine(ticker.machine)).filter(serial => serial !== null);
+  const currentSessions = serials.length ? await db.collection(config.machineSessionCollectionName)
+    .find({ 'machine.serial': { $in: serials }, 'timestamps.end': null })
+    .project({ machine: 1, status: 1, type: 1, 'startState.status': 1, timestamps: 1 })
+    .toArray() : [];
+  const cache = buildProductionStatsCache(documents, tickers, shifts, nowInput, currentSessions);
+  // Include cache-loading time in the timer without moving the statistics windows.
+  if (useSourceClock) cache.elapsedAsOf = new Date(new Date(nowInput).getTime() + performance.now() - clockStartedAt);
+  return cache;
 }
 
 module.exports = {

@@ -30,6 +30,7 @@ export interface SummaryCardVisibilityDialogData {
   emptyHiddenText?: string;
   compactCards?: boolean;
   maxVisible?: number;
+  allowTemporaryOverLimit?: boolean;
   minVisible?: number;
   exactVisible?: number;
   layoutOptions?: Array<{ id: string; label: string; exactVisible: number }>;
@@ -64,6 +65,7 @@ export class SummaryCardVisibilityDialogComponent {
   emptyHiddenText = 'No infoboxes hidden';
   compactCards = false;
   maxVisible: number | null = null;
+  allowTemporaryOverLimit = false;
   minVisible: number | null = null;
   exactVisible: number | null = null;
   layoutOptions: NonNullable<SummaryCardVisibilityDialogData['layoutOptions']> = [];
@@ -89,6 +91,7 @@ export class SummaryCardVisibilityDialogComponent {
     this.emptyHiddenText = data.emptyHiddenText || this.emptyHiddenText;
     this.compactCards = data.compactCards === true;
     this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
+    this.allowTemporaryOverLimit = data.allowTemporaryOverLimit === true;
     this.minVisible = typeof data.minVisible === 'number' ? data.minVisible : null;
     this.exactVisible = typeof data.exactVisible === 'number' ? data.exactVisible : null;
     this.layoutOptions = data.layoutOptions || [];
@@ -154,8 +157,10 @@ export class SummaryCardVisibilityDialogComponent {
   get canShowAll(): boolean {
     const total = this.showCards.length + this.hideCards.length;
     return this.hideCards.length > 0 &&
-      (this.maxVisible == null || total <= this.maxVisible) &&
-      (this.exactVisible == null || total <= this.exactVisible);
+      (this.allowTemporaryOverLimit || (
+        (this.maxVisible == null || total <= this.maxVisible) &&
+        (this.exactVisible == null || total <= this.exactVisible)
+      ));
   }
 
   drop(event: CdkDragDrop<SummaryCardVisibilityOption[]>, destinationVisible: boolean): void {
@@ -182,7 +187,7 @@ export class SummaryCardVisibilityDialogComponent {
     drag.dropContainer === drop || this.canShowMore;
 
   get canShowMore(): boolean {
-    return this.maxVisible == null || this.showCards.length < this.maxVisible;
+    return this.allowTemporaryOverLimit || this.maxVisible == null || this.showCards.length < this.maxVisible;
   }
 
   get canApply(): boolean {
