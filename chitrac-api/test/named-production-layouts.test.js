@@ -32,6 +32,18 @@ function harness(){
 }
 const input=(name='Line A',stationIds=['100:3','100:1','200:2'])=>({name,stationIds});
 
+test('eight-station User and System layouts save and reload without truncation', async () => {
+ const h=harness();h.machines.push({id:400,active:true,stations:[1,2]});
+ const ids=['100:1','100:2','100:3','100:4','200:1','200:2','400:1','400:2'];
+ for(const scope of ['user','system']) {
+  const created=await h.store.create('alice',scope,input('Eight stations',ids));
+  const loaded=await h.store.load('alice',{scope,id:created.layout.id});
+  assert.deepEqual(loaded.layout.stationIds,ids);
+  assert.deepEqual(loaded.preferences.dashboardLayouts.experimentalSpf.stationOrder,ids);
+ }
+ await assert.rejects(h.store.create('alice','user',input('Too many',[...ids,'400:3'])),error=>error.status===400);
+});
+
 test('User creation atomically saves a named snapshot and current default, preserving other preferences',async()=>{
  const h=harness();const result=await h.store.create('alice','user',input());
  assert.equal(result.layout.scope,'user');assert.equal(result.preferences.defaultProductionScreenLayout.id,result.layout.id);
