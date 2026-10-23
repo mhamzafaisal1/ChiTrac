@@ -7,7 +7,7 @@ const librarySchema = {
     type: 'object', required: ['id','name','stationIds','createdAt'], additionalProperties: false,
     properties: {
       id: {type:'string',pattern:idPattern}, name: {type:'string',minLength:1,maxLength:80},
-      stationIds: {type:'array',minItems:3,maxItems:6,uniqueItems:true,items:{type:'string',maxLength:40}},
+      stationIds: {type:'array',minItems:3,maxItems:8,uniqueItems:true,items:{type:'string',maxLength:40}},
       createdAt: {type:'string',format:'date-time'}
     }
   }
@@ -24,8 +24,8 @@ function validateReference(reference) {
   return {scope:reference.scope,id:reference.id};
 }
 function stationLayout(stationIds, availableStations) {
-  if(!Array.isArray(stationIds) || stationIds.length<3 || stationIds.length>6) throw problem(400,'Choose 3–6 active configured stations.');
+  if(!Array.isArray(stationIds) || stationIds.length<3 || stationIds.length>8) throw problem(400,'Choose 3–8 active configured stations.');
   try { return sanitizeSpfLayout({stationOrder:stationIds,stationVisibility:Object.fromEntries(stationIds.map(id=>[id,true]))},availableStations); }
-  catch { throw problem(400,'This layout contains unavailable or invalid stations. Choose 3–6 active configured stations.'); }
+  catch { throw problem(400,'This layout contains unavailable or invalid stations. Choose 3–8 active configured stations.'); }
 }
 module.exports={librarySchema,referenceSchema,normalizeName,validateReference,stationLayout,problem};

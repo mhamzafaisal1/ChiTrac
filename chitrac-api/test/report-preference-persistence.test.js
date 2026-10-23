@@ -155,7 +155,7 @@ test('production layouts save exact active configured stations and reject unknow
     const bad={stationOrder:[invalid,...ids.slice(1)],stationVisibility:{}};
     assert.equal((await h.request('put','alice',{dashboardLayouts:{experimentalSpf:bad}})).status,400);
   }
-  const many={stationOrder:['80000:1','80000:2','80000:4','90001:1','90002:1','90003:1','90004:1'],stationVisibility:{}};
+  const many={stationOrder:['80000:1','80000:2','80000:4','90001:1','90002:1','90003:1','90004:1','90005:1','90006:1'],stationVisibility:{}};
   assert.equal((await h.request('put','alice',{dashboardLayouts:{experimentalSpf:many}})).status,400);
   assert.equal((await h.request('get','alice')).payload.dashboardLayouts.experimentalSpf.stationOrder[0],'80000:4');
   assert.equal((await h.request('get','bob')).payload.dashboardLayouts,undefined);

@@ -16,7 +16,7 @@ function configuredProductionStations(machines) {
 
 /** Structural validation also accepts serial-only layouts saved by the original screen. */
 function sanitizeSpfLayout(layout, availableStations) {
-  const fail = () => { const error = new Error('Invalid production layout. Select 3–6 stations from active configured machines, with a unique station order.'); error.status = 400; throw error; };
+  const fail = () => { const error = new Error('Invalid production layout. Select 3–8 stations from active configured machines, with a unique station order.'); error.status = 400; throw error; };
   if (!layout || typeof layout !== 'object' || Array.isArray(layout) ||
       Object.keys(layout).some(key => !['stationOrder', 'stationVisibility'].includes(key))) fail();
   const { stationOrder, stationVisibility } = layout;
@@ -39,7 +39,7 @@ function sanitizeSpfLayout(layout, availableStations) {
     order.push(id); visibility[id] = shown;
   }
   const count = Object.values(visibility).filter(Boolean).length;
-  if (count < 3 || count > 6) fail();
+  if (count < 3 || count > 8) fail();
   return { stationOrder: order, stationVisibility: visibility };
 }
 module.exports = { SPF_STATION_IDS, STATION_ID_PATTERN, configuredProductionStations, sanitizeSpfLayout };
