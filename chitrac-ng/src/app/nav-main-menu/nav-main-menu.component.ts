@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
+import { ConnectedPosition, Overlay, OverlayModule } from '@angular/cdk/overlay';
 import { RouterOutlet, RouterModule } from '@angular/router';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -63,6 +64,7 @@ const right = [
         MatSlideToggleModule,
         MatMenuModule,
         MatTooltipModule,
+        OverlayModule,
         DateTimeModalComponent,
         UserLoginComponent
     ],
@@ -78,6 +80,54 @@ const right = [
     ]
 })
 export class NavMainMenuComponent implements OnInit, OnDestroy {
+  connectionTooltipVisible = false;
+  connectionTooltipOrigin = { x: 0, y: 0 };
+  readonly connectionTooltipPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetX: 12, offsetY: 12 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetX: -12, offsetY: 12 },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetX: 12, offsetY: -12 },
+  ];
+  readonly connectionTooltipScrollStrategy = inject(Overlay).scrollStrategies.close();
+  private connectionTooltipTimer?: ReturnType<typeof setTimeout>;
+  private connectionTooltipDismissed = false;
+
+  enterConnectionTooltip(event: MouseEvent): void {
+    this.connectionTooltipDismissed = false;
+    this.moveConnectionTooltip(event);
+  }
+
+  moveConnectionTooltip(event: MouseEvent): void {
+    // The timeframe retains its own tooltip; do not show two overlapping tooltips.
+    if ((event.target as Element)?.closest?.('.timeframe-label')) {
+      this.hideConnectionTooltip();
+      return;
+    }
+    this.connectionTooltipOrigin = { x: event.clientX, y: event.clientY };
+    this.queueConnectionTooltip();
+  }
+
+  focusConnectionTooltip(event: FocusEvent): void {
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    this.connectionTooltipDismissed = false;
+    this.connectionTooltipOrigin = { x: bounds.left, y: bounds.bottom };
+    this.queueConnectionTooltip();
+  }
+
+  private queueConnectionTooltip(): void {
+    if (this.connectionTooltipVisible || this.connectionTooltipTimer || this.connectionTooltipDismissed) return;
+    this.connectionTooltipTimer = setTimeout(() => {
+      this.connectionTooltipTimer = undefined;
+      this.connectionTooltipVisible = true;
+    }, 500);
+  }
+
+  hideConnectionTooltip(dismiss = false): void {
+    clearTimeout(this.connectionTooltipTimer);
+    this.connectionTooltipTimer = undefined;
+    this.connectionTooltipVisible = false;
+    if (dismiss) this.connectionTooltipDismissed = true;
+  }
+
   @Output() darkModeToggleEvent = new EventEmitter();
   @Input() isDarkMode: boolean;
   @ViewChild('dateMenuTrigger') dateMenu: MatMenuTrigger;
@@ -273,6 +323,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.hideConnectionTooltip();
     this.timeframeSub?.unsubscribe();
     this.userSub?.unsubscribe();
     this.navigationActionsSub?.unsubscribe();

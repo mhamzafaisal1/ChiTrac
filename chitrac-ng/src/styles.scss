@@ -411,3 +411,5 @@ html, body {
   max-width: 420px;
   overflow: hidden;
 }
+// A pointer-following tooltip must not intercept the pointer when clamped to the viewport.
+.connection-status-tooltip-panel { pointer-events: none; }
