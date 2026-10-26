@@ -94,7 +94,7 @@
 .operator-block {
   flex: 0 0 auto;
   height: 10%;
-  min-height: 40px;
+  min-height: calc(2 * 1.2rem * 1.1 + 0.5rem);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -111,6 +111,7 @@
   text-align: center;
   flex-direction: column;
   padding-top: 0.5rem;
+  box-sizing: border-box;
   font-size: 1.2rem;
   line-height: 1.1;
   color: var(--theme-color-on-ryo);
@@ -121,8 +122,12 @@
   width: 100%;
   text-align: center;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 // Color classes for operator block and bars
