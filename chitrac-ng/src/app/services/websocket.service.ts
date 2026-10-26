@@ -5,6 +5,13 @@ import { distinctUntilChanged, map } from 'rxjs/operators';
 export type WebsocketConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 export type DashboardCacheScope = 'today' | 'currentShift';
 
+export interface ConfigurationCacheState {
+  epoch: string;
+  revision: number;
+  names: Record<string, string>;
+  collections: Record<string, any[]>;
+}
+
 export interface IdleOperatorSummary {
   idleOperators: number;
   shiftOperators: number;
@@ -172,6 +179,8 @@ export class WebsocketService {
   private readonly errorSubject = new BehaviorSubject<string | null>(null);
   private readonly dashboardCacheSubject = new BehaviorSubject<DashboardCacheState>({});
   private readonly sessionIdSubject = new BehaviorSubject<string | null>(null);
+  private readonly configurationCacheSubject = new BehaviorSubject<ConfigurationCacheState | null>(null);
+  readonly configurationCache$ = this.configurationCacheSubject.asObservable();
 
   readonly status$: Observable<WebsocketConnectionStatus> = this.statusSubject.asObservable();
   readonly message$: Observable<string> = this.messageSubject.asObservable();
@@ -237,6 +246,7 @@ export class WebsocketService {
     };
 
     socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
       this.zone.run(() => {
         this.handleMessage(event.data);
         this.messageSubject.next(this.formatMessage(event.data));
@@ -395,6 +405,11 @@ export class WebsocketService {
     const parsed = this.parseMessage(data);
     if (!parsed) return;
 
+    if (parsed.type === 'configuration-cache' || parsed.type === 'configuration-cache-update') {
+      this.storeConfigurationCache(parsed);
+      return;
+    }
+
     if ((parsed.type === 'dashboard-cache-update' || parsed.type === 'dashboard-cache') && parsed.cache) {
       this.storeDashboardCache(parsed as DashboardCacheMessage);
     }
@@ -402,6 +417,23 @@ export class WebsocketService {
     if (parsed.type === 'websocket-session' && parsed.session?.id) {
       this.sessionIdSubject.next(parsed.session.id);
     }
+  }
+
+  private storeConfigurationCache(message: ConfigurationCacheState & { type: string }): void {
+    if (!message.epoch || !Number.isFinite(message.revision) || !message.collections || !message.names) return;
+    const current = this.configurationCacheSubject.value;
+    const full = message.type === 'configuration-cache';
+    if (!full && (!current || current.epoch !== message.epoch || message.revision > current.revision + 1)) {
+      this.send({ type: 'configuration-cache-request' });
+      return;
+    }
+    if (current?.epoch === message.epoch && message.revision <= current.revision) return;
+    const collections = Object.fromEntries(Object.entries(message.collections)
+      .filter(([name, rows]) => name.startsWith('config-') && name !== 'config-user' && Array.isArray(rows)));
+    this.configurationCacheSubject.next({
+      epoch: message.epoch, revision: message.revision, names: message.names,
+      collections: full ? collections : { ...current!.collections, ...collections }
+    });
   }
 
   private storeDashboardCache(message: DashboardCacheMessage): void {

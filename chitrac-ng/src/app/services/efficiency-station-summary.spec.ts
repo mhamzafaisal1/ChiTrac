@@ -10,7 +10,7 @@ describe('Exact configured-station live efficiency', () => {
       '100':{machine:{id:100},status:1,activeOperatorKeys:['two','one','foreign'],stats:{lastSixMinutes:{efficiencyPercent:999,hasData:true}}},
       '200':{machine:{id:200},status:4,fault:'Jam',statusSince:'2026-10-21T12:00:00Z',stats:{}},
     },operators:{two:operator(2,82),one:operator(1,91),foreign:{...operator(3,100),machine:{id:999}}}}}});
-    const service=new EfficiencyScreensService({} as any,{ensureConnected(){},dashboardCache$:cache} as any);
+    const service=new EfficiencyScreensService({} as any,{ensureConnected(){},dashboardCache$:cache} as any, {} as any);
     let result:any;service.getProductionStationSummaries(stations).subscribe(value=>result=value);
     expect(result['100:1'].operator).toBe('Operator 1');expect(result['100:1'].efficiency.lastSixMinutes.value).toBe(91);
     expect(result['100:2'].operator).toBe('Operator 2');expect(result['100:2'].efficiency.lastSixMinutes.value).toBe(82);
@@ -20,7 +20,7 @@ describe('Exact configured-station live efficiency', () => {
     expect(result['300:1'].status).toBe(-1);expect(result['300:1'].machine).toBe('Offline — Station 1');
   });
   it('waits for production cache and cancels cleanly before it arrives', () => {
-    const cache=new BehaviorSubject<any>({dashboard:{}});const service=new EfficiencyScreensService({}as any,{ensureConnected(){},dashboardCache$:cache}as any);
+    const cache=new BehaviorSubject<any>({dashboard:{}});const service=new EfficiencyScreensService({}as any,{ensureConnected(){},dashboardCache$:cache}as any, {} as any);
     let emitted=false;const sub=service.getProductionStationSummaries([]).subscribe(()=>emitted=true);
     expect(emitted).toBeFalse();sub.unsubscribe();expect(cache.observed).toBeFalse();
   });

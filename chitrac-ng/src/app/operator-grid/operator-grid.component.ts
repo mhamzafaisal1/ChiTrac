@@ -1,5 +1,5 @@
 /*** Angular Imports */
-import { Component, OnInit, OnDestroy, ViewChild, model, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, model, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /*** Material Imports */
@@ -16,8 +16,8 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 
 
 /*** rxjs Imports */
-import { EMPTY, Subscription, timer } from 'rxjs';
-import { startWith, switchMap, share, catchError, take } from 'rxjs/operators';
+import { defer, EMPTY, Subscription } from 'rxjs';
+import { share, catchError, take } from 'rxjs/operators';
 import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 /*** PDF Imports */
@@ -40,7 +40,7 @@ import { ConfigurationService } from '../configuration.service';
     templateUrl: './operator-grid.component.html',
     styleUrl: './operator-grid.component.scss'
 })
-export class OperatorGridComponent implements OnInit, OnDestroy {
+export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
   operators: OperatorConfig[];
   dataSource = new MatTableDataSource<OperatorConfig>([]);
   isLoading = true;
@@ -73,19 +73,22 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
     this.dataSource.sort = this.sort;
   }
 
-  private getOps = timer(1, (30 * 1000))
+  private getOps = defer(() => this.configurationService.watchOperatorConfigs())
     .pipe(
-      switchMap(() => this.configurationService.getOperatorConfigs().pipe(
         catchError(() => {
           this.isLoading = false;
           this.error = 'Failed to load operators. Please try again.';
           return EMPTY;
-        })
-      )),
+        }),
       share()
   );
 
   readonly dialog = inject(MatDialog);
+
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
+  }
 
   private sanitize(op: any): OperatorConfig {
     const { _id, id, code, name, active } = op ?? {};

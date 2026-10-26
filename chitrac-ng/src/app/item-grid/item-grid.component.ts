@@ -1,5 +1,5 @@
 /*** Angular Imports */
-import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /*** Material Imports */
@@ -14,9 +14,9 @@ import { SelectionModel } from '@angular/cdk/collections';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
 /*** rxjs Imports */
-import { EMPTY, Subscription, timer } from 'rxjs';
+import { defer, EMPTY, Subscription } from 'rxjs';
 import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
-import { switchMap, share, catchError } from 'rxjs/operators';
+import { share, catchError } from 'rxjs/operators';
 
 /*** Model Imports */
 import { ItemConfig } from '../shared/models/item.model';
@@ -44,7 +44,7 @@ import { ConfigurationService } from '../configuration.service';
   templateUrl: './item-grid.component.html',
   styleUrl: './item-grid.component.scss'
 })
-export class ItemGridComponent implements OnInit, OnDestroy {
+export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
   selectionModel = new SelectionModel<ItemConfig>(false, []);
   page: number = 1;
   paginationSize: number = 10;
@@ -114,10 +114,8 @@ export class ItemGridComponent implements OnInit, OnDestroy {
     return EMPTY;
   };
 
-  private getItems = timer(1, 30 * 1000).pipe(
-    switchMap(() => this.configurationService.getItemConfigs().pipe(
-      catchError(this.handleError)
-    )),
+  private getItems = defer(() => this.configurationService.watchItemConfigs()).pipe(
+    catchError(this.handleError),
     share()
   );
 
@@ -132,6 +130,11 @@ export class ItemGridComponent implements OnInit, OnDestroy {
         this.error = 'Failed to load items. Please try again.';
       }
     });
+  }
+
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
   }
 
   private refreshTable() {

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
 import { MatPaginator, PageEvent } from '@angular/material/paginator';
@@ -9,9 +9,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
 import { SelectionModel } from '@angular/cdk/collections';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { EMPTY, Subscription, timer } from 'rxjs';
+import { defer, EMPTY, Subscription } from 'rxjs';
 import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
-import { switchMap, share, catchError } from 'rxjs/operators';
+import { share, catchError } from 'rxjs/operators';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 import { MachineConfig } from '../shared/models/machine.model';
@@ -36,7 +36,7 @@ import { MachineDialogCuComponent } from '../machine-dialog-cu/machine-dialog-cu
   templateUrl: './machine-grid.component.html',
   styleUrl: './machine-grid.component.scss'
 })
-export class MachineGridComponent implements OnInit, OnDestroy {
+export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
   machines: MachineConfig[] = [];
   dataSource = new MatTableDataSource<MachineConfig>([]);
   isLoading = true;
@@ -85,10 +85,8 @@ export class MachineGridComponent implements OnInit, OnDestroy {
     return EMPTY;
   };
 
-  private getMachines = timer(1, 30 * 1000).pipe(
-    switchMap(() => this.configurationService.getMachineConfigs().pipe(
-      catchError(this.handleError)
-    )),
+  private getMachines = defer(() => this.configurationService.watchMachineConfigs()).pipe(
+    catchError(this.handleError),
     share()
   );
 
@@ -106,6 +104,11 @@ export class MachineGridComponent implements OnInit, OnDestroy {
     if (this.sub) {
       this.sub.unsubscribe();
     }
+  }
+
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
   }
 
   handlePageEvent(e: PageEvent) {

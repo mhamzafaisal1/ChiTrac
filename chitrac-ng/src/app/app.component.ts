@@ -34,6 +34,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.websocketService.ensureConnected();
     // Load app settings on startup
     this.loadSettings();
     
