@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { filter, map, take } from 'rxjs/operators';
+import { ConfigurationService } from '../configuration.service';
 import {
   ProductionEntity,
   ProductionStatsCache,
@@ -16,7 +17,8 @@ import {
 export class EfficiencyScreensService {
   constructor(
     private http: HttpClient,
-    private websocketService: WebsocketService
+    private websocketService: WebsocketService,
+    private readonly configuration: ConfigurationService
   ) { }
 
   getLiveEfficiencySummary(serial: number, _date?: string): Observable<any> {
@@ -77,7 +79,10 @@ export class EfficiencyScreensService {
   }
 
   getSPFMachines(): Observable<any[]> {
-    return this.http.get<any[]>('/api/machine/spf');
+    return this.configuration.getMachineConfigs().pipe(map(machines => machines
+      .filter(machine => machine.active !== false && (/^SPF/i.test(machine.name || '') || machine.type === 'SPF'))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .map(machine => ({ ...machine, serial: Number(machine.id ?? (machine as any).serial) }))));
   }
 
   private machineLanes(cache: ProductionStatsCache | undefined, serial: number): any[] {

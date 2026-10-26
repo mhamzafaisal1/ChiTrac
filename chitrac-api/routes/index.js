@@ -6,6 +6,7 @@ const { createVerifyJwtMiddleware } = require('../utils/authMiddleware');
 function init(app, server) {
     // Must precede every API registration, including the direct machine XML routes.
     app.use('/api', require('../utils/apiControllerAccess').createApiControllerAccess(server));
+    app.use('/api', require('../modules/configurationSync').configurationSyncMiddleware(server));
     const spindleEnabled = process.env.SPINDLE === 'true';
     const milnorEnabled = process.env.MILNOR === 'true';
     const softrolEnabled = process.env.SOFTROL === 'true';

@@ -21,11 +21,13 @@ const originalIds = SPF_STATION_SERIALS.map(id => id + ':1');
 describe('Configured production station layouts', () => {
   let fixture: any, component: ExperimentalSpfComponent, editor: LayoutEditService;
   let preferences: BehaviorSubject<any>, identity: BehaviorSubject<any>, closed: Subject<any>;
+  let catalog: BehaviorSubject<any[]>;
   let service: any, config: any, settings: any, dialog: any, ref: any, generation: number;
   beforeEach(() => {
     preferences = new BehaviorSubject(null); identity = new BehaviorSubject({ username: 'alice' }); closed = new Subject(); generation = 0;
     service = { getProductionStationSummaries: jasmine.createSpy().and.callFake((stations: any[]) => of(Object.fromEntries(stations.map(s => [s.id, { serial: s.machineId, station: s.station, machine: s.label, status: 1, operator: 'Operator ' + generation, efficiency: {}, batch: {} }]))) ) };
-    config = { getMachineConfigs: jasmine.createSpy().and.returnValue(of(machines())) };
+    catalog = new BehaviorSubject(machines());
+    config = { watchMachineConfigs: jasmine.createSpy().and.returnValue(catalog) };
     settings = { userPreferences$: preferences, saveExperimentalSpfLayout: jasmine.createSpy().and.returnValue(of({})) };
     ref = { close: jasmine.createSpy('close'), afterClosed: () => closed }; dialog = { openDialogs: [], open: jasmine.createSpy().and.returnValue(ref) };
     TestBed.configureTestingModule({ imports: [ExperimentalSpfComponent], providers: [provideNoopAnimations(),
@@ -42,10 +44,20 @@ describe('Configured production station layouts', () => {
     load(); expect(component.stations.length).toBe(9); expect(component.visibleStationIds).toEqual(originalIds);
     expect(component.stations.some(s => s.machineId === 70000)).toBeFalse();
     editor.toggle(); component.openLayout(); const data = dialog.open.calls.mostRecent().args[1].data;
-    expect(data.minVisible).toBe(3); expect(data.maxVisible).toBe(6); expect(data.cards.length).toBe(9);
+    expect(data.minVisible).toBe(3); expect(data.maxVisible).toBe(8); expect(data.cards.length).toBe(9);
     expect(data.allowTemporaryOverLimit).toBeTrue();
     expect(data.cards.find((card: any) => card.id === '80000:4').label).toContain('Station 4');
-    expect(config.getMachineConfigs).toHaveBeenCalledTimes(2);
+    expect(config.watchMachineConfigs).toHaveBeenCalledTimes(1);
+  }));
+
+  it('renders eight selected lanes and allows creating a layout with all eight', fakeAsync(() => {
+    load(); editor.toggle(); component.openLayout();
+    const ids = component.stations.slice(0, 8).map(station => station.id);
+    closed.next({ order: ids, visibility: {} }); tick(0); fixture.detectChanges();
+    expect(component.visibleStationIds).toEqual(ids);
+    expect(fixture.nativeElement.querySelectorAll('section.lane-container').length).toBe(8);
+    component.openCreateLayout();
+    expect(dialog.open.calls.mostRecent().args[1].data.stationIds).toEqual(ids);
   }));
 
   it('selects and reorders different stations on the same machine without refresh resetting the layout or DOM', fakeAsync(() => {
@@ -72,28 +84,28 @@ describe('Configured production station layouts', () => {
     expect(component.layout.stationVisibility['80000:1']).toBeFalse();
   }));
 
-  it('refreshes station availability before opening the picker without automatically showing new stations', fakeAsync(() => {
-    load(); config.getMachineConfigs.and.returnValue(of([...machines(), { id: 555, name: 'Added machine', active: true, stations: [3,5] }]));
+  it('updates station availability from sync without automatically showing new stations or fetching on picker open', fakeAsync(() => {
+    load(); catalog.next([...machines(), { id: 555, name: 'Added machine', active: true, stations: [3,5] }]);
     editor.toggle(); component.openLayout(); expect(component.stations.length).toBe(11);
     expect(component.visibleStationIds).toEqual(originalIds); expect(component.layout.stationVisibility['555:5']).toBeFalse();
   }));
 
   it('applies account preferences received during a catalog refresh against the new catalog', fakeAsync(() => {
-    load(); const response=new Subject<any>();config.getMachineConfigs.and.returnValue(response);component.loadStations();
+    load();
     preferences.next({dashboardLayouts:{experimentalSpf:{stationOrder:['555:1','555:2','555:3'],stationVisibility:{}}}});
-    response.next([...machines(),{id:555,name:'New line',active:true,stations:[1,2,3]}]);response.complete();tick(0);
+    catalog.next([...machines(),{id:555,name:'New line',active:true,stations:[1,2,3]}]);tick(0);
     expect(component.visibleStationIds).toEqual(['555:1','555:2','555:3']);
   }));
 
   it('shows a retryable configuration error and recovers without a blank screen', fakeAsync(() => {
-    config.getMachineConfigs.and.returnValue(throwError(() => new Error('offline'))); load();
+    config.watchMachineConfigs.and.returnValue(throwError(() => new Error('offline'))); load();
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('Could not load');
-    config.getMachineConfigs.and.returnValue(of(machines())); fixture.nativeElement.querySelector('.catalog-message button').click(); tick(0); fixture.detectChanges();
+    config.watchMachineConfigs.and.returnValue(of(machines())); fixture.nativeElement.querySelector('.catalog-message button').click(); tick(0); fixture.detectChanges();
     expect(component.visibleStationIds.length).toBe(6); expect(component.catalogError).toBe('');
   }));
 
   it('does not invent stations or permit saving when fewer than three are configured', fakeAsync(() => {
-    config.getMachineConfigs.and.returnValue(of([{ id: 42, name: 'One machine', active: true, stations: [1,2] }])); load();
+    config.watchMachineConfigs.and.returnValue(of([{ id: 42, name: 'One machine', active: true, stations: [1,2] }])); load();
     expect(component.visibleStationIds).toEqual(['42:1','42:2']);
     editor.toggle(); component.moveStation(0,1); editor.toggle();
     const save = dialog.open.calls.mostRecent().args[1].data.save; let failed = false;
@@ -133,9 +145,8 @@ describe('Configured production station layouts', () => {
 
   it('cancels in-flight cache reads and configuration loads when leaving', fakeAsync(() => {
     const pending = new Subject(); service.getProductionStationSummaries.and.returnValue(pending); load();
-    expect(pending.observed).toBeTrue(); const pendingConfig = new Subject(); config.getMachineConfigs.and.returnValue(pendingConfig);
-    component.loadStations(); expect(pendingConfig.observed).toBeTrue(); fixture.destroy();
-    expect(pending.observed).toBeFalse(); expect(pendingConfig.observed).toBeFalse(); tick(12000);
+    expect(pending.observed).toBeTrue(); expect(catalog.observed).toBeTrue(); fixture.destroy();
+    expect(pending.observed).toBeFalse(); expect(catalog.observed).toBeFalse(); tick(12000);
     expect(service.getProductionStationSummaries).toHaveBeenCalledTimes(1);
   }));
 });
@@ -145,30 +156,30 @@ describe('Production station catalog and layout repair', () => {
     const catalog = configuredProductionStations([{id:10,active:true,name:'A',stations:[1,1,2,NaN]}, {id:11,active:false,stations:[1]}, {id:12,active:true,stations:[]}] as any);
     expect(catalog.map(s=>s.id)).toEqual(['10:1','10:2']);
   });
-  it('preserves station order, hides catalog additions, drops unavailable selections and enforces 3–6', () => {
+  it('preserves station order, hides catalog additions, drops unavailable selections and enforces 3–8', () => {
     const catalog = configuredProductionStations(machines());
     let result = normalizeSpfLayout({stationOrder:['unknown','80000:4','80000:4'],stationVisibility:{}},catalog);
     expect(result.stationOrder[0]).toBe('80000:4'); expect(Object.values(result.stationVisibility).filter(Boolean).length).toBe(3);
     result=normalizeSpfLayout({stationOrder:catalog.map(s=>s.id),stationVisibility:{}},catalog);
-    expect(Object.values(result.stationVisibility).filter(Boolean).length).toBe(6);
+    expect(Object.values(result.stationVisibility).filter(Boolean).length).toBe(8);
   });
 });
 
 describe('Station selection count limits', () => {
-  it('allows temporary selections outside 3–6 but only applies valid selections', () => {
-    const close=jasmine.createSpy(); const ids=['a','b','c','d','e','f','g','h'];
+  it('allows temporary selections outside 3–8 but only applies valid selections', () => {
+    const close=jasmine.createSpy(); const ids=['a','b','c','d','e','f','g','h','i'];
     TestBed.configureTestingModule({imports:[SummaryCardVisibilityDialogComponent],providers:[provideNoopAnimations(),
-      {provide:MatDialogRef,useValue:{close}}, {provide:MAT_DIALOG_DATA,useValue:{cards:ids.map(id=>({id,label:id})),visibility:{g:false,h:false},minVisible:3,maxVisible:6,allowTemporaryOverLimit:true,dragDropEnabled:true}},
+      {provide:MatDialogRef,useValue:{close}}, {provide:MAT_DIALOG_DATA,useValue:{cards:ids.map(id=>({id,label:id})),visibility:{i:false},minVisible:3,maxVisible:8,allowTemporaryOverLimit:true,dragDropEnabled:true}},
     ]});
     const fixture=TestBed.createComponent(SummaryCardVisibilityDialogComponent); const picker=fixture.componentInstance; fixture.detectChanges();
-    picker.selectHide(picker.hideCards[0]); picker.showSelected(); expect(picker.showCards.length).toBe(7);
+    picker.selectHide(picker.hideCards[0]); picker.showSelected(); expect(picker.showCards.length).toBe(9);
     fixture.detectChanges(); expect(picker.canApply).toBeFalse(); picker.save(); expect(close).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('mat-dialog-actions button:last-child').disabled).toBeTrue();
-    picker.selectShow(picker.showCards[0]); picker.hideSelected(); expect(picker.showCards.length).toBe(6);
-    for(let i=0;i<4;i++){picker.selectShow(picker.showCards[0]);picker.hideSelected();}
+    picker.selectShow(picker.showCards[0]); picker.hideSelected(); expect(picker.showCards.length).toBe(8);
+    for(let i=0;i<6;i++){picker.selectShow(picker.showCards[0]);picker.hideSelected();}
     fixture.detectChanges(); expect(picker.canApply).toBeFalse(); picker.save(); expect(close).not.toHaveBeenCalled();
     picker.selectHide(picker.hideCards[0]);picker.showSelected();fixture.detectChanges();expect(picker.canApply).toBeTrue();
     expect(fixture.nativeElement.querySelector('mat-dialog-actions button:last-child').disabled).toBeFalse();
-    picker.save(); expect(close.calls.mostRecent().args[0].order.length).toBe(8); fixture.destroy();
+    picker.save(); expect(close.calls.mostRecent().args[0].order.length).toBe(9); fixture.destroy();
   });
 });

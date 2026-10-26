@@ -6,7 +6,7 @@ import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { Subject, Subscription, distinctUntilChanged, exhaustMap, finalize, map, takeUntil, tap, timer, throwError } from 'rxjs';
+import { Subject, Subscription, distinctUntilChanged, exhaustMap, map, takeUntil, tap, timer, throwError } from 'rxjs';
 import { ConfigurationService } from '../../configuration.service';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
 import { LayoutEditService } from '../../services/layout-edit.service';
@@ -85,12 +85,18 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
 
   loadStations(openPicker = false): void {
     if (this.catalogLoading) return;
+    if (this.hasCatalog) {
+      if (openPicker && this.layoutEditing) this.showPicker();
+      return;
+    }
     this.catalogLoading = true;
     this.catalogError = '';
-    this.catalogRequest = this.configuration.getMachineConfigs().pipe(
-      finalize(() => this.catalogLoading = false), takeUntil(this.destroyed$),
+    this.catalogRequest?.unsubscribe();
+    this.catalogRequest = this.configuration.watchMachineConfigs().pipe(
+      takeUntil(this.destroyed$),
     ).subscribe({
       next: machines => {
+        this.catalogLoading = false;
         this.stations = configuredProductionStations(machines);
         this.layout = normalizeSpfLayout(this.hasCatalog && this.layoutEditing ? this.layout : this.savedLayout, this.stations);
         if (this.snapshot) this.snapshot = normalizeSpfLayout(this.snapshot, this.stations);
@@ -99,6 +105,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
         if (openPicker && this.layoutEditing) this.showPicker();
       },
       error: () => {
+        this.catalogLoading = false;
         this.isLoading = false;
         this.catalogError = 'Could not load configured stations. Please try again.';
       },
@@ -147,9 +154,9 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     const ref = this.dialog.open(SummaryCardVisibilityDialogComponent, {
       width: '800px', maxWidth: '94vw', autoFocus: false,
       data: {
-        title: 'Edit SPF Layout', description: 'Choose 3–6 stations. Drag stations to change their order.',
+        title: 'Edit SPF Layout', description: 'Choose 3–8 stations. Drag stations to change their order.',
         showLabel: 'Shown', hideLabel: 'Hidden', emptyShownText: 'No stations shown', emptyHiddenText: 'No stations hidden',
-        compactCards: true, minVisible: 3, maxVisible: 6, allowTemporaryOverLimit: true, dragDropEnabled: true,
+        compactCards: true, minVisible: 3, maxVisible: 8, allowTemporaryOverLimit: true, dragDropEnabled: true,
         cards: this.layout.stationOrder.map(id => ({ id, label: this.stationLabel(id), icon: 'local_laundry_service' })),
         visibility: { ...this.layout.stationVisibility },
       },
@@ -178,7 +185,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   }
 
   openCreateLayout(): void {
-    if(!this.layoutEditing || this.namedDialog || this.catalogLoading || !this.user.getToken() || this.visibleStationIds.length<3 || this.visibleStationIds.length>6)return;
+    if(!this.layoutEditing || this.namedDialog || this.catalogLoading || !this.user.getToken() || this.visibleStationIds.length<3 || this.visibleStationIds.length>8)return;
     this.openNamedDialog(this.dialog.open(CreateProductionLayoutDialogComponent,{
       width:'520px',maxWidth:'94vw',autoFocus:false,
       data:{stationIds:[...this.visibleStationIds],systemAllowed:this.user.hasPermissionLevel(7)}
@@ -215,7 +222,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   }
 
   private saveLayout() {
-    if (this.visibleStationIds.length < 3 || this.visibleStationIds.length > 6) return throwError(() => new Error('Choose 3–6 active configured stations before saving.'));
+    if (this.visibleStationIds.length < 3 || this.visibleStationIds.length > 8) return throwError(() => new Error('Choose 3–8 active configured stations before saving.'));
     if (!this.user.getToken()) return throwError(() => new Error('Please log in to save a layout.'));
     return this.settings.saveExperimentalSpfLayout(this.copyLayout()).pipe(tap(() => {
       this.snapshot = null;

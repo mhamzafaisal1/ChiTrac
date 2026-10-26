@@ -25,7 +25,7 @@ export function resolveStationId(id: string, stations: ProductionStation[]): str
     stations.find(station => station.machineId === Number(id))?.id;
 }
 
-/** Keep saved selections/order, hide new stations, and repair stale layouts to the 3–6 range. */
+/** Keep saved selections/order, hide new stations, and repair stale layouts to the 3–8 range. */
 export function normalizeSpfLayout(layout: Partial<SpfLayout> | null | undefined, stations: ProductionStation[]): SpfLayout {
   const catalogIds = stations.map(station => station.id);
   const defaults = SPF_STATION_SERIALS.map(serial => resolveStationId(String(serial), stations)).filter((id): id is string => !!id);
@@ -36,7 +36,7 @@ export function normalizeSpfLayout(layout: Partial<SpfLayout> | null | undefined
   let count = 0;
   for (const rawId of sourceOrder) {
     const id = resolveStationId(rawId, stations);
-    if (id && layout?.stationVisibility?.[rawId] !== false && !stationVisibility[id] && count < 6) {
+    if (id && layout?.stationVisibility?.[rawId] !== false && !stationVisibility[id] && count < 8) {
       stationVisibility[id] = true; count++;
     }
   }
