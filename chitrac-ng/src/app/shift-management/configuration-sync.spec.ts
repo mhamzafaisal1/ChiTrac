@@ -25,8 +25,15 @@ for (const [component, method] of [[ShiftSettingsComponent, 'watchAllShifts'],
       const draft = page.editorShift;
       rows.next({ shifts: [{ ...initial, name: 'Changed elsewhere' }] });
       expect(page.dataSource.data[0].name).toBe('Changed elsewhere');
+      expect(page.selection.selected[0]).toBe(page.dataSource.data[0]);
       expect(page.editorShift).toBe(draft);
       expect(page.editorShift.name).toBe('Original');
+      page.onShiftSaved();
+      expect(page.showEditor).toBeFalse();
+      expect(page.selection.isEmpty()).toBeTrue();
+      rows.next({ shifts: [{ ...initial, name: 'Saved' }] });
+      expect(page.dataSource.data[0].name).toBe('Saved');
+      expect(rows.observed).toBeTrue();
       fixture.destroy();
       expect(rows.observed).toBeFalse();
     });

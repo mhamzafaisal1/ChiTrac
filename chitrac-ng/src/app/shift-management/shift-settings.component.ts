@@ -149,12 +149,13 @@ export class ShiftSettingsComponent implements OnInit, OnDestroy {
       return;
     }
     const match = this.dataSource.data.find((s) => s._id === sel._id);
+    this.selection.clear();
     if (match) {
-      this.selection.setSelection(match);
+      this.selection.select(match);
       // Keep an open editor's draft intact when another browser updates configuration.
     } else {
-      this.selection.clear();
       this.showEditor = false;
+      this.editorShift = null;
     }
   }
 
@@ -201,7 +202,8 @@ export class ShiftSettingsComponent implements OnInit, OnDestroy {
   }
 
   onShiftSaved(): void {
-    this.loadShifts();
+    this.selection.clear();
+    this.closeEditor();
   }
 
   deleteShift(): void {
@@ -220,7 +222,6 @@ export class ShiftSettingsComponent implements OnInit, OnDestroy {
           this.editorShift = null;
         }
         this.selection.clear();
-        this.loadShifts();
       },
       error: (err: unknown) => {
         const msg =

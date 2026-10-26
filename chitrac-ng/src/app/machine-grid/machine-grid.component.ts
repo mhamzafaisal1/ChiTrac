@@ -73,7 +73,11 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
     this.error = null;
     const machines = Array.isArray(res) ? res : [res];
     this.machines = Object.assign([], machines);
-    this.dataSource = new MatTableDataSource(machines);
+    this.dataSource.data = machines;
+    const selectedId = this.selectionModel.selected[0]?._id;
+    const selected = selectedId == null ? undefined : machines.find(row => row._id === selectedId);
+    this.selectionModel.clear();
+    if (selected) this.selectionModel.select(selected);
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
   };
@@ -131,7 +135,7 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
   retryLoad(): void { this.refreshTable(); }
 
   openDialog(machine: MachineConfig | null): void {
-    const data = machine ? { ...machine } : { ...this.emptyMachine };
+    const data = structuredClone(machine || this.emptyMachine);
     const dialogRef = this.dialog.open(MachineDialogCuComponent, {
       data,
       disableClose: true
@@ -161,7 +165,6 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
 
       action$.subscribe({
         next: () => {
-          this.refreshTable();
           this.selectionModel.clear();
         },
         error: (err) => {
@@ -190,7 +193,6 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
       this.configurationService.deleteMachineConfig(machine._id).subscribe({
         next: (res) => {
           console.log('Delete successful:', res);
-          this.refreshTable();
           this.selectionModel.clear();
         },
         error: (err) => {
