@@ -7,6 +7,9 @@ const { ObjectId } = require("mongodb");
 const { formatDuration } = require("./time");
 const { getBookendedStatesAndTimeRange } = require("./machineFunctions");
 const { normalizeTotalsDocument } = require("./totalsSchema");
+const { splitTimeRangeForHybridReport, getSessionDataForPartialDays } = require('./reportFunctions');
+const { calendarRange } = require('./totalsSchema');
+const { getShiftSummaryRecords } = require('./shiftSummaryRecords');
 
 function normalizeSessionSeconds(value, session) {
   const numeric = Number(value);
@@ -155,16 +158,9 @@ async function getItemsCachedDataForDays(completeDays, db, options = {}) {
 
   if (dateStrings.length === 0) return [];
 
-  const dateFilter = [
-    { date: { $in: dateStrings } },
-    { dateObj: { $in: dateStrings.map(d => new Date(d + 'T00:00:00.000Z')) } },
-    ...completeDays.map(day => ({
-      "timestamps.create": {
-        $gte: day.start,
-        $lte: day.end,
-      },
-    })),
-  ];
+  // A UTC-midnight Date is the previous calendar day in the plant timezone.
+  // Mixing dateObj with plant date strings widened today's query into yesterday.
+  const dateFilter = dateStrings.map(date => ({ 'timestamps.create': calendarRange(date) }));
 
   const buildQuery = (entityType) => {
     const query = {
@@ -188,11 +184,13 @@ async function getItemsCachedDataForDays(completeDays, db, options = {}) {
     return query;
   };
 
-  const operatorItemTotals = (await cacheCollection.find(buildQuery('operator-item')).toArray())
+  // Production output belongs to machine-item totals. Operator-item totals are
+  // labour attribution and can credit the same output to several operators.
+  const machineItemTotals = (await cacheCollection.find(buildQuery('machine-item')).toArray())
     .map(normalizeTotalsDocument);
 
-  if (operatorItemTotals.length > 0) {
-    return operatorItemTotals;
+  if (machineItemTotals.length > 0) {
+    return machineItemTotals;
   }
 
   const itemTotals = (await cacheCollection.find(buildQuery('item')).toArray())
@@ -329,12 +327,7 @@ function combineItemsHybridData(cachedItems, sessionItems, logger) {
 
   if (logger) logger.info(`[combineItemsHybridData] Combining ${cachedItems.length} cached items with ${sessionItems.length} session items`);
 
-  for (const item of cachedItems) {
-    const key = String(item.itemId);
-    itemMap.set(key, item);
-  }
-
-  for (const item of sessionItems) {
+  for (const item of [...cachedItems, ...sessionItems]) {
     const key = String(item.itemId);
     if (itemMap.has(key)) {
       const existing = itemMap.get(key);
@@ -345,7 +338,7 @@ function combineItemsHybridData(cachedItems, sessionItems, logger) {
         existing.itemStandard = item.itemStandard;
       }
     } else {
-      itemMap.set(key, item);
+      itemMap.set(key, { ...item });
     }
   }
 
@@ -354,7 +347,32 @@ function combineItemsHybridData(cachedItems, sessionItems, logger) {
   return Array.from(itemMap.values());
 }
 
+async function getItemSummaryForRange(db, start, end, { shiftId, serial } = {}) {
+  if (shiftId) {
+    const shift = await db.collection(config.shiftCollectionName).findOne({ _id: new ObjectId(shiftId) });
+    if (!shift) throw Object.assign(new Error('Shift not found'), { statusCode: 400 });
+    return buildItemSummaryRows(await getShiftSummaryRecords(db, shift, start, end, 'machine-item', serial));
+  }
+  const { completeDays, partialDays } = splitTimeRangeForHybridReport(start, end);
+  const records = [];
+  for (const day of completeDays) {
+    const query = { entityType: 'machine-item', 'timestamps.create': calendarRange(day.dateStr) };
+    if (serial != null) query.machineSerial = Number(serial);
+    const cached = (await db.collection(config.totalsDailyCollectionName).find(query).toArray()).map(normalizeTotalsDocument);
+    if (cached.length) records.push(...cached);
+    else partialDays.push({ start: day.start, end: day.end });
+  }
+  if (partialDays.length) {
+    // Use the same machine count events as Machine Report for clipped windows,
+    // including today. Never substitute a whole-day cache for a custom range.
+    const sessions = await getSessionDataForPartialDays(db, partialDays, serial == null ? undefined : Number(serial), { exclusiveEnd: true });
+    records.push(...sessions.machineItems);
+  }
+  return buildItemSummaryRows(records);
+}
+
 module.exports = {
+  getItemSummaryForRange,
   buildItemSummaryRows,
   splitTimeRangeForHybridItems,
   getItemsCachedDataForDays,

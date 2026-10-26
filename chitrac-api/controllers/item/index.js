@@ -12,14 +12,7 @@ const schedule = require('node-schedule');
 const config = require('../../modules/config');
 const timestampsSchema = require('../../schemas/timestampsSchema');
 const { parseAndValidateQueryParams } = require("../../utils/time");
-const { getShiftSummaryRecords } = require('../../utils/shiftSummaryRecords');
-const {
-  buildItemSummaryRows,
-  splitTimeRangeForHybridItems,
-  getItemsCachedDataForDays,
-  getItemsSessionDataForPartialDays,
-  combineItemsHybridData,
-} = require("../../utils/itemFunctions");
+const { getItemSummaryForRange } = require('../../utils/itemFunctions');
 
 const DELAYED_ITEM_JOB_PREFIX = 'delayedItemConfigApply:';
 
@@ -450,114 +443,13 @@ function constructor(server) {
   // Hybrid cached/session route for item summary, mirroring itemSessions.js implementation.
   router.get("/item/analytics/items-summary-daily-cache", async (req, res) => {
     try {
-      const { start, end } = parseAndValidateQueryParams(req);
-      const shiftId = await resolveShiftIdString(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
-
-      if (shiftId) {
-        const shift = await db.collection(config.shiftCollectionName).findOne({ _id: new ObjectId(shiftId) });
-        const records = await getShiftSummaryRecords(db, shift, exactStart, exactEnd, 'machine-item');
-        return res.json(buildItemSummaryRows(records));
-      }
-
-      const today = new Date();
-      const todayDateStr = today.toISOString().split("T")[0];
-      const startDateStr = exactStart.toISOString().split("T")[0];
-      const endDateStr = exactEnd.toISOString().split("T")[0];
-      const isToday = startDateStr === todayDateStr || endDateStr === todayDateStr;
-
-      const startOfDayStart = new Date(exactStart);
-      startOfDayStart.setHours(0, 0, 0, 0);
-
-      const endOfDayEnd = new Date(exactEnd);
-      endOfDayEnd.setHours(23, 59, 59, 999);
-
-      const isStartOfDay = exactStart.getTime() === startOfDayStart.getTime();
-      const isEndOfDay = exactEnd.getTime() >= endOfDayEnd.getTime();
-      const isSameDay = startDateStr === endDateStr;
-
-      const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
-
-      // Partial non-today → session-based for accurate windowing
-      if (isPartialDay && !isToday) {
-        const partialDays = [{ start: exactStart, end: exactEnd }];
-        const sessionItems = await getItemsSessionDataForPartialDays(partialDays, db);
-        return res.json(buildItemSummaryRows(sessionItems));
-      }
-
-      if (isPartialDay && isToday) {
-        // still use totals-daily collection for today
-      }
-
-      const HYBRID_THRESHOLD_HOURS = 24;
-      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-
-      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
-
-      let itemTotals = [];
-
-      if (useHybrid) {
-        const { completeDays, partialDays } = splitTimeRangeForHybridItems(
-          exactStart,
-          exactEnd
-        );
-
-        const today2 = new Date();
-        const todayDateStr2 = today2.toISOString().split("T")[0];
-
-        const partialDaysToday = [];
-        const partialDaysNotToday = [];
-
-        for (const partialDay of partialDays) {
-          const partialDayDateStr = new Date(
-            partialDay.start
-          ).toISOString().split("T")[0];
-          if (partialDayDateStr === todayDateStr2) {
-            partialDaysToday.push({
-              dateStr: partialDayDateStr,
-              start: new Date(partialDayDateStr + "T00:00:00.000Z"),
-              end: new Date(partialDayDateStr + "T23:59:59.999Z"),
-            });
-          } else {
-            partialDaysNotToday.push(partialDay);
-          }
-        }
-
-        const daysForCache = [...completeDays, ...partialDaysToday];
-
-        if (daysForCache.length > 0) {
-          itemTotals = await getItemsCachedDataForDays(daysForCache, db, { shiftId, logger });
-        }
-
-        if (partialDaysNotToday.length > 0) {
-          const sessionData = await getItemsSessionDataForPartialDays(
-            partialDaysNotToday,
-            db
-          );
-          itemTotals = combineItemsHybridData(itemTotals, sessionData);
-        }
-      } else {
-        const startDate = exactStart.toISOString().split("T")[0];
-        itemTotals = await getItemsCachedDataForDays(
-          [{ dateStr: startDate, start: startOfDayStart, end: endOfDayEnd }],
-          db,
-          { shiftId, logger }
-        );
-      }
-
-      if (!itemTotals.length) {
-        return res.json([]);
-      }
-
-      res.json(buildItemSummaryRows(itemTotals));
-    } catch (err) {
-      if (err.statusCode) {
-        return res.status(err.statusCode).json({ error: err.message });
-      }
-      res
-        .status(500)
-        .json({ error: "Failed to generate items summary from daily cache" });
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+      const shiftId = await resolveShiftIdString(req, db);
+      const items = await getItemSummaryForRange(db, new Date(start), new Date(end), { shiftId, serial });
+      res.json(items);
+    } catch (error) {
+      logger?.error?.('Item summary failed:', error);
+      res.status(error.statusCode || 500).json({ error: 'Failed to generate items summary' });
     }
   });
 

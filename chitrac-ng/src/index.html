@@ -5,12 +5,23 @@
   <title>ChiTrac V2</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    (function () {
+      var theme;
+      try { theme = localStorage.getItem('chitrac-theme'); } catch (_) {}
+      if (theme !== 'light' && theme !== 'dark') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.colorScheme = theme;
+      document.documentElement.style.backgroundColor = theme === 'dark' ? '#202b33' : '#fafafa';
+    })();
+  </script>
   <link rel="icon" type="image/x-icon" href="assets/images/chiDry-Favicon.png">
-  <link rel="preload" href="/assets/fonts/Montserrat-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="preload" href="/assets/fonts/MaterialSymbolsOutlined_Filled-Regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="preload" href="/assets/fonts/material-symbols-layout-edit.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="/assets/fonts/Montserrat-VariableFont_wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/MaterialSymbolsOutlined_Filled-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/material-symbols-layout-edit.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body class="mat-typography">
+  <script>document.body.classList.add(document.documentElement.dataset.theme + '-theme');</script>
   <ct-root></ct-root>
 </body>
 </html>

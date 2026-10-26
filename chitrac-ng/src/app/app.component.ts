@@ -5,7 +5,7 @@ import { SettingsService } from './services/settings.service';
 import { ErrorQueueService } from './services/error-queue.service';
 import { UserService } from './user.service';
 import { WebsocketService } from './services/websocket.service';
-import { Subject, distinctUntilChanged, filter, take, takeUntil } from 'rxjs';
+import { Subject, of, catchError, distinctUntilChanged, filter, take, takeUntil, switchMap } from 'rxjs';
 import { NavigationFeedbackComponent } from './components/navigation-feedback/navigation-feedback.component';
 
 @Component({
@@ -18,8 +18,8 @@ export class AppComponent implements OnInit, OnDestroy {
   title = 'chitrac-ng';
 
   /*@HostBinding('class')*/
-  currentTheme: 'light-theme' | 'dark-theme' = 'light-theme';
-  isDarkMode: boolean = false;
+  currentTheme: 'light-theme' | 'dark-theme' = document.documentElement.dataset['theme'] === 'light' ? 'light-theme' : 'dark-theme';
+  isDarkMode: boolean = this.currentTheme === 'dark-theme';
   private readonly destroy$ = new Subject<void>();
 
   constructor(
@@ -39,14 +39,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.loadSettings();
     
     // Watch for user login/logout and load theme accordingly
-    this.userService.user.pipe(
+    this.userService.getCurrentUser().pipe(
+      catchError(() => of(null)),
+      switchMap(() => this.userService.user),
       distinctUntilChanged((previous, next) => previous?.username === next?.username),
       takeUntil(this.destroy$)
     ).subscribe(user => {
       if (user && user.username) {
         // User is logged in, load their theme preference
         this.loadUserPreferences();
-        this.loadTheme();
         this.websocketService.ensureConnected();
       } else {
         // User is not logged in, use default theme from settings
@@ -55,11 +56,7 @@ export class AppComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Resolve the server-backed session for public pages and the navigation shell.
-    // Protected routes share this in-flight request through UserService.
-    this.userService.getCurrentUser()
-      .pipe(take(1), takeUntil(this.destroy$))
-      .subscribe({ error: () => {} });
+
   }
 
   ngOnDestroy(): void {
@@ -103,28 +100,9 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Load user's theme preference from server (for authenticated users)
-   */
-  private loadTheme(): void {
-    this.settingsService.getUserTheme().subscribe({
-      next: (response) => {
-        this.applyTheme(response.theme);
-      },
-      error: (err) => {
-        console.error('[AppComponent] Failed to load user theme, using default', err);
-        if (err?.status === 401) {
-          this.userService.clearStoredSession();
-        }
-        // Fall back to default theme on error
-        this.loadDefaultTheme();
-      }
-    });
-  }
-
   private loadUserPreferences(): void {
     this.settingsService.loadUserPreferences().subscribe({
-      next: () => {},
+      next: (preferences) => this.applyTheme(preferences.theme || preferences.defaultTheme || this.settingsService.getSettings()?.defaultTheme || 'dark'),
       error: (err) => {
         console.error('[AppComponent] Failed to load user preferences', err);
         if (err?.status === 401) {
@@ -163,6 +141,9 @@ export class AppComponent implements OnInit, OnDestroy {
    * Apply a theme to the document body
    */
   private applyTheme(theme: 'light' | 'dark'): void {
+    document.documentElement.dataset['theme'] = theme;
+    document.documentElement.style.colorScheme = theme;
+    try { localStorage.setItem('chitrac-theme', theme); } catch {}
     this.isDarkMode = theme === 'dark';
     this.renderer.removeClass(document.body, this.currentTheme);
     this.currentTheme = theme === 'dark' ? 'dark-theme' : 'light-theme';

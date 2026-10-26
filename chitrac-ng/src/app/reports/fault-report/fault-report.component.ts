@@ -51,7 +51,7 @@ export class FaultReportComponent implements OnInit, OnDestroy {
   startTime = '';
   endTime = '';
   selectedShiftId: string | null = null;
-  timeframeMode: TimeframePickerMode = 'custom';
+  timeframeMode: TimeframePickerMode = 'today';
   readonly summaryColumns = ['Fault', 'Count', 'Total Duration'];
   readonly detailColumns = ['Timestamp', 'Machine', 'Duration'];
   reportGroups: FaultReportGroup[] = [];

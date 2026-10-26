@@ -3,7 +3,7 @@ import type { NamedProductionLayout, ProductionLayoutActivation, ProductionLayou
 import { SpfLayout } from '../efficiency-screens/experimental-spf/spf-stations';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
-import { tap, map, distinctUntilChanged } from 'rxjs/operators';
+import { tap, map, distinctUntilChanged, finalize, shareReplay } from 'rxjs/operators';
 import { TimeFormat, formatDisplayTime } from '../utils/time-format';
 import { ReportLayoutId } from '../reports/report-columns';
 
@@ -86,6 +86,7 @@ export interface PromoteDashboardLayoutsResponse {
   providedIn: 'root'
 })
 export class SettingsService {
+  private settingsRequest$: Observable<AppSettings> | null = null;
   private settingsSubject = new BehaviorSubject<AppSettings | null>(null);
   public settings$ = this.settingsSubject.asObservable();
 
@@ -122,12 +123,17 @@ export class SettingsService {
    * Load application settings from the server
    */
   loadSettings(): Observable<AppSettings> {
-    return this.http.get<AppSettings>('/api/utilities/settings').pipe(
+    if (this.settingsRequest$) return this.settingsRequest$;
+    this.settingsRequest$ = this.http.get<AppSettings>('/api/utilities/settings').pipe(
       tap(settings => {
         this.settingsSubject.next(settings);
+        try { localStorage.setItem('chitrac-system-name', settings.systemName); } catch {}
         this.publishEffectiveUserPreferences();
-      })
+      }),
+      finalize(() => this.settingsRequest$ = null),
+      shareReplay({ bufferSize: 1, refCount: false })
     );
+    return this.settingsRequest$;
   }
 
   getSystemPreferences(): Observable<AppSettings> {

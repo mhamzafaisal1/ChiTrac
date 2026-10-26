@@ -465,6 +465,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
       "timestamps.start": { $lte: partialDay.end },
       $or: [
         { "timestamps.end": { $exists: false } },
+        { "timestamps.end": null },
         { "timestamps.end": { $gte: partialDay.start } },
       ],
     };

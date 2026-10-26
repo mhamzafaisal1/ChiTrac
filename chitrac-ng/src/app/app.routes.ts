@@ -112,5 +112,5 @@ export const routes: Routes = [
 	// Redirects
 	{ path: 'ng/home', loadComponent: () => import('./home/home.component').then(m => m.HomeComponent) },
 	{ path: '', redirectTo: 'ng/home', pathMatch: 'full' },
-	{ path: '**', redirectTo: 'ng/home', pathMatch: 'full' }
+	{ path: '**', loadComponent: () => import('./not-found/not-found.component').then(m => m.NotFoundComponent) }
 ];

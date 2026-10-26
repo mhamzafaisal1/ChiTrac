@@ -1,6 +1,6 @@
 <mat-sidenav-container class="sidenav-container" style="overflow: hidden !important;">
   <mat-sidenav #drawer class="sidenav" fixedInViewport [attr.role]="(isHandset$ | async) ? 'dialog' : 'navigation'"
-    [mode]="(isHandset$ | async) ? 'over' : 'side'"
+    mode="over"
     [opened]="shownMenu != ''" (closedStart)="closeMenu()" (click)="$event.stopPropagation()">
     <mat-toolbar style="background-color: var(--theme-color-primary); color:white">
       <span>
@@ -57,6 +57,18 @@
       <a mat-list-item routerLink="/ng/comparison-dashboard" (click)="closeMenu()">
         <mat-icon style="margin-right: 0.5em;">compare</mat-icon><span>Comparison</span>
       </a>
+      <a mat-list-item routerLink="/ng/action-center" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">crisis_alert</mat-icon><span>Action Center</span>
+      </a>
+      <a mat-list-item routerLink="/ng/downtime-pareto" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">waterfall_chart</mat-icon><span>Downtime Pareto</span>
+      </a>
+      <a mat-list-item routerLink="/ng/shift-handoff" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">assignment</mat-icon><span>Shift Handoff</span>
+      </a>
+      <a mat-list-item routerLink="/ng/visual-ops" (click)="closeMenu()">
+        <mat-icon style="margin-right: 0.5em;">monitoring</mat-icon><span>Visual Ops</span>
+      </a>
       <a mat-list-item (click)="openMenu('experimental')">
         <mat-icon style="margin-right: 0.5em;">science</mat-icon><span>Experimental</span>
       </a>
@@ -70,18 +82,6 @@
       </a>
       <a mat-list-item routerLink="/ng/experimental/daily-dashboard" (click)="closeMenu()">
         <mat-icon style="margin-right: 0.5em;">dashboard_customize</mat-icon><span>Daily Experimental</span>
-      </a>
-      <a mat-list-item routerLink="/ng/action-center" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">crisis_alert</mat-icon><span>Action Center</span>
-      </a>
-      <a mat-list-item routerLink="/ng/downtime-pareto" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">waterfall_chart</mat-icon><span>Downtime Pareto</span>
-      </a>
-      <a mat-list-item routerLink="/ng/shift-handoff" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">assignment</mat-icon><span>Shift Handoff</span>
-      </a>
-      <a mat-list-item routerLink="/ng/visual-ops" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">monitoring</mat-icon><span>Visual Ops</span>
       </a>
     </mat-nav-list>
 
@@ -256,7 +256,7 @@
         <!-- User indicator and shared authentication popup -->
         <button #loginMenuTrigger="matMenuTrigger" mat-button class="user-menu-button" type="button"
           [attr.aria-label]="user?.username ? 'Open user menu for ' + user.username : 'Open login menu'"
-          [attr.title]="user?.username || 'Login'" [matMenuTriggerFor]="loginMenu"
+          [attr.title]="user?.username || 'Login'" [matMenuTriggerFor]="isLoginRoute ? null : loginMenu" (click)="focusLoginPage()"
           (menuOpened)="closeMenu()">
           <span class="user-menu-content">
             <mat-icon class="user-icon" aria-hidden="true">account_circle</mat-icon>

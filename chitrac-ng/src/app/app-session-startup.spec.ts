@@ -27,7 +27,7 @@ describe('App session preference loading', () => {
     account.next({ username: 'admin', permissions: { level: 0 }, email: 'updated@example.test' });
     account.next({ username: 'admin', permissions: { level: 4 } });
     expect(settings.loadUserPreferences).toHaveBeenCalledTimes(1);
-    expect(settings.getUserTheme).toHaveBeenCalledTimes(1);
+    expect(settings.getUserTheme).not.toHaveBeenCalled();
   });
   it('reloads preferences when changing accounts or signing in again after logout', () => {
     app.ngOnInit();
