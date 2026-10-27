@@ -135,4 +135,12 @@ describe('shared configuration websocket cache', () => {
     http.expectNone({ method: 'GET', url: '/api/machine/config' });
     http.expectNone('/api/machine/spf');
   });
+  it('closes the live connection and clears synchronized snapshots when signing out', () => {
+    socket.receive(initial());
+    let configuration:any, dashboard:any, session:any;
+    const subscriptions=[websocket.configurationCache$.subscribe(value=>configuration=value),websocket.dashboardCache$.subscribe(value=>dashboard=value),websocket.sessionId$.subscribe(value=>session=value)];
+    expect(configuration).not.toBeNull(); websocket.resetSession();
+    expect(socket.readyState).toBe(3);expect(configuration).toBeNull();expect(dashboard).toEqual({});expect(session).toBeNull();
+    subscriptions.forEach(subscription=>subscription.unsubscribe());
+  });
 });

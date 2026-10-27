@@ -1,4 +1,6 @@
-<nav-main-menu (darkModeToggleEvent)="onThemeChanged()" [isDarkMode]="isDarkMode"></nav-main-menu>
+@if ((userService.user | async)?.username) {
+  <nav-main-menu (darkModeToggleEvent)="onThemeChanged()" [isDarkMode]="isDarkMode"></nav-main-menu>
+}
 <app-navigation-feedback #navigationFeedback></app-navigation-feedback>
 <div style="display: contents" [attr.inert]="navigationFeedback.pending() ? '' : null"
   [attr.aria-busy]="navigationFeedback.pending()">

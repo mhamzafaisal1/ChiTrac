@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, Router, RouterStateSnapshot, UrlTree, provideRouter } from '@angular/router';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
 
 import { AuthGuard } from './auth.guard';
 import { User, UserService } from '../user.service';
@@ -40,7 +40,7 @@ describe('AuthGuard', () => {
     const result = await firstValueFrom(guard.canActivate(route(0), state));
 
     expect(router.serializeUrl(result as UrlTree)).toBe(
-      '/ng/login?returnUrl=%2Fng%2Fsettings%2Froot%2Futilities'
+      '/ng/home?returnUrl=%2Fng%2Fsettings%2Froot%2Futilities'
     );
     expect(userService.hasPermissionLevel).not.toHaveBeenCalled();
   });
@@ -56,23 +56,23 @@ describe('AuthGuard', () => {
     expect(userService.hasPermissionLevel).toHaveBeenCalledWith(0, user);
   });
 
-  it('keeps report pages public', () => {
+  it('requires a signed-in session for every report page', () => {
     const reportRoutes = routes.filter(route => route.path?.startsWith('ng/reports/'));
     expect(reportRoutes.length).toBe(7);
     for (const reportRoute of reportRoutes) {
-      expect(reportRoute.canActivate).toBeUndefined();
+      expect(reportRoute.canActivate).toContain(AuthGuard);
       expect(reportRoute.data?.['requiredPermissionLevel']).toBeUndefined();
     }
   });
 
-  it('keeps dashboard and production screens public while guarding settings', () => {
+  it('guards dashboard, legacy production and settings routes', () => {
     const publicPaths = ['ng/machineAnalytics', 'ng/operatorAnalytics', 'ng/itemAnalytics',
       'ng/daily-summary', 'ng/comparison-dashboard', 'ng/lpls-efficiency-screen',
       'ng/blanket-blaster-one', 'ng/spfs-efficiency-screen'];
     for (const path of publicPaths) {
       const publicRoute = routes.find(route => route.path === path);
       expect(publicRoute).toBeDefined();
-      expect(publicRoute?.canActivate).toBeUndefined();
+      expect(publicRoute?.canActivate).toContain(AuthGuard);
     }
     for (const settingsRoute of routes.filter(route => route.path?.startsWith('ng/settings/'))) {
       expect(settingsRoute.canActivate).toContain(AuthGuard);
@@ -87,6 +87,13 @@ describe('AuthGuard', () => {
 
     const result = await firstValueFrom(guard.canActivate(route(0), state));
 
-    expect(router.serializeUrl(result as UrlTree)).toBe('/ng/settings/profile');
+    expect(router.serializeUrl(result as UrlTree)).toBe('/ng/home');
+  });
+  it('fails closed when session validation fails and makes Home the only anonymous component route', async () => {
+    userService.getCurrentUser.and.returnValue(throwError(() => new Error('offline')));
+    expect(router.serializeUrl(await firstValueFrom(guard.canActivate(route(0), state)) as UrlTree)).toBe('/ng/home');
+    for (const destination of routes.filter(item => item.redirectTo === undefined && item.path !== 'ng/home')) {
+      expect(destination.canActivate).withContext(destination.path || '').toContain(AuthGuard);
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { isNavigationMenu, navigationEntries } from '../services/navigation-menu';
 import { Component, inject, Output, Input, EventEmitter, ViewChild, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
@@ -253,6 +254,11 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   readonly permissionLevels = PermissionLevels;
 
+  entries() {
+    return this.user?.username && isNavigationMenu(this.shownMenu)
+      ? navigationEntries(this.shownMenu, level => this.canAccess(level)) : [];
+  }
+
   constructor(
     private userService: UserService,
     private router: Router,
@@ -305,7 +311,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     });
 
     this.dialogCloseSub = this.dialog.afterOpened.subscribe(() => this.closeMenu());
-    this.websocketService.ensureConnected();
+    if (this.user?.username) this.websocketService.ensureConnected();
     this.websocketStatusSub = this.websocketService.status$.subscribe((status) => {
       this.websocketStatus = status;
     });
@@ -338,12 +344,8 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   logout() {
-    const shouldRedirect = this.isCurrentRouteProtectedForAnonymous();
-    this.userService.logout().subscribe(() => {
-      if (shouldRedirect) {
-        this.router.navigate(['/']);
-      }
-    });
+    this.closeMenu();
+    this.userService.logout().subscribe(() => this.router.navigate(['/ng/home'], { replaceUrl: true }));
   }
 
   private openAuthenticationMenu(): void {

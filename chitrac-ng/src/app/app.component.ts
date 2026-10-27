@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit, Renderer2 } from '@angular/core';
+import { AsyncPipe } from '@angular/common';
 import { NavMainMenuComponent } from './nav-main-menu/nav-main-menu.component';
-import { RouterOutlet } from '@angular/router';
+import { Router, RouterOutlet } from '@angular/router';
 import { SettingsService } from './services/settings.service';
 import { ErrorQueueService } from './services/error-queue.service';
 import { UserService } from './user.service';
@@ -10,7 +11,7 @@ import { NavigationFeedbackComponent } from './components/navigation-feedback/na
 
 @Component({
     selector: 'ct-root',
-    imports: [NavMainMenuComponent, RouterOutlet, NavigationFeedbackComponent],
+    imports: [AsyncPipe, NavMainMenuComponent, RouterOutlet, NavigationFeedbackComponent],
     templateUrl: './app.component.html',
     styleUrl: './app.component.scss'
 })
@@ -21,20 +22,21 @@ export class AppComponent implements OnInit, OnDestroy {
   currentTheme: 'light-theme' | 'dark-theme' = 'light-theme';
   isDarkMode: boolean = false;
   private readonly destroy$ = new Subject<void>();
+  private hadSignedInUser = false;
 
   constructor(
     private renderer: Renderer2,
     private settingsService: SettingsService,
     private errorQueueService: ErrorQueueService,
-    private userService: UserService,
-    private websocketService: WebsocketService
+    readonly userService: UserService,
+    private websocketService: WebsocketService,
+    private router: Router
   ) {
     // Initial theme application (will be updated by loadTheme)
     this.renderer.addClass(document.body, this.currentTheme);
   }
 
   ngOnInit() {
-    this.websocketService.ensureConnected();
     // Load app settings on startup
     this.loadSettings();
     
@@ -44,14 +46,20 @@ export class AppComponent implements OnInit, OnDestroy {
       takeUntil(this.destroy$)
     ).subscribe(user => {
       if (user && user.username) {
+        this.hadSignedInUser = true;
         // User is logged in, load their theme preference
         this.loadUserPreferences();
         this.loadTheme();
         this.websocketService.ensureConnected();
       } else {
+        this.websocketService.resetSession();
         // User is not logged in, use default theme from settings
         this.settingsService.clearUserPreferences();
         this.loadDefaultTheme();
+        if (this.hadSignedInUser) {
+          this.hadSignedInUser = false;
+          this.router.navigate(['/ng/home'], { replaceUrl: true });
+        }
       }
     });
 

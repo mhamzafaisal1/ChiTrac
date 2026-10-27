@@ -1,4 +1,4 @@
-<mat-sidenav-container class="sidenav-container" style="overflow: hidden !important;">
+<mat-sidenav-container *ngIf="user?.username" class="sidenav-container" style="overflow: hidden !important;">
   <mat-sidenav #drawer class="sidenav" fixedInViewport [attr.role]="(isHandset$ | async) ? 'dialog' : 'navigation'"
     [mode]="(isHandset$ | async) ? 'over' : 'side'"
     [opened]="shownMenu != ''" (closedStart)="closeMenu()" (click)="$event.stopPropagation()">
@@ -11,180 +11,38 @@
       </span>
     </mat-toolbar>
 
-    <!-- Main Menu -->
-    <mat-nav-list *ngIf="shownMenu == 'main'" [@menuSwap]>
-      <a mat-list-item routerLink="/ng/home" (click)="closeMenu()">
-        <mat-icon>home</mat-icon><span class="menu-item">Home</span>
-      </a>
-      <a mat-list-item (click)="openMenu('dashboards')">
-        <mat-icon>dashboard</mat-icon><span class="menu-item">Dashboards</span>
-      </a>
-      <a mat-list-item (click)="openMenu('productionScreens')">
-        <mat-icon>live_tv</mat-icon><span>Production Screens</span>
-      </a>
-      <a mat-list-item (click)="openMenu('reports')">
-        <mat-icon>bar_chart</mat-icon><span class="menu-item">Reports</span>
-      </a>
-      <a mat-list-item *ngIf="user?.username && canAccess(permissionLevels.settings)" (click)="openMenu('settings')">
-        <mat-icon>settings</mat-icon><span class="menu-item">Settings</span>
-      </a>
-      <!-- Login now handled by popup in toolbar -->
-      <a mat-list-item *ngIf="user?.username" (click)="logout()">
-        <mat-icon>logout</mat-icon><span class="menu-item">Log Out as {{ user?.username }}</span>
-      </a>
-    </mat-nav-list>
-
-    <!-- Dashboards Submenu -->
-    <mat-nav-list *ngIf="shownMenu == 'dashboards'" [@menuSwap]>
-      <a mat-list-item (click)="prevMenu()">
-        <mat-icon style="margin-right: 0.5em;">arrow_back</mat-icon><span>Back</span>
-      </a>
-      <a mat-list-item routerLink="/ng/daily-analytics-split" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">slow_motion_video</mat-icon><span>Daily</span>
-      </a>
-      <a mat-list-item routerLink="/ng/analytics/machine-dashboard" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">local_laundry_service</mat-icon><span>Machine</span>
-      </a>
-      <a mat-list-item routerLink="/ng/operatorAnalytics" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">person</mat-icon><span>Operator</span>
-      </a>
-      <a mat-list-item routerLink="/ng/itemAnalytics" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">dry_cleaning</mat-icon><span>Item</span>
-      </a>
-      <a mat-list-item routerLink="/ng/daily-summary" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">view_column</mat-icon><span>Summary</span>
-      </a>
-      <a mat-list-item routerLink="/ng/comparison-dashboard" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">compare</mat-icon><span>Comparison</span>
-      </a>
-      <a mat-list-item (click)="openMenu('experimental')">
-        <mat-icon style="margin-right: 0.5em;">science</mat-icon><span>Experimental</span>
-      </a>
-
-    </mat-nav-list>
-
-    <!-- Experimental Dashboards Submenu -->
-    <mat-nav-list *ngIf="shownMenu == 'experimental'" [@menuSwap]>
-      <a mat-list-item (click)="prevMenu()">
-        <mat-icon style="margin-right: 0.5em;">arrow_back</mat-icon><span>Back</span>
-      </a>
-      <a mat-list-item routerLink="/ng/experimental/daily-dashboard" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">dashboard_customize</mat-icon><span>Daily Experimental</span>
-      </a>
-      <a mat-list-item routerLink="/ng/action-center" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">crisis_alert</mat-icon><span>Action Center</span>
-      </a>
-      <a mat-list-item routerLink="/ng/downtime-pareto" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">waterfall_chart</mat-icon><span>Downtime Pareto</span>
-      </a>
-      <a mat-list-item routerLink="/ng/shift-handoff" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">assignment</mat-icon><span>Shift Handoff</span>
-      </a>
-      <a mat-list-item routerLink="/ng/visual-ops" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">monitoring</mat-icon><span>Visual Ops</span>
-      </a>
-    </mat-nav-list>
-
-    <!-- Production Screens Submenu -->
-    <mat-nav-list *ngIf="shownMenu == 'productionScreens'" [@menuSwap]>
-      <a mat-list-item (click)="prevMenu()">
+    <!-- The sidebar and Home grid use the same menu catalogue. -->
+    <mat-nav-list *ngIf="shownMenu" [@menuSwap]>
+      <button mat-list-item type="button" *ngIf="shownMenu !== 'main'" (click)="prevMenu()">
         <mat-icon>arrow_back</mat-icon><span>Back</span>
-      </a>
-      <a mat-list-item routerLink="/ng/production-screen" (click)="closeMenu()">
-        <mat-icon>live_tv</mat-icon><span>Production Screen</span>
-      </a>
-      <ng-container *ngIf="productionLayouts.state$ | async as library">
-        <p class="nav-section-title" *ngIf="library.systemLayouts.length">System layouts</p>
-        <a mat-list-item *ngFor="let layout of library.systemLayouts; trackBy: trackProductionLayout"
-          [attr.title]="layout.name"
-          routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}"
-          (click)="closeMenu()">
-          <mat-icon>live_tv</mat-icon><span>{{ layout.name }}</span>
-        </a>
-        <p class="nav-section-title" *ngIf="library.userLayouts.length">Your layouts</p>
-        <a mat-list-item *ngFor="let layout of library.userLayouts; trackBy: trackProductionLayout"
-          [attr.title]="layout.name"
-          routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}"
-          (click)="closeMenu()">
-          <mat-icon>live_tv</mat-icon><span>{{ layout.name }}</span>
-        </a>
-        <p class="nav-section-title" *ngIf="library.loading" role="status">Loading layouts…</p>
-        <div *ngIf="library.error" role="status" class="nav-section-title">
-          <p>{{ library.error }}</p>
-          <button mat-button type="button" (click)="productionLayouts.refresh()">Retry</button>
-        </div>
+      </button>
+      @for (entry of entries(); track entry.label) {
+        @if (entry.path) {
+          <a mat-list-item [routerLink]="entry.path" (click)="closeMenu()"><mat-icon>{{ entry.icon }}</mat-icon><span>{{ entry.label }}</span></a>
+        } @else if (entry.menu) {
+          <button mat-list-item type="button" (click)="openMenu(entry.menu)"><mat-icon>{{ entry.icon }}</mat-icon><span>{{ entry.label }}</span></button>
+        } @else {
+          <button mat-list-item type="button" (click)="logout()"><mat-icon>{{ entry.icon }}</mat-icon><span>Log Out as {{ user?.username }}</span></button>
+        }
+      }
+      <ng-container *ngIf="shownMenu === 'productionScreens'">
+        <ng-container *ngIf="productionLayouts.state$ | async as library">
+          <p class="nav-section-title" *ngIf="library.systemLayouts.length">System layouts</p>
+          <a mat-list-item *ngFor="let layout of library.systemLayouts; trackBy: trackProductionLayout"
+            [attr.title]="layout.name" routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}" (click)="closeMenu()">
+            <mat-icon>live_tv</mat-icon><span>{{ layout.name }}</span>
+          </a>
+          <p class="nav-section-title" *ngIf="library.userLayouts.length">Your layouts</p>
+          <a mat-list-item *ngFor="let layout of library.userLayouts; trackBy: trackProductionLayout"
+            [attr.title]="layout.name" routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}" (click)="closeMenu()">
+            <mat-icon>live_tv</mat-icon><span>{{ layout.name }}</span>
+          </a>
+          <p class="nav-section-title" *ngIf="library.loading" role="status">Loading layouts…</p>
+          <div *ngIf="library.error" role="status" class="nav-section-title">
+            <p>{{ library.error }}</p><button mat-button type="button" (click)="productionLayouts.refresh()">Retry</button>
+          </div>
+        </ng-container>
       </ng-container>
-    </mat-nav-list>
-
-
-
-
-    <!-- Reports Submenu -->
-    <mat-nav-list *ngIf="shownMenu == 'reports'" [@menuSwap]>
-      <a mat-list-item (click)="prevMenu()">
-        <mat-icon>arrow_back</mat-icon><span>Back</span>
-      </a>
-      <a mat-list-item routerLink="/ng/reports/machine-report" (click)="closeMenu()">
-        <mat-icon>local_laundry_service</mat-icon><span>Machine Report</span>
-      </a>
-      <a mat-list-item routerLink="/ng/reports/shift-machine-report" (click)="closeMenu()">
-        <mat-icon>schedule</mat-icon><span>Shift Machine Report</span>
-      </a>
-      <a mat-list-item routerLink="/ng/reports/shift-comparison-report" (click)="closeMenu()">
-        <mat-icon>compare_arrows</mat-icon><span>Shift Comparison Report</span>
-      </a>
-      <a mat-list-item routerLink="/ng/reports/operator-report" (click)="closeMenu()">
-        <mat-icon>person</mat-icon><span>Operator Report</span>
-      </a>
-      <a mat-list-item routerLink="/ng/reports/item-report" (click)="closeMenu()">
-        <mat-icon>dry_cleaning</mat-icon><span>Item Report</span>
-      </a>
-      <a mat-list-item routerLink="/ng/reports/fault-report" (click)="closeMenu()">
-        <mat-icon>warning</mat-icon><span>Fault Report</span>
-      </a>
-      <a mat-list-item routerLink="/ng/reports/report-subscriptions" (click)="closeMenu()">
-        <mat-icon>schedule_send</mat-icon><span>Report Subscriptions</span>
-      </a>
-    </mat-nav-list>
-
-    <!-- Settings Submenu -->
-    <mat-nav-list *ngIf="shownMenu == 'settings'" [@menuSwap]>
-      <a mat-list-item (click)="prevMenu()">
-        <mat-icon>arrow_back</mat-icon><span>Back</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.settings)" routerLink="/ng/settings/machines" (click)="closeMenu()">
-        <mat-icon>local_laundry_service</mat-icon><span>Machines</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.profile)" routerLink="/ng/settings/profile" (click)="closeMenu()">
-        <mat-icon>account_circle</mat-icon><span>Profile</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.operators)" routerLink="/ng/settings/operators" (click)="closeMenu()">
-        <mat-icon>person</mat-icon><span>Operators</span>
-      </a>
-      <a mat-list-item routerLink="/ng/settings/items" (click)="closeMenu()">
-        <mat-icon>dry_cleaning</mat-icon><span>Items</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.settings)" routerLink="/ng/settings/system" (click)="closeMenu()">
-        <mat-icon>tune</mat-icon><span>System Settings</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.apiTokens)" routerLink="/ng/settings/tokens" (click)="closeMenu()">
-        <mat-icon>vpn_key</mat-icon><span>API Tokens</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.users)" routerLink="/ng/settings/root/users" (click)="closeMenu()">
-        <mat-icon>manage_accounts</mat-icon><span>Users</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.serverLogs)" routerLink="/ng/settings/server-logs" (click)="closeMenu()">
-        <mat-icon>description</mat-icon><span>Server Logs</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.utilities)" routerLink="/ng/settings/root/utilities" (click)="closeMenu()">
-        <mat-icon>build_circle</mat-icon><span>Utilities</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/shifts" (click)="closeMenu()">
-        <mat-icon>punch_clock</mat-icon><span>Shifts</span>
-      </a>
-      <a mat-list-item *ngIf="canAccess(permissionLevels.shifts)" routerLink="/ng/settings/maintenance-shifts" (click)="closeMenu()">
-        <mat-icon>engineering</mat-icon><span>Maintenance Shifts</span>
-      </a>
     </mat-nav-list>
   </mat-sidenav>
 

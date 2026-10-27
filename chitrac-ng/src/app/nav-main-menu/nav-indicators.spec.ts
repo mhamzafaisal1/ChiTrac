@@ -31,7 +31,7 @@ describe('DMC navigation indicators', () => {
   let logout: jasmine.Spy;
 
   beforeEach(() => {
-    users = new BehaviorSubject(null);
+    users = new BehaviorSubject<any>({username:'Admin',permissions:{level:0}});
     status = new BehaviorSubject<WebsocketConnectionStatus>('connected');
     logout = jasmine.createSpy('logout').and.callFake(() => {
       users.next(null);
@@ -39,7 +39,7 @@ describe('DMC navigation indicators', () => {
     });
     TestBed.configureTestingModule({
       imports: [NavMainMenuComponent],
-      providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },provideRouter([]), provideNoopAnimations(),
+      providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },provideRouter([{path:'ng/home',children:[]}]), provideNoopAnimations(),
         { provide: UserService, useValue: { user: users, hasPermissionLevel: () => true, logout } },
         { provide: SettingsService, useValue: { settings$: of(null) } },
         { provide: MatDialog, useValue: { afterOpened: new Subject() } },
@@ -119,36 +119,20 @@ describe('DMC navigation indicators', () => {
     fixture.destroy();
   }));
 
-  it('shows Login or the username and opens the appropriate popup before logging out', fakeAsync(() => {
+  it('hides the toolbar while signed out and removes it immediately after logout', fakeAsync(() => {
+    users.next(null);
     const fixture = TestBed.createComponent(NavMainMenuComponent);
-    fixture.detectChanges();
-    tick();
-    fixture.detectChanges();
+    fixture.detectChanges(); tick(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('button').length).toBe(0);
+    users.next({username:'Admin',permissions:{level:0}}); fixture.detectChanges();
     const button: HTMLButtonElement = fixture.nativeElement.querySelector('.user-menu-button');
-    expect(button.querySelector('.user-menu-label')!.textContent).toBe('Login');
-    expect(button.querySelector('.user-icon')!.textContent).toBe('account_circle');
-    expect(button.querySelector('.user-menu-chevron')).not.toBeNull();
-    button.click();
-    fixture.detectChanges();
-    tick();
-    expect(document.querySelector('.test-login-form')).not.toBeNull();
-    fixture.componentInstance.loginMenu.closeMenu();
-    tick();
-    users.next({ username: 'Admin', permissions: { level: 0 } });
-    fixture.detectChanges();
     expect(button.querySelector('.user-menu-label')!.textContent).toBe('Admin');
-    button.click();
-    fixture.detectChanges();
-    tick();
-    const logoutButton = document.querySelector<HTMLButtonElement>('button[mat-menu-item]')!;
+    button.click(); fixture.detectChanges(); tick();
+    const logoutButton=document.querySelector<HTMLButtonElement>('button[mat-menu-item]')!;
     expect(logoutButton.textContent).toContain('Log Out as Admin');
-    expect(logout).not.toHaveBeenCalled();
-    logoutButton.click();
-    tick();
-    fixture.detectChanges();
+    expect(logout).not.toHaveBeenCalled(); logoutButton.click(); tick(); fixture.detectChanges();
     expect(logout).toHaveBeenCalledTimes(1);
-    expect(button.querySelector('.user-menu-label')!.textContent).toBe('Login');
-    fixture.destroy();
+    expect(fixture.nativeElement.querySelector('.user-menu-button')).toBeNull(); fixture.destroy();
   }));
 
   it('shows the tooltip after 500ms and follows the pointer even after opening', fakeAsync(() => {
