@@ -1,3 +1,4 @@
+const { sessionMachineQuery } = require('./sessionIdentity');
 /**
  * Functions for providing data specific to items.
  * Extracted from controllers/alpha/itemSessions.js
@@ -232,7 +233,7 @@ async function getItemsSessionDataForPartialDays(partialDays, db, logger) {
       const sessions = await db
         .collection(config.itemSessionCollectionName || "item-session")
         .find({
-          "machine.serial": Number(serial),
+          ...sessionMachineQuery(Number(serial)),
           "timestamps.start": { $lt: sessionEnd },
           $or: [
             { "timestamps.end": { $gt: sessionStart } },

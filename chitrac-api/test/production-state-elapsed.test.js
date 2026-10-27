@@ -51,7 +51,10 @@ test('loads bounded current sessions and uses Mongo time when a reference time i
   assert.deepEqual(cache.updatedAt, now);
   assert.deepEqual(calls[0], { hello: 1 });
   assert.deepEqual(calls.find(call => call.name === 'sessions').query,
-    { 'machine.serial': { $in: [90007] }, 'timestamps.end': null });
+    { $and: [{ $or: [
+      { 'machine.id': { $in: [90007] } },
+      { 'machine.id': null, 'machine.serial': { $in: [90007] } },
+    ] }], 'timestamps.end': null });
   assert.equal(cache.machines['90007'].statusSince, '2026-10-23T15:00:00Z');
   assert.ok(cache.elapsedAsOf >= now);
 });
