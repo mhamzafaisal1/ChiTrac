@@ -85,41 +85,35 @@
       </a>
     </mat-nav-list>
 
-    <!-- Efficiency Screens Submenu -->
+    <!-- Production Screens Submenu -->
     <mat-nav-list *ngIf="shownMenu == 'productionScreens'" [@menuSwap]>
       <a mat-list-item (click)="prevMenu()">
         <mat-icon>arrow_back</mat-icon><span>Back</span>
       </a>
-      <a mat-list-item routerLink="/ng/lpl-efficiency-screen/lpl1" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Large Piece Line 1</span>
+      <a mat-list-item routerLink="/ng/production-screen" (click)="closeMenu()">
+        <mat-icon>live_tv</mat-icon><span>Production Screen</span>
       </a>
-      <a mat-list-item routerLink="/ng/lpl-efficiency-screen/lpl2" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Large Piece Line 2</span>
-      </a>
-      <a mat-list-item routerLink="/ng/blanket-blaster-one" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Blanket Blaster 1</span>
-      </a>
-      <a mat-list-item routerLink="/ng/blanket-blaster-two" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Blanket Blaster 2</span>
-      </a>
-      <a mat-list-item routerLink="/ng/spl-efficiency-screen" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Small Piece Line 1</span>
-      </a>
-      <a mat-list-item routerLink="/ng/machine-efficiency-lane" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Machine Efficiency</span>
-      </a>
-      <a mat-list-item routerLink="/ng/lpls-efficiency-screen" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>LPLs Efficiency</span>
-      </a>
-      <a mat-list-item routerLink="/ng/spfs-efficiency-screen" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>SPFs Efficiency</span>
-      </a>
-      <a mat-list-item routerLink="/ng/experimental/spf" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Experimental SPF</span>
-      </a>
-      <a mat-list-item routerLink="/ng/blanket-blasters-efficiency-screen" (click)="closeMenu()">
-        <mat-icon style="margin-right: 0.5em;">live_tv</mat-icon><span>Blanket Blasters Efficiency</span>
-      </a>
+      <ng-container *ngIf="productionLayouts.state$ | async as library">
+        <p class="nav-section-title" *ngIf="library.systemLayouts.length">System layouts</p>
+        <a mat-list-item *ngFor="let layout of library.systemLayouts; trackBy: trackProductionLayout"
+          [attr.title]="layout.name"
+          routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}"
+          (click)="closeMenu()">
+          <mat-icon>live_tv</mat-icon><span>{{ layout.name }}</span>
+        </a>
+        <p class="nav-section-title" *ngIf="library.userLayouts.length">Your layouts</p>
+        <a mat-list-item *ngFor="let layout of library.userLayouts; trackBy: trackProductionLayout"
+          [attr.title]="layout.name"
+          routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}"
+          (click)="closeMenu()">
+          <mat-icon>live_tv</mat-icon><span>{{ layout.name }}</span>
+        </a>
+        <p class="nav-section-title" *ngIf="library.loading" role="status">Loading layouts…</p>
+        <div *ngIf="library.error" role="status" class="nav-section-title">
+          <p>{{ library.error }}</p>
+          <button mat-button type="button" (click)="productionLayouts.refresh()">Retry</button>
+        </div>
+      </ng-container>
     </mat-nav-list>
 
 

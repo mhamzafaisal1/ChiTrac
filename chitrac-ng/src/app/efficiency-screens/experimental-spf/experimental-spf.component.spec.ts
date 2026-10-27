@@ -1,3 +1,5 @@
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ProductionScreenLayoutsService } from '../../services/production-screen-layouts.service';
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatDialog, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
@@ -22,15 +24,20 @@ describe('Configured production station layouts', () => {
   let fixture: any, component: ExperimentalSpfComponent, editor: LayoutEditService;
   let preferences: BehaviorSubject<any>, identity: BehaviorSubject<any>, closed: Subject<any>;
   let catalog: BehaviorSubject<any[]>;
+  let routeParams: BehaviorSubject<any>, layouts: any;
   let service: any, config: any, settings: any, dialog: any, ref: any, generation: number;
   beforeEach(() => {
     preferences = new BehaviorSubject(null); identity = new BehaviorSubject({ username: 'alice' }); closed = new Subject(); generation = 0;
     service = { getProductionStationSummaries: jasmine.createSpy().and.callFake((stations: any[]) => of(Object.fromEntries(stations.map(s => [s.id, { serial: s.machineId, station: s.station, machine: s.label, status: 1, operator: 'Operator ' + generation, efficiency: {}, batch: {} }]))) ) };
     catalog = new BehaviorSubject(machines());
+    routeParams = new BehaviorSubject(convertToParamMap({}));
+    layouts = {read: jasmine.createSpy('readLayout').and.returnValue(of({stationLayout: {stationOrder: ['80000:4','80000:1','80000:2'], stationVisibility:{}}}))};
     config = { watchMachineConfigs: jasmine.createSpy().and.returnValue(catalog) };
-    settings = { userPreferences$: preferences, saveExperimentalSpfLayout: jasmine.createSpy().and.returnValue(of({})) };
+    settings = { settings$: of(null), userPreferences$: preferences, saveExperimentalSpfLayout: jasmine.createSpy().and.returnValue(of({})) };
     ref = { close: jasmine.createSpy('close'), afterClosed: () => closed }; dialog = { openDialogs: [], open: jasmine.createSpy().and.returnValue(ref) };
-    TestBed.configureTestingModule({ imports: [ExperimentalSpfComponent], providers: [provideNoopAnimations(),
+    TestBed.configureTestingModule({ imports: [ExperimentalSpfComponent], providers: [provideNoopAnimations(), provideRouter([]),
+      {provide: ActivatedRoute, useValue: {queryParamMap: routeParams}},
+      {provide: ProductionScreenLayoutsService, useValue: layouts},
       { provide: EfficiencyScreensService, useValue: service }, { provide: ConfigurationService, useValue: config },
       { provide: SettingsService, useValue: settings }, { provide: UserService, useValue: { user: identity, getToken: () => identity.value ? 'token' : null, hasPermissionLevel: () => !!identity.value } },
       { provide: MatDialog, useValue: dialog }, { provide: PercentBreakpointService, useValue: { getDashboardColor: () => 'green', getOeDashboardColor: () => 'green' } },
@@ -149,6 +156,53 @@ describe('Configured production station layouts', () => {
     expect(pending.observed).toBeFalse(); expect(catalog.observed).toBeFalse(); tick(12000);
     expect(service.getProductionStationSummaries).toHaveBeenCalledTimes(1);
   }));
+  it('opens named links without saving defaults and preserves the selected layout across preference updates', fakeAsync(() => {
+    routeParams.next(convertToParamMap({layoutScope:'system',layoutId:'a'.repeat(64)}));
+    load();
+    expect(component.visibleStationIds).toEqual(['80000:4','80000:1','80000:2']);
+    expect(layouts.read).toHaveBeenCalledWith({scope:'system',id:'a'.repeat(64)});
+    preferences.next({dashboardLayouts:{experimentalSpf:{stationOrder:['90003:1','90002:1','90001:1'],stationVisibility:{}}}});
+    expect(component.visibleStationIds).toEqual(['80000:4','80000:1','80000:2']);
+    expect(settings.saveExperimentalSpfLayout).not.toHaveBeenCalled();
+    routeParams.next(convertToParamMap({})); tick(0);
+    expect(component.visibleStationIds).toEqual(['90003:1','90002:1','90001:1']);
+  }));
+
+  it('handles query-only navigation and cancels an obsolete layout request before returning to the default', fakeAsync(() => {
+    const pending = new Subject(); layouts.read.and.returnValue(pending);
+    routeParams.next(convertToParamMap({layoutScope:'system',layoutId:'a'.repeat(64)})); load();
+    expect(component.layoutResolving).toBeTrue(); expect(component.visibleStationIds).toEqual([]);
+    routeParams.next(convertToParamMap({})); tick(0);
+    expect(pending.observed).toBeFalse(); expect(component.visibleStationIds).toEqual(originalIds);
+    layouts.read.and.returnValue(of({stationLayout:{stationOrder:['80000:2','80000:4','80000:1'],stationVisibility:{}}}));
+    routeParams.next(convertToParamMap({layoutScope:'user',layoutId:'b'.repeat(64)})); tick(0);
+    expect(component.visibleStationIds).toEqual(['80000:2','80000:4','80000:1']);
+  }));
+
+  it('shows invalid, unavailable and failed named links without silently displaying a different layout', fakeAsync(() => {
+    routeParams.next(convertToParamMap({layoutScope:'system'})); load();
+    expect(component.layoutError).toContain('invalid'); expect(layouts.read).not.toHaveBeenCalled();
+    layouts.read.and.returnValue(throwError(()=>({error:{error:'This layout is no longer available.'}})));
+    routeParams.next(convertToParamMap({layoutScope:'system',layoutId:'a'.repeat(64)})); tick(0); fixture.detectChanges();
+    expect(component.visibleStationIds).toEqual([]); expect(component.layoutError).toContain('no longer available');
+    expect(fixture.nativeElement.textContent).toContain('Open default production screen');
+    layouts.read.and.returnValue(of({stationLayout:{stationOrder:['80000:1','80000:2','80000:4'],stationVisibility:{}}}));
+    component.retrySelectedLayout(); tick(0); expect(component.visibleStationIds.length).toBe(3);
+    catalog.next(machines().filter(machine=>machine.id !== 80000));
+    expect(component.visibleStationIds).toEqual([]); expect(component.layoutError).toContain('unavailable stations');
+  }));
+
+  it('revalidates private links on logout and cancels pending requests when destroyed', fakeAsync(() => {
+    routeParams.next(convertToParamMap({layoutScope:'user',layoutId:'a'.repeat(64)})); load();
+    expect(component.visibleStationIds.length).toBe(3);
+    layouts.read.and.returnValue(throwError(()=>({error:{error:'Log in to view your saved production layouts.'}})));
+    identity.next(null); tick(0);
+    expect(component.visibleStationIds).toEqual([]); expect(component.layoutError).toContain('Log in');
+    const pending = new Subject(); layouts.read.and.returnValue(pending);
+    identity.next({username:'bob'}); expect(pending.observed).toBeTrue();
+    fixture.destroy(); expect(pending.observed).toBeFalse();
+  }));
+
 });
 
 describe('Production station catalog and layout repair', () => {
@@ -182,4 +236,5 @@ describe('Station selection count limits', () => {
     expect(fixture.nativeElement.querySelector('mat-dialog-actions button:last-child').disabled).toBeFalse();
     picker.save(); expect(close.calls.mostRecent().args[0].order.length).toBe(9); fixture.destroy();
   });
+
 });

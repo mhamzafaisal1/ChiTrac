@@ -1,5 +1,5 @@
 <div class="screen-container" [class.layout-editing]="layoutEditing">
-  <div class="layout-toolbar" *ngIf="layoutEditing">
+  <div class="layout-toolbar" *ngIf="layoutEditing && !layoutResolving && !layoutError">
     <button mat-stroked-button type="button" [disabled]="catalogLoading" (click)="openLayout()">
       <mat-icon>dashboard_customize</mat-icon> Edit Layout
     </button>
@@ -7,16 +7,21 @@
     <button mat-stroked-button type="button" [disabled]="catalogLoading" (click)="openLoadLayout()">Load Layout</button>
     <button mat-stroked-button type="button" [disabled]="catalogLoading || visibleStationIds.length < 3 || visibleStationIds.length > 8" (click)="openCreateLayout()">Create Layout</button>
   </div>
-  <div class="loading-state" *ngIf="isLoading" role="status" aria-live="polite"><mat-spinner diameter="40" aria-label="Loading SPF stations"></mat-spinner><p>Loading SPF stations…</p></div>
+  <div class="loading-state" *ngIf="isLoading" role="status" aria-live="polite"><mat-spinner diameter="40" aria-label="Loading stations"></mat-spinner><p>Loading stations…</p></div>
+  <div class="catalog-message" *ngIf="layoutError" role="alert">
+    <p>{{ layoutError }}</p>
+    <button mat-stroked-button type="button" (click)="retrySelectedLayout()">Retry</button>
+    <button mat-stroked-button type="button" (click)="openDefaultLayout()">Open default production screen</button>
+  </div>
   <div class="catalog-message" *ngIf="catalogError" role="alert">
     <p>{{ catalogError }}</p><button mat-stroked-button type="button" (click)="loadStations()">Retry</button>
   </div>
   <p class="catalog-message" *ngIf="!catalogLoading && !catalogError && stations.length < 3" role="status">
     {{ stations.length }} active configured stations available. At least 3 are required to save a layout.
   </p>
-  <div class="lanes-wrapper" *ngIf="!isLoading" cdkDropList cdkDropListOrientation="horizontal"
+  <div class="lanes-wrapper" *ngIf="!isLoading && !layoutError" cdkDropList cdkDropListOrientation="horizontal"
     [cdkDropListData]="visibleStationIds" [cdkDropListDisabled]="!layoutEditing" (cdkDropListDropped)="onDrop($event)"
-    aria-label="Experimental SPF stations">
+    aria-label="Production screen stations">
     <section class="lane-container" *ngFor="let id of visibleStationIds; let index = index; trackBy: trackStation"
       cdkDrag [cdkDragData]="id" [cdkDragDisabled]="!layoutEditing" [attr.aria-label]="stationLabel(id)">
       <div class="station-controls" *ngIf="layoutEditing">

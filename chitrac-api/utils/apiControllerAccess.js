@@ -4,6 +4,7 @@ const { validateAllowedControllers } = require('../modules/apiTokenControllers')
 // Read APIs shared by public dashboards, production screens, and reports.
 // Keep this explicit: new endpoints and all writes remain protected by default.
 const publicDisplayReads = new Set([
+  '/production-screen-layouts',
   '/machine/config', '/machine/spf', '/operator/config', '/reports/shifts',
   '/machine/analytics/shift-projection-window',
   '/machine/analytics/machines-summary-daily-cached',
@@ -46,6 +47,7 @@ const publicDisplayReads = new Set([
 
 function isPublicDisplayRead(method, path) {
   return method === 'GET' && (publicDisplayReads.has(path) ||
+    /^\/production-screen-layouts\/(system|user)\/[a-f0-9]{64}$/.test(path) ||
     /^\/reports\/report-subscriptions\/[a-f0-9]{24}$/.test(path));
 }
 

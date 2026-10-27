@@ -95,6 +95,7 @@ export const routes: Routes = [
 	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent },
 	
 	// Production/Efficiency Screens
+	{ path: 'ng/production-screen', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent) },
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },
 	{ path: 'ng/blanket-blaster-two', component: BlanketBlastertwoEfficiencyScreen },
 	{ path: 'ng/spl-efficiency-screen', component: SplEfficiencyScreen },

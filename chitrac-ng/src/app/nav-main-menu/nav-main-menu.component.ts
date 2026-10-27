@@ -31,6 +31,7 @@ import { LayoutEditContext, LayoutEditService } from '../services/layout-edit.se
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
 import { UserLoginComponent } from '../user-login/user-login.component';
 import { NavigationActionsService } from '../services/navigation-actions.service';
+import { ProductionScreenLayoutsService } from '../services/production-screen-layouts.service';
 
 const left = [
   query(':enter, :leave', style({ position: 'absolute', width: '15em' })),
@@ -80,6 +81,7 @@ const right = [
     ]
 })
 export class NavMainMenuComponent implements OnInit, OnDestroy {
+  readonly productionLayouts = inject(ProductionScreenLayoutsService);
   connectionTooltipVisible = false;
   connectionTooltipOrigin = { x: 0, y: 0 };
   readonly connectionTooltipPositions: ConnectedPosition[] = [
@@ -174,6 +176,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     {
       menu: 'productionScreens',
       routes: [
+        '/ng/production-screen',
         '/ng/blanket-blaster-one',
         '/ng/blanket-blaster-two',
         '/ng/spl-efficiency-screen',
@@ -397,7 +400,12 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     setTimeout(() => this.dateTimeModal?.resetDraftFromCommittedSelection());
   }
 
+  trackProductionLayout(_index: number, layout: { scope: string; id: string }): string {
+    return layout.scope + ':' + layout.id;
+  }
+
   openMenu(menu: string) {
+    if (menu === 'productionScreens') this.productionLayouts.refresh();
     this.menuHistory.push(this.shownMenu);
     this.shownMenu = menu;
     this.menuIndex++;
