@@ -36,6 +36,7 @@
     <div class="pareto-row" *ngFor="let row of rows">
       <div class="fault-name">
         <strong>{{ row.fault }}</strong>
+        <small>{{ row.machine }}</small>
         <small>{{ row.count }} {{ row.count === 1 ? 'occurrence' : 'occurrences' }}</small>
       </div>
       <span class="duration">{{ row.duration }}</span>

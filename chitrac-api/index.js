@@ -67,6 +67,7 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const app = express();
+app.use(require('compression')());
 const port = config.port; // ✅ Using .env PORT
 
 // Passport

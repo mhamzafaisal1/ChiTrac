@@ -1,3 +1,4 @@
+const { getItemSummaryForRange } = require('../../utils/itemFunctions');
 const express = require("express");
 const nodemailer = require("nodemailer");
 const { ObjectId } = require("mongodb");
@@ -8,8 +9,6 @@ const {
   getSessionDataForPartialDays,
   combineHybridData,
   getOperatorSessionDataForPartialDays,
-  getItemDailyCachedDataForDays,
-  combineItemDailyHybridData,
 } = require("../../utils/reportFunctions");
 const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftElapsed");
 const {
@@ -864,223 +863,12 @@ module.exports = function (server) {
   // NEW: Simplified cached version using simulator's item entity records (with itemStandard built-in)
   router.get("/analytics/item-sessions-summary-daily-cache", reportShiftMiddleware(db), async (req, res) => {
     try {
-      const { start, end } = parseAndValidateQueryParams(req);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
-
-      console.log(`[item-sessions-summary-daily-cache] Query start: ${exactStart.toISOString()}, end: ${exactEnd.toISOString()}`);
-
-      // ---------- Timezone-aware date handling (same as machine report) ----------
-      const startDt = DateTime.fromJSDate(exactStart, { zone: SYSTEM_TIMEZONE });
-      const endDt = DateTime.fromJSDate(exactEnd, { zone: SYSTEM_TIMEZONE });
-      const nowLocal = DateTime.now().setZone(SYSTEM_TIMEZONE);
-
-      const normalizedStart = startDt.startOf('day');
-      const normalizedEnd = endDt.startOf('day');
-      const todayStart = nowLocal.startOf('day');
-
-      // Check if query includes today
-      const queryIncludesToday = normalizedEnd >= todayStart;
-
-      // Check if this is a partial day query for a past date (not today)
-      // Use timezone-aware comparisons with Luxon DateTime
-      const isStartOfDay = startDt.hour === 0 && startDt.minute === 0 && startDt.second === 0 && startDt.millisecond === 0;
-      const endOfDayEnd = endDt.endOf('day');
-      const isEndOfDay = endDt >= endOfDayEnd.minus({ seconds: 1 }); // Allow 1 second tolerance
-      const isSameDay = normalizedStart.hasSame(normalizedEnd, 'day');
-      const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
-      const isPartialPastDay = isPartialDay && !queryIncludesToday;
-
-      console.log(`[item-sessions-summary-daily-cache] Time window analysis:`, {
-        isStartOfDay,
-        isEndOfDay,
-        isSameDay,
-        isPartialDay,
-        queryIncludesToday,
-        isPartialPastDay,
-        startDate: exactStart.toISOString().split('T')[0],
-        endDate: exactEnd.toISOString().split('T')[0],
-        todayDate: todayStart.toISODate()
-      });
-
-      // If querying a partial day from the PAST (not today), use session data for accurate time windowing
-      if (isPartialPastDay || req.reportShift) {
-        console.log(`[item-sessions-summary-daily-cache] ⚠️ PARTIAL PAST DAY DETECTED - Falling back to session-based query for accurate time windowing`);
-        console.log(`[item-sessions-summary-daily-cache] Reason: Querying partial day from the past requires session-level precision`);
-
-        // Fall back to session-based approach
-        const partialDays = req.reportShift
-          ? buildShiftScopedSessionWindows(req.reportShift, exactStart, exactEnd)
-          : [{ start: exactStart, end: exactEnd }];
-        const sessionData = await getSessionDataForPartialDays(db, partialDays, undefined, {
-          shiftId: req.query.shiftId, includeUntaggedShift: Boolean(req.reportShift), exclusiveEnd: Boolean(req.reportShift),
-        });
-        const sessionItems = sessionData.machineItems || [];
-
-        console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions`);
-
-        // Process session data
-        const resultsMap = new Map();
-
-        for (const item of sessionItems) {
-          const itemId = String(item.itemId);
-
-          if (!resultsMap.has(itemId)) {
-            resultsMap.set(itemId, {
-              itemId: item.itemId,
-              name: item.itemName || "Unknown",
-              standard: item.itemStandard ?? 0,
-              count: 0,
-              workedSec: 0,
-            });
-          }
-
-          const acc = resultsMap.get(itemId);
-          acc.count += item.totalCounts || 0;
-          acc.workedSec += (item.workedTimeMs || 0) / 1000;
-        }
-
-        const normalizePPH = (std) => {
-          const n = Number(std) || 0;
-          return n > 0 && n < 60 ? n * 60 : n;
-        };
-
-        const results = Array.from(resultsMap.values()).map((entry) => {
-          const workedMs = Math.round(entry.workedSec * 1000);
-          const hours = workedMs / 3_600_000;
-          const pph = hours > 0 ? entry.count / hours : 0;
-          const stdPPH = normalizePPH(entry.standard);
-          const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
-
-          return {
-            itemId: entry.itemId,
-            itemName: entry.name,
-            workedTimeFormatted: formatDuration(workedMs),
-            count: entry.count,
-            pph: Math.round(pph * 100) / 100,
-            standard: entry.standard,
-            efficiency: Math.round(efficiencyPct * 100) / 100,
-          };
-        });
-
-        console.log(`[item-sessions-summary-daily-cache] Returning ${results.length} items from session-based fallback`);
-        return res.json(results);
-      }
-
-      // ---------- Hybrid query configuration (for multi-day queries) ----------
-      const HYBRID_THRESHOLD_HOURS = 24; // Configurable threshold for hybrid approach
-      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-      
-      // Determine if we should use hybrid approach
-      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
-      
-      console.log(`[item-sessions-summary-daily-cache] Strategy: ${useHybrid ? 'HYBRID' : 'CACHE ONLY'}, time range: ${timeRangeHours.toFixed(2)} hours`);
-
-      // ---------- helpers (local to route) ----------
-      const normalizePPH = (std) => {
-        const n = Number(std) || 0;
-        return n > 0 && n < 60 ? n * 60 : n; // PPM→PPH
-      };
-
-      // ---------- 1) Time range splitting and data collection ----------
-      let itemTotals = [];
-
-      if (useHybrid) {
-        // Split time range into complete days and partial days
-        const { completeDays, partialDays } = splitTimeRangeForHybridReport(exactStart, exactEnd);
-        
-        console.log(`[item-sessions-summary-daily-cache] Hybrid split: ${completeDays.length} complete days, ${partialDays.length} partial day ranges`);
-        console.log(`[item-sessions-summary-daily-cache] Complete days:`, completeDays.map(d => d.dateStr));
-        console.log(`[item-sessions-summary-daily-cache] Partial days:`, partialDays.map(d => ({ start: d.start.toISOString(), end: d.end.toISOString() })));
-        
-        // Get data from daily cache for complete days (using simulator's item records)
-        if (completeDays.length > 0) {
-          itemTotals = await getItemDailyCachedDataForDays(db,completeDays);
-          console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache for complete days`);
-        }
-        
-        // Get data from sessions for partial days
-        if (partialDays.length > 0) {
-          const sessionData = await getSessionDataForPartialDays(db, partialDays);
-          const sessionItems = sessionData.machineItems || [];
-          console.log(`[item-sessions-summary-daily-cache] Retrieved ${sessionItems.length} item records from sessions for partial days`);
-          itemTotals = combineItemDailyHybridData(itemTotals, sessionItems);
-          console.log(`[item-sessions-summary-daily-cache] Combined to ${itemTotals.length} total item records`);
-        }
-        
-      } else {
-        // For same-day queries or queries including today, use cached data (same as machine report)
-        const cacheCollection = db.collection(config.totalsDailyCollectionName);
-
-        const dateStrings = getPlantDateStringsForRange(exactStart, exactEnd);
-
-        console.log(`[item-sessions-summary-daily-cache] Querying cache for dates: ${dateStrings.join(', ')}`);
-
-        const itemQuery = buildTotalsCacheQuery(dateStrings, ['item']);
-        itemTotals = filterTotalsDocsByPlantDate(
-          (await cacheCollection.find(itemQuery).toArray()).map(normalizeTotalsDocument),
-          dateStrings
-        );
-        console.log(`[item-sessions-summary-daily-cache] Retrieved ${itemTotals.length} item records from cache`);
-      }
-
-      if (!itemTotals.length) {
-        return res.json([]);
-      }
-
-      // ---------- 2) Process item data ----------
-      const resultsMap = new Map();
-
-      console.log(`[item-sessions-summary-daily-cache] Processing ${itemTotals.length} item total records`);
-
-      // Group item totals by item ID
-      for (const itemTotal of itemTotals) {
-        const itemId = String(itemTotal.itemId);
-        
-        if (!resultsMap.has(itemId)) {
-          resultsMap.set(itemId, {
-            itemId: itemTotal.itemId,
-            name: itemTotal.itemName || "Unknown",
-            standard: itemTotal.itemStandard ?? 0, // itemStandard is built into simulator's item record
-            count: 0,
-            workedSec: 0,
-          });
-        }
-        
-        const acc = resultsMap.get(itemId);
-        acc.count += itemTotal.totalCounts || 0;
-        acc.workedSec += (itemTotal.workedTimeMs || 0) / 1000; // Convert to seconds
-        
-        logger.debug(`[item-sessions-summary-daily-cache] Item ${itemId} (${itemTotal.itemName}): +${itemTotal.totalCounts} counts, +${(itemTotal.workedTimeMs/1000).toFixed(0)}s worked time`);
-      }
-
-      console.log(`[item-sessions-summary-daily-cache] Aggregated into ${resultsMap.size} unique items`);
-
-      // ---------- 3) Finalize results (same format as original route) ----------
-      const results = Array.from(resultsMap.values()).map((entry) => {
-        const workedMs = Math.round(entry.workedSec * 1000);
-        const hours = workedMs / 3_600_000;
-        const pph = hours > 0 ? entry.count / hours : 0;
-        const stdPPH = normalizePPH(entry.standard);
-        const efficiencyPct = stdPPH > 0 ? (pph / stdPPH) * 100 : 0;
-
-        return {
-          itemId: entry.itemId,
-          itemName: entry.name,
-          workedTimeFormatted: formatDuration(workedMs),
-          count: entry.count,
-          pph: Math.round(pph * 100) / 100,
-          standard: entry.standard,
-          efficiency: Math.round(efficiencyPct * 100) / 100, // percent
-        };
-      });
-
-      console.log(`[item-sessions-summary-daily-cache] Returning ${results.length} items in final response`);
-
-      res.json(results);
+      const { start, end, serial } = parseAndValidateQueryParams(req);
+      const items = await getItemSummaryForRange(db, new Date(start), new Date(end), { shiftId: req.query.shiftId, serial });
+      res.json(items);
     } catch (error) {
-      console.log(`Error in ${req.method} ${req.originalUrl}:`, error);
-      res.status(500).json({ error: "Failed to generate daily cached item summary" });
+      logger?.error?.('Item report failed:', error);
+      res.status(error.statusCode || 500).json({ error: 'Unable to load item report' });
     }
   });
 

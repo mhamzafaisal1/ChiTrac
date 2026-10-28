@@ -306,6 +306,12 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     private shiftService: ShiftService
   ) {}
 
+  summaryCardLabel(label: string): string {
+    if (label === this.allDayProjectedCountLabel) return 'Projected – Day';
+    if (label === this.shiftProjectedCountLabel) return 'Projected – Shift';
+    return label;
+  }
+
   ngOnInit(): void {
     const isLive = this.dateTimeService.getLiveMode();
     const wasConfirmed = this.dateTimeService.getConfirmed();

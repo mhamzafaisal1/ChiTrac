@@ -2,7 +2,7 @@
   <header class="page-header">
     <div>
       <h1>Shift Handoff</h1>
-      <p>Snapshot of production, losses, and notes for the next team.</p>
+      <p>Snapshot of production and losses for the next team.</p>
     </div>
     <div class="header-actions">
       <button mat-stroked-button type="button" (click)="fetchData()" [disabled]="isLoading">
@@ -17,8 +17,8 @@
   </header>
 
   <section class="controls">
-    <app-date-time-picker label="Start Time" [(value)]="startTime"></app-date-time-picker>
-    <app-date-time-picker label="End Time" [(value)]="endTime"></app-date-time-picker>
+    <app-timeframe-picker [start]="startTime" [end]="endTime" [mode]="timeframeMode" [shiftId]="selectedShiftId"
+      [disabled]="isLoading" (confirmed)="applyTimeframe($event)"></app-timeframe-picker>
   </section>
 
   <section class="metric-grid">
@@ -76,15 +76,4 @@
     </article>
   </section>
 
-  <section class="notes-panel">
-    <h2>Handoff Notes</h2>
-    <textarea
-      [(ngModel)]="notes"
-      (blur)="saveNotes()"
-      placeholder="Add unresolved issues, maintenance notes, staffing context, or anything the next shift should know."></textarea>
-    <button mat-stroked-button type="button" (click)="saveNotes()">
-      <mat-icon>save</mat-icon>
-      Save Notes
-    </button>
-  </section>
 </div>

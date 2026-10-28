@@ -45,7 +45,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
   selectedShiftId: string | null = null;
-  timeframeMode: TimeframePickerMode = 'custom';
+  timeframeMode: TimeframePickerMode = 'today';
   readonly layout = inject(ReportColumnLayoutService);
   get columns(): string[] { return reportCsvColumns('operatorReport', this.layout.columns); }
   get summaryColumns(): string[] { return this.layout.columns; }

@@ -422,6 +422,8 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
       colId: column,
       field: column,
       headerName: column,
+      wrapHeaderText: true,
+      autoHeaderHeight: true,
       cellDataType: this.rowGroups ? false : undefined,
       // Expansion updates renderer metadata while the displayed identity stays the same.
       equals: this.rowGroups && column === this.groupIdentityColumn ? () => false : undefined,
