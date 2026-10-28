@@ -29,6 +29,7 @@ export interface SummaryCardVisibilityDialogData {
   emptyShownText?: string;
   emptyHiddenText?: string;
   compactCards?: boolean;
+  sortHiddenByLabel?: boolean;
   maxVisible?: number;
   allowTemporaryOverLimit?: boolean;
   minVisible?: number;
@@ -64,6 +65,7 @@ export class SummaryCardVisibilityDialogComponent {
   emptyShownText = 'No infoboxes shown';
   emptyHiddenText = 'No infoboxes hidden';
   compactCards = false;
+  sortHiddenByLabel = false;
   maxVisible: number | null = null;
   allowTemporaryOverLimit = false;
   minVisible: number | null = null;
@@ -90,6 +92,7 @@ export class SummaryCardVisibilityDialogComponent {
     this.emptyShownText = data.emptyShownText || this.emptyShownText;
     this.emptyHiddenText = data.emptyHiddenText || this.emptyHiddenText;
     this.compactCards = data.compactCards === true;
+    this.sortHiddenByLabel = data.sortHiddenByLabel === true;
     this.maxVisible = typeof data.maxVisible === 'number' ? data.maxVisible : null;
     this.allowTemporaryOverLimit = data.allowTemporaryOverLimit === true;
     this.minVisible = typeof data.minVisible === 'number' ? data.minVisible : null;
@@ -103,6 +106,7 @@ export class SummaryCardVisibilityDialogComponent {
     this.applyLabel = data.applyLabel || this.applyLabel;
     this.showCards = (data.cards || []).filter((card) => this.isVisible(this.getCardId(card)));
     this.hideCards = (data.cards || []).filter((card) => !this.isVisible(this.getCardId(card)));
+    this.sortHiddenCards();
   }
 
   selectShow(card: SummaryCardVisibilityOption): void {
@@ -130,6 +134,7 @@ export class SummaryCardVisibilityDialogComponent {
     if (index < 0) return;
     const [card] = this.showCards.splice(index, 1);
     this.hideCards.push(card);
+    this.sortHiddenCards();
     this.setCardVisibility(card, false);
     this.selectedShowId = null;
   }
@@ -168,6 +173,7 @@ export class SummaryCardVisibilityDialogComponent {
 
     if (event.previousContainer === event.container) {
       moveItemInArray(event.container.data, event.previousIndex, event.currentIndex);
+      this.sortHiddenCards();
       return;
     }
 
@@ -179,6 +185,7 @@ export class SummaryCardVisibilityDialogComponent {
       event.currentIndex
     );
     this.setCardVisibility(event.container.data[event.currentIndex], destinationVisible);
+    this.sortHiddenCards();
     this.selectedShowId = null;
     this.selectedHideId = null;
   }
@@ -261,8 +268,18 @@ export class SummaryCardVisibilityDialogComponent {
       destination.push(card);
     }
     source.length = 0;
+    this.sortHiddenCards();
     this.visibility = visibility;
     this.selectedShowId = null;
     this.selectedHideId = null;
+  }
+
+  private sortHiddenCards(): void {
+    if (this.sortHiddenByLabel) {
+      // Production labels start with the machine name and end with its station.
+      this.hideCards.sort((a, b) => a.label.localeCompare(b.label, undefined, {
+        numeric: true, sensitivity: 'base',
+      }));
+    }
   }
 }

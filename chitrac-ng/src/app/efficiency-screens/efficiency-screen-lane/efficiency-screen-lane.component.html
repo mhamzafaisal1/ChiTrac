@@ -11,7 +11,7 @@
           'neutral': getSlots().lastSixMinutes.color === 'neutral'
         }">
           <div class="operator-text">
-            <div class="operator-content">{{ getHeaderLabel() }}</div>
+            <div class="operator-content" [title]="getHeaderLabel()">{{ getHeaderLabel() }}</div>
           </div>
         </div>
         <div class="data-block">
@@ -81,7 +81,7 @@
           'neutral': getSlots().lastSixMinutes.color === 'neutral'
         }">
           <div class="operator-text">
-            <div class="operator-content">{{ getHeaderLabel() }}</div>
+            <div class="operator-content" [title]="getHeaderLabel()">{{ getHeaderLabel() }}</div>
           </div>
         </div>
         <div class="data-block">
@@ -147,7 +147,7 @@
       <div class="lane-inner" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
         <div class="operator-block">
           <div class="operator-text">
-            <div class="operator-content">{{ lane?.operator || 'NO OPERATOR' }}</div>
+            <div class="operator-content" [title]="lane?.operator || 'NO OPERATOR'">{{ lane?.operator || 'NO OPERATOR' }}</div>
           </div>
         </div>
         <div class="data-block" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
@@ -171,7 +171,7 @@
       <div class="lane-inner">
         <div class="operator-block fault">
           <div class="operator-text">
-            <div class="operator-content">{{ lane?.operator || 'NO OPERATOR' }}</div>
+            <div class="operator-content" [title]="lane?.operator || 'NO OPERATOR'">{{ lane?.operator || 'NO OPERATOR' }}</div>
           </div>
         </div>
         <div class="data-block fault">

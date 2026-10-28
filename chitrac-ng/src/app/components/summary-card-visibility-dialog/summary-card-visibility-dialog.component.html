@@ -99,6 +99,7 @@
           cdkScrollable
           cdkDropList
           [cdkDropListData]="hideCards"
+          [cdkDropListSortingDisabled]="sortHiddenByLabel"
           [cdkDropListConnectedTo]="['shown-card-list']"
           [cdkDropListDisabled]="!dragDropEnabled"
           (cdkDropListDropped)="drop($event, false)"

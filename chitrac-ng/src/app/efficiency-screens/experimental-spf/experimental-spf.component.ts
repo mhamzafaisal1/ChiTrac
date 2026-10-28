@@ -154,9 +154,9 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     const ref = this.dialog.open(SummaryCardVisibilityDialogComponent, {
       width: '800px', maxWidth: '94vw', autoFocus: false,
       data: {
-        title: 'Edit SPF Layout', description: 'Choose 3–8 stations. Drag stations to change their order.',
+        title: 'Edit Layout', description: 'Choose 3–8 stations. Drag stations to change their order.',
         showLabel: 'Shown', hideLabel: 'Hidden', emptyShownText: 'No stations shown', emptyHiddenText: 'No stations hidden',
-        compactCards: true, minVisible: 3, maxVisible: 8, allowTemporaryOverLimit: true, dragDropEnabled: true,
+        compactCards: true, sortHiddenByLabel: true, minVisible: 3, maxVisible: 8, allowTemporaryOverLimit: true, dragDropEnabled: true,
         cards: this.layout.stationOrder.map(id => ({ id, label: this.stationLabel(id), icon: 'local_laundry_service' })),
         visibility: { ...this.layout.stationVisibility },
       },
