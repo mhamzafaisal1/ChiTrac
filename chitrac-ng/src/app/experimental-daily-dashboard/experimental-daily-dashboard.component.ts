@@ -16,7 +16,7 @@ import {
 } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { ChartTileComponent } from '../components/chart-tile/chart-tile.component';
 import { TimelineZoomControlsComponent } from '../components/timeline-zoom-controls/timeline-zoom-controls.component';
-import { DailyCountBarChartComponent } from '../charts/daily-count-bar-chart/daily-count-bar-chart.component';
+import { DailyCountBarChartComponent, DailyCountDisplayOptions, DEFAULT_DAILY_COUNT_DISPLAY_OPTIONS } from '../charts/daily-count-bar-chart/daily-count-bar-chart.component';
 import { DailyCountByItemChartComponent } from '../charts/daily-count-by-item-chart/daily-count-by-item-chart.component';
 import { DailyMachineOeeBarChartComponent } from '../charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component';
 import { DailyMachineStackedBarChartComponent } from '../charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component';
@@ -69,6 +69,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
 
   isDarkTheme = false;
   layoutEditing = false;
+  dailyCountDisplayOptions: DailyCountDisplayOptions = { ...DEFAULT_DAILY_COUNT_DISPLAY_OPTIONS };
   chartWidth = 600;
   chartHeight = 450;
   preloadedData: any = null;
@@ -212,12 +213,18 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     });
   }
 
+  setDailyCountOption(option: keyof DailyCountDisplayOptions, enabled: boolean): void {
+    this.dailyCountDisplayOptions = { ...this.dailyCountDisplayOptions, [option]: enabled };
+    this.updateChartDetail();
+  }
+
   private getChartDetailState(tile: ExperimentalChartTile): DailyChartDetailState {
     return {
       data: this.preloadedData?.[DAILY_CHART_COMPONENTS[tile.id].dataKey] ?? null,
       subtitle: this.chartSubtitle(tile),
       subtitleStrong: this.chartSubtitleStrong(tile),
       updatedAt: this.cacheUpdatedAt,
+      ...(tile.id === 'daily-counts' ? { dailyCountDisplayOptions: this.dailyCountDisplayOptions } : {}),
     };
   }
 

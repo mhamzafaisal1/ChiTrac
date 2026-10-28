@@ -162,11 +162,12 @@ import {
         .style('opacity', '0')
         .style('transform', 'none')
         .style('transition', 'opacity 120ms ease')
-        .style('white-space', 'nowrap')
+        .style('white-space', 'normal')
         .style('box-shadow', '0 4px 14px rgba(0, 0, 0, 0.22)');
     }
   
     private render() {
+      this.hideTooltip();
       // ensure svg/rootG exist before any .attr()
       if (!this.svg) this.initSvg();
     

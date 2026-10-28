@@ -9,13 +9,14 @@ import { DailyMachineOeeBarChartComponent } from '../../charts/daily-machine-oee
 import { DailyCountByItemChartComponent } from '../../charts/daily-count-by-item-chart/daily-count-by-item-chart.component';
 import { EfficiencyByMachineGroupBarChartComponent } from '../../charts/efficiency-by-machine-group-bar-chart/efficiency-by-machine-group-bar-chart.component';
 import { RankedOperatorBarChartComponent } from '../../charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component';
-import { DailyCountBarChartComponent } from '../../charts/daily-count-bar-chart/daily-count-bar-chart.component';
+import { DailyCountBarChartComponent, DailyCountDisplayOptions } from '../../charts/daily-count-bar-chart/daily-count-bar-chart.component';
 
 export interface DailyChartDetailState {
   data: unknown;
   subtitle: string;
   subtitleStrong: boolean;
   updatedAt: string | null;
+  dailyCountDisplayOptions?: Readonly<DailyCountDisplayOptions>;
 }
 
 export const DAILY_CHART_COMPONENTS: Record<string, { component: Type<unknown>; dataKey: string }> = {
@@ -58,6 +59,8 @@ export class DailyChartDetailComponent implements AfterViewInit, OnDestroy {
       chartHeight: this.chartHeight,
       preloadedData: state.data,
       useExternalTitle: true,
+      ...(this.chartId === 'daily-counts' && state.dailyCountDisplayOptions
+        ? { displayOptions: state.dailyCountDisplayOptions } : {}),
     };
   }
 
