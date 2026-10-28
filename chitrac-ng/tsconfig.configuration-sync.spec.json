@@ -4,6 +4,7 @@
     "src/app/services/configuration-cache.spec.ts",
     "src/app/app-session-startup.spec.ts",
     "src/app/settings-navigation-loading.spec.ts",
+    "src/app/settings-configuration-live.spec.ts",
     "src/app/efficiency-screens/experimental-spf/experimental-spf.component.spec.ts",
     "src/app/services/efficiency-station-summary.spec.ts",
     "src/app/shift-management/configuration-sync.spec.ts",

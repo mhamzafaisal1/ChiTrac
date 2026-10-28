@@ -99,3 +99,18 @@
     color: var(--theme-color-on-surface-variant, #d7dde6);
   }
 }
+
+:host(.daily-count-editing) {
+  .chart-tile-header {
+    flex-wrap: wrap;
+    gap: 0;
+  }
+
+  .chart-tile-title-group {
+    padding-right: 36px;
+  }
+
+  .chart-tile-actions {
+    flex-basis: 100%;
+  }
+}

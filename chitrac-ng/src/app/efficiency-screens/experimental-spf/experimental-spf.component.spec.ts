@@ -13,6 +13,7 @@ import { UserService } from '../../user.service';
 import { LayoutEditService } from '../../services/layout-edit.service';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { SummaryCardVisibilityDialogComponent } from '../../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
+import { EfficiencyScreenLaneComponent } from '../efficiency-screen-lane/efficiency-screen-lane.component';
 const machines = () => [
   ...SPF_STATION_SERIALS.map(id => ({ id, name: 'SPF ' + id, active: true, stations: [1] })),
   { id: 80000, name: 'Large Piece Line', active: true, stations: [1,2,4] },
@@ -53,6 +54,7 @@ describe('Configured production station layouts', () => {
     editor.toggle(); component.openLayout(); const data = dialog.open.calls.mostRecent().args[1].data;
     expect(data.minVisible).toBe(3); expect(data.maxVisible).toBe(8); expect(data.cards.length).toBe(9);
     expect(data.allowTemporaryOverLimit).toBeTrue();
+    expect(data.sortHiddenByLabel).toBeTrue();
     expect(data.cards.find((card: any) => card.id === '80000:4').label).toContain('Station 4');
     expect(config.watchMachineConfigs).toHaveBeenCalledTimes(1);
   }));
@@ -237,4 +239,33 @@ describe('Station selection count limits', () => {
     picker.save(); expect(close.calls.mostRecent().args[0].order.length).toBe(9); fixture.destroy();
   });
 
+});
+
+
+describe('Production operator name wrapping', () => {
+  it('uses two readable lines in narrow running, paused and fault lanes without clipping the header', () => {
+    TestBed.configureTestingModule({ imports: [EfficiencyScreenLaneComponent], providers: [
+      { provide: PercentBreakpointService, useValue: { getDashboardColor: () => 'green' } },
+    ] });
+    const fixture = TestBed.createComponent(EfficiencyScreenLaneComponent);
+    const host = fixture.nativeElement as HTMLElement;
+    host.style.height = '600px';
+    try {
+      for (const width of [220, 240]) {
+        host.style.width = `${width}px`;
+        for (const mode of ['operator', 'offline', 'fault']) {
+          fixture.componentRef.setInput('mode', mode);
+          fixture.componentRef.setInput('lane', { operator: 'ALEXANDRA GRETCHEN BLEILER', fault: 'System_Paused' });
+          fixture.detectChanges();
+          const content = host.querySelector('.operator-content') as HTMLElement;
+          const block = host.querySelector('.operator-block') as HTMLElement;
+          const lineHeight = parseFloat(getComputedStyle(content).lineHeight);
+          expect(content.clientHeight).withContext(`${width}px ${mode}`).toBeGreaterThan(lineHeight * 1.5);
+          expect(content.clientHeight).toBeLessThanOrEqual(lineHeight * 2 + 1);
+          expect(content.getBoundingClientRect().bottom).toBeLessThanOrEqual(block.getBoundingClientRect().bottom + 1);
+          expect(content.title).toBe('ALEXANDRA GRETCHEN BLEILER');
+        }
+      }
+    } finally { fixture.destroy(); }
+  });
 });

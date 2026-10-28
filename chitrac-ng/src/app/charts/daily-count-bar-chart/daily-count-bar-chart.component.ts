@@ -8,10 +8,24 @@ import { DateTimeService } from '../../services/date-time.service';
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
+export interface DailyCountDisplayOptions {
+  averageLine: boolean;
+  barColors: boolean;
+  tooltip: boolean;
+}
+
+export const DEFAULT_DAILY_COUNT_DISPLAY_OPTIONS: Readonly<DailyCountDisplayOptions> = {
+  averageLine: true,
+  barColors: true,
+  tooltip: true,
+};
+
 type DailyCountPoint = {
   date: string;
   count: number;
   movingAverage: number | null;
+  previousDelta: number | null;
+  averageDelta: number | null;
   previousDeltaPct: number | null;
   averageDeltaPct: number | null;
   isToday: boolean;
@@ -41,6 +55,9 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
   @Input() useExternalTitle = false;
+  @Input() displayOptions: Readonly<DailyCountDisplayOptions> = DEFAULT_DAILY_COUNT_DISPLAY_OPTIONS;
+
+  private dailyCounts: any[] = [];
 
   chartConfig: CartesianChartConfig | null = null;
   private themeObserver?: MutationObserver;
@@ -121,6 +138,11 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       this.consumeResponse('once')({ dailyCounts: this.preloadedData });
     } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
       this.setupPolling();
+    }
+
+    if (this.dailyCounts.length && ['displayOptions', 'chartWidth', 'chartHeight', 'useExternalTitle'].some(key => changes[key])) {
+      this.chartConfig = this.formatChartData(this.dailyCounts);
+      this.cdr.markForCheck();
     }
   }
 
@@ -210,6 +232,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         rows = res;
       }
 
+      this.dailyCounts = rows;
       this.chartConfig = rows.length ? this.formatChartData(rows) : null;
       this.isLoading = false;
       this.dummyMode = false;
@@ -235,10 +258,12 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
         data: points.map(point => ({
           x: point.date,
           y: point.count,
-          color: this.getVarianceColor(point)
+          color: this.displayOptions.barColors ? this.getVarianceColor(point) : '#42a5f5'
         })),
         color: '#42a5f5'
-      },
+      }
+    ];
+    if (this.displayOptions.averageLine) series.push(
       {
         id: 'moving-average',
         title: '7-Day Avg',
@@ -254,7 +279,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
           showDots: false
         }
       }
-    ];
+    );
 
     return {
       title: this.useExternalTitle ? '' : 'Daily Count Totals',
@@ -276,7 +301,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       },
       legend: { show: false, position: 'top' },
       tooltip: {
-        show: true,
+        show: this.displayOptions.tooltip,
         delayMs: 750,
         formatter: ({ series, xLabel, value }) => this.formatTooltip(series.id, xLabel, value, points)
       },
@@ -287,9 +312,10 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
   private buildDailyCountPoints(data: any[]): DailyCountPoint[] {
     const todayKey = this.toDateKey(new Date());
     const raw = data.map((d: any, i: number) => ({
-      date: String(d.date ?? d.label ?? `Day ${i + 1}`),
+      date: this.toDateKey(String(d.date ?? d.label ?? `Day ${i + 1}`)),
       count: Number(d.count ?? d.counts ?? 0) || 0
-    }));
+    })).sort((a, b) => a.date.localeCompare(b.date));
+    const byDate = new Map(raw.map(point => [point.date, point.count]));
 
     return raw.map((point, index) => {
       const windowStart = Math.max(0, index - 6);
@@ -297,10 +323,14 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       const movingAverage = movingWindow.length
         ? movingWindow.reduce((sum, row) => sum + row.count, 0) / movingWindow.length
         : null;
-      const previous = index > 0 ? raw[index - 1].count : null;
+      const previousDate = new Date(`${point.date}T12:00:00`);
+      previousDate.setDate(previousDate.getDate() - 1);
+      const previous = byDate.get(this.toDateKey(previousDate)) ?? null;
       return {
         ...point,
         movingAverage,
+        previousDelta: previous == null ? null : point.count - previous,
+        averageDelta: movingAverage == null ? null : point.count - movingAverage,
         previousDeltaPct: previous && previous > 0
           ? ((point.count - previous) / previous) * 100
           : null,
@@ -332,12 +362,8 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     ];
 
     if (seriesId !== 'moving-average' && point) {
-      if (point.previousDeltaPct != null) {
-        lines.push(`Vs Previous Day: ${this.formatSignedPercent(point.previousDeltaPct)}`);
-      }
-      if (point.averageDeltaPct != null) {
-        lines.push(`Vs 7-Day Avg: ${this.formatSignedPercent(point.averageDeltaPct)}`);
-      }
+      lines.push(`Vs Previous Day: ${this.formatComparison(point.previousDelta, point.previousDeltaPct)}`);
+      lines.push(`Vs 7-Day Avg: ${this.formatComparison(point.averageDelta, point.averageDeltaPct)}`);
     }
 
     return lines;
@@ -348,6 +374,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.dailyCounts = [];
     this.cdr.markForCheck();
   }
 
@@ -401,6 +428,12 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
 
   private formatCount(value: number): string {
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+  }
+
+  private formatComparison(delta: number | null, percent: number | null): string {
+    if (delta == null) return 'N/A';
+    const count = `${delta > 0 ? '+' : ''}${this.formatCount(delta)}`;
+    return `${count} (${percent == null ? 'N/A' : this.formatSignedPercent(percent)})`;
   }
 
   private formatSignedPercent(value: number): string {

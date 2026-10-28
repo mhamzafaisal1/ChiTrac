@@ -1,3 +1,4 @@
+const { sessionMachineQuery } = require('./sessionIdentity');
 /**
  * Helper functions extracted from controllers/alpha/reportsSessionRoutes.js
  * for providing data for reports (hybrid cache + session queries).
@@ -465,6 +466,7 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
       "timestamps.start": { $lte: partialDay.end },
       $or: [
         { "timestamps.end": { $exists: false } },
+        { "timestamps.end": null },
         { "timestamps.end": { $gte: partialDay.start } },
       ],
     };
@@ -1184,7 +1186,7 @@ async function getItemSessionDataForPartialDays(db, partialDays) {
       const sessions = await db
         .collection(config.itemSessionCollectionName || "item-session")
         .find({
-          "machine.serial": Number(serial),
+          ...sessionMachineQuery(Number(serial)),
           "timestamps.start": { $lt: sessionEnd },
           $or: [
             { "timestamps.end": { $gt: sessionStart } },

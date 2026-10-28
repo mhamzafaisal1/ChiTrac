@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 import { SettingsService } from '../services/settings.service';
 import { DisplayTimePipe } from '../pipes/display-time.pipe';
 import { MatButtonModule } from '@angular/material/button';
@@ -43,6 +44,11 @@ interface UnusedStationsSummary {
 })
 export class ActionCenterComponent implements OnInit, OnDestroy {
   private readonly settings = inject(SettingsService);
+  private readonly breakpoints = inject(PercentBreakpointService);
+  cacheReady = false;
+  faultsLoading = true;
+  faultsError = '';
+  private stationsLoading = true;
   websocketStatus: WebsocketConnectionStatus = 'disconnected';
   updatedAt: Date | null = null;
   alerts: ActionAlert[] = [];
@@ -59,6 +65,8 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.settings.timeFormat$.pipe(takeUntil(this.destroy$)).subscribe(() =>
+      this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot()));
+    this.settings.settings$.pipe(takeUntil(this.destroy$)).subscribe(() =>
       this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot()));
     this.websocketService.ensureConnected();
     this.websocketService.status$
@@ -90,6 +98,8 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
 
   private rebuildFromCache(cache: DashboardCacheState): void {
     const envelope = cache.dashboard?.machines?.today || cache.today || cache.dashboard?.machines?.shifts?.[0];
+    this.cacheReady = Array.isArray(envelope?.machinesSummary);
+    const operatorsReady = Array.isArray(cache.dashboard?.operators?.today?.operatorsSummary) || Array.isArray(cache.today?.operatorsSummary);
     const machines = envelope?.machinesSummary || [];
     const operators =
       cache.dashboard?.operators?.today?.operatorsSummary ||
@@ -117,11 +127,22 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
 
     this.insightCards = [
       { label: 'Running Machines', value: `${running}/${machines.length}`, detail: 'Live machine status', icon: 'play_circle', tone: running === machines.length ? 'good' : 'warn' },
-      { label: 'Plant OEE', value: `${avgOee}%`, detail: 'Average across machines', icon: 'speed', tone: avgOee >= 85 ? 'good' : avgOee >= 60 ? 'warn' : 'bad' },
-      { label: 'Operator Efficiency', value: `${avgEfficiency}%`, detail: 'Average across active operators', icon: 'groups', tone: avgEfficiency >= 85 ? 'good' : avgEfficiency >= 60 ? 'warn' : 'bad' },
+      { label: 'Plant OEE', value: `${avgOee}%`, detail: 'Average across machines', icon: 'speed', tone: this.metricTone(avgOee, true) },
+      { label: 'Operator Efficiency', value: `${avgEfficiency}%`, detail: 'Average across active operators', icon: 'groups', tone: this.metricTone(avgEfficiency, false) },
       { label: 'Unused Stations', value: unusedStations, detail: `${totalStations} stations / ${loggedInOperators} operators`, icon: 'event_seat', tone: unusedStations > 0 ? 'warn' : 'good' },
       { label: 'Total Count', value: totalCount.toLocaleString(), detail: 'Current dashboard window', icon: 'tag', tone: 'neutral' },
     ];
+
+    for (const card of this.insightCards) {
+      const ready = card.label === 'Unused Stations' ? this.unusedStationsSummary !== null
+        : card.label === 'Operator Efficiency' ? operatorsReady && operators.length > 0
+        : this.cacheReady && (card.label !== 'Plant OEE' || machines.length > 0);
+      if (!ready) {
+        card.value = '—'; card.tone = 'neutral';
+        card.detail = card.label === 'Unused Stations' ? (this.stationsLoading ? 'Loading stations…' : 'Station data unavailable')
+          : (this.websocketStatus === 'connected' || this.websocketStatus === 'connecting' ? 'Waiting for live data' : 'Live data unavailable');
+      }
+    }
 
     const alerts: ActionAlert[] = [];
     if (this.websocketStatus === 'error' || this.websocketStatus === 'disconnected') {
@@ -178,15 +199,18 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
   }
 
   private loadUnusedStations(): void {
+    this.stationsLoading = true;
     this.dashboardService
       .getUnusedStationsSummary()
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (summary) => {
+          this.stationsLoading = false;
           this.unusedStationsSummary = summary || null;
           this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot());
         },
         error: () => {
+          this.stationsLoading = false;
           this.unusedStationsSummary = null;
           this.rebuildFromCache(this.websocketService.getDashboardCacheSnapshot());
         },
@@ -194,21 +218,32 @@ export class ActionCenterComponent implements OnInit, OnDestroy {
   }
 
   private loadFaults(): void {
+    this.faultsLoading = true;
+    this.faultsError = '';
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date();
     this.dailyDashboardService
       .getFaultReportSummary(start.toISOString(), end.toISOString())
+      .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
+          this.faultsLoading = false;
           this.topFaults = (response.summaries || [])
             .sort((a, b) => Number(b.totalDurationSeconds || 0) - Number(a.totalDurationSeconds || 0))
             .slice(0, 5);
         },
         error: () => {
+          this.faultsLoading = false;
+          this.faultsError = 'Unable to load fault data. Try Refresh.';
           this.topFaults = [];
         },
       });
+  }
+
+  private metricTone(value: number, oee: boolean): 'good' | 'warn' | 'bad' {
+    const bands = oee ? this.breakpoints.getOeBreakpoints() : this.breakpoints.getBreakpoints();
+    return value >= bands.good ? 'good' : value >= bands.okay ? 'warn' : 'bad';
   }
 
   private average(values: any[]): number {

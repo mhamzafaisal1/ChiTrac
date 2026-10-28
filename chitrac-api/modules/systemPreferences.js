@@ -57,11 +57,7 @@ async function ensureSystemPreferences(db, config = {}) {
 }
 
 function applySystemPreferences(config, preferences = {}) {
-  if (typeof preferences.systemName === 'string' && preferences.systemName.trim()) {
-    config.systemName = preferences.systemName.trim();
-  } else {
-    config.systemName = config.envPreferences?.systemName || config.systemName || 'ChiTrac';
-  }
+  config.systemName = config.envPreferences?.systemName || config.systemName || 'ChiTrac';
 
   if (typeof preferences.defaultTheme === 'string' && preferences.defaultTheme.trim()) {
     config.defaultTheme = preferences.defaultTheme.trim();

@@ -34,7 +34,7 @@ body.dark-theme {
   font-style: normal;
   font-weight: 100 900;
   font-display: block;
-  src: url('/assets/fonts/Montserrat-VariableFont_wght.ttf') format('truetype');
+  src: url('/assets/fonts/Montserrat-VariableFont_wght.woff2') format('woff2');
 }
 
 @font-face {
@@ -42,7 +42,7 @@ body.dark-theme {
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url('/assets/fonts/MaterialSymbolsOutlined_Filled-Regular.ttf') format('truetype');
+  src: url('/assets/fonts/MaterialSymbolsOutlined_Filled-Regular.woff2') format('woff2');
 }
 
 @font-face {
@@ -50,7 +50,7 @@ body.dark-theme {
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url('/assets/fonts/material-symbols-layout-edit.ttf') format('truetype');
+  src: url('/assets/fonts/material-symbols-layout-edit.woff2') format('woff2');
 }
 
 html.icon-font-loading .material-icons,

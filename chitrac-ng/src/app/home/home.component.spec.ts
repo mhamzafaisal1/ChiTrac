@@ -53,8 +53,8 @@ describe('Home login gate and DMC menu grid', () => {
     users.next(admin);const h=await RouterTestingHarness.create('/ng/home');
     expect(labels(h)).toEqual(['Main Menu','Daily Dashboard','Machine Dashboard','Operator Dashboard','Comparison Dashboard','Machine Report','Operator Report','Settings','Log Out']);
     await press(h,'Main Menu');expect(labels(h)).toEqual(['Home','Dashboards','Production Screens','Reports','Settings','Log Out']);
-    await press(h,'Dashboards');expect(labels(h)).toEqual(['Back','Daily','Machine','Operator','Item','Summary','Comparison','Experimental']);
-    await press(h,'Experimental');expect(labels(h)).toContain('Action Center');await press(h,'Back');expect(labels(h)).toContain('Daily');
+    await press(h,'Dashboards');expect(labels(h)).toEqual(['Back','Daily','Machine','Operator','Item','Summary','Comparison','Action Center','Downtime Pareto','Shift Handoff','Visual Ops','Experimental']);
+    await press(h,'Experimental');expect(labels(h)).toEqual(['Back','Daily Experimental']);await press(h,'Back');expect(labels(h)).toContain('Daily');
     await press(h,'Back');await press(h,'Reports');expect(labels(h)).toContain('Shift Comparison Report');
   });
 
@@ -101,10 +101,13 @@ describe('Home login gate and DMC menu grid', () => {
     expect(labels(h)).toEqual(['Login']);
   });
 
-  it('keeps Home as the only public component route and the default/fallback destination',()=>{
+  it('keeps Home as the only public component route and preserves the guarded not-found page',()=>{
     const publicPages=routes.filter(route=>route.redirectTo===undefined && !route.canActivate?.length);
     expect(publicPages.map(route=>route.path)).toEqual(['ng/home']);
     expect(routes.find(route=>route.path==='')?.redirectTo).toBe('ng/home');
-    expect(routes.find(route=>route.path==='**')?.redirectTo).toBe('ng/home');
+    const fallback=routes.find(route=>route.path==='**');
+    expect(fallback?.redirectTo).toBeUndefined();
+    expect(fallback?.loadComponent).toBeDefined();
+    expect(fallback?.canActivate?.length).toBeGreaterThan(0);
   });
 });

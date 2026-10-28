@@ -1,3 +1,5 @@
+import { SettingsService } from '../services/settings.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
@@ -75,17 +77,23 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
   private observer!: MutationObserver;
   private destroy$ = new Subject<void>();
   private pollingSubscription: Subscription | null = null;
-  readonly oeeTarget = 85;
+  private lastData: any;
+  get oeeTarget(): number { return this.breakpoints.getOeBreakpoints().good; }
   private readonly pollingIntervalMs = 60000;
 
   constructor(
     private dailyDashboardService: DailyDashboardService,
     private dateTimeService: DateTimeService,
     private dashboardTimeframeService: DashboardTimeframeService,
-    private pollingService: PollingService
+    private pollingService: PollingService,
+    private breakpoints: PercentBreakpointService,
+    private settings: SettingsService
   ) {}
 
   ngOnInit(): void {
+    this.settings.settings$.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      if (this.lastData) this.applyDashboardData(this.lastData);
+    });
     this.detectTheme();
     this.observer = new MutationObserver(() => this.detectTheme());
     this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -130,7 +138,7 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
   }
 
   bulletWidth(machine: VisualMachine): number {
-    return this.clamp(Math.round((machine.oee / this.oeeTarget) * 100), 0, 120);
+    return this.clamp(Math.round(machine.oee), 0, 100);
   }
 
   targetOffset(): number {
@@ -142,8 +150,9 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
   }
 
   heatTone(value: number): string {
-    if (value >= 85) return 'good';
-    if (value >= 65) return 'watch';
+    const bands = this.breakpoints.getOeBreakpoints();
+    if (value >= bands.good) return 'good';
+    if (value >= bands.okay) return 'watch';
     return 'bad';
   }
 
@@ -232,7 +241,7 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
       { label: 'Running Now', value: `${running}/${machines.length}`, detail: 'machines in good state', icon: 'play_circle', tone: running === machines.length ? 'good' : 'watch' },
       { label: 'Total Count', value: totalCount.toLocaleString(), detail: 'pieces in window', icon: 'tag', tone: 'neutral' },
       { label: 'Fault Loss', value: `${faultMinutes}m`, detail: 'top fault minutes', icon: 'warning', tone: faultMinutes ? 'bad' : 'good' },
-      { label: 'Watch Machine', value: worstMachine?.name || 'None', detail: worstMachine ? `${worstMachine.oee}% OEE` : 'no machine data', icon: 'visibility', tone: worstMachine?.oee < 65 ? 'bad' : 'neutral' },
+      { label: 'Watch Machine', value: worstMachine?.name || 'None', detail: worstMachine ? `${worstMachine.oee}% OEE` : 'no machine data', icon: 'visibility', tone: worstMachine && worstMachine.oee < this.breakpoints.getOeBreakpoints().okay ? 'bad' : 'neutral' },
     ];
   }
 
@@ -288,9 +297,8 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private machineTone(statusDot: string, oee: number): string {
-    if (statusDot === 'Running Dot' && oee >= 75) return 'good';
-    if (statusDot === 'Fault Dot' || oee < 55) return 'bad';
-    return 'watch';
+    if (statusDot === 'Faulted Dot' || statusDot === 'Offline Dot') return 'bad';
+    return this.heatTone(oee);
   }
 
   private clearDashboard(): void {
@@ -382,14 +390,15 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
     const end = new Date(this.endTime).toISOString();
 
     return forkJoin({
-      machines: this.dailyDashboardService.getMachinesSummary(start, end).pipe(catchError(() => of([]))),
-      status: this.dailyDashboardService.getDailyMachineStatusFast(start, end).pipe(catchError(() => of([]))),
-      faults: this.dailyDashboardService.getFaultReportSummary(start, end).pipe(catchError(() => of({ summaries: [] }))),
+      machines: this.dailyDashboardService.getMachinesSummary(start, end),
+      status: this.dailyDashboardService.getDailyMachineStatusFast(start, end),
+      faults: this.dailyDashboardService.getFaultReportSummary(start, end),
     });
   }
 
   private applyDashboardData(data: any): void {
     if (!data) return;
+    this.lastData = data;
     const machineList = this.unwrapList(data.machines, 'machineResults');
     const statusList = this.unwrapList(data.status, 'machineStatus');
     const merged = this.mergeMachineRows(machineList, statusList);

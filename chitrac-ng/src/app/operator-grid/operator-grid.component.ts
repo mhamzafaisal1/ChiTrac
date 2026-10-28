@@ -67,8 +67,11 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isLoading = false;
     this.error = null;
     this.operators = res;
-    if (!this.dataSource) this.dataSource = new MatTableDataSource<OperatorConfig>(res);
-    else this.dataSource.data = res;
+    this.dataSource.data = res;
+    const selectedId = this.selectionModel.selected[0]?._id;
+    const selected = selectedId == null ? undefined : res.find(row => row._id === selectedId);
+    this.selectionModel.clear();
+    if (selected) this.selectionModel.select(selected);
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
   }
@@ -109,14 +112,6 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
 
   retryLoad(): void { this.refreshTable(); }
 
-  private applyLocalUpdate(updated: OperatorConfig) {
-    const arr = this.dataSource?.data ?? [];
-    const i = arr.findIndex(x => x._id === updated._id);
-    this.dataSource.data = i >= 0
-      ? [...arr.slice(0, i), new OperatorConfig().deserialize({ ...arr[i], ...updated }), ...arr.slice(i + 1)]
-      : [...arr, updated];
-  }
-
   getOperatorDisplayName(operator: OperatorConfig): string {
     if (!operator.name) return '';
     if (typeof operator.name === 'string') {
@@ -134,7 +129,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
   openDialog(operator: OperatorConfig | null): void {
     if (operator) {
       // Editing existing operator
-      const data = { ...operator }; // clone
+      const data = structuredClone(operator);
       const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data, disableClose: true });
       this.setupDialogHandlers(dialogRef);
     } else {
@@ -163,18 +158,14 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
         ? this.configurationService.putOperatorConfig(payload)
         : this.configurationService.postOperatorConfig(payload);
 
-      const sub = req$.subscribe({
-        next: saved => {
-          this.applyLocalUpdate(saved || payload); // optimistic UI
+      req$.subscribe({
+        next: () => {
           this.selectionModel.clear();
           dialogRef.close('saved');
-          this.refreshTable();                     // server is source of truth
-          sub.unsubscribe();
         },
         error: err => {
           const msg = err?.error?.message || err?.error || 'Update failed';
           dialogRef.componentInstance.error = { message: msg }; // surface 409 text
-          sub.unsubscribe();
         }
       });
     });
@@ -182,16 +173,13 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
 
   deleteOperator(operator: OperatorConfig): void {
     if (operator) {
-      const submitSub = this.configurationService.deleteOperatorConfig(operator._id).subscribe({
+      this.configurationService.deleteOperatorConfig(operator._id).subscribe({
         next: (res) => {
           console.log('Operator deleted:', res);
-          this.refreshTable();
           this.selectionModel.clear();
-          submitSub.unsubscribe();
         },
         error: (err) => {
           console.error('Error deleting operator:', err);
-          submitSub.unsubscribe();
         }
       });
     }

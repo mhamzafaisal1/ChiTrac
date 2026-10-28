@@ -57,6 +57,37 @@ describe('SummaryCardVisibilityDialogComponent', () => {
     expect(component.showCards.map((card) => card.id)).toEqual(['second', 'first']);
   });
 
+  it('keeps hidden station labels naturally sorted through arrow, bulk and drag transfers', () => {
+    const component = createComponent({
+      cards: [
+        { id: 'spl4', label: 'SPL1 — Station 4' },
+        { id: 'lpl10', label: 'LPL2 — Station 10' },
+        { id: 'blanket', label: 'Blanket1 — Station 2' },
+        { id: 'spl1', label: 'SPL1 — Station 1' },
+        { id: 'lpl2', label: 'LPL2 — Station 2' },
+      ],
+      visibility: { lpl10: false, blanket: false, spl1: false },
+      sortHiddenByLabel: true,
+    });
+    expect(component.showCards.map(card => card.id)).toEqual(['spl4', 'lpl2']);
+    expect(component.hideCards.map(card => card.id)).toEqual(['blanket', 'lpl10', 'spl1']);
+    component.selectShow(component.showCards[1]);
+    component.hideSelected();
+    expect(component.hideCards.map(card => card.id)).toEqual(['blanket', 'lpl2', 'lpl10', 'spl1']);
+    component.drop(dropEvent(component.showCards, component.hideCards, 0, 0), false);
+    const sorted = ['blanket', 'lpl2', 'lpl10', 'spl1', 'spl4'];
+    expect(component.hideCards.map(card => card.id)).toEqual(sorted);
+    component.drop(dropEvent(component.hideCards, component.hideCards, 0, 4), false);
+    expect(component.hideCards.map(card => card.id)).toEqual(sorted);
+    component.selectHide(component.hideCards[1]);
+    component.showSelected();
+    expect(component.showCards.map(card => card.id)).toEqual(['lpl2']);
+    component.showAll();
+    expect(component.showCards.map(card => card.id)).toEqual(['lpl2', 'blanket', 'lpl10', 'spl1', 'spl4']);
+    component.hideAll();
+    expect(component.hideCards.map(card => card.id)).toEqual(sorted);
+  });
+
   it('moves cards between Show and Hide and updates visibility', () => {
     const component = createComponent();
 

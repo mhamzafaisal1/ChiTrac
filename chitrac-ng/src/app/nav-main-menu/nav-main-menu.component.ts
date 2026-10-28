@@ -154,6 +154,10 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     {
       menu: 'dashboards',
       routes: [
+        '/ng/action-center',
+        '/ng/downtime-pareto',
+        '/ng/shift-handoff',
+        '/ng/visual-ops',
         '/ng/machineAnalytics',
         '/ng/operatorAnalytics',
         '/ng/itemAnalytics',
@@ -167,10 +171,6 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
       menu: 'experimental',
       parent: 'dashboards',
       routes: [
-        '/ng/action-center',
-        '/ng/downtime-pareto',
-        '/ng/shift-handoff',
-        '/ng/visual-ops',
         '/ng/experimental/daily-dashboard'
       ]
     },
@@ -230,7 +230,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   user: any;
   
-  systemName: string = 'ChiTrac';
+  systemName: string = (() => { try { return localStorage.getItem('chitrac-system-name') || ''; } catch { return ''; } })();
   websocketStatus: WebsocketConnectionStatus = 'disconnected';
   dashboardUpdatedAt: Date | null = null;
   layoutEditContext: LayoutEditContext | null = null;
@@ -348,7 +348,14 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     this.userService.logout().subscribe(() => this.router.navigate(['/ng/home'], { replaceUrl: true }));
   }
 
+  get isLoginRoute(): boolean { return this.router.url.split('?')[0] === '/ng/login'; }
+
+  focusLoginPage(): void {
+    if (this.isLoginRoute) document.querySelector<HTMLInputElement>('app-user-login input[formcontrolname="username"]')?.focus();
+  }
+
   private openAuthenticationMenu(): void {
+    if (this.isLoginRoute) { this.focusLoginPage(); return; }
     this.closeMenu();
     this.loginMenu?.openMenu();
   }

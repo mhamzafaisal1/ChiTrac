@@ -61,6 +61,7 @@
           </app-chart-tile>
         } @else {
         <app-chart-tile
+          [class.daily-count-editing]="tile.id === 'daily-counts' && layoutEditing"
           [title]="tile.title"
           [icon]="tile.icon"
           [subtitle]="chartSubtitle(tile)"
@@ -69,6 +70,21 @@
           [chartWidth]="chartWidth"
           [chartHeight]="chartHeight"
         >
+          <div chartTileActions *ngIf="tile.id === 'daily-counts' && layoutEditing"
+            class="daily-count-controls" role="group" aria-label="Daily count chart display"
+            (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()"
+            (pointerdown)="$event.stopPropagation()">
+            <label><input #averageLine type="checkbox" role="switch"
+              [checked]="dailyCountDisplayOptions.averageLine"
+              (change)="setDailyCountOption('averageLine', averageLine.checked)">Average line</label>
+            <label><input #barColors type="checkbox" role="switch"
+              [checked]="dailyCountDisplayOptions.barColors"
+              (change)="setDailyCountOption('barColors', barColors.checked)">Bar colors</label>
+            <label><input #tooltip type="checkbox" role="switch"
+              [checked]="dailyCountDisplayOptions.tooltip"
+              (change)="setDailyCountOption('tooltip', tooltip.checked)">Tooltip</label>
+          </div>
+
           <app-daily-machine-stacked-bar-chart
             *ngIf="tile.id === 'machine-status'"
             [chartWidth]="chartWidth"
@@ -118,6 +134,7 @@
             [chartWidth]="chartWidth"
             [chartHeight]="chartHeight"
             [preloadedData]="preloadedData?.dailyCounts"
+            [displayOptions]="dailyCountDisplayOptions"
             [useExternalTitle]="useTileTitles"
           ></app-daily-count-bar-chart>
         </app-chart-tile>

@@ -17,7 +17,7 @@ describe('NavMainMenuComponent Home actions', () => {
     userService = jasmine.createSpyObj('UserService', ['hasPermissionLevel', 'logout']);
     userService.hasPermissionLevel.and.returnValue(true);
     component = TestBed.runInInjectionContext(() => new NavMainMenuComponent(
-      userService, {} as any, {} as any, {} as any, {} as any,
+      userService, { url: '/ng/home' } as any, {} as any, {} as any, {} as any,
       {} as any, {} as any, {} as any, {} as any
     ));
     loginMenu = jasmine.createSpyObj('MatMenuTrigger', ['openMenu', 'closeMenu']);

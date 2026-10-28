@@ -33,14 +33,14 @@ const menus: Record<NavigationMenu, NavigationEntry[]> = {
     { label: 'Item', icon: 'dry_cleaning', path: '/ng/itemAnalytics' },
     { label: 'Summary', icon: 'view_column', path: '/ng/daily-summary' },
     { label: 'Comparison', icon: 'compare', path: '/ng/comparison-dashboard' },
-    { label: 'Experimental', icon: 'science', menu: 'experimental' },
-  ],
-  experimental: [
-    { label: 'Daily Experimental', icon: 'dashboard_customize', path: '/ng/experimental/daily-dashboard' },
     { label: 'Action Center', icon: 'crisis_alert', path: '/ng/action-center' },
     { label: 'Downtime Pareto', icon: 'waterfall_chart', path: '/ng/downtime-pareto' },
     { label: 'Shift Handoff', icon: 'assignment', path: '/ng/shift-handoff' },
     { label: 'Visual Ops', icon: 'monitoring', path: '/ng/visual-ops' },
+    { label: 'Experimental', icon: 'science', menu: 'experimental' },
+  ],
+  experimental: [
+    { label: 'Daily Experimental', icon: 'dashboard_customize', path: '/ng/experimental/daily-dashboard' },
   ],
   productionScreens: [{ label: 'Production Screen', icon: 'live_tv', path: '/ng/production-screen' }],
   reports: [

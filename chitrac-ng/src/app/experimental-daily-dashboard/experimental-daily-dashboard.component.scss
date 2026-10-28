@@ -193,3 +193,29 @@
     border-color: #555;
   }
 }
+
+.daily-count-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  color: var(--theme-color-text);
+  font-size: 11px;
+
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 28px;
+    cursor: pointer;
+  }
+
+  input {
+    accent-color: var(--theme-color-primary);
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid var(--theme-color-primary);
+      outline-offset: 2px;
+    }
+  }
+}
