@@ -45,3 +45,33 @@ paths may calculate break overlap when no totals document exists.
 The API may continue returning established response names such as
 `machineSerial` or `totalCount`; those are response DTO fields and are not
 stored totals fields.
+
+## Minute totals expiry (CHITRAC-1190)
+
+`totals-minute` uses `timestamps.update` as its TTL date, with a 48-hour
+retention period (`expireAfterSeconds: 172800`). The redundant top-level
+`expiresAt` field is removed. Rebuilding a bucket advances its last-update
+date and therefore its expiry; the migration preserves existing timestamps.
+
+Run the server-side migration from `chitrac-api`. It uses the server's configured
+MongoDB connection and minute-totals collection name and defaults to a dry run:
+
+```powershell
+npm run migrate:totals-minute-ttl
+npm run migrate:totals-minute-ttl -- --apply
+```
+
+The migration refuses to apply if any minute record lacks a BSON Date
+`timestamps.update`. It installs the new TTL index before dropping legacy TTL
+indexes on `expiresAt`, then unsets only that field. Existing single-field
+indexes on `timestamps.update` are reused; changing their TTL option requires
+MongoDB 5.1 or newer (see the [MongoDB TTL documentation](https://www.mongodb.com/docs/manual/core/index-ttl/)).
+Document IDs, totals, and timestamps are preserved.
+Repeated runs are safe. Other totals collections and password-reset expiry
+are unaffected.
+
+This is an explicit deployment migration, not an automatic server-startup
+operation: enabling the new TTL can expire records last updated over 48 hours
+ago. Coordinate with processes that write this shared collection so they do not
+reintroduce `expiresAt` or its legacy TTL index after migration. This change
+does not modify the datafeed repository.
