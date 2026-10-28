@@ -14,13 +14,7 @@ const { formatHumanName } = require("../../utils/humanNames");
 const {
   getSessionDataForPartialDays,
 } = require("../../utils/reportFunctions");
-const {
-  buildItemSummaryRows,
-  splitTimeRangeForHybridItems,
-  getItemsCachedDataForDays,
-  getItemsSessionDataForPartialDays,
-  combineItemsHybridData,
-} = require("../../utils/itemFunctions");
+const { getItemSummaryForRange } = require('../../utils/itemFunctions');
 const {
   splitTimeRangeForHybrid,
   computeMachineResults,
@@ -477,112 +471,13 @@ module.exports = function (server) {
   // ---------------------------------------------------------------------------
   router.get("/analytics/daily-summary-dashboard/items", async (req, res) => {
     try {
-      const started = Date.now();
       const { start, end, serial } = parseAndValidateQueryParams(req);
       const shiftId = await resolveShiftIdString(req, db);
-      const exactStart = new Date(start);
-      const exactEnd = new Date(end);
-
-      const today = new Date();
-      const todayDateStr = today.toISOString().split("T")[0];
-      const startDateStr = exactStart.toISOString().split("T")[0];
-      const endDateStr = exactEnd.toISOString().split("T")[0];
-      const isToday = startDateStr === todayDateStr || endDateStr === todayDateStr;
-
-      const startOfDayStart = new Date(exactStart);
-      startOfDayStart.setHours(0, 0, 0, 0);
-      const endOfDayEnd = new Date(exactEnd);
-      endOfDayEnd.setHours(23, 59, 59, 999);
-      const isStartOfDay = exactStart.getTime() === startOfDayStart.getTime();
-      const isEndOfDay = exactEnd.getTime() >= endOfDayEnd.getTime();
-      const isSameDay = startDateStr === endDateStr;
-      const isPartialDay = isSameDay && (!isStartOfDay || !isEndOfDay);
-
-      if (isPartialDay && !isToday) {
-        const sessionData = await getItemsSessionDataForPartialDays(
-          [{ start: exactStart, end: exactEnd }],
-          db,
-          logger
-        );
-        const items = buildItemSummaryRows(sessionData);
-        return res.json({
-          timeRange: { start, end, total: formatDuration(Date.now() - started) },
-          items,
-        });
-      }
-
-      const HYBRID_THRESHOLD_HOURS = 24;
-      const timeRangeHours = (exactEnd - exactStart) / (1000 * 60 * 60);
-      const useHybrid = timeRangeHours > HYBRID_THRESHOLD_HOURS;
-
-      let items = [];
-
-      if (useHybrid) {
-        const { completeDays, partialDays } = splitTimeRangeForHybridItems(
-          exactStart,
-          exactEnd
-        );
-
-        const partialDaysToday = [];
-        const partialDaysNotToday = [];
-
-        for (const partialDay of partialDays) {
-          const partialDayDateStr = new Date(
-            partialDay.start
-          ).toISOString().split("T")[0];
-          if (partialDayDateStr === todayDateStr) {
-            partialDaysToday.push({
-              dateStr: partialDayDateStr,
-              start: new Date(partialDayDateStr + "T00:00:00.000Z"),
-              end: new Date(partialDayDateStr + "T23:59:59.999Z"),
-            });
-          } else {
-            partialDaysNotToday.push(partialDay);
-          }
-        }
-
-        const daysForCache = [...completeDays, ...partialDaysToday];
-
-        if (daysForCache.length > 0) {
-          items = await getItemsCachedDataForDays(daysForCache, db, { shiftId, logger });
-        }
-
-        if (partialDaysNotToday.length > 0) {
-          const sessionResults = await getItemsSessionDataForPartialDays(
-            partialDaysNotToday,
-            db,
-            logger
-          );
-          items = combineItemsHybridData(items, sessionResults, logger);
-        }
-      } else {
-        const startDate = exactStart.toISOString().split("T")[0];
-        const daysForCache = [
-          {
-            dateStr: startDate,
-            start: startOfDayStart,
-            end: endOfDayEnd,
-          },
-        ];
-
-        items = await getItemsCachedDataForDays(daysForCache, db, { shiftId, logger });
-      }
-
-      if (serial) {
-        const targetSerial = parseInt(serial, 10);
-        items = items.filter((item) => {
-          const machineSerial = item.machineSerial ?? item.machine?.serial ?? item.machine?.id;
-          return machineSerial == null || Number(machineSerial) === targetSerial;
-        });
-      }
-
-      res.json({
-        timeRange: { start, end, total: formatDuration(Date.now() - started) },
-        items: buildItemSummaryRows(items),
-      });
+      const items = await getItemSummaryForRange(db, new Date(start), new Date(end), { shiftId, serial });
+      res.json({ timeRange: { start, end }, items });
     } catch (error) {
-      logger.error(`Error in ${req.method} ${req.originalUrl}:`, error);
-      res.status(500).json({ error: "Failed to generate items summary" });
+      logger?.error?.('Item summary failed:', error);
+      res.status(error.statusCode || 500).json({ error: 'Failed to generate items summary' });
     }
   });
 

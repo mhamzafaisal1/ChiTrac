@@ -45,8 +45,8 @@
       <ng-template #noAlerts>
         <div class="empty-state">
           <mat-icon>check_circle</mat-icon>
-          <strong>No active issues detected</strong>
-          <span>Live cache does not show faulted/offline machines right now.</span>
+          <strong>{{ cacheReady ? 'No active issues detected' : 'Waiting for live data' }}</strong>
+          <span>{{ cacheReady ? 'Live cache does not show faulted/offline machines right now.' : 'Machine status will appear when the live snapshot arrives.' }}</span>
         </div>
       </ng-template>
     </article>
@@ -72,8 +72,8 @@
       <ng-template #noFaults>
         <div class="empty-state">
           <mat-icon>query_stats</mat-icon>
-          <strong>No fault summary available</strong>
-          <span>Fault data will appear here once today has recorded events.</span>
+          <strong>{{ faultsLoading ? 'Loading faults…' : faultsError || 'No faults recorded' }}</strong>
+          <span>{{ faultsError ? 'Fault totals are unavailable.' : 'Fault data will appear here once today has recorded events.' }}</span>
         </div>
       </ng-template>
     </article>

@@ -1,8 +1,10 @@
+import { isNavigationMenu, navigationEntries } from '../services/navigation-menu';
 import { Component, inject, Output, Input, EventEmitter, ViewChild, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
+import { ConnectedPosition, Overlay, OverlayModule } from '@angular/cdk/overlay';
 import { RouterOutlet, RouterModule } from '@angular/router';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -25,11 +27,12 @@ import { selectedTimeframeLabel } from '../utils/timeframe-label';
 
 import { PermissionLevels, UserService } from '../user.service';
 import { SettingsService } from '../services/settings.service';
-import { DisplayTimePipe } from '../pipes/display-time.pipe';
 import { WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { LayoutEditContext, LayoutEditService } from '../services/layout-edit.service';
 import { DateTimeModalComponent } from '../components/date-time-modal/date-time-modal.component';
 import { UserLoginComponent } from '../user-login/user-login.component';
+import { NavigationActionsService } from '../services/navigation-actions.service';
+import { ProductionScreenLayoutsService } from '../services/production-screen-layouts.service';
 
 const left = [
   query(':enter, :leave', style({ position: 'absolute', width: '15em' })),
@@ -52,7 +55,6 @@ const right = [
     templateUrl: './nav-main-menu.component.html',
     styleUrl: './nav-main-menu.component.scss',
     imports: [
-        DisplayTimePipe,
         CommonModule,
         RouterOutlet,
         RouterModule,
@@ -64,6 +66,7 @@ const right = [
         MatSlideToggleModule,
         MatMenuModule,
         MatTooltipModule,
+        OverlayModule,
         DateTimeModalComponent,
         UserLoginComponent
     ],
@@ -79,6 +82,55 @@ const right = [
     ]
 })
 export class NavMainMenuComponent implements OnInit, OnDestroy {
+  readonly productionLayouts = inject(ProductionScreenLayoutsService);
+  connectionTooltipVisible = false;
+  connectionTooltipOrigin = { x: 0, y: 0 };
+  readonly connectionTooltipPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetX: 12, offsetY: 12 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetX: -12, offsetY: 12 },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetX: 12, offsetY: -12 },
+  ];
+  readonly connectionTooltipScrollStrategy = inject(Overlay).scrollStrategies.close();
+  private connectionTooltipTimer?: ReturnType<typeof setTimeout>;
+  private connectionTooltipDismissed = false;
+
+  enterConnectionTooltip(event: MouseEvent): void {
+    this.connectionTooltipDismissed = false;
+    this.moveConnectionTooltip(event);
+  }
+
+  moveConnectionTooltip(event: MouseEvent): void {
+    // The timeframe retains its own tooltip; do not show two overlapping tooltips.
+    if ((event.target as Element)?.closest?.('.timeframe-label')) {
+      this.hideConnectionTooltip();
+      return;
+    }
+    this.connectionTooltipOrigin = { x: event.clientX, y: event.clientY };
+    this.queueConnectionTooltip();
+  }
+
+  focusConnectionTooltip(event: FocusEvent): void {
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    this.connectionTooltipDismissed = false;
+    this.connectionTooltipOrigin = { x: bounds.left, y: bounds.bottom };
+    this.queueConnectionTooltip();
+  }
+
+  private queueConnectionTooltip(): void {
+    if (this.connectionTooltipVisible || this.connectionTooltipTimer || this.connectionTooltipDismissed) return;
+    this.connectionTooltipTimer = setTimeout(() => {
+      this.connectionTooltipTimer = undefined;
+      this.connectionTooltipVisible = true;
+    }, 500);
+  }
+
+  hideConnectionTooltip(dismiss = false): void {
+    clearTimeout(this.connectionTooltipTimer);
+    this.connectionTooltipTimer = undefined;
+    this.connectionTooltipVisible = false;
+    if (dismiss) this.connectionTooltipDismissed = true;
+  }
+
   @Output() darkModeToggleEvent = new EventEmitter();
   @Input() isDarkMode: boolean;
   @ViewChild('dateMenuTrigger') dateMenu: MatMenuTrigger;
@@ -102,6 +154,10 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     {
       menu: 'dashboards',
       routes: [
+        '/ng/action-center',
+        '/ng/downtime-pareto',
+        '/ng/shift-handoff',
+        '/ng/visual-ops',
         '/ng/machineAnalytics',
         '/ng/operatorAnalytics',
         '/ng/itemAnalytics',
@@ -115,16 +171,13 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
       menu: 'experimental',
       parent: 'dashboards',
       routes: [
-        '/ng/action-center',
-        '/ng/downtime-pareto',
-        '/ng/shift-handoff',
-        '/ng/visual-ops',
         '/ng/experimental/daily-dashboard'
       ]
     },
     {
       menu: 'productionScreens',
       routes: [
+        '/ng/production-screen',
         '/ng/blanket-blaster-one',
         '/ng/blanket-blaster-two',
         '/ng/spl-efficiency-screen',
@@ -134,6 +187,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/spf-col-efficiency-screen',
         '/ng/lpls-efficiency-screen',
         '/ng/spfs-efficiency-screen',
+        '/ng/experimental/spf',
         '/ng/blanket-blasters-efficiency-screen'
       ]
     },
@@ -164,6 +218,8 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     );
 
   private userSub?: Subscription;
+  private navigationActionsSub?: Subscription;
+  private settingsAfterLogin = false;
   private settingsSub?: Subscription;
   private dialogCloseSub?: Subscription;
   private websocketStatusSub?: Subscription;
@@ -174,7 +230,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   user: any;
   
-  systemName: string = 'ChiTrac';
+  systemName: string = (() => { try { return localStorage.getItem('chitrac-system-name') || ''; } catch { return ''; } })();
   websocketStatus: WebsocketConnectionStatus = 'disconnected';
   dashboardUpdatedAt: Date | null = null;
   layoutEditContext: LayoutEditContext | null = null;
@@ -198,6 +254,11 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   readonly permissionLevels = PermissionLevels;
 
+  entries() {
+    return this.user?.username && isNavigationMenu(this.shownMenu)
+      ? navigationEntries(this.shownMenu, level => this.canAccess(level)) : [];
+  }
+
   constructor(
     private userService: UserService,
     private router: Router,
@@ -206,11 +267,20 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     private websocketService: WebsocketService,
     private layoutEditService: LayoutEditService,
     private dateTimeService: DateTimeService,
-    private shiftService: ShiftService
+    private shiftService: ShiftService,
+    private navigationActions: NavigationActionsService
   ) {}
 
   ngOnInit() {
     this.subscribeToUser();
+    this.navigationActionsSub = this.navigationActions.requests$.subscribe(action => {
+      if (action === 'settings') {
+        this.openSettingsMenu();
+      } else {
+        this.settingsAfterLogin = false;
+        this.openAuthenticationMenu();
+      }
+    });
     const shifts$ = this.dateTimeService.shiftId$.pipe(
       distinctUntilChanged(),
       switchMap(id => id ? this.shiftService.getActiveShifts(true).pipe(
@@ -241,7 +311,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     });
 
     this.dialogCloseSub = this.dialog.afterOpened.subscribe(() => this.closeMenu());
-    this.websocketService.ensureConnected();
+    if (this.user?.username) this.websocketService.ensureConnected();
     this.websocketStatusSub = this.websocketService.status$.subscribe((status) => {
       this.websocketStatus = status;
     });
@@ -262,8 +332,10 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.hideConnectionTooltip();
     this.timeframeSub?.unsubscribe();
     this.userSub?.unsubscribe();
+    this.navigationActionsSub?.unsubscribe();
     this.settingsSub?.unsubscribe();
     this.dialogCloseSub?.unsubscribe();
     this.websocketStatusSub?.unsubscribe();
@@ -272,12 +344,39 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   logout() {
-    const shouldRedirect = this.isCurrentRouteProtectedForAnonymous();
-    this.userService.logout().subscribe(() => {
-      if (shouldRedirect) {
-        this.router.navigate(['/']);
-      }
-    });
+    this.closeMenu();
+    this.userService.logout().subscribe(() => this.router.navigate(['/ng/home'], { replaceUrl: true }));
+  }
+
+  get isLoginRoute(): boolean { return this.router.url.split('?')[0] === '/ng/login'; }
+
+  focusLoginPage(): void {
+    if (this.isLoginRoute) document.querySelector<HTMLInputElement>('app-user-login input[formcontrolname="username"]')?.focus();
+  }
+
+  private openAuthenticationMenu(): void {
+    if (this.isLoginRoute) { this.focusLoginPage(); return; }
+    this.closeMenu();
+    this.loginMenu?.openMenu();
+  }
+
+  private openSettingsMenu(): void {
+    if (!this.user?.username) {
+      this.settingsAfterLogin = true;
+      this.openAuthenticationMenu();
+      return;
+    }
+    if (!this.canAccess(this.permissionLevels.settings)) return;
+    this.closeMenu();
+    this.openMenu('main');
+    this.openMenu('settings');
+  }
+
+  onAuthenticationMenuClosed(): void {
+    this.closeMenu();
+    const openSettings = this.settingsAfterLogin && this.user?.username;
+    this.settingsAfterLogin = false;
+    if (openSettings) this.openSettingsMenu();
   }
 
   darkModeToggle() {
@@ -310,7 +409,12 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     setTimeout(() => this.dateTimeModal?.resetDraftFromCommittedSelection());
   }
 
+  trackProductionLayout(_index: number, layout: { scope: string; id: string }): string {
+    return layout.scope + ':' + layout.id;
+  }
+
   openMenu(menu: string) {
+    if (menu === 'productionScreens') this.productionLayouts.refresh();
     this.menuHistory.push(this.shownMenu);
     this.shownMenu = menu;
     this.menuIndex++;
@@ -376,29 +480,18 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     });
   }
 
-  getLiveChipClass(): string {
-    return `live-chip ${this.websocketStatus}`;
-  }
-
-  getLiveChipIcon(): string {
-    if (this.websocketStatus === 'connected') return 'bolt';
-    if (this.websocketStatus === 'connecting') return 'sync';
-    if (this.websocketStatus === 'error') return 'error';
-    return 'cloud_off';
-  }
-
-  getLiveChipLabel(): string {
-    if (this.websocketStatus === 'connected') return 'Live';
+  getConnectionStatusLabel(): string {
+    if (this.websocketStatus === 'connected') return 'Connected';
     if (this.websocketStatus === 'connecting') return 'Connecting';
-    if (this.websocketStatus === 'error') return 'Fallback';
-    return 'Offline';
+    if (this.websocketStatus === 'error') return 'Connection Error';
+    return 'Disconnected';
   }
 
-  getLiveChipTooltip(): string {
+  getConnectionStatusTooltip(): string {
     const updated = this.dashboardUpdatedAt
       ? `Last dashboard cache update: ${this.dashboardUpdatedAt.toLocaleString()}`
       : 'No dashboard cache update received yet';
-    return `${this.getLiveChipLabel()} feed. ${updated}.`;
+    return `${this.getConnectionStatusLabel()}. ${updated}.`;
   }
 
   toggleLayoutEdit(): void {

@@ -1,3 +1,4 @@
+const { sessionMachineQuery } = require('./sessionIdentity');
 const {
     extractAllCyclesFromStates,
     extractFaultCycles,
@@ -1440,7 +1441,10 @@ async function buildItemSummaryFromItemSessions(db, operatorId, start, end, seri
 
   // Build query filter
   const filter = {
-    "operators.id": Number(operatorId),
+    $and: [{ $or: [
+      { 'operator.id': Number(operatorId) },
+      { 'operator.id': null, 'operators.id': Number(operatorId) },
+    ] }],
     "timestamps.start": { $lt: wEnd },
     $or: [
       { "timestamps.end": { $gt: wStart } },
@@ -1451,7 +1455,7 @@ async function buildItemSummaryFromItemSessions(db, operatorId, start, end, seri
 
   // Optionally scope to specific machine
   if (serial) {
-    filter["machine.serial"] = Number(serial);
+    filter.$and.push(...sessionMachineQuery(Number(serial)).$and);
   }
 
   const sessions = await coll.find(filter)
@@ -1462,6 +1466,7 @@ async function buildItemSummaryFromItemSessions(db, operatorId, start, end, seri
       workTime: 1, runtime: 1, activeStations: 1,
       totalCount: 1, counts: 1,
       operators: 1,
+      "machine.id": 1,
       "machine.serial": 1,
       "machine.name": 1
     })
@@ -1526,7 +1531,7 @@ async function buildItemSummaryFromItemSessions(db, operatorId, start, end, seri
     }
 
     // Create aggregation key: machine serial + item id
-    const machineSerial = s.machine?.serial ?? null;
+    const machineSerial = s.machine?.id ?? s.machine?.serial ?? null;
     const aggKey = `${machineSerial}_${it.id}`;
 
     // Get or create aggregated session record
@@ -1645,7 +1650,7 @@ async function buildDailyEfficiencyByHour(db, operatorId, start, end, serial = n
       { "timestamps.end": { $exists: false } },
       { "timestamps.end": null }
     ],
-    ...(serial ? { "machine.serial": Number(serial) } : {})
+    ...(serial ? sessionMachineQuery(Number(serial)) : {})
   };
 
   const allSessions = await osColl.find(filter)
@@ -1711,7 +1716,7 @@ async function buildOperatorCyclePieFromCache(db, logger, operatorId, start, end
       ],
     };
 
-    if (serial) query["machine.serial"] = Number(serial);
+    if (serial) Object.assign(query, sessionMachineQuery(Number(serial)));
 
     const sessions = await db.collection(config.operatorSessionCollectionName)
       .find(query)
@@ -2473,7 +2478,7 @@ function operatorTimelineSessionEfficiency(session) {
 }
 
 function operatorTimelineMachineIdentity(session) {
-  const serial = Number(session.machine?.serial ?? session.machine?.id);
+  const serial = Number(session.machine?.id ?? session.machine?.serial);
   if (!Number.isFinite(serial)) return {
     serial: "unknown",
     name: session.machine?.name || "Unknown",
@@ -2550,7 +2555,7 @@ async function buildOperatorFaultHistoryFromSessions(db, operatorId, start, end,
     ],
   };
 
-  if (serial) query["machine.serial"] = Number(serial);
+  if (serial) Object.assign(query, sessionMachineQuery(Number(serial)));
 
   const sessions = await db.collection(config.operatorSessionCollectionName)
     .find(query)

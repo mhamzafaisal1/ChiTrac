@@ -124,6 +124,7 @@
 .summary-strip {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 0.75rem;
 }
 
@@ -133,6 +134,7 @@
   align-items: center;
   gap: 0.7rem;
   min-width: 0;
+  min-height: 4.35rem;
   padding: 0.8rem 0.9rem;
   border-radius: 4px;
   background: var(--theme-color-surface-container);
@@ -169,11 +171,20 @@
 
   &.has-sparkline {
     min-height: 4.35rem;
+    display: grid;
+    grid-template-columns: auto minmax(min-content, 1fr) minmax(0, 0.7fr);
+
+    .summary-sparkline {
+      position: static;
+      width: 100%;
+      height: 2.55rem;
+    }
   }
 
   &.time-range strong {
-    font-size: 1rem;
+    font-size: clamp(0.75rem, 0.9vw, 1rem);
     line-height: 1.25;
+    white-space: nowrap;
   }
 
   .summary-sparkline {

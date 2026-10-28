@@ -6,9 +6,9 @@
     </p>
   </header>
 
-  <p class="hint" *ngIf="isLoading">Loading maintenance shifts...</p>
+  <app-page-load-state [loading]="isLoading" label="Loading maintenance shifts…"></app-page-load-state>
 
-  <section class="shifts-section" aria-labelledby="maintenance-shifts-list-heading">
+  <section class="shifts-section" aria-labelledby="maintenance-shifts-list-heading" [attr.inert]="isLoading ? '' : null" [attr.aria-busy]="isLoading">
     <div class="shifts-section-header">
       <h2 id="maintenance-shifts-list-heading" class="section-title">Defined maintenance shifts</h2>
       <p class="section-help">

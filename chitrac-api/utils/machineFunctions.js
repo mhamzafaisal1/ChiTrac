@@ -1,3 +1,4 @@
+const { sessionMachineQuery } = require('./sessionIdentity');
   const {
     parseAndValidateQueryParams,
     createPaddedTimeRange,
@@ -73,7 +74,7 @@
 
   async function buildCurrentOperators(db, serial) {
     const msColl = db.collection(config.machineSessionCollectionName);
-    const latest = await msColl.find({ "machine.serial": Number(serial) })
+    const latest = await msColl.find({ ...sessionMachineQuery(Number(serial)) })
       .project({ _id: 0, operators: 1, machine: 1, timestamps: 1 })
       .sort({ "timestamps.start": -1 })
       .limit(1)
@@ -87,7 +88,7 @@
     const rows = await Promise.all(opIds.map(async (opId) => {
       const s = await osColl.find({
         "operator.id": opId,
-        "machine.serial": Number(serial)
+        ...sessionMachineQuery(Number(serial))
       })
         .project({
           _id: 0, operator: 1, machine: 1, timestamps: 1,
@@ -107,7 +108,7 @@
       return {
         operatorId: doc.operator?.id,
         operatorName: doc.operator?.name || "Unknown",
-        machineSerial: doc.machine?.serial,
+        machineSerial: doc.machine?.id ?? doc.machine?.serial,
         machineName: doc.machine?.name || "Unknown",
         session: { start: doc.timestamps?.start || null, end: doc.timestamps?.end || null },
         metrics: {
@@ -128,7 +129,7 @@
     const wStart = new Date(start);
     const wEnd = new Date(end);
     const sessions = await coll.find({
-      "machine.serial": Number(serial),
+      ...sessionMachineQuery(Number(serial)),
       "timestamps.start": { $lt: wEnd },
       $or: [
         { "timestamps.end": { $gt: wStart } },
@@ -246,7 +247,7 @@
     return Promise.all(hours.map(async ({ start: hStart, end: hEnd }) => {
       const [mSessions, oSessions] = await Promise.all([
         msColl.find({
-          "machine.serial": Number(serial),
+          ...sessionMachineQuery(Number(serial)),
           "timestamps.start": { $lt: hEnd },
           $or: [
             { "timestamps.end": { $gt: hStart } },
@@ -258,7 +259,7 @@
           runtime: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1
         }).toArray(),
         osColl.find({
-          "machine.serial": Number(serial),
+          ...sessionMachineQuery(Number(serial)),
           "timestamps.start": { $lt: hEnd },
           $or: [
             { "timestamps.end": { $gt: hStart } },

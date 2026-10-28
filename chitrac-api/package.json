@@ -7,6 +7,7 @@
     "test": "node --test test/*.test.js",
     "migrate:config-status-fault": "node scripts/migrate-config-status-fault-schema.js",
     "migrate:config-item": "node scripts/migrate-config-item-schema.js",
+    "migrate:totals-minute-ttl": "node scripts/migrate-totals-minute-ttl.js",
     "dev": "nodemon index.js"
   },
   "author": "Robert T Ivaniszyn II",
@@ -18,6 +19,7 @@
     "app-root-path": "^3.1.0",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.2",
+    "compression": "^1.8.2",
     "connect-flash": "^0.1.1",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.5.0",

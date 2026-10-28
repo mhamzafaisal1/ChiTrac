@@ -13,6 +13,7 @@ import { DashboardCacheScope, WebsocketService } from '../services/websocket.ser
 
 interface ParetoRow {
   fault: string;
+  machine: string;
   count: number;
   seconds: number;
   duration: string;
@@ -222,8 +223,22 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private processRows(summaries: any[]): void {
-    const sorted = summaries
+    const expanded = summaries.flatMap(summary => {
+      if (!Array.isArray(summary.faults) || !summary.faults.length) return [summary];
+      const machines = new Map<string, any>();
+      for (const fault of summary.faults) {
+        const serial = fault.machineSerial ?? 'unknown';
+        const key = String(serial);
+        const row = machines.get(key) || { ...summary, machineName: fault.machineName || `Machine ${serial}`, machineSerial: serial, count: 0, totalDurationSeconds: 0 };
+        row.count++;
+        row.totalDurationSeconds += Number(fault.durationSeconds || 0);
+        machines.set(key, row);
+      }
+      return [...machines.values()];
+    });
+    const sorted = expanded
       .map((summary) => ({
+        machine: `${summary.machineName || ((this.serial ?? this.machineSerial) ? 'Machine' : 'All machines')}${summary.machineSerial != null ? ' · Serial ' + summary.machineSerial : (this.serial ?? this.machineSerial) ? ' · Serial ' + (this.serial ?? this.machineSerial) : ''}`,
         fault: summary.code == null ? summary.name || 'Fault' : `${summary.name || 'Fault'} (${summary.code})`,
         count: Number(summary.count || 0),
         seconds: Number(summary.totalDurationSeconds || 0),

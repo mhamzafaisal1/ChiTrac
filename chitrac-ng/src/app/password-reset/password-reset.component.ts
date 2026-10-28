@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
@@ -26,7 +26,8 @@ import { UserManagementService } from '../services/user-management.service';
   templateUrl: './password-reset.component.html',
   styleUrl: './password-reset.component.scss'
 })
-export class PasswordResetComponent implements OnInit {
+export class PasswordResetComponent implements OnInit, OnDestroy {
+  private redirectTimer?: ReturnType<typeof setTimeout>;
   token = '';
   isSaving = false;
   isComplete = false;
@@ -78,7 +79,7 @@ export class PasswordResetComponent implements OnInit {
       next: () => {
         this.isSaving = false;
         this.isComplete = true;
-        setTimeout(() => this.router.navigate(['/ng/login']), 2000);
+        this.redirectTimer = setTimeout(() => this.router.navigate(['/ng/login']), 2000);
       },
       error: (err) => {
         this.isSaving = false;
@@ -86,4 +87,6 @@ export class PasswordResetComponent implements OnInit {
       }
     });
   }
+
+  ngOnDestroy(): void { clearTimeout(this.redirectTimer); }
 }

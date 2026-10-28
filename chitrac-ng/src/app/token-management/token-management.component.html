@@ -1,4 +1,5 @@
-<div class="token-management-container">
+<app-page-load-state [loading]="isLoading" [error]="loadError" label="Loading API tokens…" (retry)="retryLoad()"></app-page-load-state>
+<div class="token-management-container" [attr.inert]="isLoading || loadError ? '' : null" [attr.aria-busy]="isLoading">
   <!-- Header -->
   <div class="header">
     <h2>API Token Management</h2>

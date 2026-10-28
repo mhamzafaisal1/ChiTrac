@@ -2,7 +2,8 @@ import { SelectionModel } from '@angular/cdk/collections';
 import { animate, style, transition, trigger } from '@angular/animations';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -11,11 +12,13 @@ import { MaintenanceShiftCrudComponent } from './maintenance-shift-crud.componen
 import { MaintenanceShiftDocument, ShiftService } from '../services/shift.service';
 import { formatTimeSafe } from './shift-time.utils';
 import { SettingsService } from '../services/settings.service';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 @Component({
   selector: 'app-maintenance-shift-settings',
   standalone: true,
   imports: [
+    PageLoadStateComponent,
     CommonModule,
     MatTableModule,
     MatButtonModule,
@@ -55,7 +58,8 @@ import { SettingsService } from '../services/settings.service';
     ]),
   ],
 })
-export class MaintenanceShiftSettingsComponent implements OnInit {
+export class MaintenanceShiftSettingsComponent implements OnInit, OnDestroy {
+  private configurationSubscription?: Subscription;
   private readonly settings = inject(SettingsService);
   private readonly shiftService = inject(ShiftService);
   private readonly snackBar = inject(MatSnackBar);
@@ -110,7 +114,8 @@ export class MaintenanceShiftSettingsComponent implements OnInit {
 
   loadShifts(): void {
     this.isLoading = true;
-    this.shiftService.getAllMaintenanceShifts().subscribe({
+    this.configurationSubscription?.unsubscribe();
+    this.configurationSubscription = this.shiftService.watchAllMaintenanceShifts().subscribe({
       next: (res) => {
         const list = [...(res.shifts ?? [])];
         this.dataSource.data = list;
@@ -131,6 +136,8 @@ export class MaintenanceShiftSettingsComponent implements OnInit {
       },
     });
   }
+
+  ngOnDestroy(): void { this.configurationSubscription?.unsubscribe(); }
 
   openAdd(): void {
     this.editorMode = 'add';
@@ -153,7 +160,8 @@ export class MaintenanceShiftSettingsComponent implements OnInit {
   }
 
   onShiftSaved(): void {
-    this.loadShifts();
+    this.selection.clear();
+    this.closeEditor();
   }
 
   deleteShift(): void {
@@ -172,7 +180,6 @@ export class MaintenanceShiftSettingsComponent implements OnInit {
           this.editorShift = null;
         }
         this.selection.clear();
-        this.loadShifts();
       },
       error: (err: unknown) => {
         const msg =
@@ -197,14 +204,13 @@ export class MaintenanceShiftSettingsComponent implements OnInit {
       return;
     }
     const match = this.dataSource.data.find((s) => s._id === sel._id);
+    this.selection.clear();
     if (match) {
-      this.selection.setSelection(match);
-      if (this.showEditor && this.editorMode === 'edit') {
-        this.editorShift = match;
-      }
+      this.selection.select(match);
+      // Keep an open editor's draft intact when another browser updates configuration.
     } else {
-      this.selection.clear();
       this.showEditor = false;
+      this.editorShift = null;
     }
   }
 }

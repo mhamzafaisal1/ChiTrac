@@ -48,7 +48,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
   selectedShiftId: string | null = null;
-  timeframeMode: TimeframePickerMode = 'custom';
+  timeframeMode: TimeframePickerMode = 'today';
   readonly layout = inject(ReportColumnLayoutService);
   get columns(): string[] { return this.layout.columns; }
   rows: any[] = [];

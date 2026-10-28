@@ -1,4 +1,6 @@
 const express = require('express');
+const { registerProductionLayoutRoutes } = require('./production-layouts');
+const { sanitizeSpfLayout, configuredProductionStations } = require('../../utils/spfLayout');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
@@ -180,6 +182,9 @@ function constructor(server) {
 
     if (input.dashboardLayouts && typeof input.dashboardLayouts === 'object' && !Array.isArray(input.dashboardLayouts)) {
       const dashboardLayouts = {};
+      if (input.dashboardLayouts.experimentalSpf !== undefined) {
+        dashboardLayouts.experimentalSpf = sanitizeSpfLayout(input.dashboardLayouts.experimentalSpf);
+      }
       const summaryDashboard = input.dashboardLayouts.summaryDashboard;
       const machineDashboard = input.dashboardLayouts.machineDashboard;
       const operatorDashboard = input.dashboardLayouts.operatorDashboard;
@@ -299,6 +304,15 @@ function constructor(server) {
         const chartOrder = experimentalDailyDashboard.chartOrder;
         const chartVisibility = experimentalDailyDashboard.chartVisibility;
         const experimentalUpdates = {};
+
+        if (experimentalDailyDashboard.gridLayout !== undefined) {
+          if (!['3x2', '2x2'].includes(experimentalDailyDashboard.gridLayout)) {
+            const error = new Error('Invalid gridLayout. Must be 3x2 or 2x2');
+            error.status = 400;
+            throw error;
+          }
+          experimentalUpdates.gridLayout = experimentalDailyDashboard.gridLayout;
+        }
 
         if (chartOrder !== undefined) {
           if (!Array.isArray(chartOrder)) {
@@ -442,6 +456,14 @@ function constructor(server) {
         preferences.dashboardLayouts.experimentalDailyDashboard.chartVisibility;
     }
 
+    if (preferences.dashboardLayouts?.experimentalDailyDashboard?.gridLayout) {
+      updates['dashboardLayouts.experimentalDailyDashboard.gridLayout'] =
+        preferences.dashboardLayouts.experimentalDailyDashboard.gridLayout;
+    }
+
+    if (preferences.dashboardLayouts?.experimentalSpf) {
+      updates['dashboardLayouts.experimentalSpf'] = preferences.dashboardLayouts.experimentalSpf;
+    }
     return updates;
   }
 
@@ -464,7 +486,7 @@ function constructor(server) {
 
   function mergeDashboardLayouts(systemLayouts = {}, userLayouts = {}) {
     const merged = { ...systemLayouts };
-    for (const dashboardName of ['summaryDashboard', 'machineDashboard', 'operatorDashboard', 'experimentalDailyDashboard']) {
+    for (const dashboardName of ['summaryDashboard', 'machineDashboard', 'operatorDashboard', 'experimentalDailyDashboard', 'experimentalSpf']) {
       const userLayout = userLayouts[dashboardName];
       if (!userLayout || typeof userLayout !== 'object' || Array.isArray(userLayout)) continue;
       merged[dashboardName] = {
@@ -487,7 +509,7 @@ function constructor(server) {
     try {
       const existing = await systemPreferences.ensureSystemPreferences(db, config);
       const preferences = systemPreferencesSchema.utils.normalizePreferences(req.body, existing, config);
-      const { _id, ...updates } = preferences;
+      const { _id, productionScreenLayouts, ...updates } = preferences;
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
         { $set: updates, $setOnInsert: { _id }, $unset: { createdAt: '', updatedAt: '' } },
@@ -511,7 +533,7 @@ function constructor(server) {
         config,
         { preserveExistingSystemName: false }
       );
-      const { _id, ...updates } = preferences;
+      const { _id, productionScreenLayouts, ...updates } = preferences;
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
         { $set: updates, $setOnInsert: { _id }, $unset: { createdAt: '', updatedAt: '', systemName: '' } },
@@ -549,7 +571,7 @@ function constructor(server) {
         existing,
         config
       );
-      const { _id, ...updates } = preferences;
+      const { _id, productionScreenLayouts, ...updates } = preferences;
 
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
@@ -585,7 +607,14 @@ function constructor(server) {
       }
 
       const preferences = sanitizeUserPreferences(req.body, req.authUserId);
+      if (preferences.dashboardLayouts?.experimentalSpf) {
+        const machines = await db.collection(config.machineCollectionName || 'config-machine').find({ active: true }).toArray();
+        preferences.dashboardLayouts.experimentalSpf = sanitizeSpfLayout(
+          preferences.dashboardLayouts.experimentalSpf, configuredProductionStations(machines)
+        );
+      }
       const updates = buildUserPreferenceUpdates(preferences);
+      if (preferences.dashboardLayouts?.experimentalSpf) updates.defaultProductionScreenLayout = null;
       const existing = await userPreferencesCollection.findOne({ userId: req.authUserId });
       updates.timestamps = buildUserPreferenceTimestamps(existing || {});
       await userPreferencesCollection.updateOne(
@@ -681,6 +710,8 @@ function constructor(server) {
       next(error);
     }
   });
+
+  registerProductionLayoutRoutes(router,{db,config,systemPreferences,requireUser,requirePermissionLevel});
 
   router.get('/system', getSystemPreferences);
   router.get('/system/config', getSystemPreferences);

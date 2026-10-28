@@ -1,3 +1,4 @@
+import { ProductionScreenLayoutsService } from '../services/production-screen-layouts.service';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
@@ -6,7 +7,7 @@ import { DateTimeService } from '../services/date-time.service';
 
 describe('navbar timeframe indicator', () => {
   function setup(failShiftLookup = false) {
-    TestBed.configureTestingModule({ providers: [
+    TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },
       { provide: BreakpointObserver, useValue: { observe: () => of({ matches: false }) } }
     ] });
     const dates = new DateTimeService();
@@ -22,7 +23,8 @@ describe('navbar timeframe indicator', () => {
       { status$: of('disconnected'), dashboardCache$: cache, ensureConnected() {} } as any,
       { context$: of(null), setEditing() {} } as any,
       dates,
-      { getActiveShifts: shifts } as any
+      { getActiveShifts: shifts } as any,
+      { requests$: new Subject() } as any
     ));
     component.ngOnInit();
     return { component, dates, shifts, cache };
@@ -31,7 +33,7 @@ describe('navbar timeframe indicator', () => {
   it('tracks applied defaults and confirmed selections', fakeAsync(() => {
     const { component, dates, shifts } = setup();
     tick();
-    expect(component.selectedTimeframeLabel).toBe('today');
+    expect(component.selectedTimeframeLabel).toBe('Today');
     expect(shifts).not.toHaveBeenCalled();
     dates.setLiveMode(false);
     dates.setShiftId('afternoon');

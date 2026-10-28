@@ -1,7 +1,7 @@
-import { Routes } from '@angular/router';
+import { Router, Routes } from '@angular/router';
+import { inject } from '@angular/core';
 import { OperatorGridComponent } from './operator-grid/operator-grid.component';
 import { ItemGridComponent } from './item-grid/item-grid.component';
-import { UserLoginComponent } from './user-login/user-login.component';
 import { UserRegisterComponent } from './user-register/user-register.component';
 import { OperatorAnalyticsDashboardComponent } from './operator-analytics-dashboard/operator-analytics-dashboard.component';
 import { DailySummaryDashboardComponent } from './daily-summary-dashboard/daily-summary-dashboard.component';
@@ -40,14 +40,14 @@ import { SystemSettingsComponent } from './system-settings/system-settings.compo
 import { PermissionLevels } from './user.service';
 import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
 import { TestComponent } from './test/test.component';
-import { PasswordResetComponent } from './password-reset/password-reset.component';
 import { ActionCenterComponent } from './action-center/action-center.component';
 import { DowntimeParetoComponent } from './downtime-pareto/downtime-pareto.component';
 import { ShiftHandoffComponent } from './shift-handoff/shift-handoff.component';
 import { VisualOpsDashboardComponent } from './visual-ops-dashboard/visual-ops-dashboard.component';
 
-export const routes: Routes = [
+const appRoutes: Routes = [
 	// Settings pages
+	{ path: 'ng/settings', pathMatch: 'full', loadComponent: () => import('./settings-menu/settings-menu.component').then(m => m.SettingsMenuComponent), canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.operators } },
 	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
@@ -63,8 +63,12 @@ export const routes: Routes = [
 	{ path: 'ng/test', component: TestComponent, canActivate: [AuthGuard] },
 	
 	// Login/Auth
-	{ path: 'ng/login', component: UserLoginComponent },
-	{ path: 'ng/reset-password', component: PasswordResetComponent },
+	{ path: 'ng/login', redirectTo: ({ queryParams }) => inject(Router).createUrlTree(['/ng/home'], {
+		queryParams: { login: '1', ...(typeof queryParams['returnUrl'] === 'string' ? { returnUrl: queryParams['returnUrl'] } : {}) }
+	}) },
+	{ path: 'ng/reset-password', redirectTo: ({ queryParams }) => inject(Router).createUrlTree(['/ng/home'], {
+		queryParams: { resetPassword: '1', token: queryParams['token'] }
+	}) },
 	
 	// Main Dashboards
 	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent },
@@ -94,6 +98,7 @@ export const routes: Routes = [
 	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent },
 	
 	// Production/Efficiency Screens
+	{ path: 'ng/production-screen', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent) },
 	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },
 	{ path: 'ng/blanket-blaster-two', component: BlanketBlastertwoEfficiencyScreen },
 	{ path: 'ng/spl-efficiency-screen', component: SplEfficiencyScreen },
@@ -104,11 +109,20 @@ export const routes: Routes = [
 	{ path: 'ng/spf-col-efficiency-screen', component: SpfColEfficiencyScreenComponent },
 	{ path: 'ng/lpls-efficiency-screen', component: LPLsEfficiencyScreenComponent },
 	{ path: 'ng/spfs-efficiency-screen', component: SPFsEfficiencyScreenComponent },
+	{ path: 'ng/experimental/spf', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent) },
 	{ path: 'ng/blanket-blasters-efficiency-screen', component: BlanketBlastersEfficiencyScreenComponent },
 	{ path: 'ng/eight-station-demo', component: EightStationDemoComponent },
 	
 	// Redirects
-	{ path: 'ng/home', redirectTo: 'ng/machineAnalytics' },
-	{ path: '', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' },
-	{ path: '**', redirectTo: 'ng/machineAnalytics', pathMatch: 'full' }
+	{ path: 'ng/home', loadComponent: () => import('./home/home.component').then(m => m.HomeComponent) },
+	{ path: '', redirectTo: 'ng/home', pathMatch: 'full' },
+	{ path: '**', loadComponent: () => import('./not-found/not-found.component').then(m => m.NotFoundComponent) }
 ];
+
+// Home is the only anonymous page. Apply the same server-backed session guard
+// to every destination, including legacy links, demos and lazy-loaded screens.
+export const routes: Routes = appRoutes.map(route =>
+  route.path === 'ng/home' || route.redirectTo !== undefined
+    ? route
+    : { ...route, canActivate: route.canActivate?.includes(AuthGuard) ? route.canActivate : [AuthGuard, ...(route.canActivate || [])] }
+);

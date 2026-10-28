@@ -1,3 +1,5 @@
+<app-page-load-state [loading]="isLoading" [error]="error" label="Loading operators…" (retry)="retryLoad()"></app-page-load-state>
+<div [attr.inert]="isLoading || error ? '' : null" [attr.aria-busy]="isLoading">
 <table mat-table [dataSource]="dataSource" matSort>
   <ng-container matColumnDef="id">
     <th mat-header-cell *matHeaderCellDef mat-sort-header sortActionDescription="Sort by ID">ID</th>
@@ -24,4 +26,6 @@
     <button mat-flat-button [disabled]="!dataSource?.data || dataSource.data.length === 0 || isDownloading" (click)="downloadOperatorsPdf()">
         <mat-icon>download</mat-icon>{{ isDownloading ? 'Exporting...' : 'Export PDF' }}
     </button>
+</div>
+
 </div>

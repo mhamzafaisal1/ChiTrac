@@ -4,6 +4,7 @@ import { EfficiencyScreensService } from '../../services/efficiency-screens.serv
 import { EfficiencyScreenLaneComponent, type EfficiencyScreenLaneMode } from '../efficiency-screen-lane/efficiency-screen-lane.component';
 import { Subject, timer, forkJoin, of } from 'rxjs';
 import { takeUntil, exhaustMap, catchError } from 'rxjs/operators';
+import { SPF_STATION_SERIALS } from '../experimental-spf/spf-stations';
 
 @Component({
   selector: 'app-spfs-efficiency-screen',
@@ -20,7 +21,7 @@ export class SPFsEfficiencyScreenComponent implements OnInit, OnDestroy {
   private readonly POLL_INTERVAL = 6000;
   // Hardcoded SPF machine serials
   //private readonly SPF_SERIALS = [67808, 67806, 67807, 67805, 67804, 67803];
-  private readonly SPF_SERIALS = [90001, 90002, 90003, 90004, 90005, 90006];
+  private readonly SPF_SERIALS = SPF_STATION_SERIALS;
 
   constructor(private efficiencyService: EfficiencyScreensService) {}
 

@@ -394,6 +394,8 @@ function startWebsocketServer(server, options = {}) {
             timestamp: new Date().toISOString(),
             session: toPublicClientSession(session)
         });
+        const configuration = server.configurationSync?.snapshot();
+        if (configuration) sendJson(ws, configuration);
         sendJson(ws, buildDashboardCacheSnapshot(server));
 
         ws.on('message', async (message) => {
@@ -408,6 +410,13 @@ function startWebsocketServer(server, options = {}) {
             });
 
             try {
+                let request;
+                try { request = JSON.parse(normalizeMessage(message).toString('utf8')); } catch { /* Legacy text requests still receive server info. */ }
+                if (request?.type === 'configuration-cache-request' && server.configurationSync) {
+                    const configuration = await server.configurationSync.refresh();
+                    if (ws.readyState === WebSocket.OPEN) sendJson(ws, configuration);
+                    return;
+                }
                 sendJson(ws, buildServerSnapshot(server));
                 sendJson(ws, buildDashboardCacheSnapshot(server));
                 await writeLog('server-info-sent', socketInfo);

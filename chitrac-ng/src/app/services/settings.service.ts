@@ -1,11 +1,14 @@
 import { Injectable } from '@angular/core';
+import type { NamedProductionLayout, ProductionLayoutActivation, ProductionLayoutLibrary, ProductionLayoutReference, ProductionLayoutScope } from './production-layout.models';
+import { SpfLayout } from '../efficiency-screens/experimental-spf/spf-stations';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { BehaviorSubject, Observable } from 'rxjs';
-import { tap, map, distinctUntilChanged } from 'rxjs/operators';
+import { BehaviorSubject, Observable, Subject } from 'rxjs';
+import { tap, map, distinctUntilChanged, finalize, shareReplay } from 'rxjs/operators';
 import { TimeFormat, formatDisplayTime } from '../utils/time-format';
 import { ReportLayoutId } from '../reports/report-columns';
 
 export interface AppSettings {
+  productionScreenLayouts?: Record<string, Omit<NamedProductionLayout, 'scope'>>;
   enableApiTokenCheck: boolean;
   showErrorModals: boolean;
   defaultTheme: 'light' | 'dark';
@@ -30,6 +33,7 @@ export interface ThemeResponse {
 }
 
 export interface DashboardLayoutPreferences {
+  experimentalSpf?: SpfLayout;
   summaryDashboard?: {
     summaryCardOrder?: string[];
     summaryCardVisibility?: Record<string, boolean>;
@@ -47,14 +51,19 @@ export interface DashboardLayoutPreferences {
     tableColumnOrder?: string[];
   };
   experimentalDailyDashboard?: {
+    gridLayout?: ExperimentalDashboardGridLayout;
     chartOrder?: string[];
     chartVisibility?: Record<string, boolean>;
   };
 }
 
+export type ExperimentalDashboardGridLayout = '3x2' | '2x2';
+
 export type MachinePphDisplayMode = 'perMachine' | 'perStation';
 
 export interface UserPreferences {
+  productionScreenLayouts?: Record<string, Omit<NamedProductionLayout, 'scope'>>;
+  defaultProductionScreenLayout?: ProductionLayoutReference | null;
   reportLayouts?: Partial<Record<ReportLayoutId, { columnOrder: string[] }>>;
   timeFormat?: TimeFormat;
   userId?: string;
@@ -77,6 +86,9 @@ export interface PromoteDashboardLayoutsResponse {
   providedIn: 'root'
 })
 export class SettingsService {
+  private readonly productionLayoutChanges = new Subject<void>();
+  readonly productionLayoutsChanged$ = this.productionLayoutChanges.asObservable();
+  private settingsRequest$: Observable<AppSettings> | null = null;
   private settingsSubject = new BehaviorSubject<AppSettings | null>(null);
   public settings$ = this.settingsSubject.asObservable();
 
@@ -113,12 +125,17 @@ export class SettingsService {
    * Load application settings from the server
    */
   loadSettings(): Observable<AppSettings> {
-    return this.http.get<AppSettings>('/api/utilities/settings').pipe(
+    if (this.settingsRequest$) return this.settingsRequest$;
+    this.settingsRequest$ = this.http.get<AppSettings>('/api/utilities/settings').pipe(
       tap(settings => {
         this.settingsSubject.next(settings);
+        try { localStorage.setItem('chitrac-system-name', settings.systemName); } catch {}
         this.publishEffectiveUserPreferences();
-      })
+      }),
+      finalize(() => this.settingsRequest$ = null),
+      shareReplay({ bufferSize: 1, refCount: false })
     );
+    return this.settingsRequest$;
   }
 
   getSystemPreferences(): Observable<AppSettings> {
@@ -327,13 +344,15 @@ export class SettingsService {
 
   saveExperimentalDailyDashboardChartOrder(
     chartOrder: string[],
-    chartVisibility: Record<string, boolean> = {}
+    chartVisibility: Record<string, boolean> = {},
+    gridLayout: ExperimentalDashboardGridLayout = '3x2'
   ): Observable<UserPreferences> {
     const payload = {
       dashboardLayouts: {
         experimentalDailyDashboard: {
           chartOrder,
-          chartVisibility
+          chartVisibility,
+          gridLayout
         }
       }
     };
@@ -343,6 +362,34 @@ export class SettingsService {
         this.acceptUserPreferences(preferences);
       })
     );
+  }
+
+  getProductionLayouts(): Observable<ProductionLayoutLibrary> {
+    return this.http.get<ProductionLayoutLibrary>('/api/preferences/production-layouts', this.preferenceRequestOptions);
+  }
+
+  createProductionLayout(scope: ProductionLayoutScope, name: string, stationIds: string[]): Observable<ProductionLayoutActivation> {
+    return this.http.post<ProductionLayoutActivation>('/api/preferences/production-layouts/' + scope, {name,stationIds}, this.preferenceRequestOptions)
+      .pipe(tap({
+        next: result => {
+          this.acceptUserPreferences(result.preferences);
+          this.productionLayoutChanges.next();
+        },
+        error: error => {
+          if (error?.error?.createdLayoutRef) this.productionLayoutChanges.next();
+        },
+      }));
+  }
+
+  loadProductionLayout(reference: ProductionLayoutReference): Observable<ProductionLayoutActivation> {
+    return this.http.post<ProductionLayoutActivation>('/api/preferences/production-layouts/load', reference, this.preferenceRequestOptions)
+      .pipe(tap(result => this.acceptUserPreferences(result.preferences)));
+  }
+
+  saveExperimentalSpfLayout(layout: SpfLayout): Observable<UserPreferences> {
+    return this.http.put<UserPreferences>('/api/preferences/user', {
+      dashboardLayouts: { experimentalSpf: layout }
+    }, this.preferenceRequestOptions).pipe(tap(preferences => this.acceptUserPreferences(preferences)));
   }
 
   saveReportColumnOrder(id: ReportLayoutId, columnOrder: string[]): Observable<UserPreferences> {
@@ -381,17 +428,18 @@ export class SettingsService {
       'summaryDashboard',
       'machineDashboard',
       'operatorDashboard',
-      'experimentalDailyDashboard'
+      'experimentalDailyDashboard',
+      'experimentalSpf'
     ];
 
     for (const dashboardName of dashboardNames) {
       const systemLayout = systemLayouts?.[dashboardName];
       const userLayout = userLayouts?.[dashboardName];
       if (!systemLayout && !userLayout) continue;
-      dashboardLayouts[dashboardName] = {
+      Object.assign(dashboardLayouts, { [dashboardName]: {
         ...(systemLayout || {}),
         ...(userLayout || {})
-      } as DashboardLayoutPreferences[typeof dashboardName];
+      } });
     }
 
     return Object.keys(dashboardLayouts).length ? dashboardLayouts : undefined;
@@ -399,7 +447,8 @@ export class SettingsService {
 
   setExperimentalDailyDashboardChartOrder(
     chartOrder: string[],
-    chartVisibility: Record<string, boolean> = {}
+    chartVisibility: Record<string, boolean> = {},
+    gridLayout: ExperimentalDashboardGridLayout = '3x2'
   ): void {
     const current = this.userPreferencesSubject.value || {};
     this.userPreferencesSubject.next({
@@ -409,7 +458,8 @@ export class SettingsService {
         experimentalDailyDashboard: {
           ...current.dashboardLayouts?.experimentalDailyDashboard,
           chartOrder,
-          chartVisibility
+          chartVisibility,
+          gridLayout
         }
       }
     });

@@ -402,7 +402,7 @@ function offlineChunk(machine, start, end, index) {
 }
 
 function machineIdentityFromSession(session) {
-  const serial = Number(session.machine?.serial ?? session.machine?.id);
+  const serial = Number(session.machine?.id ?? session.machine?.serial);
   if (!Number.isFinite(serial)) return null;
   return {
     serial,
@@ -459,13 +459,13 @@ async function buildMachineTimelineFromSessions(db, config, start, end, options 
         states: 1,
         activeStations: 1,
       })
-      .sort({ "machine.name": 1, "machine.serial": 1, "timestamps.start": 1 })
+      .sort({ "machine.name": 1, "machine.id": 1, "timestamps.start": 1 })
       .toArray(),
   ]);
 
   const machineMap = new Map();
   for (const machine of machines) {
-    const serial = Number(machine.serial ?? machine.id);
+    const serial = Number(machine.id ?? machine.serial);
     if (!Number.isFinite(serial)) continue;
     machineMap.set(serial, {
       serial,

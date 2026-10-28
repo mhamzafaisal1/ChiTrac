@@ -24,7 +24,7 @@ async function ensureSystemPreferences(db, config = {}) {
       const preferences = systemPreferencesSchema.utils.normalizePreferences({}, existing, config, {
         preserveExistingSystemName
       });
-      const { _id, ...updates } = preferences;
+      const { _id, productionScreenLayouts, ...updates } = preferences;
       const unsetFields = { createdAt: '', updatedAt: '' };
       if (!preserveExistingSystemName) {
         unsetFields.systemName = '';
@@ -42,7 +42,7 @@ async function ensureSystemPreferences(db, config = {}) {
   }
 
   const preferences = systemPreferencesSchema.utils.normalizePreferences({}, {}, config);
-  const { _id, ...updates } = preferences;
+  const { _id, productionScreenLayouts, ...updates } = preferences;
   await collection.updateOne(
     { _id },
     {
@@ -57,11 +57,7 @@ async function ensureSystemPreferences(db, config = {}) {
 }
 
 function applySystemPreferences(config, preferences = {}) {
-  if (typeof preferences.systemName === 'string' && preferences.systemName.trim()) {
-    config.systemName = preferences.systemName.trim();
-  } else {
-    config.systemName = config.envPreferences?.systemName || config.systemName || 'ChiTrac';
-  }
+  config.systemName = config.envPreferences?.systemName || config.systemName || 'ChiTrac';
 
   if (typeof preferences.defaultTheme === 'string' && preferences.defaultTheme.trim()) {
     config.defaultTheme = preferences.defaultTheme.trim();

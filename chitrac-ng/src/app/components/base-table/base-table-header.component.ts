@@ -83,8 +83,9 @@ interface BaseTableHeaderParams extends IHeaderParams {
       align-self: center;
       min-width: 0;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.2;
     }
 
     .header-content-editing .header-label {

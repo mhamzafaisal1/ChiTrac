@@ -1,4 +1,5 @@
 const Ajv = require('ajv');
+const { librarySchema } = require('../utils/productionLayouts');
 const addFormats = require('ajv-formats');
 const ajv = new Ajv();
 addFormats(ajv);
@@ -35,9 +36,18 @@ const booleanMapSchema = {
   additionalProperties: { type: 'boolean' }
 };
 
+const { STATION_ID_PATTERN, sanitizeSpfLayout } = require('../utils/spfLayout');
+
 const dashboardLayoutsSchema = {
   type: 'object',
   properties: {
+    experimentalSpf: {
+      type: 'object', required: ['stationOrder', 'stationVisibility'], additionalProperties: false,
+      properties: {
+        stationOrder: { type: 'array', minItems: 3, maxItems: 10000, uniqueItems: true, items: { type: 'string', pattern: STATION_ID_PATTERN, maxLength: 40 } },
+        stationVisibility: { type: 'object', maxProperties: 10000, propertyNames: { pattern: STATION_ID_PATTERN }, additionalProperties: { type: 'boolean' } }
+      }
+    },
     summaryDashboard: {
       type: 'object',
       properties: {
@@ -98,6 +108,7 @@ const dashboardLayoutsSchema = {
     experimentalDailyDashboard: {
       type: 'object',
       properties: {
+        gridLayout: { type: 'string', enum: ['3x2', '2x2'] },
         chartOrder: {
           type: 'array',
           maxItems: 20,
@@ -182,6 +193,7 @@ const schema = {
     percentBreakpoints: buildPercentBreakpointSchema('Percentage threshold for'),
     oePercentBreakpoints: buildPercentBreakpointSchema('OE percentage threshold for'),
     dashboardLayouts: dashboardLayoutsSchema,
+    productionScreenLayouts: librarySchema,
     userSessionExpirationHours: {
       type: 'number',
       exclusiveMinimum: 0,
@@ -252,6 +264,7 @@ function buildDefaultPreferences(config = {}) {
     percentBreakpoints: config.percentBreakpoints || { ...DEFAULT_PERCENT_BREAKPOINTS },
     oePercentBreakpoints: config.oePercentBreakpoints || { ...DEFAULT_OE_PERCENT_BREAKPOINTS },
     dashboardLayouts: {},
+    productionScreenLayouts: {},
     userSessionExpirationHours: Number(config.userSessionExpirationHours) > 0
       ? Number(config.userSessionExpirationHours)
       : 48,
@@ -313,6 +326,7 @@ function validatePercentBreakpointOrder(preferences, fieldName = 'percentBreakpo
 
 function normalizeDashboardLayouts(layouts = {}) {
   const normalized = JSON.parse(JSON.stringify(layouts || {}));
+  if (normalized.experimentalSpf) normalized.experimentalSpf = sanitizeSpfLayout(normalized.experimentalSpf);
   if (normalized.machineDashboard) {
     delete normalized.machineDashboard.pphDisplayMode;
   }
@@ -373,6 +387,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}, options = 
     percentBreakpoints,
     oePercentBreakpoints,
     dashboardLayouts: normalizeDashboardLayouts(dashboardLayouts),
+    productionScreenLayouts: existing.productionScreenLayouts || {},
     userSessionExpirationHours,
     userPermissionsLevels,
     timestamps: {

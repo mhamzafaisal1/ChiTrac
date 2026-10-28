@@ -57,6 +57,37 @@ describe('SummaryCardVisibilityDialogComponent', () => {
     expect(component.showCards.map((card) => card.id)).toEqual(['second', 'first']);
   });
 
+  it('keeps hidden station labels naturally sorted through arrow, bulk and drag transfers', () => {
+    const component = createComponent({
+      cards: [
+        { id: 'spl4', label: 'SPL1 — Station 4' },
+        { id: 'lpl10', label: 'LPL2 — Station 10' },
+        { id: 'blanket', label: 'Blanket1 — Station 2' },
+        { id: 'spl1', label: 'SPL1 — Station 1' },
+        { id: 'lpl2', label: 'LPL2 — Station 2' },
+      ],
+      visibility: { lpl10: false, blanket: false, spl1: false },
+      sortHiddenByLabel: true,
+    });
+    expect(component.showCards.map(card => card.id)).toEqual(['spl4', 'lpl2']);
+    expect(component.hideCards.map(card => card.id)).toEqual(['blanket', 'lpl10', 'spl1']);
+    component.selectShow(component.showCards[1]);
+    component.hideSelected();
+    expect(component.hideCards.map(card => card.id)).toEqual(['blanket', 'lpl2', 'lpl10', 'spl1']);
+    component.drop(dropEvent(component.showCards, component.hideCards, 0, 0), false);
+    const sorted = ['blanket', 'lpl2', 'lpl10', 'spl1', 'spl4'];
+    expect(component.hideCards.map(card => card.id)).toEqual(sorted);
+    component.drop(dropEvent(component.hideCards, component.hideCards, 0, 4), false);
+    expect(component.hideCards.map(card => card.id)).toEqual(sorted);
+    component.selectHide(component.hideCards[1]);
+    component.showSelected();
+    expect(component.showCards.map(card => card.id)).toEqual(['lpl2']);
+    component.showAll();
+    expect(component.showCards.map(card => card.id)).toEqual(['lpl2', 'blanket', 'lpl10', 'spl1', 'spl4']);
+    component.hideAll();
+    expect(component.hideCards.map(card => card.id)).toEqual(sorted);
+  });
+
   it('moves cards between Show and Hide and updates visibility', () => {
     const component = createComponent();
 
@@ -89,6 +120,37 @@ describe('SummaryCardVisibilityDialogComponent', () => {
     expect(visibility).toEqual({ third: false });
     expect(component.selectedShowId).toBeNull();
     expect(component.selectedHideId).toBeNull();
+  });
+
+  it('allows temporary transfers above the limit but blocks applying until corrected', () => {
+    const component = createComponent({ minVisible: 1, maxVisible: 2, allowTemporaryOverLimit: true });
+    expect(component.canEnterShow({ dropContainer: {} } as any, {} as any)).toBeTrue();
+    component.drop(dropEvent(component.hideCards, component.showCards, 0, 1), true);
+    expect(component.showCards.map(card => card.id)).toEqual(['first', 'third', 'second']);
+    expect(component.canApply).toBeFalse();
+    component.save();
+    expect(close).not.toHaveBeenCalled();
+    component.selectShow(component.showCards[0]);
+    component.hideSelected();
+    expect(component.canApply).toBeTrue();
+    component.save();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('allows arrow and bulk transfers beyond the limit while retaining minimum validation', () => {
+    const component = createComponent({ minVisible: 2, maxVisible: 2, allowTemporaryOverLimit: true });
+    component.selectHide(component.hideCards[0]);
+    component.showSelected();
+    expect(component.showCards.length).toBe(3);
+    expect(component.canApply).toBeFalse();
+    component.hideAll();
+    expect(component.canApply).toBeFalse();
+    expect(component.canShowAll).toBeTrue();
+    component.showAll();
+    expect(component.showCards.length).toBe(3);
+    expect(component.canApply).toBeFalse();
+    component.save();
+    expect(close).not.toHaveBeenCalled();
   });
 
   it('shows all, preserves destination order and saves all IDs once', () => {

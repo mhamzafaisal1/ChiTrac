@@ -4,6 +4,8 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 /** Other module imports */
 import { Observable } from 'rxjs';
+import { map, take } from 'rxjs/operators';
+import { ConfigurationCacheService } from './services/configuration-cache.service';
 
 /** Model imports */
 import { FaultConfig } from './shared/models/fault.model';
@@ -20,22 +22,32 @@ export class ConfigurationService {
     headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' })
   };
 
-  constructor(private http: HttpClient) { }
+  constructor(private http: HttpClient, private readonly cache: ConfigurationCacheService) { }
 
   /** Fault */
   public getFaultConfigs(code?: number): Observable<FaultConfig[]> {
-    return this.http.get<FaultConfig[]>('/api/faults/config');
+    return this.cache.read<FaultConfig>('fault');
   }
 
   /** Status */
   public getStatusConfigs(code?: number): Observable<StatusConfig[]> {
-    return this.http.get<StatusConfig[]>('/api/status/config');
+    return this.cache.read<StatusConfig>('status');
   }
 
   /** Operator */
   public getOperatorConfigs(): Observable<OperatorConfig[]> {
-    return this.http.get<OperatorConfig[]>('/api/operator/config?filterTestOperators=true');
+    return this.watchOperatorConfigs().pipe(take(1));
   }
+
+  public watchOperatorConfigs(): Observable<OperatorConfig[]> {
+    return this.cache.watch<OperatorConfig>('operator').pipe(map(rows => rows.filter(row => {
+      const id = (row as any).id ?? (row as any).code;
+      return id != null && Number(id) <= 500000;
+    })));
+  }
+
+  public watchMachineConfigs(): Observable<MachineConfig[]> { return this.cache.watch<MachineConfig>('machine'); }
+  public watchItemConfigs(): Observable<ItemConfig[]> { return this.cache.watch<ItemConfig>('item'); }
 
   public getNewOperatorId(): Observable<{id: number}> {
     return this.http.get<{id: number}>('/api/operator/new-id');
@@ -55,7 +67,7 @@ export class ConfigurationService {
 
   /** Item */
   public getItemConfigs(): Observable<ItemConfig[]> {
-    return this.http.get<ItemConfig[]>('/api/item/config');
+    return this.cache.read<ItemConfig>('item');
   }
 
   public getNewItemId(): Observable<{id: number}> {
@@ -101,7 +113,7 @@ export class ConfigurationService {
 
   /** ✅ Machine */
   public getMachineConfigs(): Observable<MachineConfig[]> {
-    return this.http.get<MachineConfig[]>('/api/machine/config');
+    return this.cache.read<MachineConfig>('machine');
   }
 
   public postMachineConfig(machine: MachineConfig): Observable<MachineConfig> {

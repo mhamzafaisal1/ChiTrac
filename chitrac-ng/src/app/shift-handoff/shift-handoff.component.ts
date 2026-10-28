@@ -1,12 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { forkJoin, Subject, takeUntil } from 'rxjs';
+import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../components/timeframe-picker/timeframe-picker.component';
 import { DailyDashboardService } from '../services/daily-dashboard.service';
-import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { getStatusDot } from '../../utils/status-utils';
 
 interface HandoffMetric {
@@ -18,7 +16,7 @@ interface HandoffMetric {
 @Component({
   selector: 'app-shift-handoff',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatIconModule, DateTimePickerComponent],
+  imports: [CommonModule, MatButtonModule, MatIconModule, TimeframePickerComponent],
   templateUrl: './shift-handoff.component.html',
   styleUrl: './shift-handoff.component.scss',
 })
@@ -33,9 +31,10 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
   itemRows: any[] = [];
   faultRows: any[] = [];
   loadError = '';
-  notes = '';
   private observer!: MutationObserver;
-  private readonly notesKey = 'chitrac-shift-handoff-notes';
+  selectedShiftId: string | null = null;
+  timeframeMode: TimeframePickerMode = 'today';
+  private destroy$ = new Subject<void>();
 
   constructor(private dailyDashboardService: DailyDashboardService) {}
 
@@ -45,7 +44,6 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
     start.setHours(0, 0, 0, 0);
     this.startTime = this.formatDateForInput(start);
     this.endTime = this.formatDateForInput(end);
-    this.notes = localStorage.getItem(this.notesKey) || '';
     this.detectTheme();
     this.observer = new MutationObserver(() => this.detectTheme());
     this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -54,10 +52,13 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.observer?.disconnect();
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   fetchData(): void {
     if (!this.startTime || !this.endTime) return;
+    if (this.isLoading) return;
     this.isLoading = true;
     const start = new Date(this.startTime).toISOString();
     const end = new Date(this.endTime).toISOString();
@@ -65,11 +66,11 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
     this.loadError = '';
 
     forkJoin({
-      machines: this.dailyDashboardService.getMachinesSummary(start, end).pipe(catchError(() => of([]))),
-      operators: this.dailyDashboardService.getOperatorsSummary(start, end).pipe(catchError(() => of([]))),
-      items: this.dailyDashboardService.getItemsSummary(start, end).pipe(catchError(() => of([]))),
-      faults: this.dailyDashboardService.getFaultReportSummary(start, end).pipe(catchError(() => of({ context: {}, summaries: [] }))),
-    }).subscribe({
+      machines: this.dailyDashboardService.getMachinesSummary(start, end, undefined, this.selectedShiftId),
+      operators: this.dailyDashboardService.getOperatorsSummary(start, end, this.selectedShiftId),
+      items: this.dailyDashboardService.getItemsSummary(start, end, undefined, this.selectedShiftId),
+      faults: this.dailyDashboardService.getFaultReportSummary(start, end, this.selectedShiftId),
+    }).pipe(takeUntil(this.destroy$)).subscribe({
       next: ({ machines, operators, items, faults }) => {
         const machineList = this.unwrapList(machines, 'machineResults');
         const operatorList = this.unwrapList(operators, 'operatorResults');
@@ -115,8 +116,12 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
     });
   }
 
-  saveNotes(): void {
-    localStorage.setItem(this.notesKey, this.notes);
+  applyTimeframe(selection: TimeframeSelection): void {
+    this.startTime = this.formatDateForInput(selection.start);
+    this.endTime = this.formatDateForInput(selection.end);
+    this.selectedShiftId = selection.shiftId;
+    this.timeframeMode = selection.mode || 'custom';
+    this.fetchData();
   }
 
   print(): void {

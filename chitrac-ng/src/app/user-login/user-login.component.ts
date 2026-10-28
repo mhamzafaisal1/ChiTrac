@@ -1,4 +1,4 @@
-import { Component, OnInit, EventEmitter, Output, HostListener, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, EventEmitter, Output, HostListener, HostBinding, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, FormControl, FormGroup, FormGroupDirective, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -33,6 +33,8 @@ import { UserService } from '../user.service';
 })
 export class UserLoginComponent implements OnInit {
 
+  @HostBinding('class.login-page') get isLoginPage(): boolean { return this.route.snapshot.component === UserLoginComponent; }
+  showPasswordHelp = false;
   sub: Subscription;
   @Output() closeModal = new EventEmitter<void>();
   @ViewChild(FormGroupDirective) loginFormDirective?: FormGroupDirective;

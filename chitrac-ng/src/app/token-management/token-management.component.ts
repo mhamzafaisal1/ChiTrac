@@ -18,6 +18,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SummaryCardVisibilityDialogComponent, SummaryCardVisibilityDialogResult } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 // rxjs Imports
 import { EMPTY, Subscription, timer } from 'rxjs';
@@ -30,6 +31,7 @@ import { TokenManagementService, PermanentToken, ApiControllerOption, TokenListR
   selector: 'app-token-management',
   standalone: true,
   imports: [
+    PageLoadStateComponent,
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
@@ -64,6 +66,8 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   generatedToken: string | null = null;
   showTokenDialog: boolean = false;
   private tokenLoadErrorShown = false;
+  isLoading = true;
+  loadError: string | null = null;
 
   displayedColumns: string[] = ['name', 'description', 'created', 'lastUsed', 'usageCount', 'actions'];
   deactivatedDisplayedColumns: string[] = ['name', 'description', 'created', 'deactivated', 'lastUsed', 'usageCount'];
@@ -83,6 +87,8 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   }
 
   private getTokensSubFunction = (res: TokenListResponse) => {
+    this.isLoading = false;
+    this.loadError = null;
     this.controllers = res.controllers || [];
     this.tokenLoadErrorShown = false;
     this.tokens = res.tokens;
@@ -93,6 +99,8 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   }
 
   private handleTokenLoadError = () => {
+    this.isLoading = false;
+    this.loadError = 'Failed to load API tokens. Please try again.';
     if (!this.tokenLoadErrorShown) {
       this.snackBar.open('Failed to load API tokens', 'Close', {
         duration: 5000,
@@ -132,8 +140,8 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
       description: new FormControl('', [Validators.maxLength(200)])
     });
 
-    // Start polling after component initialization and auth is ready
-    this.sub = timer(1000, 30 * 1000)
+    // The route guard has already resolved authentication; fetch immediately.
+    this.sub = timer(0, 30 * 1000)
       .pipe(
         switchMap(() => this.tokenService.getTokens().pipe(
           catchError(this.handleTokenLoadError)
@@ -237,11 +245,15 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   }
 
   private refreshTable() {
+    this.isLoading = true;
+    this.loadError = null;
     // Make a one-off request instead of recreating the timer
     this.tokenService.getTokens().pipe(
       catchError(this.handleTokenLoadError)
     ).subscribe(this.getTokensSubFunction);
   }
+
+  retryLoad(): void { this.refreshTable(); }
 
   formatDate(date: Date | null): string {
     if (!date) return 'Never';

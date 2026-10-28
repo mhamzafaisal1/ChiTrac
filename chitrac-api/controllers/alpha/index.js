@@ -1,3 +1,4 @@
+const { normalizeMachine, sessionMachineQuery, sessionIdentityQuery } = require('../../utils/sessionIdentity');
 /*** alpha API controller */
 /*** Contributors: RTI II */
 
@@ -703,11 +704,11 @@ function constructor(server) {
         storeJSON.machineInfo["ipAddress"] = "192.168.0.1";
       }
     }
-    const machine = Object.assign({}, storeJSON.machineInfo);
+    const machine = normalizeMachine(storeJSON.machineInfo);
     const program = Object.assign({ mode: "ac360" }, storeJSON.programInfo);
     const items = program.items;
     const operators = [
-      { id: storeJSON.operatorInfo.code, name: storeJSON.operatorInfo.name, station: 1 },
+      { id: storeJSON.operatorInfo.id ?? storeJSON.operatorInfo.code, name: storeJSON.operatorInfo.name, station: 1 },
     ];
     const operator = operators[0];
 
@@ -721,7 +722,7 @@ function constructor(server) {
       const state = {
         timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
-          id: machine.serial,
+          id: machine.id,
           serial: machine.serial,
           name: "SPF" + machine.name.slice(-1),
           ipAddress: machine.ipAddress,
@@ -738,7 +739,7 @@ function constructor(server) {
         });
       const stateResult = await db.collection("state").insertOne(state);
 
-      const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+      const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ ...sessionMachineQuery(machine), 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
       if (machineSessionArray.length) {
         let session = machineSessionArray[0];
         const sessionID = session['_id'];
@@ -842,7 +843,7 @@ function constructor(server) {
 
 
 
-      const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+      const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ ...sessionIdentityQuery(machine, operator.id), 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
       if (operatorSessionArray.length) {
         let session = operatorSessionArray[0];
         const sessionID = session['_id'];
@@ -954,7 +955,7 @@ function constructor(server) {
       const formattedCount = {
         timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
-          id: machine.serial,
+          id: machine.id,
           serial: machine.serial,
           name: "SPF" + machine.name.slice(-1),
           ipAddress: machine.ipAddress,
@@ -974,7 +975,7 @@ function constructor(server) {
       const formattedMisfeed = {
         timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
-          id: machine.serial,
+          id: machine.id,
           serial: machine.serial,
           name: "SPF" + machine.name.slice(-1),
           ipAddress: machine.ipAddress,
@@ -992,7 +993,7 @@ function constructor(server) {
       const state = {
         timestamps: recordTimestamps(storeJSON.timestamp),
         machine: {
-          id: machine.serial,
+          id: machine.id,
           serial: machine.serial,
           name: "SPF" + machine.name.slice(-1),
           ipAddress: machine.ipAddress,
@@ -1012,7 +1013,7 @@ function constructor(server) {
         });
 
       if (item.count) {
-        const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ ...sessionMachineQuery(machine), 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (machineSessionArray.length) {
           let session = machineSessionArray[0];
           const sessionID = session['_id'];
@@ -1043,7 +1044,7 @@ function constructor(server) {
         }
 
 
-        const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ ...sessionIdentityQuery(machine, operator.id), 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (operatorSessionArray.length) {
           let session = operatorSessionArray[0];
           const sessionID = session['_id'];
@@ -1074,7 +1075,7 @@ function constructor(server) {
           const updatedSession = await db.collection(config.operatorSessionCollectionName).updateOne({ '_id': sessionID }, update);
         }
       } else { //Misfeed
-        const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ 'machine.serial': machine.serial, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const machineSessionArray = await db.collection(config.machineSessionCollectionName).find({ ...sessionMachineQuery(machine), 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (machineSessionArray.length) {
           let session = machineSessionArray[0];
           const sessionID = session['_id'];
@@ -1098,7 +1099,7 @@ function constructor(server) {
         }
 
 
-        const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ 'machine.serial': machine.serial, 'operator.id': operator.id, 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
+        const operatorSessionArray = await db.collection(config.operatorSessionCollectionName).find({ ...sessionIdentityQuery(machine, operator.id), 'timestamps.end': null }).sort({ 'timestamps.start': -1 }).limit(1).toArray();
         if (operatorSessionArray.length) {
           let session = machineSessionArray[0];
           const sessionID = session['_id'];

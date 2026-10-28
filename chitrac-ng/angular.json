@@ -34,17 +34,7 @@
             "tsConfig": "tsconfig.app.json",
             "assets": [
               "src/favicon.ico",
-              "src/assets",
-              {
-                "glob": "Montserrat-VariableFont_wght.ttf",
-                "input": "../chitrac-api/fonts",
-                "output": "assets/fonts"
-              },
-              {
-                "glob": "MaterialSymbolsOutlined_Filled-Regular.ttf",
-                "input": "../chitrac-api/icons",
-                "output": "assets/fonts"
-              }
+              "src/assets"
             ],
             "stylePreprocessorOptions": {
               "includePaths": [

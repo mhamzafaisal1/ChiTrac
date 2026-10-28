@@ -1,6 +1,8 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { ConfigurationCacheService } from './configuration-cache.service';
 
 export interface ShiftListItem {
   _id: string;
@@ -68,20 +70,34 @@ export type MaintenanceShiftDefinitionPayload = Omit<ShiftDefinitionPayload, 'br
   providedIn: 'root',
 })
 export class ShiftService {
-  private apiUrl = '/api/reports';
   private alphaUrl = '/api/alpha';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private readonly cache: ConfigurationCacheService) {}
 
   getActiveShifts(skipErrorModal = false): Observable<{ shifts: ShiftListItem[] }> {
-    return this.http.get<{ shifts: ShiftListItem[] }>(`${this.apiUrl}/shifts`, skipErrorModal
-      ? { headers: new HttpHeaders({ 'X-Skip-Error-Modal': 'true' }) }
-      : {});
+    return this.getAllShifts().pipe(map(({ shifts }) => ({ shifts: shifts.filter(shift => shift.active === true)
+      .sort((a, b) => this.startMinutes(a) - this.startMinutes(b) || (a.name || '').localeCompare(b.name || '')) })));
   }
 
   /** All shifts (active and inactive), sorted by start time on the server. */
   getAllShifts(): Observable<{ shifts: ShiftDocument[] }> {
-    return this.http.get<{ shifts: ShiftDocument[] }>(`${this.alphaUrl}/shifts`);
+    return this.cache.read<ShiftDocument>('shift').pipe(map(shifts => ({ shifts: this.sortShifts(shifts) })));
+  }
+
+  watchAllShifts(): Observable<{ shifts: ShiftDocument[] }> {
+    return this.cache.watch<ShiftDocument>('shift').pipe(map(shifts => ({ shifts: this.sortShifts(shifts) })));
+  }
+
+  watchAllMaintenanceShifts(): Observable<{ shifts: MaintenanceShiftDocument[] }> {
+    return this.cache.watch<MaintenanceShiftDocument>('maintenanceShift').pipe(map(shifts => ({ shifts: this.sortShifts(shifts) })));
+  }
+
+  private startMinutes(shift: ShiftListItem): number {
+    return shift.startTime ? shift.startTime.hour * 60 + shift.startTime.minute : Infinity;
+  }
+
+  private sortShifts<T extends ShiftListItem>(shifts: T[]): T[] {
+    return shifts.sort((a, b) => this.startMinutes(a) - this.startMinutes(b));
   }
 
   deleteShift(id: string): Observable<void> {
@@ -102,7 +118,7 @@ export class ShiftService {
 
   /** All maintenance shifts (active and inactive), sorted by start time on the server. */
   getAllMaintenanceShifts(): Observable<{ shifts: MaintenanceShiftDocument[] }> {
-    return this.http.get<{ shifts: MaintenanceShiftDocument[] }>(`${this.alphaUrl}/maintenance-shifts`);
+    return this.cache.read<MaintenanceShiftDocument>('maintenanceShift').pipe(map(shifts => ({ shifts: this.sortShifts(shifts) })));
   }
 
   deleteMaintenanceShift(id: string): Observable<void> {

@@ -67,6 +67,7 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const app = express();
+app.use(require('compression')());
 const port = config.port; // ✅ Using .env PORT
 
 // Passport
@@ -240,12 +241,15 @@ async function startServer() {
 
         configureSessionMiddleware();
 
+        const { createConfigurationSync } = require('./modules/configurationSync');
+        Object.defineProperty(server, 'configurationSync', { value: createConfigurationSync(server), configurable: true });
         const routes = require('./routes');
         routes.init(app, server);
 
         await initializeCollections();
         const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
         await ensureAnalyticsIndexes(db, config, logger);
+        await server.configurationSync.start();
         const httpServer = app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
         });

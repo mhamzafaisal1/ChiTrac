@@ -1,5 +1,5 @@
 /*** Angular Imports */
-import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /*** Material Imports */
@@ -14,8 +14,9 @@ import { SelectionModel } from '@angular/cdk/collections';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
 /*** rxjs Imports */
-import { Subscription, timer } from 'rxjs';
-import { switchMap, retry, share, catchError } from 'rxjs/operators';
+import { defer, EMPTY, Subscription } from 'rxjs';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
+import { share, catchError } from 'rxjs/operators';
 
 /*** Model Imports */
 import { ItemConfig } from '../shared/models/item.model';
@@ -30,6 +31,7 @@ import { ConfigurationService } from '../configuration.service';
   selector: 'app-item-grid',
   standalone: true,
   imports: [
+    PageLoadStateComponent,
     CommonModule,
     MatTableModule,
     MatPaginator,
@@ -42,12 +44,13 @@ import { ConfigurationService } from '../configuration.service';
   templateUrl: './item-grid.component.html',
   styleUrl: './item-grid.component.scss'
 })
-export class ItemGridComponent implements OnInit, OnDestroy {
+export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
   selectionModel = new SelectionModel<ItemConfig>(false, []);
   page: number = 1;
   paginationSize: number = 10;
   displayedColumns: string[] = ['photo', 'id', 'name', 'standard', 'active'];
-  dataSource: MatTableDataSource<ItemConfig>;
+  dataSource = new MatTableDataSource<ItemConfig>([]);
+  isLoading = true;
 
   sub: Subscription;
   items: ItemConfig[];
@@ -96,24 +99,27 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   }
 
   private getItemsSubFunction = (res: ItemConfig[]) => {
+    this.isLoading = false;
     this.error = null;
     this.items = res;
-    this.dataSource = new MatTableDataSource(res);
+    this.dataSource.data = res;
+    const selectedId = this.selectionModel.selected[0]?._id;
+    const selected = selectedId == null ? undefined : res.find(row => row._id === selectedId);
+    this.selectionModel.clear();
+    if (selected) this.selectionModel.select(selected);
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
   };
 
-  private handleError = (error: any): ItemConfig[] => {
+  private handleError = (error: any) => {
     console.error('Error fetching items:', error);
     this.error = 'Failed to load items. Please try again.';
-    return [];
+    this.isLoading = false;
+    return EMPTY;
   };
 
-  private getItems = timer(1, 30 * 1000).pipe(
-    switchMap(() => this.configurationService.getItemConfigs().pipe(
-      catchError(this.handleError)
-    )),
-    retry({ delay: 5000 }),
+  private getItems = defer(() => this.configurationService.watchItemConfigs()).pipe(
+    catchError(this.handleError),
     share()
   );
 
@@ -130,7 +136,14 @@ export class ItemGridComponent implements OnInit, OnDestroy {
     });
   }
 
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
+  }
+
   private refreshTable() {
+    this.isLoading = true;
+    this.error = null;
     if (this.sub) this.sub.unsubscribe();
     this.sub = this.getItems.subscribe({
       next: (res: ItemConfig | ItemConfig[]) => {
@@ -144,6 +157,8 @@ export class ItemGridComponent implements OnInit, OnDestroy {
     });
   }
 
+  retryLoad(): void { this.refreshTable(); }
+
   handlePageEvent(e: PageEvent) {
     this.page = e.pageIndex;
   }
@@ -155,7 +170,7 @@ export class ItemGridComponent implements OnInit, OnDestroy {
   openDialog(item: ItemConfig | null): void {
     if (item) {
       // Editing existing item
-      const data = { ...item }; // clone
+      const data = structuredClone(item);
       const dialogRef = this.dialog.open(ItemDialogCuComponent, { data, disableClose: true });
       this.setupDialogHandlers(dialogRef);
     } else {
@@ -193,7 +208,6 @@ export class ItemGridComponent implements OnInit, OnDestroy {
       action$.subscribe({
         next: (res) => {
           console.log('Success:', res);
-          this.refreshTable();
           this.selectionModel.clear();
         },
         error: (err) => {
@@ -227,7 +241,6 @@ export class ItemGridComponent implements OnInit, OnDestroy {
       this.configurationService.deleteItemConfig(item._id).subscribe({
         next: (res) => {
           console.log('Delete successful:', res);
-          this.refreshTable();
           this.selectionModel.clear();
         },
         error: (err) => {

@@ -11,7 +11,7 @@
           'neutral': getSlots().lastSixMinutes.color === 'neutral'
         }">
           <div class="operator-text">
-            <div class="operator-content">{{ getHeaderLabel() }}</div>
+            <div class="operator-content" [title]="getHeaderLabel()">{{ getHeaderLabel() }}</div>
           </div>
         </div>
         <div class="data-block">
@@ -25,7 +25,7 @@
           </div>
           <div class="bars-container">
             <div class="bars">
-              <div class="bar-item" style="margin: 10px 5px 0 0;">
+              <div class="bar-item" style="margin: 10px 1px 0 0;">
                 <div class="bar-chart">
                   <div class="bar-value">{{ displayValue(getSlots().lastFifteenMinutes) }}</div>
                   <div class="bar-fill" [style.height.%]="barHeight(getSlots().lastFifteenMinutes)" [ngClass]="{
@@ -37,7 +37,7 @@
                 </div>
                 <div class="bar-label">{{ getSlots().lastFifteenMinutes.label }}</div>
               </div>
-              <div class="bar-item" style="margin: 10px 2px 0 2px;">
+              <div class="bar-item" style="margin: 10px 1px 0 2px;">
                 <div class="bar-chart">
                   <div class="bar-value">{{ displayValue(getSlots().lastHour) }}</div>
                   <div class="bar-fill" [style.height.%]="barHeight(getSlots().lastHour)" [ngClass]="{
@@ -49,7 +49,7 @@
                 </div>
                 <div class="bar-label">{{ getSlots().lastHour.label }}</div>
               </div>
-              <div class="bar-item" style="margin: 10px 0 0 5px;">
+              <div class="bar-item" style="margin: 10px 0 0 1px;">
                 <div class="bar-chart">
                   <div class="bar-value">{{ displayValue(getSlots().today) }}</div>
                   <div class="bar-fill" [style.height.%]="barHeight(getSlots().today)" [ngClass]="{
@@ -81,7 +81,7 @@
           'neutral': getSlots().lastSixMinutes.color === 'neutral'
         }">
           <div class="operator-text">
-            <div class="operator-content">{{ getHeaderLabel() }}</div>
+            <div class="operator-content" [title]="getHeaderLabel()">{{ getHeaderLabel() }}</div>
           </div>
         </div>
         <div class="data-block">
@@ -95,7 +95,7 @@
           </div>
           <div class="bars-container">
             <div class="bars">
-              <div class="bar-item" style="margin: 10px 5px 0 0;">
+              <div class="bar-item" style="margin: 10px 1px 0 0;">
                 <div class="bar-chart">
                   <div class="bar-value">{{ displayValue(getSlots().lastFifteenMinutes) }}</div>
                   <div class="bar-fill" [style.height.%]="barHeight(getSlots().lastFifteenMinutes)" [ngClass]="{
@@ -107,7 +107,7 @@
                 </div>
                 <div class="bar-label">{{ getSlots().lastFifteenMinutes.label }}</div>
               </div>
-              <div class="bar-item" style="margin: 10px 2px 0 2px;">
+              <div class="bar-item" style="margin: 10px 1px 0 2px;">
                 <div class="bar-chart">
                   <div class="bar-value">{{ displayValue(getSlots().lastHour) }}</div>
                   <div class="bar-fill" [style.height.%]="barHeight(getSlots().lastHour)" [ngClass]="{
@@ -119,7 +119,7 @@
                 </div>
                 <div class="bar-label">{{ getSlots().lastHour.label }}</div>
               </div>
-              <div class="bar-item" style="margin: 10px 0 0 5px;">
+              <div class="bar-item" style="margin: 10px 0 0 1px;">
                 <div class="bar-chart">
                   <div class="bar-value">{{ displayValue(getSlots().today) }}</div>
                   <div class="bar-fill" [style.height.%]="barHeight(getSlots().today)" [ngClass]="{
@@ -147,7 +147,7 @@
       <div class="lane-inner" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
         <div class="operator-block">
           <div class="operator-text">
-            <div class="operator-content">{{ lane?.operator || 'NO OPERATOR' }}</div>
+            <div class="operator-content" [title]="lane?.operator || 'NO OPERATOR'">{{ lane?.operator || 'NO OPERATOR' }}</div>
           </div>
         </div>
         <div class="data-block" [ngClass] = "{'offline': (lane?.fault != 'System_Paused'), 'stopped': (lane?.fault == 'System_Paused')}">
@@ -171,7 +171,7 @@
       <div class="lane-inner">
         <div class="operator-block fault">
           <div class="operator-text">
-            <div class="operator-content">{{ lane?.operator || 'NO OPERATOR' }}</div>
+            <div class="operator-content" [title]="lane?.operator || 'NO OPERATOR'">{{ lane?.operator || 'NO OPERATOR' }}</div>
           </div>
         </div>
         <div class="data-block fault">

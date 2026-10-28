@@ -4,12 +4,12 @@
     
     <mat-form-field appearance="outline" class="full-width" [hideRequiredMarker]="true">
       <mat-label>Username</mat-label>
-      <input #usernameInput matInput type="text" formControlName="username" placeholder="Enter username" />
+      <input #usernameInput matInput type="text" autocomplete="username" formControlName="username" placeholder="Enter username" />
     </mat-form-field>
     
     <mat-form-field appearance="outline" class="full-width" [hideRequiredMarker]="true">
       <mat-label>{{ passwordFieldLabel }}</mat-label>
-      <input #passwordInput matInput type="password" formControlName="password" [placeholder]="passwordFieldPlaceholder" />
+      <input #passwordInput matInput type="password" autocomplete="current-password" formControlName="password" [placeholder]="passwordFieldPlaceholder" />
     </mat-form-field>
     
     <button type="submit" mat-flat-button color="primary" class="full-width login-btn" 
@@ -19,6 +19,8 @@
       Log In
     </button>
     
+    <a class="password-help-link" href="#password-help" (click)="$event.preventDefault(); showPasswordHelp = !showPasswordHelp">Forgot password?</a>
+    <p id="password-help" *ngIf="showPasswordHelp" role="status">Contact your system administrator to request a password reset link.</p>
     <div *ngIf="error" class="error-message" role="alert">
       {{ error }}
     </div>

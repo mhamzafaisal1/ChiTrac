@@ -6,6 +6,7 @@ const { createVerifyJwtMiddleware } = require('../utils/authMiddleware');
 function init(app, server) {
     // Must precede every API registration, including the direct machine XML routes.
     app.use('/api', require('../utils/apiControllerAccess').createApiControllerAccess(server));
+    app.use('/api', require('../modules/configurationSync').configurationSyncMiddleware(server));
     const spindleEnabled = process.env.SPINDLE === 'true';
     const milnorEnabled = process.env.MILNOR === 'true';
     const softrolEnabled = process.env.SOFTROL === 'true';
@@ -67,6 +68,7 @@ function init(app, server) {
     app.use('/api/auth', authRoutes);
     app.use('/api/users', userRoutes);
     app.use('/api/preferences', preferencesRoutes);
+    app.use('/api/production-screen-layouts', require('../controllers/production-screen-layouts')(server));
     // Keep the existing settings URL backed by the consolidated preferences controller.
     app.use('/api/system-preferences', (req, res, next) => {
         req.url = `/system${req.url}`;

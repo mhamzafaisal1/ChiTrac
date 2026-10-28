@@ -187,10 +187,10 @@ async function getSessionEventCounts(db, config, range) {
       $set: {
         machineSerial: {
           $ifNull: [
-            "$machine.serial",
+            "$machine.id",
             {
               $ifNull: [
-                "$machine.id",
+                "$machine.serial",
                 "$machine.serialNumber",
               ],
             },

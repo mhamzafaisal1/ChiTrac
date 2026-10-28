@@ -1,4 +1,15 @@
-import { Subject } from 'rxjs';
+import { CommonModule } from '@angular/common';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
+import { ChartTileComponent } from '../components/chart-tile/chart-tile.component';
+import { WebsocketService } from '../services/websocket.service';
+import { DateTimeService } from '../services/date-time.service';
+import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
+import { LayoutEditService } from '../services/layout-edit.service';
+import { SettingsService } from '../services/settings.service';
+import { UserService } from '../user.service';
+import { Subject, BehaviorSubject } from 'rxjs';
 import { ExperimentalDailyDashboardComponent } from './experimental-daily-dashboard.component';
 import { DAILY_CHART_COMPONENTS, DailyChartDetailComponent } from '../components/daily-chart-detail/daily-chart-detail.component';
 
@@ -66,6 +77,19 @@ describe('Experimental Daily Dashboard chart detail', () => {
     expect(state.data).toBeNull();
   });
 
+  it('passes daily count choices into the enlarged chart without resetting on updates', () => {
+    dashboard.setDailyCountOption('averageLine', false);
+    dashboard.setDailyCountOption('tooltip', false);
+    dashboard.openChartDetail(dashboard.chartTiles.find(tile => tile.id === 'daily-counts')!);
+    const state = open.calls.mostRecent().args[1].data.componentInputs.state$;
+    const detail = new DailyChartDetailComponent({} as any, {} as any);
+    detail.chartId = 'daily-counts';
+    expect(detail.chartInputs(state.value)['displayOptions']).toEqual({ averageLine: false, barColors: true, tooltip: false });
+    dashboard.preloadedData = { dailyCounts: [{ date: '2026-10-20', count: 42 }] };
+    (dashboard as any).updateChartDetail();
+    expect(detail.chartInputs(state.value)['displayOptions']).toEqual({ averageLine: false, barColors: true, tooltip: false });
+  });
+
   it('completes modal state on close and allows reopening', () => {
     dashboard.openChartDetail(dashboard.chartTiles[0]);
     const completed = jasmine.createSpy('completed');
@@ -74,5 +98,53 @@ describe('Experimental Daily Dashboard chart detail', () => {
     expect(completed).toHaveBeenCalled();
     dashboard.openChartDetail(dashboard.chartTiles[1]);
     expect(open).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Daily count header controls', () => {
+  it('shows switches only in Edit Layout and isolates their pointer and keyboard events', () => {
+    TestBed.configureTestingModule({
+      imports: [ExperimentalDailyDashboardComponent],
+      providers: [
+        { provide: WebsocketService, useValue: { ensureConnected: () => {}, status$: new Subject(), dashboardCache$: new Subject() } },
+        { provide: DateTimeService, useValue: { getConfirmed: () => true } },
+        { provide: DashboardTimeframeService, useValue: {} },
+        { provide: LayoutEditService, useValue: { register: () => {}, unregister: () => {}, context$: new BehaviorSubject(null), lockRequested$: new Subject() } },
+        { provide: SettingsService, useValue: { timeFormat$: new Subject(), userPreferences$: new Subject() } },
+        { provide: UserService, useValue: {} },
+        { provide: MatDialog, useValue: {} },
+      ],
+    }).overrideComponent(ExperimentalDailyDashboardComponent, {
+      set: { imports: [CommonModule, ChartTileComponent], schemas: [NO_ERRORS_SCHEMA] },
+    });
+    const fixture = TestBed.createComponent(ExperimentalDailyDashboardComponent);
+    const dashboard = fixture.componentInstance;
+    spyOn(dashboard as any, 'setupChartResizeObserver');
+    spyOn(dashboard as any, 'scheduleChartDimensionUpdate');
+    dashboard.chartTiles = dashboard.chartTiles.filter(tile => tile.id === 'daily-counts');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.daily-count-controls')).toBeNull();
+    dashboard.layoutEditing = true;
+    fixture.detectChanges();
+    const inputs = fixture.nativeElement.querySelectorAll('.chart-tile-header input');
+    expect(inputs.length).toBe(3);
+    expect(Array.from(inputs as NodeListOf<HTMLInputElement>).every(input => input.checked)).toBeTrue();
+    const shell = fixture.nativeElement.querySelector('.chart-shell');
+    const propagated = jasmine.createSpy('propagated');
+    shell.addEventListener('click', propagated);
+    shell.addEventListener('keydown', propagated);
+    shell.addEventListener('pointerdown', propagated);
+    inputs[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    inputs[0].dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    inputs[0].click();
+    fixture.detectChanges();
+    expect(dashboard.dailyCountDisplayOptions.averageLine).toBeFalse();
+    expect(dashboard.dailyCountDisplayOptions.barColors).toBeTrue();
+    expect(propagated).not.toHaveBeenCalled();
+    dashboard.layoutEditing = false;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.daily-count-controls')).toBeNull();
+    expect(dashboard.dailyCountDisplayOptions.averageLine).toBeFalse();
+    fixture.destroy();
   });
 });

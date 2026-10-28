@@ -1,5 +1,5 @@
 /*** Angular Imports */
-import { Component, OnInit, OnDestroy, ViewChild, model, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, model, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /*** Material Imports */
@@ -16,8 +16,9 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 
 
 /*** rxjs Imports */
-import { Subscription, timer } from 'rxjs';
-import { startWith, switchMap, share, retry, take } from 'rxjs/operators';
+import { defer, EMPTY, Subscription } from 'rxjs';
+import { share, catchError, take } from 'rxjs/operators';
+import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 /*** PDF Imports */
 import jsPDF from 'jspdf';
@@ -35,13 +36,15 @@ import { ConfigurationService } from '../configuration.service';
 
 @Component({
     selector: 'operator-grid',
-    imports: [CommonModule, MatTableModule, MatPaginatorModule, MatSortModule, MatCheckboxModule, MatDividerModule, MatButtonModule, MatIconModule],
+    imports: [PageLoadStateComponent, CommonModule, MatTableModule, MatPaginatorModule, MatSortModule, MatCheckboxModule, MatDividerModule, MatButtonModule, MatIconModule],
     templateUrl: './operator-grid.component.html',
     styleUrl: './operator-grid.component.scss'
 })
-export class OperatorGridComponent implements OnInit, OnDestroy {
+export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
   operators: OperatorConfig[];
-  dataSource: MatTableDataSource<OperatorConfig>;
+  dataSource = new MatTableDataSource<OperatorConfig>([]);
+  isLoading = true;
+  error: string | null = null;
   selectionModel = new SelectionModel<OperatorConfig>(false, []);
 
   sub: Subscription;
@@ -61,21 +64,34 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
    }
 
   private getOpsSubFunction = (res: OperatorConfig[]) => {
+    this.isLoading = false;
+    this.error = null;
     this.operators = res;
-    if (!this.dataSource) this.dataSource = new MatTableDataSource<OperatorConfig>(res);
-    else this.dataSource.data = res;
+    this.dataSource.data = res;
+    const selectedId = this.selectionModel.selected[0]?._id;
+    const selected = selectedId == null ? undefined : res.find(row => row._id === selectedId);
+    this.selectionModel.clear();
+    if (selected) this.selectionModel.select(selected);
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
   }
 
-  private getOps = timer(1, (30 * 1000))
+  private getOps = defer(() => this.configurationService.watchOperatorConfigs())
     .pipe(
-      switchMap(() => this.configurationService.getOperatorConfigs()),
-      retry(),
+        catchError(() => {
+          this.isLoading = false;
+          this.error = 'Failed to load operators. Please try again.';
+          return EMPTY;
+        }),
       share()
   );
 
   readonly dialog = inject(MatDialog);
+
+  ngAfterViewInit(): void {
+    this.dataSource.paginator = this.paginator;
+    this.dataSource.sort = this.sort;
+  }
 
   private sanitize(op: any): OperatorConfig {
     const { _id, id, code, name, active } = op ?? {};
@@ -88,17 +104,13 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
   }
 
   private refreshTable() {
+    this.isLoading = true;
+    this.error = null;
     if (this.sub) this.sub.unsubscribe();
     this.sub = this.getOps.subscribe(this.getOpsSubFunction);
   }
 
-  private applyLocalUpdate(updated: OperatorConfig) {
-    const arr = this.dataSource?.data ?? [];
-    const i = arr.findIndex(x => x._id === updated._id);
-    this.dataSource.data = i >= 0
-      ? [...arr.slice(0, i), new OperatorConfig().deserialize({ ...arr[i], ...updated }), ...arr.slice(i + 1)]
-      : [...arr, updated];
-  }
+  retryLoad(): void { this.refreshTable(); }
 
   getOperatorDisplayName(operator: OperatorConfig): string {
     if (!operator.name) return '';
@@ -117,7 +129,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
   openDialog(operator: OperatorConfig | null): void {
     if (operator) {
       // Editing existing operator
-      const data = { ...operator }; // clone
+      const data = structuredClone(operator);
       const dialogRef = this.dialog.open(OperatorDialogCuComponent, { data, disableClose: true });
       this.setupDialogHandlers(dialogRef);
     } else {
@@ -146,18 +158,14 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
         ? this.configurationService.putOperatorConfig(payload)
         : this.configurationService.postOperatorConfig(payload);
 
-      const sub = req$.subscribe({
-        next: saved => {
-          this.applyLocalUpdate(saved || payload); // optimistic UI
+      req$.subscribe({
+        next: () => {
           this.selectionModel.clear();
           dialogRef.close('saved');
-          this.refreshTable();                     // server is source of truth
-          sub.unsubscribe();
         },
         error: err => {
           const msg = err?.error?.message || err?.error || 'Update failed';
           dialogRef.componentInstance.error = { message: msg }; // surface 409 text
-          sub.unsubscribe();
         }
       });
     });
@@ -165,16 +173,13 @@ export class OperatorGridComponent implements OnInit, OnDestroy {
 
   deleteOperator(operator: OperatorConfig): void {
     if (operator) {
-      const submitSub = this.configurationService.deleteOperatorConfig(operator._id).subscribe({
+      this.configurationService.deleteOperatorConfig(operator._id).subscribe({
         next: (res) => {
           console.log('Operator deleted:', res);
-          this.refreshTable();
           this.selectionModel.clear();
-          submitSub.unsubscribe();
         },
         error: (err) => {
           console.error('Error deleting operator:', err);
-          submitSub.unsubscribe();
         }
       });
     }

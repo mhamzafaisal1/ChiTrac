@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/operations-regressions.spec.ts",
+    "src/app/app-session-startup.spec.ts",
+    "src/app/services/settings-time-format.spec.ts",
+    "src/app/services/settings-experimental-layout.spec.ts",
+    "src/app/nav-main-menu/timeframe-indicator.spec.ts",
+    "src/app/components/base-table/base-table.component.spec.ts",
+    "src/app/services/configuration-cache.spec.ts",
+    "src/app/settings-navigation-loading.spec.ts",
+    "src/app/efficiency-screens/experimental-spf/experimental-spf.component.spec.ts",
+    "src/app/services/efficiency-station-summary.spec.ts",
+    "src/app/shift-management/configuration-sync.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

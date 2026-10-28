@@ -1,3 +1,4 @@
+const { sessionMachineQuery, distinctSessionMachineIds } = require('../../utils/sessionIdentity');
 const express = require("express");
 const { formatHumanName } = require("../../utils/humanNames");
 
@@ -703,7 +704,7 @@ router.get("/analytics/machine-item-sessions-summary", async (req, res) => {
 
     // ---------- 1) Sessions & Items (existing logic) ----------
     const match = {
-      ...(serial ? { "machine.serial": serial } : {}),
+      ...(serial ? sessionMachineQuery(serial) : {}),
       "timestamps.start": { $lte: exactEnd },
       $or: [
         { "timestamps.end": { $exists: false } },
@@ -939,14 +940,14 @@ router.get("/analytics/machine-item-sessions-summary", async (req, res) => {
     const fsColl = db.collection(config.faultSessionCollectionName);
 
     // Get all machines that have sessions in the time window
-    const machineSerials = await msColl.distinct("machine.serial", {
+    const machineSerials = await distinctSessionMachineIds(msColl, {
       "timestamps.start": { $lt: exactEnd },
       $or: [
         { "timestamps.end": { $gt: exactStart } }, 
         { "timestamps.end": { $exists: false } }, 
         { "timestamps.end": null }
       ],
-      ...(serial ? { "machine.serial": serial } : {})
+      ...(serial ? sessionMachineQuery(serial) : {})
     });
 
     const statusByMachine = new Map();
@@ -968,7 +969,7 @@ router.get("/analytics/machine-item-sessions-summary", async (req, res) => {
     for (const machineSerial of machineSerials) {
       const [msessions, fsessions] = await Promise.all([
         msColl.find({
-          "machine.serial": machineSerial,
+          ...sessionMachineQuery(machineSerial),
           "timestamps.start": { $lt: exactEnd },
           $or: [
             { "timestamps.end": { $gt: exactStart } }, 
@@ -979,7 +980,7 @@ router.get("/analytics/machine-item-sessions-summary", async (req, res) => {
           _id: 0, machine: 1, timestamps: 1, runtime: 1
         }).toArray(),
         fsColl.find({
-          "machine.serial": machineSerial,
+          ...sessionMachineQuery(machineSerial),
           "timestamps.start": { $lt: exactEnd },
           $or: [
             { "timestamps.end": { $gt: exactStart } }, 

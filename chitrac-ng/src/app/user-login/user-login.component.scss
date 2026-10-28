@@ -39,3 +39,12 @@
     flex-direction: column;
   }
 }
+
+:host.login-page {
+  display: grid;
+  place-items: center;
+  min-height: calc(100dvh - 72px);
+  padding: 1rem;
+}
+.password-help-link { display: inline-block; margin-top: 1rem; color: var(--theme-color-primary); }
+#password-help { max-width: 32ch; margin-top: 0.75rem; }
