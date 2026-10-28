@@ -901,7 +901,6 @@ import {
         .style('stroke-width', '2px');
 
       // callout lines + labels
-      const labelR = r * 1.15;
       const breakR = r * 1.02;
 
       const polys = center.selectAll('polyline')
@@ -921,23 +920,40 @@ import {
         .style('fill', this.chartTextColor)
         .style('font-size','12px');
 
-      arcs.forEach((d, i) => {
+      // Elbow callouts: labels sit in a column left/right of the pie, clamped to the pie's
+      // vertical extent so they can't reach the title band, and spaced so they never collide.
+      const total = data.reduce((a, b) => a + b.value, 0) || 1;
+      const labelX = r * 1.2;
+      const minGap = 14;
+      const placed = arcs.map((d, i) => {
         const mid = (d.startAngle + d.endAngle) / 2;
-        const start = outerArc.centroid(d);
-        const breakPt = [Math.sin(mid) * breakR, -Math.cos(mid) * breakR];
-        const endPt = [Math.sin(mid) * labelR, -Math.cos(mid) * labelR];
-        const align = mid < Math.PI ? 'start' : 'end';
-        const shift = mid < Math.PI ? 12 : -12;
+        const breakPt: [number, number] = [Math.sin(mid) * breakR, -Math.cos(mid) * breakR];
+        return { d, i, right: mid < Math.PI, start: outerArc.centroid(d), breakPt, y: Math.max(-r, Math.min(r, breakPt[1])) };
+      });
+
+      for (const right of [true, false]) {
+        const side = placed.filter(p => p.right === right).sort((a, b) => a.y - b.y);
+        for (let k = 1; k < side.length; k++) side[k].y = Math.max(side[k].y, side[k - 1].y + minGap);
+        const overflow = side.length ? side[side.length - 1].y - r : 0;
+        if (overflow > 0) {
+          side[side.length - 1].y -= overflow;
+          for (let k = side.length - 2; k >= 0; k--) side[k].y = Math.min(side[k].y, side[k + 1].y - minGap);
+        }
+      }
+
+      placed.forEach(({ d, i, right, start, breakPt, y }) => {
+        const sign = right ? 1 : -1;
+        const elbow: [number, number] = [breakPt[0], y];
+        const endPt: [number, number] = [sign * labelX, y];
 
         (polys.nodes()[i] as SVGPolylineElement)
-          .setAttribute('points', `${start} ${breakPt} ${endPt}`);
+          .setAttribute('points', `${start} ${elbow} ${endPt}`);
 
-        const total = data.reduce((a,b)=>a+b.value,0) || 1;
-        const pct = Math.round((d.data.value/total)*100);
+        const pct = Math.round((d.data.value / total) * 100);
 
         d3.select(labels.nodes()[i])
-          .attr('transform', `translate(${endPt[0] + shift}, ${endPt[1]})`)
-          .style('text-anchor', align)
+          .attr('transform', `translate(${endPt[0] + sign * 6}, ${y})`)
+          .style('text-anchor', right ? 'start' : 'end')
           .text(`${d.data.name} (${pct}%)`);
       });
 
