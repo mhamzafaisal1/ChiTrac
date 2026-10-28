@@ -1,3 +1,4 @@
+import { ProductionScreenLayoutsService } from '../services/production-screen-layouts.service';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
@@ -6,7 +7,7 @@ import { DateTimeService } from '../services/date-time.service';
 
 describe('navbar timeframe indicator', () => {
   function setup(failShiftLookup = false) {
-    TestBed.configureTestingModule({ providers: [
+    TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },
       { provide: BreakpointObserver, useValue: { observe: () => of({ matches: false }) } }
     ] });
     const dates = new DateTimeService();

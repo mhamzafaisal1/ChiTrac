@@ -56,7 +56,7 @@ describe('Server-validated session navigation', () => {
       { url: '/ng/settings/root/utilities' } as RouterStateSnapshot).subscribe(value => allowed = value);
     expect(allowed).toBeUndefined();
     http.expectOne('/api/passport/user').flush({ user: { username: 'admin', permissions: { level: 7 } } });
-    expect(allowed.toString()).toBe('/ng/settings/profile');
+    expect(allowed.toString()).toBe('/ng/home');
   }));
 
   it('never authorizes from browser-stored identity data', () => {

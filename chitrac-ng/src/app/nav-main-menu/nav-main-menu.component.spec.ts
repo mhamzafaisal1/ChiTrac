@@ -1,3 +1,4 @@
+import { ProductionScreenLayoutsService } from '../services/production-screen-layouts.service';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
@@ -10,13 +11,13 @@ describe('NavMainMenuComponent Home actions', () => {
   let loginMenu: any;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [{
+    TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },{
       provide: BreakpointObserver, useValue: { observe: () => of({ matches: false }) }
     }] });
     userService = jasmine.createSpyObj('UserService', ['hasPermissionLevel', 'logout']);
     userService.hasPermissionLevel.and.returnValue(true);
     component = TestBed.runInInjectionContext(() => new NavMainMenuComponent(
-      userService, {} as any, {} as any, {} as any, {} as any,
+      userService, { url: '/ng/home' } as any, {} as any, {} as any, {} as any,
       {} as any, {} as any, {} as any, {} as any
     ));
     loginMenu = jasmine.createSpyObj('MatMenuTrigger', ['openMenu', 'closeMenu']);

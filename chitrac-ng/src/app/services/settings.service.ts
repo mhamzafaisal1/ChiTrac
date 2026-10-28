@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import type { NamedProductionLayout, ProductionLayoutActivation, ProductionLayoutLibrary, ProductionLayoutReference, ProductionLayoutScope } from './production-layout.models';
 import { SpfLayout } from '../efficiency-screens/experimental-spf/spf-stations';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { BehaviorSubject, Observable } from 'rxjs';
+import { BehaviorSubject, Observable, Subject } from 'rxjs';
 import { tap, map, distinctUntilChanged, finalize, shareReplay } from 'rxjs/operators';
 import { TimeFormat, formatDisplayTime } from '../utils/time-format';
 import { ReportLayoutId } from '../reports/report-columns';
@@ -86,6 +86,8 @@ export interface PromoteDashboardLayoutsResponse {
   providedIn: 'root'
 })
 export class SettingsService {
+  private readonly productionLayoutChanges = new Subject<void>();
+  readonly productionLayoutsChanged$ = this.productionLayoutChanges.asObservable();
   private settingsRequest$: Observable<AppSettings> | null = null;
   private settingsSubject = new BehaviorSubject<AppSettings | null>(null);
   public settings$ = this.settingsSubject.asObservable();
@@ -368,7 +370,15 @@ export class SettingsService {
 
   createProductionLayout(scope: ProductionLayoutScope, name: string, stationIds: string[]): Observable<ProductionLayoutActivation> {
     return this.http.post<ProductionLayoutActivation>('/api/preferences/production-layouts/' + scope, {name,stationIds}, this.preferenceRequestOptions)
-      .pipe(tap(result => this.acceptUserPreferences(result.preferences)));
+      .pipe(tap({
+        next: result => {
+          this.acceptUserPreferences(result.preferences);
+          this.productionLayoutChanges.next();
+        },
+        error: error => {
+          if (error?.error?.createdLayoutRef) this.productionLayoutChanges.next();
+        },
+      }));
   }
 
   loadProductionLayout(reference: ProductionLayoutReference): Observable<ProductionLayoutActivation> {

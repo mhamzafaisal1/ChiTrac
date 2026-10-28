@@ -1,3 +1,4 @@
+import { ProductionScreenLayoutsService, ProductionScreenMenuState } from '../services/production-screen-layouts.service';
 import { Component, EventEmitter, Output } from '@angular/core';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -30,7 +31,7 @@ describe('DMC navigation indicators', () => {
   let logout: jasmine.Spy;
 
   beforeEach(() => {
-    users = new BehaviorSubject(null);
+    users = new BehaviorSubject<any>({username:'Admin',permissions:{level:0}});
     status = new BehaviorSubject<WebsocketConnectionStatus>('connected');
     logout = jasmine.createSpy('logout').and.callFake(() => {
       users.next(null);
@@ -38,7 +39,7 @@ describe('DMC navigation indicators', () => {
     });
     TestBed.configureTestingModule({
       imports: [NavMainMenuComponent],
-      providers: [provideRouter([]), provideNoopAnimations(),
+      providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },provideRouter([{path:'ng/home',children:[]}]), provideNoopAnimations(),
         { provide: UserService, useValue: { user: users, hasPermissionLevel: () => true, logout } },
         { provide: SettingsService, useValue: { settings$: of(null) } },
         { provide: MatDialog, useValue: { afterOpened: new Subject() } },
@@ -52,6 +53,49 @@ describe('DMC navigation indicators', () => {
       add: { imports: [DateTimeStub, LoginStub] }
     });
   });
+
+  it('renders the generic production link first, then scope groups with distinct named URLs', fakeAsync(() => {
+    const library = TestBed.inject(ProductionScreenLayoutsService) as any;
+    library.state$ = of({
+      systemLayouts: [{ name: 'Line A', scope: 'system', id: 'a'.repeat(64) }],
+      userLayouts: [{ name: 'Line A', scope: 'user', id: 'a'.repeat(64) }],
+      loading: false, error: '',
+    });
+    const fixture = TestBed.createComponent(NavMainMenuComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.openMenu('productionScreens');
+    fixture.detectChanges(); tick(); fixture.detectChanges();
+    const links = Array.from(fixture.nativeElement.querySelectorAll('mat-sidenav a')) as HTMLAnchorElement[];
+    const productionLinks = links.filter(link => link.pathname === '/ng/production-screen');
+    expect(productionLinks.length).toBe(3);
+    expect(productionLinks[0].textContent).toContain('Production Screen');
+    expect(productionLinks[0].search).toBe('');
+    expect(productionLinks[1].search).toContain('layoutScope=system');
+    expect(productionLinks[2].search).toContain('layoutScope=user');
+    expect(fixture.nativeElement.textContent).toContain('System layouts');
+    expect(fixture.nativeElement.textContent).toContain('Your layouts');
+    expect(fixture.nativeElement.textContent).not.toContain('Blanket Blaster 1');
+    fixture.destroy();
+  }));
+
+  it('retains the generic production link when the library is empty, loading or unavailable', fakeAsync(() => {
+    const states = new BehaviorSubject<ProductionScreenMenuState>({ systemLayouts: [], userLayouts: [], loading: true, error: '' });
+    (TestBed.inject(ProductionScreenLayoutsService) as any).state$ = states;
+    const fixture = TestBed.createComponent(NavMainMenuComponent);
+    fixture.detectChanges(); fixture.componentInstance.openMenu('productionScreens');
+    fixture.detectChanges(); tick();
+    const variants: ProductionScreenMenuState[] = [
+      { systemLayouts: [], userLayouts: [], loading: true, error: '' },
+      { systemLayouts: [], userLayouts: [], loading: false, error: '' },
+      { systemLayouts: [], userLayouts: [], loading: false, error: 'Could not load saved layouts.' },
+    ];
+    for (const state of variants) {
+      states.next(state); fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('mat-sidenav a[href="/ng/production-screen"]')).not.toBeNull();
+    }
+    expect(fixture.nativeElement.textContent).toContain('Retry');
+    fixture.destroy();
+  }));
 
   it('announces connection changes and retains the last-update information in the tooltip', fakeAsync(() => {
     const fixture = TestBed.createComponent(NavMainMenuComponent);
@@ -75,36 +119,20 @@ describe('DMC navigation indicators', () => {
     fixture.destroy();
   }));
 
-  it('shows Login or the username and opens the appropriate popup before logging out', fakeAsync(() => {
+  it('hides the toolbar while signed out and removes it immediately after logout', fakeAsync(() => {
+    users.next(null);
     const fixture = TestBed.createComponent(NavMainMenuComponent);
-    fixture.detectChanges();
-    tick();
-    fixture.detectChanges();
+    fixture.detectChanges(); tick(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('button').length).toBe(0);
+    users.next({username:'Admin',permissions:{level:0}}); fixture.detectChanges();
     const button: HTMLButtonElement = fixture.nativeElement.querySelector('.user-menu-button');
-    expect(button.querySelector('.user-menu-label')!.textContent).toBe('Login');
-    expect(button.querySelector('.user-icon')!.textContent).toBe('account_circle');
-    expect(button.querySelector('.user-menu-chevron')).not.toBeNull();
-    button.click();
-    fixture.detectChanges();
-    tick();
-    expect(document.querySelector('.test-login-form')).not.toBeNull();
-    fixture.componentInstance.loginMenu.closeMenu();
-    tick();
-    users.next({ username: 'Admin', permissions: { level: 0 } });
-    fixture.detectChanges();
     expect(button.querySelector('.user-menu-label')!.textContent).toBe('Admin');
-    button.click();
-    fixture.detectChanges();
-    tick();
-    const logoutButton = document.querySelector<HTMLButtonElement>('button[mat-menu-item]')!;
+    button.click(); fixture.detectChanges(); tick();
+    const logoutButton=document.querySelector<HTMLButtonElement>('button[mat-menu-item]')!;
     expect(logoutButton.textContent).toContain('Log Out as Admin');
-    expect(logout).not.toHaveBeenCalled();
-    logoutButton.click();
-    tick();
-    fixture.detectChanges();
+    expect(logout).not.toHaveBeenCalled(); logoutButton.click(); tick(); fixture.detectChanges();
     expect(logout).toHaveBeenCalledTimes(1);
-    expect(button.querySelector('.user-menu-label')!.textContent).toBe('Login');
-    fixture.destroy();
+    expect(fixture.nativeElement.querySelector('.user-menu-button')).toBeNull(); fixture.destroy();
   }));
 
   it('shows the tooltip after 500ms and follows the pointer even after opening', fakeAsync(() => {

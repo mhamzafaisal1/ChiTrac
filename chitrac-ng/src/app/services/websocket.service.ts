@@ -296,6 +296,15 @@ export class WebsocketService {
     this.statusSubject.next('disconnected');
   }
 
+  /** A signed-out browser must not keep a live feed or reuse the previous session's snapshot. */
+  resetSession(): void {
+    this.disconnect();
+    this.configurationCacheSubject.next(null);
+    this.dashboardCacheSubject.next({});
+    this.sessionIdSubject.next(null);
+    this.errorSubject.next(null);
+  }
+
   send(payload: unknown): void {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       this.errorSubject.next('Websocket is not connected.');

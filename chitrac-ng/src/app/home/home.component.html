@@ -1,21 +1,63 @@
 @let user = userService.user | async;
-<main class="home" aria-label="ChiTrac Home">
-  <nav class="home-grid" aria-label="Main navigation">
-    <a *ngFor="let destination of destinations" class="home-tile" [routerLink]="destination.path">
-      <span class="tile-label">{{ destination.label }}</span>
-      <mat-icon aria-hidden="true">{{ destination.icon }}</mat-icon>
-    </a>
-    @if (user?.username) {
-    <button type="button" class="home-tile" routerLink="/ng/settings"
-      [disabled]="!!user?.username && !userService.hasPermissionLevel(permissionLevels.settings, user)"
-      [attr.title]="user?.username && !userService.hasPermissionLevel(permissionLevels.settings, user) ? 'You do not have permission to access Settings' : null">
-      <span class="tile-label">Settings</span>
-      <mat-icon aria-hidden="true">settings</mat-icon>
-    </button>
+<main class="home" [class.anonymous]="!user?.username" aria-label="ChiTrac Home">
+  @if (!user?.username) {
+    <nav class="home-grid" aria-label="Login">
+      <button type="button" class="home-tile" (click)="openLogin()" aria-haspopup="dialog">
+        <span class="tile-label">Login</span><mat-icon aria-hidden="true">login</mat-icon>
+      </button>
+    </nav>
+  } @else {
+    @if (section !== 'home') { <h1 class="home-menu-title">{{ menuTitles[section] }}</h1> }
+    <nav class="home-grid" [attr.aria-label]="section === 'home' ? 'Home shortcuts' : menuTitles[section]">
+      @if (section === 'home') {
+        <a class="home-tile" routerLink="/ng/home" [queryParams]="{menu: 'main'}">
+          <span class="tile-label">Main Menu</span><mat-icon aria-hidden="true">apps</mat-icon>
+        </a>
+        <a *ngFor="let destination of destinations" class="home-tile" [routerLink]="destination.path">
+          <span class="tile-label">{{ destination.label }}</span><mat-icon aria-hidden="true">{{ destination.icon }}</mat-icon>
+        </a>
+        @if (userService.hasPermissionLevel(permissionLevels.settings, user)) {
+          <a class="home-tile" routerLink="/ng/settings"><span class="tile-label">Settings</span><mat-icon aria-hidden="true">settings</mat-icon></a>
+        }
+        <button type="button" class="home-tile" (click)="navigation.openAuthentication()" aria-haspopup="menu">
+          <span class="tile-label">Log Out</span><mat-icon aria-hidden="true">logout</mat-icon>
+        </button>
+      } @else {
+        @if (section !== 'main') {
+          <a class="home-tile" routerLink="/ng/home" [queryParams]="{menu: parentMenu()}">
+            <span class="tile-label">Back</span><mat-icon aria-hidden="true">arrow_back</mat-icon>
+          </a>
+        }
+        @for (entry of entries(user); track entry.label) {
+          @if (entry.path) {
+            <a class="home-tile" [routerLink]="entry.path"><span class="tile-label">{{ entry.label }}</span><mat-icon aria-hidden="true">{{ entry.icon }}</mat-icon></a>
+          } @else if (entry.menu) {
+            <a class="home-tile" routerLink="/ng/home" [queryParams]="{menu: entry.menu}"><span class="tile-label">{{ entry.label }}</span><mat-icon aria-hidden="true">{{ entry.icon }}</mat-icon></a>
+          } @else {
+            <button type="button" class="home-tile" (click)="navigation.openAuthentication()"><span class="tile-label">{{ entry.label }}</span><mat-icon aria-hidden="true">{{ entry.icon }}</mat-icon></button>
+          }
+        }
+      }
+    </nav>
+    @if (section === 'productionScreens') {
+      @if (productionLayouts.state$ | async; as library) {
+        @for (group of [{title: 'System layouts', entries: library.systemLayouts}, {title: 'Your layouts', entries: library.userLayouts}]; track group.title) {
+          @if (group.entries.length) {
+            <h2 class="home-menu-title">{{ group.title }}</h2>
+            <nav class="home-grid" [attr.aria-label]="group.title">
+              @for (layout of group.entries; track layout.scope + ':' + layout.id) {
+                <a class="home-tile" routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}" [attr.title]="layout.name">
+                  <span class="tile-label">{{ layout.name }}</span><mat-icon aria-hidden="true">live_tv</mat-icon>
+                </a>
+              }
+            </nav>
+          }
+        }
+        @if (library.loading) { <p role="status">Loading layouts…</p> }
+        @if (library.error) {
+          <div role="status"><p>{{ library.error }}</p><button type="button" (click)="productionLayouts.refresh()">Retry</button></div>
+        }
+      }
     }
-    <button type="button" class="home-tile" (click)="navigation.openAuthentication()" aria-haspopup="menu">
-      <span class="tile-label">{{ user?.username ? 'Log Out' : 'Log In' }}</span>
-      <mat-icon aria-hidden="true">{{ user?.username ? 'logout' : 'login' }}</mat-icon>
-    </button>
-  </nav>
+  }
 </main>

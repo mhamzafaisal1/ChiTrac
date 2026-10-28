@@ -1,12 +1,14 @@
 import { CreateProductionLayoutDialogComponent, LoadProductionLayoutDialogComponent } from './production-layout-dialogs.component';
 import { ProductionLayoutActivation } from '../../services/production-layout.models';
+import { ActivatedRoute, Router } from '@angular/router';
+import { ProductionScreenLayoutsService } from '../../services/production-screen-layouts.service';
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { Subject, Subscription, distinctUntilChanged, exhaustMap, map, takeUntil, tap, timer, throwError } from 'rxjs';
+import { Subject, Subscription, catchError, combineLatest, distinctUntilChanged, exhaustMap, map, of, startWith, switchMap, takeUntil, tap, timer, throwError } from 'rxjs';
 import { ConfigurationService } from '../../configuration.service';
 import { EfficiencyScreensService } from '../../services/efficiency-screens.service';
 import { LayoutEditService } from '../../services/layout-edit.service';
@@ -33,6 +35,13 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   catalogError = '';
   private hasCatalog = false;
   private savedLayout: SpfLayout | null = null;
+  private systemLayout: SpfLayout | null = null;
+  private selectedLayout: SpfLayout | null = null;
+  private hasNamedSelection = false;
+  layoutResolving = true;
+  layoutError = '';
+  private readonly layoutRetry = new Subject<void>();
+  private readonly selectionChanged = new Subject<void>();
   private catalogRequest?: Subscription;
   private polling?: Subscription;
   layoutEditing = false;
@@ -51,10 +60,13 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     private readonly user: UserService,
     private readonly editor: LayoutEditService,
     private readonly dialog: MatDialog,
+    private readonly route: ActivatedRoute,
+    private readonly router: Router,
+    private readonly productionLayouts: ProductionScreenLayoutsService,
   ) {}
 
   ngOnInit(): void {
-    this.editor.register(this.layoutContextId, 'Experimental SPF');
+    this.editor.register(this.layoutContextId, 'Production Screen');
     this.editor.context$.pipe(takeUntil(this.destroyed$)).subscribe(context => {
       const editing = context?.id === this.layoutContextId && context.editing;
       if (editing && !this.layoutEditing) this.snapshot = this.copyLayout();
@@ -63,23 +75,25 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     this.editor.lockRequested$.pipe(takeUntil(this.destroyed$)).subscribe(() => {
       if (this.layoutEditing) this.confirmSave();
     });
+    this.settings.settings$.pipe(takeUntil(this.destroyed$)).subscribe(settings => {
+      this.systemLayout = settings?.dashboardLayouts?.experimentalSpf || null;
+    });
     this.user.user.pipe(map(user => user?.username || null), distinctUntilChanged(), takeUntil(this.destroyed$)).subscribe(() => {
       this.picker?.close();
       this.saveDialog?.close();
       this.namedDialog?.close();
       this.editor.setEditing(false);
       this.snapshot = null;
-      this.savedLayout = null;
-      this.layout = normalizeSpfLayout(null, this.stations);
-      if (this.hasCatalog) this.startPolling();
+      this.savedLayout = this.systemLayout;
+      this.layoutResolving = true;
+      this.polling?.unsubscribe();
+      this.lanes = {};
     });
     this.settings.userPreferences$.pipe(takeUntil(this.destroyed$)).subscribe(preferences => {
       this.savedLayout = preferences?.dashboardLayouts?.experimentalSpf || null;
-      if (!this.layoutEditing) {
-        this.layout = normalizeSpfLayout(this.savedLayout, this.stations);
-        if (this.hasCatalog) this.startPolling();
-      }
+      if (!this.layoutEditing) this.applyDisplayLayout();
     });
+    this.watchRouteLayout();
     this.loadStations();
   }
 
@@ -98,10 +112,12 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
       next: machines => {
         this.catalogLoading = false;
         this.stations = configuredProductionStations(machines);
-        this.layout = normalizeSpfLayout(this.hasCatalog && this.layoutEditing ? this.layout : this.savedLayout, this.stations);
         if (this.snapshot) this.snapshot = normalizeSpfLayout(this.snapshot, this.stations);
         this.hasCatalog = true;
-        this.startPolling();
+        if (this.layoutEditing) {
+          this.layout = normalizeSpfLayout(this.layout, this.stations);
+          this.startPolling();
+        } else this.applyDisplayLayout();
         if (openPicker && this.layoutEditing) this.showPicker();
       },
       error: () => {
@@ -112,7 +128,75 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     });
   }
 
+  private watchRouteLayout(): void {
+    combineLatest([
+      this.route.queryParamMap,
+      this.user.user.pipe(map(user => user?.username || null), distinctUntilChanged()),
+      this.layoutRetry.pipe(startWith(undefined)),
+    ]).pipe(
+      switchMap(([params]) => {
+        this.selectionChanged.next();
+        this.picker?.close();
+        this.namedDialog?.close();
+        this.saveDialog?.close();
+        this.editor.setEditing(false);
+        this.snapshot = null;
+        this.selectedLayout = null;
+        this.layoutError = '';
+        this.layoutResolving = true;
+        this.isLoading = true;
+        this.polling?.unsubscribe();
+        this.lanes = {};
+        this.hasNamedSelection = params.has('layoutScope') || params.has('layoutId');
+        if (!this.hasNamedSelection) return of(null);
+        const scope = params.get('layoutScope');
+        const id = params.get('layoutId');
+        if ((scope !== 'system' && scope !== 'user') || !id || !/^[a-f0-9]{64}$/.test(id)) {
+          this.layoutError = 'This production layout link is invalid. Choose another layout or open the default production screen.';
+          return of(null);
+        }
+        return this.productionLayouts.read({ scope, id }).pipe(catchError(error => {
+          this.layoutError = error?.error?.error || 'Could not load this production layout. Please try again or open the default production screen.';
+          return of(null);
+        }));
+      }),
+      takeUntil(this.destroyed$),
+    ).subscribe(result => {
+      this.selectedLayout = result?.stationLayout || null;
+      this.layoutResolving = false;
+      this.applyDisplayLayout();
+    });
+  }
+
+  private applyDisplayLayout(): void {
+    if (this.layoutResolving) return;
+    if (this.layoutError) { this.isLoading = false; return; }
+    const base = this.hasNamedSelection ? this.selectedLayout : this.savedLayout;
+    if (this.hasNamedSelection && this.hasCatalog && base?.stationOrder.some(id =>
+      base.stationVisibility[id] !== false && !this.stations.some(station => station.id === id))) {
+      this.layoutError = 'This layout contains unavailable stations. Choose another layout or open the default production screen.';
+      this.isLoading = false;
+      this.polling?.unsubscribe();
+      return;
+    }
+    this.layout = normalizeSpfLayout(base, this.stations);
+    if (this.hasCatalog) this.startPolling();
+  }
+
+  retrySelectedLayout(): void { this.layoutRetry.next(); }
+
+  openDefaultLayout(): void {
+    this.router.navigate(['/ng/production-screen']);
+  }
+
+  private clearNamedSelection(): void {
+    if (this.hasNamedSelection) this.router.navigate([], {
+      relativeTo: this.route, queryParams: { layoutScope: null, layoutId: null }, queryParamsHandling: 'merge', replaceUrl: true,
+    });
+  }
+
   private startPolling(): void {
+    if (this.layoutResolving || this.layoutError) return;
     this.polling?.unsubscribe();
     const selected = this.stations.filter(station => this.visibleStationIds.includes(station.id));
     this.isLoading = selected.length > 0 && selected.some(station => !this.lanes[station.id]);
@@ -124,7 +208,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   }
 
   get visibleStationIds(): string[] {
-    return this.layout.stationOrder.filter(id => this.layout.stationVisibility[id]);
+    return this.layoutResolving || this.layoutError ? [] : this.layout.stationOrder.filter(id => this.layout.stationVisibility[id]);
   }
 
   stationLabel(id: string): string { return this.stations.find(station => station.id === id)?.label || id; }
@@ -172,7 +256,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   }
 
   hasUnsavedChanges(): boolean {
-    const saved=normalizeSpfLayout(this.savedLayout,this.stations);
+    const saved=normalizeSpfLayout(this.hasNamedSelection ? this.selectedLayout : this.savedLayout,this.stations);
     const savedIds=saved.stationOrder.filter(id=>saved.stationVisibility[id]);
     return JSON.stringify(this.visibleStationIds)!==JSON.stringify(savedIds);
   }
@@ -199,6 +283,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
       if(!result)return;
       // The activation response includes the fresh catalog used by server validation.
       this.stations=result.stations;
+      this.clearNamedSelection();
       this.savedLayout=result.preferences.dashboardLayouts!.experimentalSpf!;
       this.layout=normalizeSpfLayout(this.savedLayout,this.stations);
       this.snapshot=null;
@@ -224,9 +309,10 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   private saveLayout() {
     if (this.visibleStationIds.length < 3 || this.visibleStationIds.length > 8) return throwError(() => new Error('Choose 3–8 active configured stations before saving.'));
     if (!this.user.getToken()) return throwError(() => new Error('Please log in to save a layout.'));
-    return this.settings.saveExperimentalSpfLayout(this.copyLayout()).pipe(tap(() => {
+    return this.settings.saveExperimentalSpfLayout(this.copyLayout()).pipe(takeUntil(this.selectionChanged), tap(() => {
       this.snapshot = null;
       this.editor.setEditing(false);
+      this.clearNamedSelection();
     }));
   }
 
@@ -241,6 +327,8 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     this.polling?.unsubscribe();
     this.destroyed$.next();
     this.destroyed$.complete();
+    this.selectionChanged.next();
+    this.selectionChanged.complete();
     this.editor.unregister(this.layoutContextId);
   }
 }
