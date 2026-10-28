@@ -1,3 +1,4 @@
+const { sessionMachineQuery, distinctSessionMachineIds } = require('./sessionIdentity');
 const { DateTime, Interval } = require("luxon");
 const { formatDuration, createPaddedTimeRange, getHourlyIntervals, SYSTEM_TIMEZONE, parseAndValidateQueryParams } = require("./time");
 const { loadActiveShifts, computeShiftElapsedMs } = require("./shiftElapsed");
@@ -366,19 +367,19 @@ function _sessionOverlap(sStart, sEnd, wStart, wEnd) {
 async function buildDailyMachineStatusFromSessions(db, dayStart, dayEnd) {
   const msColl = db.collection(config.machineSessionCollectionName);
   const fsColl = db.collection(config.faultSessionCollectionName);
-  const serials = await msColl.distinct("machine.serial", {
+  const serials = await distinctSessionMachineIds(msColl, {
     "timestamps.start": { $lt: dayEnd },
     $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }]
   });
   const perMachine = await Promise.all(serials.map(async (serial) => {
     const [msessions, fsessions] = await Promise.all([
       msColl.find({
-        "machine.serial": serial,
+        ...sessionMachineQuery(serial),
         "timestamps.start": { $lt: dayEnd },
         $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }]
       }).project({ _id: 0, machine: 1, timestamps: 1, runtime: 1, workTime: 1, totalTimeCredit: 1, totalCount: 1, misfeedCount: 1 }).toArray(),
       fsColl.find({
-        "machine.serial": serial,
+        ...sessionMachineQuery(serial),
         "timestamps.start": { $lt: dayEnd },
         $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }]
       }).project({ _id: 0, timestamps: 1, faulttime: 1 }).toArray()
@@ -409,21 +410,17 @@ async function buildDailyMachineStatusFromSessions(db, dayStart, dayEnd) {
 
 async function buildMachineOEEFromSessions(db, dayStart, dayEnd) {
   const msColl = db.collection(config.machineSessionCollectionName);
-  const serialsFromSerial = await msColl.distinct("machine.serial", {
+  const sessionMachineIds = await distinctSessionMachineIds(msColl, {
     "timestamps.start": { $lt: dayEnd },
     $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }]
   });
-  const serialsFromId = await msColl.distinct("machine.id", {
-    "timestamps.start": { $lt: dayEnd },
-    $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }]
-  });
-  const serials = [...new Set([...serialsFromSerial, ...serialsFromId])].filter(Boolean);
+  const serials = sessionMachineIds.filter(value => value !== null);
   if (!serials.length) return [];
   const windowSec = (dayEnd - dayStart) / 1000;
   const rows = await Promise.all(serials.map(async (serial) => {
     const sessions = await msColl.find({
       $and: [
-        { $or: [{ "machine.serial": serial }, { "machine.id": serial }] },
+        ...sessionMachineQuery(serial).$and,
         { "timestamps.start": { $lt: dayEnd } },
         { $or: [{ "timestamps.end": { $gt: dayStart } }, { "timestamps.end": { $exists: false } }, { "timestamps.end": null }] }
       ]
@@ -1191,8 +1188,8 @@ async function buildPlantwideMetricsByHour(db, start, end) {
     .countDocuments({ active: true });
 
   // machines that ran today (overlapped any session) - used for querying data
-  // Try both machine.serial and machine.id for backward compatibility
-  const serialsFromSerial = await msColl.distinct("machine.serial", {
+  // Enumerate canonical ids, falling back only for legacy sessions
+  const sessionMachineIds = await distinctSessionMachineIds(msColl, {
     "timestamps.start": { $lt: wEnd },
     $or: [
       { "timestamps.end": { $gt: wStart } },
@@ -1201,17 +1198,8 @@ async function buildPlantwideMetricsByHour(db, start, end) {
     ]
   });
 
-  const serialsFromId = await msColl.distinct("machine.id", {
-    "timestamps.start": { $lt: wEnd },
-    $or: [
-      { "timestamps.end": { $gt: wStart } },
-      { "timestamps.end": { $exists: false } },
-      { "timestamps.end": null }
-    ]
-  });
-
-  // Combine and deduplicate - these are machines with sessions (used for data queries)
-  const machineSerials = [...new Set([...serialsFromSerial, ...serialsFromId])].filter(Boolean);
+  // These canonical ids identify machines with sessions in the requested window.
+  const machineSerials = sessionMachineIds.filter(value => value !== null);
 
   const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
   const overlapFactor = (sStart, sEnd, wStart, wEnd) => {
@@ -1235,12 +1223,7 @@ async function buildPlantwideMetricsByHour(db, start, end) {
     const machineRows = await Promise.all(machineSerials.map(async (serial) => {
       const sessions = await msColl.find({
         $and: [
-          {
-            $or: [
-              { "machine.serial": serial },
-              { "machine.id": serial }
-            ]
-          },
+          ...sessionMachineQuery(serial).$and,
           { "timestamps.start": { $lt: iv.end } },
           {
             $or: [

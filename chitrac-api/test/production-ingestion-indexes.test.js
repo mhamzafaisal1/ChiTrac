@@ -8,12 +8,12 @@ test('indexes machine-scoped session updates and history without changing docume
   const db = { collection: name => ({ createIndex: async (keys, options) => indexes.push({ name, keys, options }) }) };
   await ensureProductionIngestionIndexes(db, config);
   for (const name of ['machine', 'operator', 'item']) {
-    const current = indexes.find(index => index.name === name && index.options.name === 'production_current_sessions_by_machine');
+    const current = indexes.find(index => index.name === name && index.options.name === 'production_current_sessions_by_machine_id');
     // Equality fields precede the start/_id ordering used by open-session ingestion.
-    assert.deepEqual(current.keys, { 'machine.serial': 1, 'timestamps.end': 1, 'timestamps.start': 1, _id: 1 });
+    assert.deepEqual(current.keys, { 'machine.id': 1, 'timestamps.end': 1, 'timestamps.start': 1, _id: 1 });
     assert.equal(current.options.unique, undefined);
   }
-  assert.deepEqual(indexes.filter(index => index.options.name === 'production_session_history_by_machine').map(index => index.name).sort(), ['item', 'operator']);
+  assert.deepEqual(indexes.filter(index => index.options.name === 'production_session_history_by_machine_id').map(index => index.name).sort(), ['item', 'operator']);
   assert.deepEqual(indexes.find(index => index.name === 'minute').keys, { 'machine.id': 1, 'timestamps.start': 1 });
 });
 

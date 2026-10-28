@@ -1,3 +1,4 @@
+const { sessionMachineQuery } = require('./sessionIdentity');
 const { DateTime } = require("luxon");
 const { SYSTEM_TIMEZONE } = require("./time");
 const { getShiftTimeComponents } = require("./shiftTimeComponents");
@@ -16,7 +17,7 @@ function round2(value) {
 }
 
 function serialFromMachine(machine) {
-  const serial = Number(machine?.serial ?? machine?.id);
+  const serial = Number(machine?.id ?? machine?.serial);
   return Number.isFinite(serial) ? serial : null;
 }
 
@@ -368,7 +369,7 @@ async function loadProductionStatsCache(db, config, nowInput) {
   ]);
   const serials = tickers.map(ticker => serialFromMachine(ticker.machine)).filter(serial => serial !== null);
   const currentSessions = serials.length ? await db.collection(config.machineSessionCollectionName)
-    .find({ 'machine.serial': { $in: serials }, 'timestamps.end': null })
+    .find({ ...sessionMachineQuery({ $in: serials }), 'timestamps.end': null })
     .project({ machine: 1, status: 1, type: 1, 'startState.status': 1, timestamps: 1 })
     .toArray() : [];
   const cache = buildProductionStatsCache(documents, tickers, shifts, nowInput, currentSessions);
