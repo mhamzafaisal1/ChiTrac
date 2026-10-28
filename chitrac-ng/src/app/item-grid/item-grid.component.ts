@@ -102,7 +102,11 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isLoading = false;
     this.error = null;
     this.items = res;
-    this.dataSource = new MatTableDataSource(res);
+    this.dataSource.data = res;
+    const selectedId = this.selectionModel.selected[0]?._id;
+    const selected = selectedId == null ? undefined : res.find(row => row._id === selectedId);
+    this.selectionModel.clear();
+    if (selected) this.selectionModel.select(selected);
     this.dataSource.paginator = this.paginator;
     this.dataSource.sort = this.sort;
   };
@@ -166,7 +170,7 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
   openDialog(item: ItemConfig | null): void {
     if (item) {
       // Editing existing item
-      const data = { ...item }; // clone
+      const data = structuredClone(item);
       const dialogRef = this.dialog.open(ItemDialogCuComponent, { data, disableClose: true });
       this.setupDialogHandlers(dialogRef);
     } else {
@@ -204,7 +208,6 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
       action$.subscribe({
         next: (res) => {
           console.log('Success:', res);
-          this.refreshTable();
           this.selectionModel.clear();
         },
         error: (err) => {
@@ -238,7 +241,6 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
       this.configurationService.deleteItemConfig(item._id).subscribe({
         next: (res) => {
           console.log('Delete successful:', res);
-          this.refreshTable();
           this.selectionModel.clear();
         },
         error: (err) => {
