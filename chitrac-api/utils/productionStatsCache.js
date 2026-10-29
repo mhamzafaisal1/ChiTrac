@@ -352,7 +352,7 @@ function buildProductionStatsCache(documents, tickers, shifts, nowInput = new Da
   };
 }
 
-async function loadProductionStatsCache(db, config, nowInput) {
+async function loadProductionStatsCache(db, config, nowInput, minuteSync) {
   // Use the source database clock, rather than the browser/API host clock, for elapsed time.
   const useSourceClock = nowInput === undefined;
   if (nowInput === undefined) nowInput = (await db.command({ hello: 1 })).localTime;
@@ -372,13 +372,31 @@ async function loadProductionStatsCache(db, config, nowInput) {
     .find({ ...sessionMachineQuery({ $in: serials }), 'timestamps.end': null })
     .project({ machine: 1, status: 1, type: 1, 'startState.status': 1, timestamps: 1 })
     .toArray() : [];
-  const cache = buildProductionStatsCache(documents, tickers, shifts, nowInput, currentSessions);
+  if (minuteSync) {
+    minuteSync.productionInputs = { documents, tickers, shifts, currentSessions };
+    minuteSync.productionClock = { asOf: new Date(nowInput).getTime(), monotonicAt: clockStartedAt };
+  }
+  const merged = minuteSync ? minuteSync.overlay(documents, new Date(nowInput).getTime()) : { documents };
+  const cache = buildProductionStatsCache(merged.documents, tickers, shifts, nowInput, currentSessions);
+  if (merged.status) cache.liveMinute = merged.status;
   // Include cache-loading time in the timer without moving the statistics windows.
   if (useSourceClock) cache.elapsedAsOf = new Date(new Date(nowInput).getTime() + performance.now() - clockStartedAt);
   return cache;
 }
 
+function buildLiveProductionStatsCache(minuteSync, nowInput) {
+  if (!minuteSync?.productionInputs) return null;
+  if (nowInput === undefined) nowInput = minuteSync.productionClock
+    ? new Date(minuteSync.productionClock.asOf + performance.now() - minuteSync.productionClock.monotonicAt) : new Date();
+  const { documents, tickers, shifts, currentSessions } = minuteSync.productionInputs;
+  const merged = minuteSync.overlay(documents, new Date(nowInput).getTime());
+  const cache = buildProductionStatsCache(merged.documents, tickers, shifts, nowInput, currentSessions);
+  cache.liveMinute = merged.status;
+  return cache;
+}
+
 module.exports = {
+  buildLiveProductionStatsCache,
   WINDOW_DEFINITIONS,
   buildProductionStatsCache,
   loadProductionStatsCache,

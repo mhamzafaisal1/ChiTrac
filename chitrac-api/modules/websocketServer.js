@@ -246,7 +246,7 @@ function broadcastJson(wss, payload) {
     const message = JSON.stringify(payload);
 
     wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
+        if (client.readyState === WebSocket.OPEN && !client.isDatafeedService) {
             client.send(message);
         }
     });
@@ -369,6 +369,13 @@ function startWebsocketServer(server, options = {}) {
     });
 
     wss.on('connection', (ws, req) => {
+        const channel = new URLSearchParams((req.url || '/').split('?')[1] || '').get('channel');
+        if (channel === 'datafeed-minute') {
+            ws.isDatafeedService = true;
+            if (server.minuteTotalsSync) server.minuteTotalsSync.accept(ws, req);
+            else ws.close(1008, 'Minute synchronization is disabled');
+            return;
+        }
         const sessionId = createSessionId();
         const socketInfo = getSocketInfo(req);
         const session = {

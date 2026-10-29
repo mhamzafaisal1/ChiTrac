@@ -1015,7 +1015,7 @@ import {
             });
             if (endMarkerOpts?.show && s.type === 'bar') {
               const val = (p as XYPoint).endMarkerValue;
-              if (val != null && val > 0) {
+              if (val != null && Number.isFinite(val) && val >= 0) {
                 const lineX = (yScaleH as d3.ScaleLinear<number, number>)(val);
                 this.appendEndMarkerLine(sel, lineX, y, sub.bandwidth(), { ...endMarkerOpts });
               }
@@ -1083,7 +1083,7 @@ import {
           xLabel: it.key,
           value: it.y
         });
-        if (endMarkerOpts?.show && it.endMarkerValue != null && it.endMarkerValue > 0) {
+        if (endMarkerOpts?.show && it.endMarkerValue != null && Number.isFinite(it.endMarkerValue) && it.endMarkerValue >= 0) {
           const lineX = (yScaleH as d3.ScaleLinear<number, number>)(it.endMarkerValue);
           this.appendEndMarkerLine(barGrp, lineX, y, band.bandwidth(), { ...endMarkerOpts });
         }
@@ -1148,7 +1148,7 @@ import {
           });
           if (endMarkerOpts?.show && s.type === 'bar') {
             const val = (p as XYPoint).endMarkerValue;
-            if (val != null && val > 0) {
+            if (val != null && Number.isFinite(val) && val >= 0) {
               const lineX = (yScaleH as d3.ScaleLinear<number, number>)(val);
               this.appendEndMarkerLine(grp, lineX, y, sub.bandwidth(), { ...endMarkerOpts });
             }
@@ -1230,7 +1230,7 @@ import {
             if (isLastLayer && endMarkerOpts?.show) {
               const rowPoint = series[0]?.data.find(p => String(p.x) === xKey);
               const val = (rowPoint as XYPoint)?.endMarkerValue;
-              if (val != null && val > 0) {
+              if (val != null && Number.isFinite(val) && val >= 0) {
                 const lineX = (yScaleH as d3.ScaleLinear<number, number>)(val);
                 this.appendEndMarkerLine(grp, lineX, y, band.bandwidth(), { ...endMarkerOpts });
               }

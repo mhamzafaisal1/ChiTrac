@@ -61,7 +61,7 @@
           </app-chart-tile>
         } @else {
         <app-chart-tile
-          [class.daily-count-editing]="tile.id === 'daily-counts' && layoutEditing"
+          [class.daily-count-editing]="(tile.id === 'daily-counts' || yesterdayChartIds.includes(tile.id)) && layoutEditing"
           [title]="tile.title"
           [icon]="tile.icon"
           [subtitle]="chartSubtitle(tile)"
@@ -85,6 +85,15 @@
               (change)="setDailyCountOption('tooltip', tooltip.checked)">Tooltip</label>
           </div>
 
+          <div chartTileActions *ngIf="yesterdayChartIds.includes(tile.id) && layoutEditing"
+            class="daily-count-controls" role="group" aria-label="Previous-day chart comparison"
+            (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()"
+            (pointerdown)="$event.stopPropagation()">
+            <label><input #yesterday type="checkbox" role="switch"
+              [checked]="yesterdayVisibility[tile.id] !== false"
+              (change)="setYesterdayVisibility(tile.id, yesterday.checked)">Yesterday</label>
+          </div>
+
           <app-daily-machine-stacked-bar-chart
             *ngIf="tile.id === 'machine-status'"
             [chartWidth]="chartWidth"
@@ -98,6 +107,7 @@
             [chartWidth]="chartWidth"
             [chartHeight]="chartHeight"
             [preloadedData]="preloadedData?.machineOee"
+            [showYesterday]="yesterdayVisibility[tile.id] !== false"
             [useExternalTitle]="useTileTitles"
           ></app-daily-machine-oee-bar-chart>
 
@@ -106,6 +116,7 @@
             [chartWidth]="chartWidth"
             [chartHeight]="chartHeight"
             [preloadedData]="preloadedData?.itemTotals"
+            [showYesterday]="yesterdayVisibility[tile.id] !== false"
             [marginTop]="50"
             [marginRight]="30"
             [marginBottom]="50"
@@ -118,6 +129,7 @@
             [chartWidth]="chartWidth"
             [chartHeight]="chartHeight"
             [preloadedData]="preloadedData?.machineGroupEfficiency"
+            [showYesterday]="yesterdayVisibility[tile.id] !== false"
             [useExternalTitle]="useTileTitles"
           ></app-efficiency-by-machine-group-bar-chart>
 
@@ -126,6 +138,7 @@
             [chartWidth]="chartWidth"
             [chartHeight]="chartHeight"
             [preloadedData]="preloadedData?.topOperators"
+            [showYesterday]="yesterdayVisibility[tile.id] !== false"
             [useExternalTitle]="useTileTitles"
           ></app-ranked-operator-bar-chart>
 

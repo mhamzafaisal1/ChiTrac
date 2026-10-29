@@ -27,7 +27,7 @@ const {
   buildIdleOperatorSummary,
   emptyIdleOperatorSummary,
 } = require("../utils/idleOperatorSummary");
-const { loadProductionStatsCache } = require("../utils/productionStatsCache");
+const { loadProductionStatsCache, buildLiveProductionStatsCache } = require("../utils/productionStatsCache");
 
 const CACHE_POLL_INTERVAL_MS = 6_000;
 const DASHBOARD_CACHE_POLL_JOB_KEY = "dashboardCachePolling";
@@ -288,7 +288,10 @@ async function refreshCountSparklineCache(server, options = {}) {
 }
 
 async function refreshProductionStatsCache(server, options = {}) {
-  const nextCache = await loadProductionStatsCache(server.db, server.config, options.now);
+  const nextCache = options.liveOnly
+    ? buildLiveProductionStatsCache(server.minuteTotalsSync, options.now)
+    : await loadProductionStatsCache(server.db, server.config, options.now, server.minuteTotalsSync);
+  if (!nextCache) return null;
   ensureCache(server);
   server.cache.dashboard.production = nextCache;
 
