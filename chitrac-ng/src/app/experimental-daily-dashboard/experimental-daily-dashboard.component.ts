@@ -69,6 +69,13 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
 
   isDarkTheme = false;
   layoutEditing = false;
+  readonly yesterdayChartIds = ['machine-oee', 'item-totals', 'top-operators', 'machine-group-efficiency'];
+  yesterdayVisibility: Record<string, boolean> = {};
+
+  setYesterdayVisibility(chartId: string, enabled: boolean): void {
+    this.yesterdayVisibility = { ...this.yesterdayVisibility, [chartId]: enabled };
+    this.updateChartDetail();
+  }
   dailyCountDisplayOptions: DailyCountDisplayOptions = { ...DEFAULT_DAILY_COUNT_DISPLAY_OPTIONS };
   chartWidth = 600;
   chartHeight = 450;
@@ -224,6 +231,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
       subtitle: this.chartSubtitle(tile),
       subtitleStrong: this.chartSubtitleStrong(tile),
       updatedAt: this.cacheUpdatedAt,
+      ...(this.yesterdayChartIds.includes(tile.id) ? { showYesterday: this.yesterdayVisibility[tile.id] !== false } : {}),
       ...(tile.id === 'daily-counts' ? { dailyCountDisplayOptions: this.dailyCountDisplayOptions } : {}),
     };
   }

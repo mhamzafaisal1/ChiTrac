@@ -250,6 +250,17 @@ async function startServer() {
         const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
         await ensureAnalyticsIndexes(db, config, logger);
         await server.configurationSync.start();
+        const { DatafeedMinuteSync } = require('./modules/datafeedMinuteSync');
+        let minuteRefreshTimer;
+        const minuteSync = new DatafeedMinuteSync({ db, token: process.env.DATAFEED_SYNC_TOKEN, logger, onChange: () => {
+            if (minuteRefreshTimer) return;
+            minuteRefreshTimer = setTimeout(() => {
+                minuteRefreshTimer = null;
+                require('./modules/mongoWatchers').refreshProductionStatsCache(server, { liveOnly: true }).catch(error => logger.error(error.message));
+            }, 50);
+        } });
+        Object.defineProperty(server, 'minuteTotalsSync', { value: minuteSync, configurable: true });
+        await minuteSync.start();
         const httpServer = app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
         });
@@ -263,7 +274,9 @@ async function startServer() {
                 logger.error(`HTTPS is enabled but certificate files were not found. Expected key: ${keyPath}, cert: ${certPath}`);
             } else {
                 const credentials = certificates.loadHttpsCredentials(server.config);
-                https.createServer(credentials, app).listen(server.config.httpsPort, () => {
+                const httpsServer = https.createServer(credentials, app);
+                server.secureWebsocketServer = startWebsocketServer(server, { httpServer: httpsServer, path: '/ws' });
+                httpsServer.listen(server.config.httpsPort, () => {
                     logger.info(`ChiTracAPI HTTPS Started and listening on port ${server.config.httpsPort}`);
                 });
             }
