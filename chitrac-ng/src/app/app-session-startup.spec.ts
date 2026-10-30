@@ -1,4 +1,4 @@
-import { BehaviorSubject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { AppComponent } from './app.component';
 
 describe('App session preference loading', () => {
@@ -44,12 +44,18 @@ describe('App session preference loading', () => {
     expect(() => app.ngOnInit()).not.toThrow();
     expect(settings.loadUserPreferences).not.toHaveBeenCalled();
   });
-  it('does not connect a live feed while anonymous and sends expired/logout sessions back to Home', () => {
+  it('connects public status before login and returns to it after logout', () => {
     app.ngOnInit();
-    expect(socket.ensureConnected).not.toHaveBeenCalled(); expect(socket.resetSession).toHaveBeenCalledTimes(1);
+    expect(socket.ensureConnected).toHaveBeenCalledWith('status');
+    expect(socket.ensureConnected).not.toHaveBeenCalledWith();
     expect(router.navigate).not.toHaveBeenCalled();
-    account.next({username:'admin'}); expect(socket.ensureConnected).toHaveBeenCalledTimes(1);
-    account.next(null); expect(socket.resetSession).toHaveBeenCalledTimes(2);
+    account.next({username:'admin'}); expect(socket.ensureConnected.calls.mostRecent().args).toEqual([]);
+    account.next(null); expect(socket.ensureConnected.calls.mostRecent().args).toEqual(['status']);
     expect(router.navigate).toHaveBeenCalledWith(['/ng/home'], {replaceUrl:true});
+  });
+  it('connects public status without waiting for session verification to respond', () => {
+    users.getCurrentUser.and.returnValue(new Subject());
+    app.ngOnInit();
+    expect(socket.ensureConnected.calls.first().args).toEqual(['status']);
   });
 });

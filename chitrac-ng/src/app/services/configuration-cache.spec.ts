@@ -143,4 +143,46 @@ describe('shared configuration websocket cache', () => {
     expect(socket.readyState).toBe(3);expect(configuration).toBeNull();expect(dashboard).toEqual({});expect(session).toBeNull();
     subscriptions.forEach(subscription=>subscription.unsubscribe());
   });
+
+  it('keeps public connection status valid while clearing private snapshots on logout', () => {
+    socket.receive(initial());
+    socket.receive({ type: 'dashboard-cache', cache: { today: { machinesSummary: [{ id: 1 }] } } });
+    let status: string | undefined, configuration: any, message: string | undefined;
+    const subscriptions = [websocket.status$.subscribe(value => status = value), websocket.configurationCache$.subscribe(value => configuration = value), websocket.message$.subscribe(value => message = value)];
+    websocket.ensureConnected('status');
+    const publicSocket = TestSocket.instances.at(-1)!;
+    expect(socket.readyState).toBe(3);
+    expect(new URL(publicSocket.url).searchParams.get('channel')).toBe('connection-status');
+    expect(configuration).toBeNull();
+    expect(websocket.getDashboardCacheSnapshot()).toEqual({});
+    expect(message).toBe('No websocket messages received.');
+    publicSocket.open();
+    expect(status).toBe('connected');
+    expect(publicSocket.sent[0].type).toBe('connection-status-request');
+    // Ignore data from an older server or a queued callback during logout.
+    publicSocket.receive(initial()); socket.open(); socket.receive(initial());
+    expect(configuration).toBeNull();
+    websocket.ensureConnected('status');
+    expect(TestSocket.instances.at(-1)).toBe(publicSocket);
+    websocket.ensureConnected();
+    const privateSocket = TestSocket.instances.at(-1)!;
+    expect(privateSocket).not.toBe(publicSocket);
+    expect(new URL(privateSocket.url).searchParams.has('channel')).toBeFalse();
+    privateSocket.open(); privateSocket.receive(initial());
+    expect(configuration).not.toBeNull();
+    subscriptions.forEach(subscription => subscription.unsubscribe());
+  });
+
+  it('retains status-only mode through connection fallback and automatic reconnect', fakeAsync(() => {
+    websocket.ensureConnected('status');
+    const first = TestSocket.instances.at(-1)!;
+    first.onerror?.();
+    const fallback = TestSocket.instances.at(-1)!;
+    expect(new URL(fallback.url).searchParams.get('channel')).toBe('connection-status');
+    fallback.open(); fallback.close(); tick(10000);
+    const reconnected = TestSocket.instances.at(-1)!;
+    expect(new URL(reconnected.url).searchParams.get('channel')).toBe('connection-status');
+    reconnected.open();
+    expect(reconnected.sent[0].type).toBe('connection-status-request');
+  }));
 });

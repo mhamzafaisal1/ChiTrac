@@ -30,7 +30,8 @@ describe('Application navigation shell', () => {
   it('renders the toolbar without starting a live feed for anonymous visitors',()=>{
     const fixture=TestBed.createComponent(AppComponent);fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('nav-main-menu')).not.toBeNull();
-    expect(socket.ensureConnected).not.toHaveBeenCalled();expect(socket.resetSession).toHaveBeenCalled();fixture.destroy();
+    expect(socket.ensureConnected).toHaveBeenCalledWith('status');
+    expect(socket.ensureConnected).not.toHaveBeenCalledWith();fixture.destroy();
   });
   it('keeps the navigation shell mounted across login and logout',()=>{
     const fixture=TestBed.createComponent(AppComponent);fixture.detectChanges();

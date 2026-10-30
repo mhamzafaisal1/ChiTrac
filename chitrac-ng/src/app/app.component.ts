@@ -36,6 +36,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    // Show real server connectivity while session verification/login is pending.
+    this.websocketService.ensureConnected('status');
     // Load app settings on startup
     this.loadSettings();
     
@@ -52,7 +54,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.loadUserPreferences();
         this.websocketService.ensureConnected();
       } else {
-        this.websocketService.resetSession();
+        this.websocketService.ensureConnected('status');
         // User is not logged in, use default theme from settings
         this.settingsService.clearUserPreferences();
         this.loadDefaultTheme();

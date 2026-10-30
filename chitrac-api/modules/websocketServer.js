@@ -246,7 +246,7 @@ function broadcastJson(wss, payload) {
     const message = JSON.stringify(payload);
 
     wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && !client.isDatafeedService) {
+        if (client.readyState === WebSocket.OPEN && !client.isDatafeedService && !client.isStatusOnly) {
             client.send(message);
         }
     });
@@ -370,6 +370,18 @@ function startWebsocketServer(server, options = {}) {
 
     wss.on('connection', (ws, req) => {
         const channel = new URLSearchParams((req.url || '/').split('?')[1] || '').get('channel');
+        if (channel === 'connection-status') {
+            ws.isStatusOnly = true;
+            const sendStatus = () => {
+                if (ws.readyState === WebSocket.OPEN) sendJson(ws, {
+                    type: 'connection-status', timestamp: new Date().toISOString()
+                });
+            };
+            ws.on('message', sendStatus);
+            ws.on('error', error => writeError('status-client-error', error));
+            sendStatus();
+            return;
+        }
         if (channel === 'datafeed-minute') {
             ws.isDatafeedService = true;
             if (server.minuteTotalsSync) server.minuteTotalsSync.accept(ws, req);
