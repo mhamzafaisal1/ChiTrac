@@ -243,6 +243,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         this.user = {
           username: null
         }
+        this.closeMenu();
         this.layoutEditService.setEditing(false);
       }
     });
@@ -281,9 +282,9 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         this.openAuthenticationMenu();
       }
     });
-    const shifts$ = this.dateTimeService.shiftId$.pipe(
-      distinctUntilChanged(),
-      switchMap(id => id ? this.shiftService.getActiveShifts(true).pipe(
+    const shifts$ = combineLatest([this.userService.user, this.dateTimeService.shiftId$]).pipe(
+      distinctUntilChanged(([previousUser, previousId], [user, id]) => previousUser?.username === user?.username && previousId === id),
+      switchMap(([user, id]) => user?.username && id ? this.shiftService.getActiveShifts(true).pipe(
         map(response => response.shifts || []),
         catchError(() => of([])),
         startWith([])

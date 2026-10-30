@@ -1,5 +1,4 @@
 import { Component, OnDestroy, OnInit, Renderer2 } from '@angular/core';
-import { AsyncPipe } from '@angular/common';
 import { NavMainMenuComponent } from './nav-main-menu/nav-main-menu.component';
 import { Router, RouterOutlet } from '@angular/router';
 import { SettingsService } from './services/settings.service';
@@ -11,7 +10,7 @@ import { NavigationFeedbackComponent } from './components/navigation-feedback/na
 
 @Component({
     selector: 'ct-root',
-    imports: [AsyncPipe, NavMainMenuComponent, RouterOutlet, NavigationFeedbackComponent],
+    imports: [NavMainMenuComponent, RouterOutlet, NavigationFeedbackComponent],
     templateUrl: './app.component.html',
     styleUrl: './app.component.scss'
 })

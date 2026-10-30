@@ -15,7 +15,7 @@ class NavStub { @Input() isDarkMode=false; @Output() darkModeToggleEvent=new Eve
 @Component({selector:'app-navigation-feedback',standalone:true,template:''})
 class FeedbackStub { pending=()=>false; }
 
-describe('Signed-in application shell', () => {
+describe('Application navigation shell', () => {
   let users:BehaviorSubject<any>, socket:any;
   beforeEach(()=>{
     users=new BehaviorSubject(null);socket={ensureConnected:jasmine.createSpy(),resetSession:jasmine.createSpy()};
@@ -27,16 +27,17 @@ describe('Signed-in application shell', () => {
       {provide:ErrorQueueService,useValue:{setShowErrorModals(){}}},
     ]}).overrideComponent(AppComponent,{remove:{imports:[NavMainMenuComponent,NavigationFeedbackComponent]},add:{imports:[NavStub,FeedbackStub]}});
   });
-  it('never renders toolbar controls or starts a live feed for anonymous visitors',()=>{
+  it('renders the toolbar without starting a live feed for anonymous visitors',()=>{
     const fixture=TestBed.createComponent(AppComponent);fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('button').length).toBe(0);
+    expect(fixture.nativeElement.querySelector('nav-main-menu')).not.toBeNull();
     expect(socket.ensureConnected).not.toHaveBeenCalled();expect(socket.resetSession).toHaveBeenCalled();fixture.destroy();
   });
-  it('shows the navigation shell only while a validated account is signed in',()=>{
+  it('keeps the navigation shell mounted across login and logout',()=>{
     const fixture=TestBed.createComponent(AppComponent);fixture.detectChanges();
+    const navigation=fixture.nativeElement.querySelector('nav-main-menu');
     users.next({username:'admin'});fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('nav-main-menu button')).not.toBeNull();
     expect(socket.ensureConnected).toHaveBeenCalled();
-    users.next(null);fixture.detectChanges();expect(fixture.nativeElement.querySelector('nav-main-menu')).toBeNull();fixture.destroy();
+    users.next(null);fixture.detectChanges();expect(fixture.nativeElement.querySelector('nav-main-menu')).toBe(navigation);fixture.destroy();
   });
 });
