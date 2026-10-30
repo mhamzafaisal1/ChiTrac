@@ -49,18 +49,27 @@ describe('Home login gate and DMC menu grid', () => {
     expect(dialog.open.calls.mostRecent().args[0]).toBe(UserLoginComponent);
   });
 
-  it('places Main Menu first and retains the existing signed-in shortcuts',async()=>{
+  it('removes Main Menu from Home and lets the existing shortcuts fill its slot',async()=>{
     users.next(admin);const h=await RouterTestingHarness.create('/ng/home');
-    expect(labels(h)).toEqual(['Main Menu','Daily Dashboard','Machine Dashboard','Operator Dashboard','Comparison Dashboard','Machine Report','Operator Report','Settings','Log Out']);
-    await press(h,'Main Menu');expect(labels(h)).toEqual(['Home','Dashboards','Production Screens','Reports','Settings','Log Out']);
-    await press(h,'Dashboards');expect(labels(h)).toEqual(['Back','Daily','Machine','Operator','Item','Summary','Comparison','Action Center','Downtime Pareto','Shift Handoff','Visual Ops','Experimental']);
-    await press(h,'Experimental');expect(labels(h)).toEqual(['Back','Daily Experimental']);await press(h,'Back');expect(labels(h)).toContain('Daily');
-    await press(h,'Back');await press(h,'Reports');expect(labels(h)).toContain('Shift Comparison Report');
+    expect(labels(h)).toEqual(['Daily Dashboard','Machine Dashboard','Operator Dashboard','Comparison Dashboard','Machine Report','Operator Report','Settings','Log Out']);
+    expect(h.routeNativeElement!.querySelector('h1')).toBeNull();
+  });
+
+  it('puts Main Menu first in submenus and returns up exactly one level without a separate heading',async()=>{
+    users.next(admin);const h=await RouterTestingHarness.create('/ng/home?menu=main');
+    expect(labels(h)).toEqual(['Home','Dashboards','Production Screens','Reports','Settings','Log Out']);
+    await press(h,'Dashboards');expect(labels(h)).toEqual(['Main Menu','Daily','Machine','Operator','Item','Summary','Comparison','Action Center','Downtime Pareto','Shift Handoff','Visual Ops','Experimental']);
+    expect(h.routeNativeElement!.querySelector('h1')).toBeNull();
+    await press(h,'Experimental');expect(labels(h)).toEqual(['Main Menu','Daily Experimental']);
+    await press(h,'Main Menu');expect(TestBed.inject(Router).url).toBe('/ng/home?menu=dashboards');
+    expect(labels(h)[0]).toBe('Main Menu');
+    await press(h,'Main Menu');expect(TestBed.inject(Router).url).toBe('/ng/home?menu=main');
+    await press(h,'Reports');expect(labels(h)[0]).toBe('Main Menu');expect(labels(h)).toContain('Shift Comparison Report');
   });
 
   it('uses the same production destinations, with distinct scope links for identically named saved layouts',async()=>{
     users.next(admin);const h=await RouterTestingHarness.create('/ng/home?menu=productionScreens');
-    expect(labels(h)).toEqual(['Back','Production Screen','Line A','Line A']);
+    expect(labels(h)).toEqual(['Main Menu','Production Screen','Line A','Line A']);
     const links=Array.from(h.routeNativeElement!.querySelectorAll('a')) as HTMLAnchorElement[];
     const named=links.filter(link=>link.search.includes('layoutId='));
     expect(named.length).toBe(2);expect(named[0].search).toContain('layoutScope=system');expect(named[1].search).toContain('layoutScope=user');
@@ -69,7 +78,8 @@ describe('Home login gate and DMC menu grid', () => {
 
   it('hides permission-restricted entries and immediately hides all navigation after logout',async()=>{
     users.next({username:'viewer',permissions:{level:8}});const h=await RouterTestingHarness.create('/ng/home');
-    expect(labels(h)).not.toContain('Settings');await press(h,'Main Menu');expect(labels(h)).not.toContain('Settings');
+    expect(labels(h)).not.toContain('Settings');
+    await h.navigateByUrl('/ng/home?menu=main');expect(labels(h)).not.toContain('Settings');
     users.next(null);h.detectChanges();expect(labels(h)).toEqual(['Login']);
   });
 

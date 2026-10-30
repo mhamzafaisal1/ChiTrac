@@ -1,10 +1,11 @@
 @let user = userService.user | async;
-<main class="home" aria-labelledby="settings-menu-heading">
-  <header class="settings-menu-header">
-    <a class="back-link" routerLink="/ng/home"><mat-icon aria-hidden="true">arrow_back</mat-icon>Back to Home</a>
-    <h1 id="settings-menu-heading">Settings</h1>
-  </header>
+<main class="home" aria-label="Settings">
   <nav class="home-grid" aria-label="Settings navigation">
+    @if (user?.username) {
+      <a class="home-tile" routerLink="/ng/home">
+        <span class="tile-label">Main Menu</span><mat-icon aria-hidden="true">apps</mat-icon>
+      </a>
+    }
     @for (destination of visibleDestinations(user); track destination.path) {
       <a class="home-tile" [routerLink]="destination.path">
         <span class="tile-label">{{ destination.label }}</span>

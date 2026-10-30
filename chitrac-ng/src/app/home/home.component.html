@@ -7,12 +7,8 @@
       </button>
     </nav>
   } @else {
-    @if (section !== 'home') { <h1 class="home-menu-title">{{ menuTitles[section] }}</h1> }
     <nav class="home-grid" [attr.aria-label]="section === 'home' ? 'Home shortcuts' : menuTitles[section]">
       @if (section === 'home') {
-        <a class="home-tile" routerLink="/ng/home" [queryParams]="{menu: 'main'}">
-          <span class="tile-label">Main Menu</span><mat-icon aria-hidden="true">apps</mat-icon>
-        </a>
         <a *ngFor="let destination of destinations" class="home-tile" [routerLink]="destination.path">
           <span class="tile-label">{{ destination.label }}</span><mat-icon aria-hidden="true">{{ destination.icon }}</mat-icon>
         </a>
@@ -25,7 +21,7 @@
       } @else {
         @if (section !== 'main') {
           <a class="home-tile" routerLink="/ng/home" [queryParams]="{menu: parentMenu()}">
-            <span class="tile-label">Back</span><mat-icon aria-hidden="true">arrow_back</mat-icon>
+            <span class="tile-label">Main Menu</span><mat-icon aria-hidden="true">apps</mat-icon>
           </a>
         }
         @for (entry of entries(user); track entry.label) {
