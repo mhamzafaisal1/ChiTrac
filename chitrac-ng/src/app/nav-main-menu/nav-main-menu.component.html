@@ -1,5 +1,5 @@
-<mat-sidenav-container *ngIf="user?.username" class="sidenav-container" style="overflow: hidden !important;">
-  <mat-sidenav #drawer class="sidenav" fixedInViewport [attr.role]="(isHandset$ | async) ? 'dialog' : 'navigation'"
+<mat-sidenav-container class="sidenav-container" style="overflow: hidden !important;">
+  <mat-sidenav *ngIf="user?.username" #drawer class="sidenav" fixedInViewport [attr.role]="(isHandset$ | async) ? 'dialog' : 'navigation'"
     mode="over"
     [opened]="shownMenu != ''" (closedStart)="closeMenu()" (click)="$event.stopPropagation()">
     <mat-toolbar style="background-color: var(--theme-color-primary); color:white">
@@ -49,7 +49,7 @@
   <mat-sidenav-content>
     <mat-toolbar>
       <!-- Left: menu toggle and title -->
-      <div class="menu-button" [ngClass]="{'menu-shown' : shownMenu != ''}" style="height: 100%; width:64px;">
+      <div *ngIf="user?.username" class="menu-button" [ngClass]="{'menu-shown' : shownMenu != ''}" style="height: 100%; width:64px;">
         <button style="margin: 12px;" (click)="toggleMenu(); $event.stopPropagation()" mat-icon-button [attr.aria-label]="shownMenu == '' ? 'Open main menu' : 'Close main menu'">
           <mat-icon *ngIf="shownMenu == ''">apps</mat-icon>
           <mat-icon *ngIf="shownMenu != ''">chevron_left</mat-icon>
@@ -88,14 +88,14 @@
           <span class="material-symbols-outlined">dashboard_2_edit</span>
         </button>
 
-        <button #dateMenuTrigger="matMenuTrigger" mat-icon-button class="calendar-btn" aria-label="Open date range picker" [matMenuTriggerFor]="dateMenu"
+        <button *ngIf="user?.username" #dateMenuTrigger="matMenuTrigger" mat-icon-button class="calendar-btn" aria-label="Open date range picker" [matMenuTriggerFor]="dateMenu"
           (menuOpened)="onDateMenuOpened()">
           <mat-icon class="calendar-icon">calendar_today</mat-icon>
         </button>
 
         <mat-menu #dateMenu="matMenu" panelClass="date-menu-panel" [overlapTrigger]="false" xPosition="after"
           yPosition="below" [hasBackdrop]="true" (closed)="closeMenu()">
-          <div (click)="$event.stopPropagation()">
+          <div *ngIf="user?.username" (click)="$event.stopPropagation()">
             <app-date-time-modal (closeModal)="onDateTimeModalClose()" />
           </div>
         </mat-menu>

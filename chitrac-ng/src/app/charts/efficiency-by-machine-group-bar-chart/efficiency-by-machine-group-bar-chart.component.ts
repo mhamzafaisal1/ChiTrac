@@ -1,3 +1,4 @@
+import { PreviousDayComparison, yesterdayMarker, yesterdayTooltip, YESTERDAY_MARKER_STYLE } from '../yesterday-comparison';
 // charts/efficiency-by-machine-group-bar-chart/efficiency-by-machine-group-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -9,7 +10,7 @@ import { PercentBreakpointService } from '../../services/percent-breakpoint.serv
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
-type GroupRow = { id: string; name: string; efficiency: number; efficiencyPreviousDay?: number | null };
+type GroupRow = { id: string; name: string; efficiency: number; efficiencyPreviousDay?: number | null; previousDay?: PreviousDayComparison | null };
 
 @Component({
   selector: 'app-efficiency-by-machine-group-bar-chart',
@@ -31,6 +32,8 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
   @Input() useExternalTitle = false;
+  @Input() showYesterday = true;
+  private lastResponse: any = null;
 
   chartConfig: CartesianChartConfig | null = null;
   private themeObserver?: MutationObserver;
@@ -67,6 +70,10 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
       this.consumeResponse('once')(this.preloadedData);
     } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
       this.setupPolling();
+    }
+    if (!changes['preloadedData'] && this.lastResponse &&
+        ['showYesterday', 'chartWidth', 'chartHeight'].some(key => changes[key])) {
+      this.consumeResponse('once')(this.lastResponse);
     }
   }
 
@@ -133,6 +140,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     this.stopPolling();
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.enterDummy();
   }
 
@@ -172,6 +180,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
   private consumeResponse =
     (_: 'once' | 'poll') =>
     (res: any) => {
+      this.lastResponse = res;
       let rows: GroupRow[] = [];
       const arr = Array.isArray(res) ? res : (res?.data ?? res?.groups ?? []);
       for (let i = 0; i < arr.length; i++) {
@@ -192,6 +201,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
           name: String(name),
           efficiency: value,
           efficiencyPreviousDay: efficiencyPreviousDay ?? undefined,
+          previousDay: item.previousDay ?? (efficiencyPreviousDay == null ? null : { date: '', value: efficiencyPreviousDay }),
         });
       }
 
@@ -215,13 +225,11 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
         x: g.id,
         y: g.efficiency,
         color: this.getEfficiencyColor(g.efficiency),
-        ...(g.efficiencyPreviousDay != null && g.efficiencyPreviousDay > 0
-          ? { endMarkerValue: g.efficiencyPreviousDay }
-          : {}),
+        ...yesterdayMarker(g.previousDay, this.showYesterday),
       })),
       options: {
         barPadding: 0.2,
-        endMarker: { show: true, dash: '6,6', stroke: '#1e88e5', strokeWidth: 2 },
+        endMarker: YESTERDAY_MARKER_STYLE,
       },
     }];
 
@@ -249,7 +257,8 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
         delayMs: 750,
         formatter: ({ xLabel, value }) => [
           `Machine Group: ${this.getMachineGroupName(data, xLabel)}`,
-          `Efficiency%: ${this.formatPercent(value)}`
+          `Efficiency%: ${this.formatPercent(value)}`,
+          yesterdayTooltip(data.find(row => row.id === String(xLabel))?.previousDay)
         ]
       },
       series,
@@ -265,6 +274,7 @@ export class EfficiencyByMachineGroupBarChartComponent implements OnInit, OnDest
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.cdr.markForCheck();
   }
 

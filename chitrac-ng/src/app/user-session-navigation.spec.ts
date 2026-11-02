@@ -153,4 +153,54 @@ describe('Server-validated session navigation', () => {
     expect(result.username).toBe('renamed'); expect(user.getToken()).toBe('updated-token');
     http.expectNone('/api/passport/user');
   });
+
+  it('warms verification before expiry so navigation after 30 seconds stays local', fakeAsync(() => {
+    spyOnProperty(document, 'visibilityState', 'get').and.returnValue('visible');
+    const background = user.refreshSessionWhileActive().subscribe();
+    verify(); tick(20_000);
+    const refresh = http.expectOne('/api/passport/user');
+    // A background refresh must not hold up navigation within the verified window.
+    user.getCurrentUser().subscribe(); http.expectNone('/api/passport/user');
+    refresh.flush({ user: identity }); tick(11_000);
+    let allowed: any;
+    TestBed.inject(AuthGuard).canActivate({ data: { requiredPermissionLevel: 7 } } as any,
+      { url: '/ng/settings' } as RouterStateSnapshot).subscribe(value => allowed = value);
+    expect(allowed).toBeTrue(); http.expectNone('/api/passport/user');
+    background.unsubscribe(); tick(60_000); http.expectNone('/api/passport/user');
+  }));
+
+  it('pauses refresh in hidden tabs and shares stale foreground validation with navigation', fakeAsync(() => {
+    const visibility = spyOnProperty(document, 'visibilityState', 'get').and.returnValue('hidden');
+    const background = user.refreshSessionWhileActive().subscribe();
+    verify(); tick(40_000); http.expectNone('/api/passport/user');
+    visibility.and.returnValue('visible'); document.dispatchEvent(new Event('visibilitychange'));
+    const refresh = http.expectOne('/api/passport/user');
+    let result: any = 'pending'; user.getCurrentUser().subscribe(value => result = value);
+    http.expectNone('/api/passport/user'); expect(result).toBe('pending');
+    refresh.flush({ user: identity }); expect(result.username).toBe('admin');
+    background.unsubscribe();
+  }));
+
+  it('does not extend verification after background failure and retries on later activity', fakeAsync(() => {
+    spyOnProperty(document, 'visibilityState', 'get').and.returnValue('visible');
+    const background = user.refreshSessionWhileActive().subscribe();
+    verify(); tick(20_000);
+    http.expectOne('/api/passport/user').flush({}, { status: 503, statusText: 'Unavailable' });
+    expect(user.getToken()).toBe('verified-token'); tick(10_000);
+    let result: any = 'pending'; user.getCurrentUser().subscribe(value => result = value);
+    expect(result).toBe('pending');
+    http.expectOne('/api/passport/user').flush({ user: identity });
+    tick(10_000); http.expectOne('/api/passport/user').flush({ user: identity });
+    background.unsubscribe();
+  }));
+
+  it('stops background work on logout and cancels an outstanding refresh', fakeAsync(() => {
+    spyOnProperty(document, 'visibilityState', 'get').and.returnValue('visible');
+    const background = user.refreshSessionWhileActive().subscribe();
+    tick(20_000); http.expectNone('/api/passport/user');
+    verify(); tick(20_000); const refresh = http.expectOne('/api/passport/user');
+    user.clearStoredSession(); expect(refresh.cancelled).toBeTrue();
+    tick(60_000); window.dispatchEvent(new Event('focus')); http.expectNone('/api/passport/user');
+    background.unsubscribe();
+  }));
 });

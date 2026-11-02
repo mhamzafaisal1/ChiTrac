@@ -11,7 +11,7 @@ describe('NavMainMenuComponent Home actions', () => {
   let loginMenu: any;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },{
+    TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {}, ensureFresh() {} } },{
       provide: BreakpointObserver, useValue: { observe: () => of({ matches: false }) }
     }] });
     userService = jasmine.createSpyObj('UserService', ['hasPermissionLevel', 'logout']);

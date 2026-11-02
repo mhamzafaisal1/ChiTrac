@@ -45,7 +45,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.route.queryParamMap.pipe(takeUntil(this.destroyed)).subscribe(params => {
       const section = params.get('menu');
       this.section = isNavigationMenu(section) ? section : 'home';
-      if (this.section === 'productionScreens') this.productionLayouts.refresh();
+      if (this.section === 'productionScreens') this.productionLayouts.ensureFresh();
       if (params.get('resetPassword') === '1') this.openPasswordReset();
       else this.resetDialog?.close();
       if (params.get('login') === '1') this.openLogin();

@@ -1,3 +1,4 @@
+import { PreviousDayComparison, yesterdayMarker, yesterdayTooltip, YESTERDAY_MARKER_STYLE } from '../yesterday-comparison';
 // charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -29,6 +30,8 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
   @Input() useExternalTitle = false;
+  @Input() showYesterday = true;
+  private lastResponse: any = null;
 
   chartConfig: CartesianChartConfig | null = null;
   private themeObserver?: MutationObserver;
@@ -67,6 +70,10 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
       this.consumeResponse('once')({ machineOee: this.preloadedData });
     } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
       this.setupPolling();
+    }
+    if (!changes['preloadedData'] && this.lastResponse &&
+        ['showYesterday', 'chartWidth', 'chartHeight'].some(key => changes[key])) {
+      this.consumeResponse('once')(this.lastResponse);
     }
   }
 
@@ -141,6 +148,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     this.stopPolling();
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.enterDummy();
   }
 
@@ -183,6 +191,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
+      this.lastResponse = res;
       // Handle the API response structure with machineOee array
       let rows: Array<any> = [];
       
@@ -194,6 +203,8 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
       
       // Normalize and sort by OEE desc to match "Ranked OEE% by Machine"
       const normalized = rows.map((m: any) => ({
+        id: String(m.serial ?? m.id ?? `machine-${rows.indexOf(m)}`),
+        previousDay: m.previousDay as PreviousDayComparison | null,
         name: m.name ?? m.machine ?? m.serial ?? 'Unknown',
         oee: Number(m.oee ?? m.efficiency ?? 0)
       })).sort((a, b) => b.oee - a.oee);
@@ -206,16 +217,16 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
       this.cdr.markForCheck();        // <— critical
     };
 
-  private formatChartData(data: Array<{name: string, oee: number}>): CartesianChartConfig {
+  private formatChartData(data: Array<{id: string; name: string; oee: number; previousDay?: PreviousDayComparison | null}>): CartesianChartConfig {
     // Convert machine OEE data to cartesian chart format with color-coded horizontal bars
-    const series: XYSeries[] = data.map((machine, index) => ({
-      id: `machine-${index}`,
-      title: machine.name,
-      type: 'bar',
-      data: [{ x: machine.name, y: machine.oee }],  // names on Y-axis, OEE on X-axis (horizontal bars)
-      color: this.getOeeColor(machine.oee),  // Color based on OEE percentage
-      options: { barPadding: 0.2 }
-    }));
+    const series: XYSeries[] = [{
+      id: 'machines', title: 'OEE', type: 'bar',
+      data: data.map(machine => ({
+        x: machine.id, y: machine.oee, color: this.getOeeColor(machine.oee),
+        ...yesterdayMarker(machine.previousDay, this.showYesterday),
+      })),
+      options: { barPadding: 0.2, endMarker: YESTERDAY_MARKER_STYLE },
+    }];
 
     return {
       title: this.useExternalTitle ? '' : 'Ranked OEE% by Machine',
@@ -223,6 +234,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
       width: this.chartWidth,
       height: this.chartHeight,
       orientation: 'horizontal',  // horizontal bars: machines on Y, OEE % on X
+      yTickFormat: (key: any) => data.find(row => row.id === String(key))?.name ?? String(key),
       xType: 'linear',  // OEE values are numeric (X-axis = bar length)
       fitToContentMargins: this.useExternalTitle,
       margin: {
@@ -239,8 +251,9 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
         show: true,
         delayMs: 750,
         formatter: ({ xLabel, value }) => [
-          `Machine: ${xLabel}`,
-          `OEE%: ${this.formatPercent(value)}`
+          `Machine: ${data.find(row => row.id === String(xLabel))?.name ?? xLabel}`,
+          `OEE%: ${this.formatPercent(value)}`,
+          yesterdayTooltip(data.find(row => row.id === String(xLabel))?.previousDay)
         ]
       },
       series: series
@@ -256,6 +269,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 

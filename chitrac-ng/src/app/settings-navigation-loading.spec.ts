@@ -156,6 +156,7 @@ describe('Dashboard to settings with delayed configuration sync', () => {
       fixture.detectChanges();
       TestBed.inject(NgZone).run(() => router.navigateByUrl('/ng/settings/machines')); tick(); fixture.detectChanges();
       const session = http.expectOne('/api/passport/user');
+      tick(200); fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('.navigation-loading')).not.toBeNull();
       expect(fixture.nativeElement.querySelector('machine-grid')).toBeNull();
       tick(5000); session.flush({ user: { username: 'admin', permissions: { level: 0 } } }); tick(1); fixture.detectChanges();

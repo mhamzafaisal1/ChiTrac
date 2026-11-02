@@ -452,7 +452,7 @@ async function buildMachineOEEFromSessions(db, dayStart, dayEnd) {
   return rows;
 }
 
-async function buildTopOperatorEfficiencyFromSessions(db, dayStart, dayEnd) {
+async function buildTopOperatorEfficiencyFromSessions(db, dayStart, dayEnd, options = {}) {
   const osColl = db.collection(config.operatorSessionCollectionName);
   const operators = await osColl.aggregate([
     { $match: {
@@ -499,7 +499,8 @@ async function buildTopOperatorEfficiencyFromSessions(db, dayStart, dayEnd) {
       }
     };
   }));
-  return rows.sort((a, b) => (b.efficiency - a.efficiency) || (a.id - b.id)).slice(0, 10);
+  const ranked = rows.sort((a, b) => (b.efficiency - a.efficiency) || (a.id - b.id));
+  return options.limit === null ? ranked : ranked.slice(0, 10);
 }
 
 async function computeMachineResults(db, start, end, serial) {
@@ -1549,7 +1550,7 @@ async function buildDailyCountTotals(db, _start, end) {
 
 async function buildMachineOEEFromDailyTotals(db, dayStart, dayEnd, logger) {
   try {
-    const dateStr = dayStart.toISOString().split('T')[0];
+    const dateStr = DateTime.fromJSDate(new Date(dayStart), { zone: SYSTEM_TIMEZONE }).toISODate();
     const activeShifts = await loadActiveShifts(db, {
       collectionName: config.shiftCollectionName,
     });
@@ -1807,9 +1808,9 @@ async function buildCountTotalsFromDailyTotals(db, dayEnd, logger) {
   }
 }
 
-async function buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd, logger) {
+async function buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd, logger, options = {}) {
   try {
-    const dateStr = dayStart.toISOString().split('T')[0];
+    const dateStr = DateTime.fromJSDate(new Date(dayStart), { zone: SYSTEM_TIMEZONE }).toISODate();
 
     const latestRecord = await db.collection('totals-daily')
       .findOne(
@@ -1899,7 +1900,7 @@ async function buildTopOperatorEfficiencyFromCache(db, dayStart, dayEnd, logger)
       .slice(0, 10);
 
     if (logger) logger.info(`Built top operator efficiency from cache for ${topOperators.length} operators`);
-    return topOperators;
+    return options.limit === null ? operatorData.sort((a, b) => b.efficiency - a.efficiency) : topOperators;
 
   } catch (error) {
     if (logger) logger.error('Error building top operator efficiency from cache:', error);
@@ -1997,7 +1998,7 @@ async function buildItemHourlyStackFromCache(db, dayStart, dayEnd, logger) {
   }
 }
 
-async function buildItemTotalsFromCache(db, dayStart, dayEnd, logger) {
+async function buildItemTotalsFromCache(db, dayStart, dayEnd, logger, options = {}) {
   try {
     const startDate = new Date(dayStart);
     const endDate = new Date(dayEnd);
@@ -2007,13 +2008,11 @@ async function buildItemTotalsFromCache(db, dayStart, dayEnd, logger) {
     }
 
     const dateStrings = [];
-    const curr = new Date(startDate);
-    curr.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-    while (curr <= end) {
-      dateStrings.push(curr.toISOString().split('T')[0]);
-      curr.setDate(curr.getDate() + 1);
+    let day = DateTime.fromJSDate(startDate, { zone: SYSTEM_TIMEZONE }).startOf('day');
+    const lastDay = DateTime.fromJSDate(endDate, { zone: SYSTEM_TIMEZONE }).startOf('day');
+    while (day <= lastDay) {
+      dateStrings.push(day.toISODate());
+      day = day.plus({ days: 1 });
     }
 
     if (dateStrings.length === 0) {
@@ -2033,7 +2032,7 @@ async function buildItemTotalsFromCache(db, dayStart, dayEnd, logger) {
           totalCount: { $sum: '$totalCounts' }
         }
       },
-      { $match: { totalCount: { $gt: 0 } } },
+      { $match: { totalCount: options.includeZero ? { $gte: 0 } : { $gt: 0 } } },
       { $sort: { _id: 1 } }
     ];
 

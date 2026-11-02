@@ -168,6 +168,7 @@ interface DashboardCacheMessage {
   providedIn: 'root'
 })
 export class WebsocketService {
+  private connectionMode: 'full' | 'status' = 'full';
   private socket: WebSocket | null = null;
   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -190,7 +191,11 @@ export class WebsocketService {
 
   constructor(private zone: NgZone) {}
 
-  ensureConnected(): void {
+  ensureConnected(mode: 'full' | 'status' = 'full'): void {
+    if (this.connectionMode !== mode) {
+      this.resetSession();
+      this.connectionMode = mode;
+    }
     this.connect();
   }
 
@@ -233,13 +238,14 @@ export class WebsocketService {
     }, 5000);
 
     socket.onopen = () => {
+      if (this.socket !== socket) return;
       this.zone.run(() => {
         this.clearConnectTimeout();
         this.clearReconnectTimeout();
         this.reconnectAttempt = 0;
         this.statusSubject.next('connected');
         this.send({
-          type: 'server-info-request',
+          type: this.connectionMode === 'status' ? 'connection-status-request' : 'server-info-request',
           timestamp: new Date().toISOString()
         });
       });
@@ -248,6 +254,8 @@ export class WebsocketService {
     socket.onmessage = (event) => {
       if (this.socket !== socket) return;
       this.zone.run(() => {
+        // A public connection reports transport health, never cached application data.
+        if (this.connectionMode === 'status') return;
         this.handleMessage(event.data);
         this.messageSubject.next(this.formatMessage(event.data));
       });
@@ -296,12 +304,13 @@ export class WebsocketService {
     this.statusSubject.next('disconnected');
   }
 
-  /** A signed-out browser must not keep a live feed or reuse the previous session's snapshot. */
+  /** Clear private snapshots when switching between the public and signed-in feeds. */
   resetSession(): void {
     this.disconnect();
     this.configurationCacheSubject.next(null);
     this.dashboardCacheSubject.next({});
     this.sessionIdSubject.next(null);
+    this.messageSubject.next('No websocket messages received.');
     this.errorSubject.next(null);
   }
 
@@ -349,7 +358,11 @@ export class WebsocketService {
     const hostname = window.location.hostname || 'localhost';
     const sameOrigin = `${protocol}://${window.location.host}/ws`;
     const legacyPort = `${protocol}://${hostname}:50001`;
-    return Array.from(new Set([sameOrigin, legacyPort]));
+    return Array.from(new Set([sameOrigin, legacyPort])).map(value => {
+      const url = new URL(value);
+      if (this.connectionMode === 'status') url.searchParams.set('channel', 'connection-status');
+      return url.toString();
+    });
   }
 
   private tryNextCandidate(socket: WebSocket, urls: string[], index: number, message: string): void {

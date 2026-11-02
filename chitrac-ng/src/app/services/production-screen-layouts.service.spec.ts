@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { BehaviorSubject, Subject } from 'rxjs';
@@ -81,5 +81,29 @@ describe('Production screen navigation library', () => {
     expect(request.request.method).toBe('GET');
     expect(request.request.headers.get('X-Skip-Error-Modal')).toBe('true');
     request.flush({ layout: layout('Mine', 'user'), stationLayout: { stationOrder: [], stationVisibility: {} } });
+  });
+
+  it('reuses warmed entries on repeated menu opens, including empty libraries, and refreshes after one minute', fakeAsync(() => {
+    identity.next({ username: 'alice' });
+    const warm = service.state$.subscribe(state => latest = state);
+    service.ensureFresh(); http.expectOne(url).flush({ layouts: [], defaultLayout: null });
+    service.ensureFresh(); service.ensureFresh(); http.expectNone(url);
+    const menu = service.state$.subscribe(); menu.unsubscribe();
+    tick(59_999); service.ensureFresh(); http.expectNone(url);
+    tick(1); service.ensureFresh(); const pending = http.expectOne(url);
+    service.ensureFresh(); http.expectNone(url);
+    pending.flush({ layouts: [layout('New', 'system')], defaultLayout: null });
+    expect(latest.systemLayouts[0].name).toBe('New'); warm.unsubscribe();
+  }));
+
+  it('retries failed reads on open and discards account caches when the shell is destroyed', () => {
+    identity.next({ username: 'alice' });
+    const warm = service.state$.subscribe(state => latest = state);
+    http.expectOne(url).flush({}, { status: 503, statusText: 'Unavailable' });
+    service.ensureFresh(); http.expectOne(url).flush({ layouts: [layout('Mine', 'user')], defaultLayout: null });
+    warm.unsubscribe(); identity.next({ username: 'bob' });
+    const next = service.state$.subscribe(state => latest = state);
+    expect(latest.userLayouts).toEqual([]);
+    http.expectOne(url).flush({ layouts: [], defaultLayout: null }); next.unsubscribe();
   });
 });

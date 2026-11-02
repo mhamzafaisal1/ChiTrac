@@ -44,10 +44,12 @@ import { ActionCenterComponent } from './action-center/action-center.component';
 import { DowntimeParetoComponent } from './downtime-pareto/downtime-pareto.component';
 import { ShiftHandoffComponent } from './shift-handoff/shift-handoff.component';
 import { VisualOpsDashboardComponent } from './visual-ops-dashboard/visual-ops-dashboard.component';
+import { SettingsMenuComponent } from './settings-menu/settings-menu.component';
+import { HomeComponent } from './home/home.component';
 
 const appRoutes: Routes = [
 	// Settings pages
-	{ path: 'ng/settings', pathMatch: 'full', loadComponent: () => import('./settings-menu/settings-menu.component').then(m => m.SettingsMenuComponent), canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
+	{ path: 'ng/settings', pathMatch: 'full', component: SettingsMenuComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.operators } },
 	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
@@ -114,7 +116,7 @@ const appRoutes: Routes = [
 	{ path: 'ng/eight-station-demo', component: EightStationDemoComponent },
 	
 	// Redirects
-	{ path: 'ng/home', loadComponent: () => import('./home/home.component').then(m => m.HomeComponent) },
+	{ path: 'ng/home', component: HomeComponent },
 	{ path: '', redirectTo: 'ng/home', pathMatch: 'full' },
 	{ path: '**', loadComponent: () => import('./not-found/not-found.component').then(m => m.NotFoundComponent) }
 ];

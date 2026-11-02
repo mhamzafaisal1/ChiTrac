@@ -3,6 +3,7 @@ import { Component, EventEmitter, Output } from '@angular/core';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
 import { MatDialog } from '@angular/material/dialog';
 import { BehaviorSubject, Subject, of } from 'rxjs';
 import { NavMainMenuComponent } from './nav-main-menu.component';
@@ -119,11 +120,18 @@ describe('DMC navigation indicators', () => {
     fixture.destroy();
   }));
 
-  it('hides the toolbar while signed out and removes it immediately after logout', fakeAsync(() => {
+  it('keeps the toolbar and Login available while signed out and after logout', fakeAsync(() => {
     users.next(null);
     const fixture = TestBed.createComponent(NavMainMenuComponent);
     fixture.detectChanges(); tick(); fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('button').length).toBe(0);
+    expect(fixture.nativeElement.querySelector('mat-toolbar')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.user-menu-label').textContent).toBe('Login');
+    expect(fixture.nativeElement.querySelector('mat-sidenav')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.calendar-btn')).toBeNull();
+    expect(fixture.debugElement.query(By.directive(DateTimeStub))).toBeNull();
+    fixture.nativeElement.querySelector('.user-menu-button').click(); fixture.detectChanges(); tick();
+    expect(document.querySelector('.test-login-form')).not.toBeNull();
+    fixture.componentInstance.loginMenu.closeMenu(); tick(); fixture.detectChanges();
     users.next({username:'Admin',permissions:{level:0}}); fixture.detectChanges();
     const button: HTMLButtonElement = fixture.nativeElement.querySelector('.user-menu-button');
     expect(button.querySelector('.user-menu-label')!.textContent).toBe('Admin');
@@ -132,7 +140,34 @@ describe('DMC navigation indicators', () => {
     expect(logoutButton.textContent).toContain('Log Out as Admin');
     expect(logout).not.toHaveBeenCalled(); logoutButton.click(); tick(); fixture.detectChanges();
     expect(logout).toHaveBeenCalledTimes(1);
-    expect(fixture.nativeElement.querySelector('.user-menu-button')).toBeNull(); fixture.destroy();
+    expect(fixture.nativeElement.querySelector('.user-menu-label').textContent).toBe('Login');
+    expect(fixture.nativeElement.querySelector('mat-sidenav')).toBeNull();
+    expect(fixture.componentInstance.shownMenu).toBe(''); fixture.destroy();
+  }));
+
+  it('renders menu actions without native button borders or centered labels', fakeAsync(() => {
+    const fixture = TestBed.createComponent(NavMainMenuComponent);
+    fixture.detectChanges(); fixture.componentInstance.openMenu('main'); tick(); fixture.detectChanges();
+    const actions = Array.from(fixture.nativeElement.querySelectorAll('mat-sidenav button[mat-list-item]')) as HTMLButtonElement[];
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+      expect(getComputedStyle(action).borderTopWidth).toBe('0px');
+      expect(getComputedStyle(action).textAlign).toBe('left');
+    }
+    fixture.destroy();
+  }));
+
+  it('does not load a previously selected shift schedule for an anonymous visitor', fakeAsync(() => {
+    users.next(null);
+    const shifts = TestBed.inject(ShiftService) as any;
+    shifts.getActiveShifts = jasmine.createSpy().and.returnValue(of({ shifts: [] }));
+    (TestBed.inject(DateTimeService) as any).shiftId$ = of('saved-shift');
+    const fixture = TestBed.createComponent(NavMainMenuComponent);
+    fixture.detectChanges(); tick();
+    expect(shifts.getActiveShifts).not.toHaveBeenCalled();
+    users.next({ username: 'Admin' }); tick();
+    expect(shifts.getActiveShifts).toHaveBeenCalledTimes(1);
+    fixture.destroy();
   }));
 
   it('shows the tooltip after 500ms and follows the pointer even after opening', fakeAsync(() => {

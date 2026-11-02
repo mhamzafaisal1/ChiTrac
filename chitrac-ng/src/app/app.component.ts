@@ -1,5 +1,4 @@
 import { Component, OnDestroy, OnInit, Renderer2 } from '@angular/core';
-import { AsyncPipe } from '@angular/common';
 import { NavMainMenuComponent } from './nav-main-menu/nav-main-menu.component';
 import { Router, RouterOutlet } from '@angular/router';
 import { SettingsService } from './services/settings.service';
@@ -11,7 +10,7 @@ import { NavigationFeedbackComponent } from './components/navigation-feedback/na
 
 @Component({
     selector: 'ct-root',
-    imports: [AsyncPipe, NavMainMenuComponent, RouterOutlet, NavigationFeedbackComponent],
+    imports: [NavMainMenuComponent, RouterOutlet, NavigationFeedbackComponent],
     templateUrl: './app.component.html',
     styleUrl: './app.component.scss'
 })
@@ -37,6 +36,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.userService.refreshSessionWhileActive().pipe(takeUntil(this.destroy$)).subscribe();
+    // Show real server connectivity while session verification/login is pending.
+    this.websocketService.ensureConnected('status');
     // Load app settings on startup
     this.loadSettings();
     
@@ -53,7 +55,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.loadUserPreferences();
         this.websocketService.ensureConnected();
       } else {
-        this.websocketService.resetSession();
+        this.websocketService.ensureConnected('status');
         // User is not logged in, use default theme from settings
         this.settingsService.clearUserPreferences();
         this.loadDefaultTheme();

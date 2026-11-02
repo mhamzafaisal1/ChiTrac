@@ -67,6 +67,15 @@
   vertical-align: middle;
 }
 
+// List actions use native buttons for keyboard support. Reset browser button
+// chrome so they retain the same borderless, left-aligned appearance as links.
+.sidenav button[mat-list-item] {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+
 .nav-section-title {
   font-size: 14px;
   font-weight: 600;

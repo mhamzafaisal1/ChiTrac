@@ -16,6 +16,7 @@ export interface DailyChartDetailState {
   subtitle: string;
   subtitleStrong: boolean;
   updatedAt: string | null;
+  showYesterday?: boolean;
   dailyCountDisplayOptions?: Readonly<DailyCountDisplayOptions>;
 }
 
@@ -59,6 +60,7 @@ export class DailyChartDetailComponent implements AfterViewInit, OnDestroy {
       chartHeight: this.chartHeight,
       preloadedData: state.data,
       useExternalTitle: true,
+      ...(state.showYesterday !== undefined ? { showYesterday: state.showYesterday } : {}),
       ...(this.chartId === 'daily-counts' && state.dailyCountDisplayOptions
         ? { displayOptions: state.dailyCountDisplayOptions } : {}),
     };

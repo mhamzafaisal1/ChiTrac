@@ -7,6 +7,12 @@
     "src/app/settings-navigation-loading.spec.ts",
     "src/app/components/navigation-feedback/navigation-feedback.component.spec.ts",
     "src/app/app-session-startup.spec.ts",
+    "src/app/app.component.spec.ts",
+    "src/app/home/home.component.spec.ts",
+    "src/app/settings-menu/settings-menu.component.spec.ts",
+    "src/app/nav-main-menu/nav-main-menu.component.spec.ts",
+    "src/app/nav-main-menu/timeframe-indicator.spec.ts",
+    "src/app/services/production-screen-layouts.service.spec.ts",
     "src/**/*.d.ts"
   ]
 }

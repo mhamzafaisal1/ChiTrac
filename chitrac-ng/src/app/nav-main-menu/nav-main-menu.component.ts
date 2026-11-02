@@ -218,6 +218,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     );
 
   private userSub?: Subscription;
+  private productionLayoutsSub?: Subscription;
   private navigationActionsSub?: Subscription;
   private settingsAfterLogin = false;
   private settingsSub?: Subscription;
@@ -243,6 +244,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         this.user = {
           username: null
         }
+        this.closeMenu();
         this.layoutEditService.setEditing(false);
       }
     });
@@ -273,6 +275,8 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.subscribeToUser();
+    // The shell outlives routed pages: warm the shared menu once and retain it.
+    this.productionLayoutsSub = this.productionLayouts.state$.subscribe();
     this.navigationActionsSub = this.navigationActions.requests$.subscribe(action => {
       if (action === 'settings') {
         this.openSettingsMenu();
@@ -281,9 +285,9 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         this.openAuthenticationMenu();
       }
     });
-    const shifts$ = this.dateTimeService.shiftId$.pipe(
-      distinctUntilChanged(),
-      switchMap(id => id ? this.shiftService.getActiveShifts(true).pipe(
+    const shifts$ = combineLatest([this.userService.user, this.dateTimeService.shiftId$]).pipe(
+      distinctUntilChanged(([previousUser, previousId], [user, id]) => previousUser?.username === user?.username && previousId === id),
+      switchMap(([user, id]) => user?.username && id ? this.shiftService.getActiveShifts(true).pipe(
         map(response => response.shifts || []),
         catchError(() => of([])),
         startWith([])
@@ -332,6 +336,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.productionLayoutsSub?.unsubscribe();
     this.hideConnectionTooltip();
     this.timeframeSub?.unsubscribe();
     this.userSub?.unsubscribe();
@@ -414,7 +419,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   openMenu(menu: string) {
-    if (menu === 'productionScreens') this.productionLayouts.refresh();
+    if (menu === 'productionScreens') this.productionLayouts.ensureFresh();
     this.menuHistory.push(this.shownMenu);
     this.shownMenu = menu;
     this.menuIndex++;

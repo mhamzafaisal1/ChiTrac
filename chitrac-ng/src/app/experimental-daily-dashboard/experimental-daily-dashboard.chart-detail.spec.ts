@@ -90,6 +90,24 @@ describe('Experimental Daily Dashboard chart detail', () => {
     expect(detail.chartInputs(state.value)['displayOptions']).toEqual({ averageLine: false, barColors: true, tooltip: false });
   });
 
+  it('keeps each yesterday choice independent and passes it to the enlarged chart on cache updates', () => {
+    for (const id of dashboard.yesterdayChartIds) {
+      const tile = dashboard.chartTiles.find(tile => tile.id === id)!;
+      dashboard.setYesterdayVisibility(id, false);
+      expect(dashboard.yesterdayChartIds.filter(other => other !== id).every(other => dashboard.yesterdayVisibility[other] !== false)).toBeTrue();
+      dashboard.openChartDetail(tile);
+      const state = open.calls.mostRecent().args[1].data.componentInputs.state$;
+      const detail = new DailyChartDetailComponent({} as any, {} as any);
+      detail.chartId = id;
+      expect(detail.chartInputs(state.value)['showYesterday']).toBeFalse();
+      dashboard.preloadedData = { [DAILY_CHART_COMPONENTS[id].dataKey]: [] };
+      (dashboard as any).updateChartDetail();
+      expect(detail.chartInputs(state.value)['showYesterday']).toBeFalse();
+      closed.next();
+      dashboard.setYesterdayVisibility(id, true);
+    }
+  });
+
   it('completes modal state on close and allows reopening', () => {
     dashboard.openChartDetail(dashboard.chartTiles[0]);
     const completed = jasmine.createSpy('completed');
@@ -145,6 +163,19 @@ describe('Daily count header controls', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.daily-count-controls')).toBeNull();
     expect(dashboard.dailyCountDisplayOptions.averageLine).toBeFalse();
+    dashboard.chartTiles = dashboard.yesterdayChartIds.map(id => ({ id, title: id, icon: 'bar_chart' }));
+    dashboard.layoutEditing = true;
+    fixture.detectChanges();
+    const yesterdayInputs = fixture.nativeElement.querySelectorAll('.chart-tile-header input');
+    expect(yesterdayInputs.length).toBe(4);
+    expect(Array.from(yesterdayInputs as NodeListOf<HTMLInputElement>).every(input => input.checked)).toBeTrue();
+    yesterdayInputs[0].click();
+    fixture.detectChanges();
+    expect(dashboard.yesterdayVisibility['machine-oee']).toBeFalse();
+    expect(dashboard.yesterdayChartIds.slice(1).every(id => dashboard.yesterdayVisibility[id] !== false)).toBeTrue();
+    dashboard.layoutEditing = false;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.chart-tile-header input').length).toBe(0);
     fixture.destroy();
   });
 });

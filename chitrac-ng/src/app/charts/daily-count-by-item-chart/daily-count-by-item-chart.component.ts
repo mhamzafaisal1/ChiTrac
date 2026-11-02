@@ -1,3 +1,4 @@
+import { PreviousDayComparison, yesterdayMarker, yesterdayTooltip, YESTERDAY_MARKER_STYLE } from '../yesterday-comparison';
 // charts/daily-count-by-item-chart/daily-count-by-item-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -29,6 +30,8 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   @Input() marginLeft!: number;
   @Input() preloadedData?: any | null;
   @Input() useExternalTitle = false;
+  @Input() showYesterday = true;
+  private lastResponse: any = null;
 
   chartConfig: CartesianChartConfig | null = null;
   private themeObserver?: MutationObserver;
@@ -79,6 +82,10 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       this.consumeResponse('once')({ itemTotals: this.preloadedData });
     } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
       this.setupPolling();
+    }
+    if (!changes['preloadedData'] && this.lastResponse &&
+        ['showYesterday', 'chartWidth', 'chartHeight'].some(key => changes[key])) {
+      this.consumeResponse('once')(this.lastResponse);
     }
   }
 
@@ -145,6 +152,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     this.stopPolling();
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.enterDummy();
   }
 
@@ -183,7 +191,8 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   private consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
-      let items: Array<{ itemName: string; totalCount: number; machineGroups?: string[] }> = [];
+      this.lastResponse = res;
+      let items: Array<{ itemName: string; totalCount: number; machineGroups?: string[]; previousDay?: PreviousDayComparison | null }> = [];
 
       if (res && res.itemTotals && res.itemTotals.items && Array.isArray(res.itemTotals.items)) {
         items = res.itemTotals.items;
@@ -199,17 +208,17 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
       this.cdr.markForCheck();
     };
 
-  private formatChartData(data: Array<{ itemName: string; totalCount: number; machineGroups?: string[] }>): CartesianChartConfig {
-    const maxTotal = Math.max(0, ...data.map(item => Number(item.totalCount) || 0));
+  private formatChartData(data: Array<{ itemName: string; totalCount: number; machineGroups?: string[]; previousDay?: PreviousDayComparison | null }>): CartesianChartConfig {
+    const maxTotal = Math.max(0, ...data.map(item => Math.max(Number(item.totalCount) || 0, this.showYesterday ? item.previousDay?.value ?? 0 : 0)));
     const scaleMax = d3.scaleLinear().domain([0, maxTotal]).nice().domain()[1] ?? 0;
     const shouldAbbreviateXAxis = scaleMax > 10000;
     const series: XYSeries[] = data.map((item, index) => ({
       id: `item-${index}`,
       title: item.itemName,
       type: 'bar',
-      data: [{ x: item.itemName, y: item.totalCount }],
+      data: [{ x: item.itemName, y: item.totalCount, ...yesterdayMarker(item.previousDay, this.showYesterday) }],
       color: this.ITEM_COLORS[index % this.ITEM_COLORS.length],
-      options: { barPadding: 0.2 }
+      options: { barPadding: 0.2, endMarker: YESTERDAY_MARKER_STYLE }
     }));
 
     return {
@@ -239,12 +248,13 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     };
   }
 
-  private formatTooltip(data: Array<{ itemName: string; totalCount: number; machineGroups?: string[] }>, xLabel: string, value: number): string[] {
+  private formatTooltip(data: Array<{ itemName: string; totalCount: number; machineGroups?: string[]; previousDay?: PreviousDayComparison | null }>, xLabel: string, value: number): string[] {
     const row = data.find(item => item.itemName === xLabel);
     const machineGroups = this.getMachineGroups(row);
     const lines = [
       `Item Type: ${xLabel}`,
-      `Total Count: ${this.formatCount(value)}`
+      `Total Count: ${this.formatCount(value)}`,
+      yesterdayTooltip(row?.previousDay, false)
     ];
     if (machineGroups.length) {
       lines.push(`Machine Groups: ${machineGroups.join(', ')}`);
@@ -278,6 +288,7 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.cdr.markForCheck();
   }
 

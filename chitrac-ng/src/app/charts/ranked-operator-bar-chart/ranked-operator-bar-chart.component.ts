@@ -1,3 +1,4 @@
+import { PreviousDayComparison, yesterdayMarker, yesterdayTooltip, YESTERDAY_MARKER_STYLE } from '../yesterday-comparison';
 // charts/ranked-operator-bar-chart/ranked-operator-bar-chart.component.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -9,7 +10,7 @@ import { PercentBreakpointService } from '../../services/percent-breakpoint.serv
 import { Subject, Observable } from 'rxjs';
 import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
-type OperatorRow = { id: number | string; label: string; efficiency: number };
+type OperatorRow = { id: number | string; label: string; efficiency: number; previousDay?: PreviousDayComparison | null };
 
 @Component({
   selector: 'app-ranked-operator-bar-chart',
@@ -31,6 +32,8 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   @Input() marginLeft!: number;
   @Input() preloadedData?: any[] | null;
   @Input() useExternalTitle = false;
+  @Input() showYesterday = true;
+  private lastResponse: any = null;
 
   chartConfig: CartesianChartConfig | null = null;
   private themeObserver?: MutationObserver;
@@ -70,6 +73,10 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
       this.consumeResponse('once')({ topOperators: this.preloadedData });
     } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
       this.setupPolling();
+    }
+    if (!changes['preloadedData'] && this.lastResponse &&
+        ['showYesterday', 'chartWidth', 'chartHeight'].some(key => changes[key])) {
+      this.consumeResponse('once')(this.lastResponse);
     }
   }
 
@@ -142,6 +149,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.stopPolling();
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.enterDummy();
   }
 
@@ -195,16 +203,19 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
   private consumeResponse =
     (_: 'once' | 'poll') =>
     (res: any) => {
+      this.lastResponse = res;
       let rows: OperatorRow[] = [];
       if (res && res.topOperators && Array.isArray(res.topOperators)) {
         rows = res.topOperators.map((r: any, i: number) => ({
           id: r.id ?? `row-${i}`,
+          previousDay: r.previousDay,
           label: this.formatOperatorName(r.name ?? r.operator ?? r.id),
           efficiency: Number(r.efficiency ?? r.oee ?? 0)
         }));
       } else if (Array.isArray(res)) {
         rows = res.map((r: any, i: number) => ({
           id: r.id ?? `row-${i}`,
+          previousDay: r.previousDay,
           label: this.formatOperatorName(r.name ?? r.operator ?? r.id),
           efficiency: Number(r.efficiency ?? r.oee ?? 0)
         }));
@@ -230,9 +241,10 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
       data: data.map(op => ({
         x: String(op.id),
         y: op.efficiency,
+        ...yesterdayMarker(op.previousDay, this.showYesterday),
         color: this.getEfficiencyColor(op.efficiency),
       })),
-      options: { barPadding: 0.2 },
+      options: { barPadding: 0.2, endMarker: YESTERDAY_MARKER_STYLE },
     }];
 
     return {
@@ -259,7 +271,8 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
         delayMs: 750,
         formatter: ({ xLabel, value }) => [
           `Operator: ${this.getOperatorLabel(data, xLabel)}`,
-          `Efficiency%: ${this.formatPercent(value)}`
+          `Efficiency%: ${this.formatPercent(value)}`,
+          yesterdayTooltip(data.find(row => String(row.id) === String(xLabel))?.previousDay)
         ]
       },
       series,
@@ -275,6 +288,7 @@ export class RankedOperatorBarChartComponent implements OnInit, OnDestroy, OnCha
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
+    this.lastResponse = null;
     this.cdr.markForCheck();
   }
 

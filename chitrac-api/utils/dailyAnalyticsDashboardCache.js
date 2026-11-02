@@ -14,6 +14,8 @@ const {
   MACHINE_GROUP_DEPARTMENTS,
 } = require("./dashboardFunctions");
 
+const { buildPreviousDayComparisons, attachPreviousDayComparisons } = require('./dailyDashboardComparisons');
+
 const TOTALS_SHIFT_COLLECTION = "totals-shift";
 
 function toDateStr(date) {
@@ -704,6 +706,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     groupRecords,
     previousGroupRecords,
     departmentLookup,
+    previousDayComparisons,
   ] = await Promise.all([
     buildMachineStatusFromDailyTotals(db, start, end, logger),
     buildMachineOEEFromDailyTotals(db, start, end, logger),
@@ -716,6 +719,7 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     db.collection(config.totalsDailyCollectionName)
       .find({ type: "machine", "timestamps.create": calendarRange(yesterdayStr) }).toArray(),
     buildMachineDepartmentLookup(db, config),
+    buildPreviousDayComparisons(db, logger, dateStr),
   ]);
 
   let topOperators = topOperatorsInitial;
@@ -742,6 +746,8 @@ async function buildTodayDailyAnalyticsCache(db, logger, config, options = {}) {
     dailyCounts,
     machineTimeline,
   };
+
+  attachPreviousDayComparisons(data, previousDayComparisons);
 
   return envelope(data, {
     key: dateStr,
@@ -772,7 +778,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
     ],
   };
 
-  const [machineRecords, itemRecords, operatorRecords, dailyPreviousRecords, departmentLookup, machineTimeline] = await Promise.all([
+  const [machineRecords, itemRecords, operatorRecords, dailyPreviousRecords, departmentLookup, machineTimeline, previousDayComparisons] = await Promise.all([
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "machine" }).toArray(),
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "item" }).toArray(),
     db.collection(TOTALS_SHIFT_COLLECTION).find({ ...baseFilter, type: "operator-machine" }).toArray(),
@@ -783,6 +789,7 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
       }).toArray(),
     buildMachineDepartmentLookup(db, config),
     buildMachineTimelineFromSessions(db, config, start, end),
+    buildPreviousDayComparisons(db, logger, dateStr),
   ]);
 
   const normalizedMachines = machineRecords.map(normalizeTotalsDocument);
@@ -799,6 +806,8 @@ async function buildShiftDailyAnalyticsCache(db, logger, config, context) {
     dailyCounts: await buildDailyCountsForShift(db, config, end, dateStr, normalizedMachines, logger),
     machineTimeline,
   };
+
+  attachPreviousDayComparisons(data, previousDayComparisons);
 
   return envelope(data, {
     key: `${dateStr}|${String(shiftOid)}`,

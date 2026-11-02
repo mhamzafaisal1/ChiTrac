@@ -3,8 +3,8 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 /** Other module imports */
-import { catchError, finalize, map, shareReplay } from 'rxjs/operators';
-import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
+import { catchError, distinctUntilChanged, exhaustMap, filter, finalize, map, shareReplay, switchMap } from 'rxjs/operators';
+import { BehaviorSubject, EMPTY, Observable, fromEvent, merge, of, throwError, timer } from 'rxjs';
 
 export const PermissionLevels = {
   utilities: 0,
@@ -106,6 +106,28 @@ export class UserService {
     this.currentUserRequestToken = token;
     this.currentUserRequest$ = request$;
     return request$;
+  }
+
+  /** Keep the existing 30-second verification window warm without making clicks wait.
+   * Hidden tabs do no periodic work. A cold/stale guard still waits for the server.
+   * The application owns the subscription so teardown cancels timers and requests.
+   */
+  public refreshSessionWhileActive(): Observable<User | null> {
+    return this.user.pipe(
+      map(user => user?.username ? `${user.username}:${this.getToken() || ''}` : null),
+      distinctUntilChanged(),
+      switchMap(account => account ? merge(
+        timer(20_000, 20_000).pipe(map(() => true)),
+        fromEvent(document, 'visibilitychange').pipe(map(() => false)),
+        fromEvent(window, 'focus').pipe(map(() => false))
+      ).pipe(
+        filter(() => document.visibilityState === 'visible'),
+        exhaustMap(force => this.getCurrentUser(force).pipe(
+          // Transient failures never extend verification or discard credentials.
+          catchError(() => EMPTY)
+        ))
+      ) : EMPTY)
+    );
   }
 
   public logout() {
