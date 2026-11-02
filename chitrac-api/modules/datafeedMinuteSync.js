@@ -101,7 +101,8 @@ class DatafeedMinuteSync {
         }
         return ack;
       }
-      this.live.set(key, { ...frame, owner, receivedAt: this.clock(), connected: true });
+      const liveFrame = { ...frame, owner, receivedAt: this.clock(), connected: true };
+      this.live.set(key, liveFrame);
       if (frame.complete) {
         const collection = this.db.collection('totals-minute');
         await collection.bulkWrite(frame.documents.map(document => ({ replaceOne: { filter: { id: document.id }, replacement: document, upsert: true } })), { ordered: true });
@@ -111,7 +112,10 @@ class DatafeedMinuteSync {
           revision: frame.revision, 'timestamps.update': new Date(this.clock()) } }, { upsert: true });
         this.checkpoints.set(key, { revision: frame.revision });
         // Keep the committed overlay briefly to bridge reads that began before the Mongo write.
-        this.live.set(key, { ...this.live.get(key), committed: true });
+        // A concurrent dashboard overlay may prune an expired recovery frame
+        // during the writes above. Mark the original object rather than
+        // recreating a pruned entry without its timestamps and documents.
+        liveFrame.committed = true;
       }
       this.onChange();
       return ack;

@@ -79,6 +79,29 @@ test('overlay replaces a whole bucket, bridges an in-flight old DB read and neve
   assert.equal(new Set(service.overlay(persisted, start + 90000).documents.map(entityKey)).size, 1);
 });
 
+test('expired recovery pruned during persistence cannot leave a malformed live overlay', async () => {
+  const db = database();
+  const now = start + 48 * 3600000 + 90000;
+  const service = new DatafeedMinuteSync({ db, token, clock: () => now });
+  const checkpoints = db.collection('totals-minute-sync');
+  const updateOne = checkpoints.updateOne.bind(checkpoints);
+  checkpoints.updateOne = async (...args) => {
+    // Dashboard refreshes can run while the completed-minute write awaits Mongo.
+    assert.equal(service.live.size, 1);
+    service.overlay([], now);
+    assert.equal(service.live.size, 0);
+    return updateOne(...args);
+  };
+
+  const ack = await service.receive(snapshot({ complete: true }), 'owner');
+  assert.equal(ack.type, 'minute-totals-ack');
+  assert.equal(db.collection('totals-minute').rows.length, 1);
+  assert.equal(service.live.size, 0, 'Do not resurrect the pruned recovery frame');
+  assert.doesNotThrow(() => service.overlay([], now));
+  service.productionInputs = { documents: [], tickers: [], shifts: [], currentSessions: [] };
+  assert.doesNotThrow(() => buildLiveProductionStatsCache(service, new Date(now)));
+});
+
 test('validates boundaries, entity identities, metric values and incomplete writes', () => {
   for (const mutate of [
     frame => { frame.complete = true; },
