@@ -6,17 +6,18 @@ import { NavMainMenuComponent } from './nav-main-menu.component';
 import { DateTimeService } from '../services/date-time.service';
 
 describe('navbar timeframe indicator', () => {
-  function setup(failShiftLookup = false) {
-    TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },
+  function setup(failShiftLookup = false, library = of({systemLayouts: [], userLayouts: [], loading: false, error: ''}) as any) {
+    TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: library, refresh() {}, ensureFresh() {} } },
       { provide: BreakpointObserver, useValue: { observe: () => of({ matches: false }) } }
     ] });
     const dates = new DateTimeService();
+    const users = new BehaviorSubject<any>({ username: null });
     const cache = new BehaviorSubject({});
     const shifts = jasmine.createSpy('getActiveShifts').and.returnValue(failShiftLookup
       ? throwError(() => new Error('Unavailable'))
       : of({ shifts: [{ _id: 'afternoon', id: 1, name: 'Afternoon Shift' }] }));
     const component = TestBed.runInInjectionContext(() => new NavMainMenuComponent(
-      { user: of({ username: null }) } as any,
+      { user: users } as any,
       {} as any,
       { settings$: of(null) } as any,
       { afterOpened: new Subject() } as any,
@@ -27,14 +28,21 @@ describe('navbar timeframe indicator', () => {
       { requests$: new Subject() } as any
     ));
     component.ngOnInit();
-    return { component, dates, shifts, cache };
+    return { component, dates, shifts, cache, users };
   }
 
+  it('warms the shared production menu before it opens and releases it with the shell', fakeAsync(() => {
+    const library = new Subject(); const { component } = setup(false, library);
+    tick(); expect(library.observed).toBeTrue();
+    component.ngOnDestroy(); expect(library.observed).toBeFalse();
+  }));
+
   it('tracks applied defaults and confirmed selections', fakeAsync(() => {
-    const { component, dates, shifts } = setup();
+    const { component, dates, shifts, users } = setup();
     tick();
     expect(component.selectedTimeframeLabel).toBe('Today');
     expect(shifts).not.toHaveBeenCalled();
+    users.next({ username: 'admin' });
     dates.setLiveMode(false);
     dates.setShiftId('afternoon');
     dates.triggerConfirm();

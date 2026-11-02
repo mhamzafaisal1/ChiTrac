@@ -31,7 +31,7 @@ describe('Home login gate and DMC menu grid', () => {
       {path:'ng/return-target',component:ReturnTarget},
     ]),
       {provide:UserService,useValue:{user:users,hasPermissionLevel:(level:number,user:User|null)=>typeof user?.permissions?.level==='number' && user.permissions.level<=level}},
-      {provide:ProductionScreenLayoutsService,useValue:{state$:library,refresh:jasmine.createSpy('refresh')}},
+      {provide:ProductionScreenLayoutsService,useValue:{state$:library,refresh:jasmine.createSpy('refresh'),ensureFresh:jasmine.createSpy('ensureFresh')}},
       {provide:MatDialog,useValue:dialog},
     ]});
   });

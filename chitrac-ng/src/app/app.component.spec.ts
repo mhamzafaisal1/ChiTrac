@@ -21,7 +21,7 @@ describe('Application navigation shell', () => {
     users=new BehaviorSubject(null);socket={ensureConnected:jasmine.createSpy(),resetSession:jasmine.createSpy()};
     const defaults={defaultTheme:'dark',showErrorModals:true};
     TestBed.configureTestingModule({imports:[AppComponent],providers:[provideRouter([]),
-      {provide:UserService,useValue:{user:users,getCurrentUser:()=>of(null)}},
+      {provide:UserService,useValue:{user:users,getCurrentUser:()=>of(null),refreshSessionWhileActive:()=>of(null)}},
       {provide:SettingsService,useValue:{loadSettings:()=>of(defaults),getSettings:()=>defaults,clearUserPreferences(){},loadUserPreferences:()=>of({}),getUserTheme:()=>of({theme:'dark'})}},
       {provide:WebsocketService,useValue:socket},
       {provide:ErrorQueueService,useValue:{setShowErrorModals(){}}},

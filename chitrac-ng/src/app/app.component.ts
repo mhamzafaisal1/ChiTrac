@@ -36,6 +36,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.userService.refreshSessionWhileActive().pipe(takeUntil(this.destroy$)).subscribe();
     // Show real server connectivity while session verification/login is pending.
     this.websocketService.ensureConnected('status');
     // Load app settings on startup

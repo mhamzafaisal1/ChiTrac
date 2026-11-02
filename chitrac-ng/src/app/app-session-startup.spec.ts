@@ -16,7 +16,8 @@ describe('App session preference loading', () => {
       loadUserPreferences: jasmine.createSpy('preferences').and.returnValue(of({})),
       getUserTheme: jasmine.createSpy('theme').and.returnValue(of({ theme: 'light' })),
     };
-    users = { user: account, getCurrentUser: jasmine.createSpy('session').and.returnValue(of(null)) };
+    users = { user: account, getCurrentUser: jasmine.createSpy('session').and.returnValue(of(null)),
+      refreshSessionWhileActive: jasmine.createSpy('background').and.returnValue(of(null)) };
     socket = {ensureConnected: jasmine.createSpy('connect'), resetSession: jasmine.createSpy('reset')};
     router = {navigate: jasmine.createSpy('navigate').and.resolveTo(true)};
     app = new AppComponent({ addClass() {}, removeClass() {} } as any, settings,
@@ -57,5 +58,12 @@ describe('App session preference loading', () => {
     users.getCurrentUser.and.returnValue(new Subject());
     app.ngOnInit();
     expect(socket.ensureConnected.calls.first().args).toEqual(['status']);
+  });
+  it('starts background verification once and tears it down with the app', () => {
+    const background = new Subject(); users.refreshSessionWhileActive.and.returnValue(background);
+    app.ngOnInit();
+    expect(users.refreshSessionWhileActive).toHaveBeenCalledTimes(1);
+    expect(background.observed).toBeTrue();
+    app.ngOnDestroy(); expect(background.observed).toBeFalse();
   });
 });

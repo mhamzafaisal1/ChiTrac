@@ -25,7 +25,7 @@ describe('Settings menu', () => {
     TestBed.configureTestingModule({
       imports: [SettingsMenuComponent],
       providers: [provideNoopAnimations(),
-        { provide: ProductionScreenLayoutsService, useValue: { state$: of({ systemLayouts: [], userLayouts: [], loading: false, error: '' }), refresh() {} } },
+        { provide: ProductionScreenLayoutsService, useValue: { state$: of({ systemLayouts: [], userLayouts: [], loading: false, error: '' }), refresh() {}, ensureFresh() {} } },
         { provide: MatDialog, useValue: { open: jasmine.createSpy('open') } },
         provideRouter([
         routes.find(route => route.path === 'ng/settings')!,
@@ -95,6 +95,9 @@ describe('Settings menu', () => {
 
   it('supports direct entry with the existing Settings permission guard', async () => {
     const route = routes.find(route => route.path === 'ng/settings')!;
+    expect(route.component).toBe(SettingsMenuComponent);
+    expect(route.loadComponent).toBeUndefined();
+    expect(routes.find(destination => destination.path === 'ng/home')?.component).toBe(HomeComponent);
     expect(route.canActivate).toContain(AuthGuard);
     expect(route.data?.['requiredPermissionLevel']).toBe(PermissionLevels.settings);
     const harness = await RouterTestingHarness.create('/ng/settings');

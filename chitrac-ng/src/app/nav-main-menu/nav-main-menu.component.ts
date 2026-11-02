@@ -218,6 +218,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     );
 
   private userSub?: Subscription;
+  private productionLayoutsSub?: Subscription;
   private navigationActionsSub?: Subscription;
   private settingsAfterLogin = false;
   private settingsSub?: Subscription;
@@ -274,6 +275,8 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.subscribeToUser();
+    // The shell outlives routed pages: warm the shared menu once and retain it.
+    this.productionLayoutsSub = this.productionLayouts.state$.subscribe();
     this.navigationActionsSub = this.navigationActions.requests$.subscribe(action => {
       if (action === 'settings') {
         this.openSettingsMenu();
@@ -333,6 +336,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.productionLayoutsSub?.unsubscribe();
     this.hideConnectionTooltip();
     this.timeframeSub?.unsubscribe();
     this.userSub?.unsubscribe();
@@ -415,7 +419,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   openMenu(menu: string) {
-    if (menu === 'productionScreens') this.productionLayouts.refresh();
+    if (menu === 'productionScreens') this.productionLayouts.ensureFresh();
     this.menuHistory.push(this.shownMenu);
     this.shownMenu = menu;
     this.menuIndex++;
