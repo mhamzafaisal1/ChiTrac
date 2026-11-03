@@ -1,9 +1,11 @@
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { A11yModule } from '@angular/cdk/a11y';
 import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { BehaviorSubject, Observable, of, Subject, tap } from 'rxjs';
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { DAILY_CHART_COMPONENTS, DailyChartDetailComponent, DailyChartDetailState } from '../components/daily-chart-detail/daily-chart-detail.component';
@@ -47,9 +49,11 @@ interface ExperimentalDashboardLayoutSnapshot {
   standalone: true,
   imports: [
     CommonModule,
+    A11yModule,
     DragDropModule,
     MatButtonModule,
     MatIconModule,
+    MatSlideToggleModule,
     ChartTileComponent,
     TimelineZoomControlsComponent,
     DailyMachineStackedBarChartComponent,

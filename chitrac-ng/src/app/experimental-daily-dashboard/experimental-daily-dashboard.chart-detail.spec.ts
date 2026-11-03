@@ -2,6 +2,8 @@ import { CommonModule } from '@angular/common';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ChartTileComponent } from '../components/chart-tile/chart-tile.component';
 import { WebsocketService } from '../services/websocket.service';
 import { DateTimeService } from '../services/date-time.service';
@@ -119,11 +121,14 @@ describe('Experimental Daily Dashboard chart detail', () => {
   });
 });
 
-describe('Daily count header controls', () => {
-  it('shows switches only in Edit Layout and isolates their pointer and keyboard events', () => {
+describe('Dashboard chart header controls', () => {
+  let fixture: any;
+  let dashboard: ExperimentalDailyDashboardComponent;
+
+  beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [ExperimentalDailyDashboardComponent],
-      providers: [
+      providers: [provideNoopAnimations(),
         { provide: WebsocketService, useValue: { ensureConnected: () => {}, status$: new Subject(), dashboardCache$: new Subject() } },
         { provide: DateTimeService, useValue: { getConfirmed: () => true } },
         { provide: DashboardTimeframeService, useValue: {} },
@@ -133,12 +138,17 @@ describe('Daily count header controls', () => {
         { provide: MatDialog, useValue: {} },
       ],
     }).overrideComponent(ExperimentalDailyDashboardComponent, {
-      set: { imports: [CommonModule, ChartTileComponent], schemas: [NO_ERRORS_SCHEMA] },
+      set: { imports: [CommonModule, ChartTileComponent, MatSlideToggleModule], schemas: [NO_ERRORS_SCHEMA] },
     });
-    const fixture = TestBed.createComponent(ExperimentalDailyDashboardComponent);
-    const dashboard = fixture.componentInstance;
+    fixture = TestBed.createComponent(ExperimentalDailyDashboardComponent);
+    dashboard = fixture.componentInstance;
     spyOn(dashboard as any, 'setupChartResizeObserver');
     spyOn(dashboard as any, 'scheduleChartDimensionUpdate');
+    fixture.detectChanges(); // Complete the initial (locked) layout subscription first.
+  });
+  afterEach(() => fixture.destroy());
+
+  it('keeps daily-count options in Edit Layout with isolated pointer and keyboard events', () => {
     dashboard.chartTiles = dashboard.chartTiles.filter(tile => tile.id === 'daily-counts');
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.daily-count-controls')).toBeNull();
@@ -163,19 +173,76 @@ describe('Daily count header controls', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.daily-count-controls')).toBeNull();
     expect(dashboard.dailyCountDisplayOptions.averageLine).toBeFalse();
+  });
+
+  it('uses independent Yesterday slide toggles only in Edit Layout and isolates their events', () => {
     dashboard.chartTiles = dashboard.yesterdayChartIds.map(id => ({ id, title: id, icon: 'bar_chart' }));
     dashboard.layoutEditing = true;
     fixture.detectChanges();
-    const yesterdayInputs = fixture.nativeElement.querySelectorAll('.chart-tile-header input');
+    const yesterdayInputs = fixture.nativeElement.querySelectorAll('.chart-tile-header button[role="switch"]');
     expect(yesterdayInputs.length).toBe(4);
-    expect(Array.from(yesterdayInputs as NodeListOf<HTMLInputElement>).every(input => input.checked)).toBeTrue();
+    expect(Array.from(yesterdayInputs as NodeListOf<HTMLButtonElement>).every(input => input.getAttribute('aria-checked') === 'true')).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.yesterday-controls input[type="checkbox"]')).toBeNull();
+    const propagated = jasmine.createSpy('propagated');
+    const shell = yesterdayInputs[0].closest('.chart-shell');
+    for (const event of ['click', 'keydown', 'pointerdown']) shell.addEventListener(event, propagated);
+    yesterdayInputs[0].focus();
+    expect(document.activeElement).toBe(yesterdayInputs[0]);
+    yesterdayInputs[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    yesterdayInputs[0].dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
     yesterdayInputs[0].click();
     fixture.detectChanges();
     expect(dashboard.yesterdayVisibility['machine-oee']).toBeFalse();
+    expect(propagated).not.toHaveBeenCalled();
+    expect(yesterdayInputs[0].getAttribute('aria-checked')).toBe('false');
+    const offTrack = yesterdayInputs[0].getBoundingClientRect();
+    const offHandle = yesterdayInputs[0].querySelector('.mdc-switch__handle').getBoundingClientRect();
+    expect(offHandle.left).toBeGreaterThanOrEqual(offTrack.left);
+    expect(offHandle.right).toBeLessThanOrEqual(offTrack.right);
+    expect(yesterdayInputs[0].getAttribute('aria-label')).toContain('machine-oee');
     expect(dashboard.yesterdayChartIds.slice(1).every(id => dashboard.yesterdayVisibility[id] !== false)).toBeTrue();
     dashboard.layoutEditing = false;
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('.chart-tile-header input').length).toBe(0);
-    fixture.destroy();
+    expect(fixture.nativeElement.querySelector('.yesterday-controls')).toBeNull();
+    dashboard.layoutEditing = true; fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('button[role="switch"]').getAttribute('aria-checked')).toBe('false');
   });
+
+  for (const width of [320, 360, 640]) {
+    for (const dark of [false, true]) {
+      it(`keeps Yesterday switches in the title row, clear of drag handles at ${width}px (${dark ? 'dark' : 'light'})`, () => {
+        Object.assign(fixture.nativeElement.style, { display: 'block', width: `${width}px` });
+        fixture.nativeElement.style.setProperty('--theme-color-text', dark ? '#fff' : '#222');
+        if (dark) fixture.nativeElement.classList.add('dark-theme');
+        dashboard.isDarkTheme = dark;
+        dashboard.chartTiles = dashboard.chartTiles.filter(tile => dashboard.yesterdayChartIds.includes(tile.id));
+        dashboard.layoutEditing = true;
+        dashboard.cacheSubtitle = 'Today'; dashboard.cacheUpdatedAt = 'Updated 12:30 PM';
+        fixture.detectChanges();
+        // Exercise a single tile's width independently of the viewport/grid breakpoint.
+        fixture.nativeElement.querySelector('.charts-grid').style.gridTemplateColumns = 'minmax(0, 1fr)';
+        const shells: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.chart-shell'));
+        expect(shells.length).toBe(4);
+        for (const shell of shells) {
+          const title = shell.querySelector('.chart-tile-title')!.getBoundingClientRect();
+          const header = shell.querySelector('.chart-tile-header')!.getBoundingClientRect();
+          const control = shell.querySelector('.yesterday-controls')!.getBoundingClientRect();
+          const drag = shell.querySelector('.chart-drag-handle')!.getBoundingClientRect();
+          const toggle = shell.querySelector('button[role="switch"]')!.getBoundingClientRect();
+          const handle = shell.querySelector('.mdc-switch__handle')!.getBoundingClientRect();
+          // The test runner uses the legacy M2 theme; both themes must stay compact.
+          expect(toggle.width).toBe(36); expect(toggle.height).toBeLessThanOrEqual(20);
+          expect(handle.width).toBeLessThanOrEqual(20); expect(handle.height).toBeLessThanOrEqual(20);
+          expect(handle.left).toBeGreaterThanOrEqual(toggle.left);
+          expect(handle.right).toBeLessThanOrEqual(toggle.right);
+          expect(control.top).toBeLessThan(title.bottom);
+          expect(title.right).toBeLessThanOrEqual(control.left);
+          expect(control.right + 4).toBeLessThanOrEqual(drag.left);
+          expect(control.bottom).toBeLessThanOrEqual(header.bottom);
+          expect(header.height).toBeLessThanOrEqual(50);
+          expect(shell.querySelector('.chart-content mat-slide-toggle')).toBeNull();
+        }
+      });
+    }
+  }
 });

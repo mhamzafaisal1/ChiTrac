@@ -22,6 +22,7 @@
     >
       <div
         class="chart-shell"
+        cdkMonitorElementFocus
         *ngFor="let tile of visibleChartTiles; trackBy: trackTile"
         cdkDrag
         [cdkDragDisabled]="!layoutEditing"
@@ -61,7 +62,8 @@
           </app-chart-tile>
         } @else {
         <app-chart-tile
-          [class.daily-count-editing]="(tile.id === 'daily-counts' || yesterdayChartIds.includes(tile.id)) && layoutEditing"
+          [class.daily-count-editing]="tile.id === 'daily-counts' && layoutEditing"
+          [class.yesterday-editing]="yesterdayChartIds.includes(tile.id) && layoutEditing"
           [title]="tile.title"
           [icon]="tile.icon"
           [subtitle]="chartSubtitle(tile)"
@@ -86,12 +88,13 @@
           </div>
 
           <div chartTileActions *ngIf="yesterdayChartIds.includes(tile.id) && layoutEditing"
-            class="daily-count-controls" role="group" aria-label="Previous-day chart comparison"
+            class="yesterday-controls" role="group" aria-label="Previous-day chart comparison"
             (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()"
             (pointerdown)="$event.stopPropagation()">
-            <label><input #yesterday type="checkbox" role="switch"
+            <mat-slide-toggle
               [checked]="yesterdayVisibility[tile.id] !== false"
-              (change)="setYesterdayVisibility(tile.id, yesterday.checked)">Yesterday</label>
+              [aria-label]="'Show Yesterday comparison for ' + tile.title"
+              (change)="setYesterdayVisibility(tile.id, $event.checked)">Yesterday</mat-slide-toggle>
           </div>
 
           <app-daily-machine-stacked-bar-chart
