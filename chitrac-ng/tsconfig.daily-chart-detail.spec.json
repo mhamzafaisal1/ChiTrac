@@ -2,6 +2,9 @@
   "extends": "./tsconfig.spec.json",
   "include": [
     "src/app/experimental-daily-dashboard/experimental-daily-dashboard.chart-detail.spec.ts",
+    "src/app/experimental-daily-dashboard/experimental-daily-dashboard.layout.spec.ts",
+    "src/app/charts/yesterday-comparison.spec.ts",
+    "src/app/charts/machine-timeline-chart/machine-timeline-layout.spec.ts",
     "src/**/*.d.ts"
   ]
 }

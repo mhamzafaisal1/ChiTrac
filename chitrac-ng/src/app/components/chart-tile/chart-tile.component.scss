@@ -114,3 +114,16 @@
     flex-basis: 100%;
   }
 }
+
+// Keep comparison switches alongside the title, clear of the edit drag handle.
+:host(.yesterday-editing) {
+  .chart-tile-header {
+    padding-inline-end: 52px;
+    gap: 8px;
+  }
+
+  .chart-tile-subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
