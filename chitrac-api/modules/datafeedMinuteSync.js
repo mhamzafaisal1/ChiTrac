@@ -122,19 +122,38 @@ class DatafeedMinuteSync {
     });
   }
   overlay(documents, now = this.clock()) {
-    const result = new Map(documents.map(document => [entityKey(document), document]));
+    // Index each persisted bucket once. Scanning the entire day for every
+    // retained live frame blocks the event loop as the recovery window grows.
+    const result = new Map();
+    const persistedBuckets = new Map();
+    const resultBuckets = new Map();
+    const bucketOf = document => `${String(document.machine?.id ?? document.machine?.serial)}:${new Date(document.timestamps.start).getTime()}`;
+    for (const document of documents) {
+      const identity = entityKey(document);
+      const bucket = bucketOf(document);
+      result.set(identity, document);
+      if (!persistedBuckets.has(bucket)) persistedBuckets.set(bucket, []);
+      persistedBuckets.get(bucket).push(document);
+      if (!resultBuckets.has(bucket)) resultBuckets.set(bucket, new Set());
+      resultBuckets.get(bucket).add(identity);
+    }
     const sourceTimes = [];
     for (const key of this.checkpoints.keys()) if (new Date(key.slice(-24)).getTime() < now - RETENTION_SECONDS * 1000) this.checkpoints.delete(key);
     let connected = this.connections.size > 0, stale = false;
     for (const [key, frame] of this.live) {
       if (frame.minuteStart.getTime() < now - RETENTION_SECONDS * 1000) { this.live.delete(key); this.checkpoints.delete(key); continue; }
       const expected = frame.documents.filter(doc => ['machine', 'operator-machine'].includes(doc.type));
-      const persisted = documents.filter(doc => String(doc.machine?.id ?? doc.machine?.serial) === String(frame.machineId) && new Date(doc.timestamps.start).getTime() === frame.minuteStart.getTime());
+      const bucket = `${String(frame.machineId)}:${frame.minuteStart.getTime()}`;
+      const persisted = persistedBuckets.get(bucket) || [];
       if (frame.committed && persisted.length === expected.length && expected.every(doc => persisted.some(row => row.id === doc.id && row.sync?.revision >= frame.revision))) { this.live.delete(key); continue; }
-      for (const [identity, document] of result) {
-        if (String(document.machine?.id ?? document.machine?.serial) === String(frame.machineId) && new Date(document.timestamps.start).getTime() === frame.minuteStart.getTime()) result.delete(identity);
+      for (const identity of resultBuckets.get(bucket) || []) result.delete(identity);
+      const identities = new Set();
+      for (const document of frame.documents) {
+        const identity = entityKey(document);
+        result.set(identity, document);
+        identities.add(identity);
       }
-      for (const document of frame.documents) result.set(entityKey(document), document);
+      resultBuckets.set(bucket, identities);
       if (!frame.complete) {
         sourceTimes.push(frame.calculatedAt); connected ||= frame.connected;
         stale ||= !frame.connected || now - frame.receivedAt > 75000 || now - frame.calculatedAt.getTime() > 75000;

@@ -102,6 +102,49 @@ test('expired recovery pruned during persistence cannot leave a malformed live o
   assert.doesNotThrow(() => buildLiveProductionStatsCache(service, new Date(now)));
 });
 
+test('overlay indexes historical records once rather than rescanning them per live frame', () => {
+  const { service } = fixture();
+  let timestampReads = 0;
+  const documents = Array.from({ length: 3000 }, (_, index) => ({
+    id: `persisted-${index}`, type: 'machine', machine: { id: 21 },
+    get timestamps() { timestampReads++; return { start: new Date(start + index * 60000) }; },
+    totals: { count: 1 },
+  }));
+  for (let index = 0; index < 150; index++) {
+    const minuteStart = new Date(start + index * 60000);
+    service.live.set(`21:${minuteStart.toISOString()}`, {
+      machineId: 21, minuteStart, complete: true, committed: false,
+      documents: [{ id: `live-${index}`, type: 'machine', machine: { id: 21 },
+        timestamps: { start: minuteStart }, totals: { count: 2 } }],
+    });
+  }
+  const merged = service.overlay(documents, start + 2800 * 60000);
+  assert.equal(merged.documents.length, 3000);
+  assert.equal(merged.documents.filter(doc => doc.totals.count === 2).length, 150);
+  assert.ok(timestampReads <= documents.length * 3,
+    `Historical timestamps should be read a bounded number of times, got ${timestampReads}`);
+});
+
+test('overlay replaces only the matching machine and minute, including removed entities', () => {
+  const { service } = fixture();
+  const document = (id, machineId, minute, type = 'machine') => ({
+    id, type, machine: { serial: machineId }, operator: type === 'operator-machine' ? { id: 1 } : undefined,
+    timestamps: { start: new Date(minute) }, totals: { count: 1 },
+  });
+  const otherMachine = document('other-machine', 22, start);
+  const otherMinute = document('other-minute', 21, start + 60000);
+  const replacement = document('replacement', 21, start);
+  service.live.set(`21:${new Date(start).toISOString()}`, {
+    machineId: '21', minuteStart: new Date(start), complete: true,
+    documents: [replacement],
+  });
+  const merged = service.overlay([
+    document('old', 21, start), document('removed-operator', 21, start, 'operator-machine'),
+    otherMachine, otherMinute,
+  ], start + 90000);
+  assert.deepEqual(merged.documents, [otherMachine, otherMinute, replacement]);
+});
+
 test('validates boundaries, entity identities, metric values and incomplete writes', () => {
   for (const mutate of [
     frame => { frame.complete = true; },
