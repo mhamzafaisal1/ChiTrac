@@ -70,11 +70,5 @@
     </div>
   </div>
 
-  <!-- Full-viewport frosted overlay: row click → modal only -->
-  <div class="modal-loading-overlay" *ngIf="isOpeningModal">
-    <div class="loading-content-modal">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Fetching data...</div>
-    </div>
-  </div>
+  <app-full-screen-loader *ngIf="isOpeningModal"></app-full-screen-loader>
 </div>

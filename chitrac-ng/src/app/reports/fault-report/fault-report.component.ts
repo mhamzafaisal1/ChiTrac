@@ -4,8 +4,7 @@ import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfTools } from '../../shared/utils/pdf-tools';
 
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
@@ -238,6 +237,7 @@ export class FaultReportComponent implements OnInit, OnDestroy {
 
     this.isDownloading = true;
     try {
+      const { jsPDF, autoTable } = await loadPdfTools();
       const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
       const margin = 24;
       doc.setFontSize(14);

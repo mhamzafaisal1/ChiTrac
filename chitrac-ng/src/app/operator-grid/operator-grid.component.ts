@@ -21,8 +21,7 @@ import { share, catchError, take } from 'rxjs/operators';
 import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 /*** PDF Imports */
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfTools } from '../shared/utils/pdf-tools';
 
 /*** Model Imports */
 import { OperatorConfig } from '../shared/models/operator.model';
@@ -200,6 +199,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
     console.log('Starting PDF export...');
 
     try {
+      const { jsPDF, autoTable } = await loadPdfTools();
       const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
       const margin = 24;
       let y = margin;

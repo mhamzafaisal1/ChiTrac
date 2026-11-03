@@ -20,9 +20,10 @@ describe('Navigation feedback', () => {
     expect(fixture.nativeElement.querySelector('[role="status"]')).toBeNull();
     tick(200); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="status"]').textContent).toContain('Loading settings');
-    expect(fixture.nativeElement.querySelector('mat-spinner')).not.toBeNull();
-    // Rendered feedback stays a compact strip rather than covering the viewport.
-    expect(fixture.nativeElement.querySelector('.navigation-loading').getBoundingClientRect().height).toBeLessThan(100);
+    expect(fixture.nativeElement.querySelector('.loading-spinner')).not.toBeNull();
+    const overlay = fixture.nativeElement.querySelector('.modal-loading-overlay');
+    expect(getComputedStyle(overlay).position).toBe('fixed');
+    expect(overlay.getBoundingClientRect().height).toBe(window.innerHeight);
     events.next(new NavigationEnd(1, '/ng/settings/items', '/ng/settings/items')); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="status"]')).toBeNull();
   }));

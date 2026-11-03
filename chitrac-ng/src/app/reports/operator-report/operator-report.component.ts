@@ -9,8 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfTools } from '../../shared/utils/pdf-tools';
 
 import { ReportsService } from '../../services/reports.service';
 import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
@@ -241,6 +240,7 @@ export class OperatorReportComponent implements OnInit, OnDestroy {
     console.log('Starting PDF export...');
 
     try {
+      const { jsPDF, autoTable } = await loadPdfTools();
       const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
       const margin = 24;
       let y = margin;

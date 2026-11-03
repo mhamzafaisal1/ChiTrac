@@ -44,9 +44,9 @@ for (const [type, method, name] of [
         expect(fixture.nativeElement.querySelector('[role="status"]').textContent).toContain(`Loading ${name}`);
         expect(fixture.nativeElement.querySelector('[inert]')).not.toBeNull();
         tick(5000); fixture.detectChanges();
-        expect(fixture.nativeElement.querySelector('mat-spinner')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.loading-spinner')).not.toBeNull();
         response.next([]); fixture.detectChanges();
-        expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.loading-spinner')).toBeNull();
         expect(fixture.nativeElement.querySelector('[inert]')).toBeNull();
       } finally { fixture.destroy(); }
     }));
@@ -74,7 +74,7 @@ for (const [type, method, name] of [
         expect(page.sort).toBeDefined();
         expect(page.dataSource.paginator).toBe(page.paginator);
         expect(page.dataSource.sort).toBe(page.sort);
-        expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.loading-spinner')).toBeNull();
         tick(60000);
         expect(get).toHaveBeenCalledTimes(1);
       } finally { fixture.destroy(); }
@@ -142,9 +142,9 @@ describe('Dashboard to settings with delayed configuration sync', () => {
       expect(fixture.nativeElement.querySelector('.navigation-loading')).toBeNull();
       expect(fixture.nativeElement.querySelector('app-page-load-state [role="status"]').textContent).toContain('Loading machines');
       tick(5000); fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('mat-spinner')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.loading-spinner')).not.toBeNull();
       configurationRows.next([]); tick(); fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull(); http.verify();
+      expect(fixture.nativeElement.querySelector('.loading-spinner')).toBeNull(); http.verify();
     } finally { fixture.destroy(); }
   }));
 
@@ -185,6 +185,6 @@ describe('Profile loading feedback', () => {
     response = new Subject(); fixture.nativeElement.querySelector('app-page-load-state button').click(); fixture.detectChanges();
     response.next({ user: { username: 'admin' } }); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('form').hasAttribute('inert')).toBeFalse();
-    expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.loading-spinner')).toBeNull();
   });
 });

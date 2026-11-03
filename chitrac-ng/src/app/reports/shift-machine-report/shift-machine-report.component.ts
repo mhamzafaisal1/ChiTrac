@@ -10,8 +10,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfTools } from '../../shared/utils/pdf-tools';
 
 import { DailyDashboardService } from '../../services/daily-dashboard.service';
 import { ShiftListItem, ShiftService } from '../../services/shift.service';
@@ -296,6 +295,7 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
 
     this.isDownloading = true;
     try {
+      const { jsPDF, autoTable } = await loadPdfTools();
       const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
       const margin = 24;
       let y = margin;

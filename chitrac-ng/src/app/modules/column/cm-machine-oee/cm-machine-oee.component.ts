@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, OnChanges, Input, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EfficiencyScreensService } from '../../../services/efficiency-screens.service';
-import { BlanketBlasterModule } from '../../../blanket-blaster/blanket-blaster.module';
+import { DataBarComponent } from '../../../blanket-blaster/lane-components/data-bar/data-bar.component';
 import { timer, Subscription } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
@@ -9,7 +9,7 @@ import { switchMap } from 'rxjs/operators';
   selector: 'cm-machine-oee',
   templateUrl: './cm-machine-oee.component.html',
   styleUrls: ['./cm-machine-oee.component.scss'],
-  imports: [CommonModule, BlanketBlasterModule],
+  imports: [CommonModule, DataBarComponent],
   standalone: true
 })
 export class CmMachineOeeComponent implements OnInit, OnDestroy, OnChanges {
@@ -42,16 +42,17 @@ export class CmMachineOeeComponent implements OnInit, OnDestroy, OnChanges {
     this.loading = true; 
     this.error = '';
     this.pollSub = timer(0, this.POLL_INTERVAL)
-      .pipe(switchMap(() => this.efficiencyService.getMachineLiveEfficiencySummary(this.machineSerial)))
+      .pipe(switchMap(() => this.efficiencyService.getLiveEfficiencySummary(this.machineSerial)))
       .subscribe({
         next: (res) => {
           this.loading = false;
-          const ld = res?.laneData || {};
-          const metric = (ld.oee && Object.keys(ld.oee).length) ? ld.oee : (ld.efficiency || {});
+          // The shared service separates machine metrics from operator/station lanes.
+          const ld = res?.machineLane || {};
+          const metric = ld.oee || {};
           this.laneData = {
-            status: ld?.status?.code ?? 0,
+            status: ld.status ?? -1,
             fault: ld?.fault ?? 'Unknown',
-            machine: ld?.machine?.name ?? `Serial ${ld?.machine?.serial ?? this.machineSerial}`,
+            machine: ld.machine ?? `Serial ${this.machineSerial}`,
             displayTimers: ld?.displayTimers ?? { on: '', run: '' },
             metric // OEE/efficiency buckets: lastSixMinutes, lastFifteenMinutes, lastHour, today
           };
