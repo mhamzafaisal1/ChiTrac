@@ -51,13 +51,13 @@ export interface DashboardLayoutPreferences {
     tableColumnOrder?: string[];
   };
   experimentalDailyDashboard?: {
-    gridLayout?: ExperimentalDashboardGridLayout;
+    gridLayout?: DailyDashboardGridLayout;
     chartOrder?: string[];
     chartVisibility?: Record<string, boolean>;
   };
 }
 
-export type ExperimentalDashboardGridLayout = '3x2' | '2x2';
+export type DailyDashboardGridLayout = '3x2' | '2x2';
 
 export type MachinePphDisplayMode = 'perMachine' | 'perStation';
 
@@ -342,10 +342,10 @@ export class SettingsService {
     );
   }
 
-  saveExperimentalDailyDashboardChartOrder(
+  saveDailyDashboardChartOrder(
     chartOrder: string[],
     chartVisibility: Record<string, boolean> = {},
-    gridLayout: ExperimentalDashboardGridLayout = '3x2'
+    gridLayout: DailyDashboardGridLayout = '3x2'
   ): Observable<UserPreferences> {
     const payload = {
       dashboardLayouts: {
@@ -445,10 +445,10 @@ export class SettingsService {
     return Object.keys(dashboardLayouts).length ? dashboardLayouts : undefined;
   }
 
-  setExperimentalDailyDashboardChartOrder(
+  setDailyDashboardChartOrder(
     chartOrder: string[],
     chartVisibility: Record<string, boolean> = {},
-    gridLayout: ExperimentalDashboardGridLayout = '3x2'
+    gridLayout: DailyDashboardGridLayout = '3x2'
   ): void {
     const current = this.userPreferencesSubject.value || {};
     this.userPreferencesSubject.next({

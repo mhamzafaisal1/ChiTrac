@@ -15,7 +15,7 @@ describe('Experimental layout preferences', () => {
 
   it('saves and reloads grid, chart order and visibility together', () => {
     const layout = { gridLayout: '2x2', chartOrder: ['machine-status'], chartVisibility: { 'machine-status': true } };
-    settings.saveExperimentalDailyDashboardChartOrder(layout.chartOrder, layout.chartVisibility, '2x2').subscribe();
+    settings.saveDailyDashboardChartOrder(layout.chartOrder, layout.chartVisibility, '2x2').subscribe();
     const request = http.expectOne('/api/preferences/user');
     expect(request.request.body).toEqual({ dashboardLayouts: { experimentalDailyDashboard: layout } });
     request.flush({ dashboardLayouts: { experimentalDailyDashboard: layout } });
@@ -30,7 +30,7 @@ describe('Experimental layout preferences', () => {
   it('keeps local edits and restores promoted system defaults on logout', () => {
     settings.loadSettings().subscribe();
     http.expectOne('/api/utilities/settings').flush({ dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '2x2' } } });
-    settings.setExperimentalDailyDashboardChartOrder([], {}, '3x2');
+    settings.setDailyDashboardChartOrder([], {}, '3x2');
     let effective: any;
     settings.userPreferences$.subscribe(value => effective = value);
     expect(effective.dashboardLayouts.experimentalDailyDashboard.gridLayout).toBe('3x2');

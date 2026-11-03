@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": [
+    "src/app/daily-dashboard/*.spec.ts",
+    "src/app/charts/cartesian-chart/cartesian-chart.tooltip.spec.ts",
+    "src/app/charts/yesterday-comparison.spec.ts",
+    "src/app/charts/machine-timeline-chart/machine-timeline-layout.spec.ts",
+    "src/app/home/home.component.spec.ts",
+    "src/app/nav-main-menu/nav-main-menu.component.spec.ts",
+    "src/app/components/layout-save-confirm/layout-save-confirm.component.spec.ts",
+    "src/app/services/settings-experimental-layout.spec.ts",
+    "src/**/*.d.ts"
+  ]
+}

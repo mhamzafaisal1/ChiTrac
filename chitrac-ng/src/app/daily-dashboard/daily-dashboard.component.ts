@@ -28,24 +28,24 @@ import { RankedOperatorBarChartComponent } from '../charts/ranked-operator-bar-c
 import { DashboardTimeframeService } from '../services/dashboard-timeframe.service';
 import { DateTimeService } from '../services/date-time.service';
 import { LayoutEditService } from '../services/layout-edit.service';
-import { ExperimentalDashboardGridLayout, SettingsService } from '../services/settings.service';
+import { DailyDashboardGridLayout, SettingsService } from '../services/settings.service';
 import { DashboardCacheScope, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { UserService } from '../user.service';
 
-interface ExperimentalChartTile {
+interface DailyChartTile {
   id: string;
   title: string;
   icon: string;
 }
 
-interface ExperimentalDashboardLayoutSnapshot {
-  gridLayout: ExperimentalDashboardGridLayout;
+interface DailyDashboardLayoutSnapshot {
+  gridLayout: DailyDashboardGridLayout;
   chartOrder: string[];
   chartVisibility: Record<string, boolean>;
 }
 
 @Component({
-  selector: 'app-experimental-daily-dashboard',
+  selector: 'app-daily-dashboard',
   standalone: true,
   imports: [
     CommonModule,
@@ -64,10 +64,10 @@ interface ExperimentalDashboardLayoutSnapshot {
     RankedOperatorBarChartComponent,
     EfficiencyByMachineGroupBarChartComponent
   ],
-  templateUrl: './experimental-daily-dashboard.component.html',
-  styleUrl: './experimental-daily-dashboard.component.scss'
+  templateUrl: './daily-dashboard.component.html',
+  styleUrl: './daily-dashboard.component.scss'
 })
-export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit {
+export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('chartsGrid') chartsGrid!: ElementRef<HTMLElement>;
   @ViewChild(DailyCountByItemChartComponent) itemChart!: DailyCountByItemChartComponent;
 
@@ -87,8 +87,9 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   cacheSubtitle = 'Today';
   cacheUpdatedAt: string | null = null;
   readonly useTileTitles = true;
+  // Retain the persisted layout key so promotion does not reset existing preferences.
   readonly layoutContextId = 'experimentalDailyDashboard';
-  gridLayout: ExperimentalDashboardGridLayout = '3x2';
+  gridLayout: DailyDashboardGridLayout = '3x2';
   get maxVisibleCharts(): number { return this.gridLayout === '2x2' ? 4 : 6; }
   private readonly defaultChartOrder = [
     'machine-status',
@@ -100,7 +101,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     'daily-counts'
   ];
 
-  chartTiles: ExperimentalChartTile[] = [
+  chartTiles: DailyChartTile[] = [
     { id: 'machine-status', title: 'Machine Run/Pause/Fault Time', icon: 'bar_chart' },
     { id: 'machine-timeline', title: 'Machine Timeline', icon: 'view_timeline' },
     { id: 'machine-oee', title: 'Machine OEE', icon: 'insights' },
@@ -115,10 +116,10 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   private resizeObserver?: ResizeObserver;
   private resizeFrame: number | null = null;
   private destroy$ = new Subject<void>();
-  private layoutSnapshot: ExperimentalDashboardLayoutSnapshot | null = null;
+  private layoutSnapshot: DailyDashboardLayoutSnapshot | null = null;
   private chartDetailRef?: MatDialogRef<ModalWrapperComponent>;
   private chartDetailState?: BehaviorSubject<DailyChartDetailState>;
-  private expandedTile?: ExperimentalChartTile;
+  private expandedTile?: DailyChartTile;
 
   constructor(
     private websocketService: WebsocketService,
@@ -134,7 +135,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
   ngOnInit(): void {
     this.detectTheme();
     this.applyDefaultChartVisibility();
-    this.layoutEditService.register(this.layoutContextId, 'Experimental Daily Dashboard');
+    this.layoutEditService.register(this.layoutContextId, 'Daily Dashboard');
     this.subscribeToLayoutEditing();
     this.subscribeToUserPreferences();
     this.websocketService.ensureConnected();
@@ -181,7 +182,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     this.destroy$.complete();
   }
 
-  onChartDrop(event: CdkDragDrop<ExperimentalChartTile[]>): void {
+  onChartDrop(event: CdkDragDrop<DailyChartTile[]>): void {
     if (!this.layoutEditing || event.previousIndex === event.currentIndex) return;
     const visibleTiles = this.visibleChartTiles;
     const movedTile = visibleTiles[event.previousIndex];
@@ -194,11 +195,11 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     withoutMoved.splice(insertIndex, 0, movedTile);
     this.chartTiles = withoutMoved;
     this.layoutEditService.markEditsMade();
-    this.settingsService.setExperimentalDailyDashboardChartOrder(this.getChartOrder(), this.chartVisibility, this.gridLayout);
+    this.settingsService.setDailyDashboardChartOrder(this.getChartOrder(), this.chartVisibility, this.gridLayout);
     this.scheduleChartDimensionUpdate();
   }
 
-  openChartDetail(tile: ExperimentalChartTile): void {
+  openChartDetail(tile: DailyChartTile): void {
     if (this.layoutEditing || this.chartDetailRef || !DAILY_CHART_COMPONENTS[tile.id]) return;
     this.expandedTile = tile;
     const state = new BehaviorSubject(this.getChartDetailState(tile));
@@ -229,7 +230,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     this.updateChartDetail();
   }
 
-  private getChartDetailState(tile: ExperimentalChartTile): DailyChartDetailState {
+  private getChartDetailState(tile: DailyChartTile): DailyChartDetailState {
     return {
       data: this.preloadedData?.[DAILY_CHART_COMPONENTS[tile.id].dataKey] ?? null,
       subtitle: this.chartSubtitle(tile),
@@ -244,23 +245,23 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     if (this.expandedTile) this.chartDetailState?.next(this.getChartDetailState(this.expandedTile));
   }
 
-  get visibleChartTiles(): ExperimentalChartTile[] {
+  get visibleChartTiles(): DailyChartTile[] {
     return this.chartTiles.filter((tile) => this.isChartVisible(tile.id)).slice(0, this.maxVisibleCharts);
   }
 
-  chartSubtitle(tile: ExperimentalChartTile): string {
+  chartSubtitle(tile: DailyChartTile): string {
     if (tile.id === 'machine-timeline') {
       return this.preloadedData?.machineTimeline?.meta?.subtitle || this.cacheSubtitle;
     }
     return tile.id === 'daily-counts' ? 'Last 28 Days' : this.cacheSubtitle;
   }
 
-  chartSubtitleStrong(tile: ExperimentalChartTile): boolean {
+  chartSubtitleStrong(tile: DailyChartTile): boolean {
     return tile.id === 'machine-timeline' &&
       this.preloadedData?.machineTimeline?.meta?.displayDateMode === 'yesterday';
   }
 
-  trackTile(index: number, tile: ExperimentalChartTile): string {
+  trackTile(index: number, tile: DailyChartTile): string {
     return tile.id;
   }
 
@@ -298,7 +299,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
         this.layoutEditService.markEditsMade();
         this.gridLayout = gridLayout;
         this.chartVisibility = this.cleanChartVisibility(result.visibility);
-        this.settingsService.setExperimentalDailyDashboardChartOrder(this.getChartOrder(), this.chartVisibility, this.gridLayout);
+        this.settingsService.setDailyDashboardChartOrder(this.getChartOrder(), this.chartVisibility, this.gridLayout);
         this.scheduleChartDimensionUpdate();
       });
   }
@@ -375,13 +376,13 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     const chartOrder = this.getChartOrder();
 
     if (!this.userService.getToken()) {
-      this.settingsService.setExperimentalDailyDashboardChartOrder(chartOrder, this.chartVisibility, this.gridLayout);
+      this.settingsService.setDailyDashboardChartOrder(chartOrder, this.chartVisibility, this.gridLayout);
       this.layoutEditService.setEditing(false);
       this.layoutSnapshot = null;
       return of(null);
     }
 
-    return this.settingsService.saveExperimentalDailyDashboardChartOrder(chartOrder, this.chartVisibility, this.gridLayout).pipe(
+    return this.settingsService.saveDailyDashboardChartOrder(chartOrder, this.chartVisibility, this.gridLayout).pipe(
       tap(() => {
         this.layoutSnapshot = null;
         this.layoutEditService.setEditing(false);
@@ -399,7 +400,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     this.gridLayout = this.layoutSnapshot.gridLayout;
     this.chartVisibility = this.cleanChartVisibility(this.layoutSnapshot.chartVisibility);
     this.applyChartOrder(chartOrder);
-    this.settingsService.setExperimentalDailyDashboardChartOrder(chartOrder, this.chartVisibility, this.gridLayout);
+    this.settingsService.setDailyDashboardChartOrder(chartOrder, this.chartVisibility, this.gridLayout);
     this.layoutSnapshot = null;
     this.layoutEditService.setEditing(false);
   }
@@ -408,7 +409,7 @@ export class ExperimentalDailyDashboardComponent implements OnInit, OnDestroy, A
     const byId = new Map(this.chartTiles.map((tile) => [tile.id, tile]));
     const ordered = chartOrder
       .map((id) => byId.get(id))
-      .filter((tile): tile is ExperimentalChartTile => Boolean(tile));
+      .filter((tile): tile is DailyChartTile => Boolean(tile));
     const additions = this.chartTiles.filter((tile) => !chartOrder.includes(tile.id));
     this.chartTiles = [...ordered, ...additions];
     this.chartVisibility = this.cleanChartVisibility(this.chartVisibility);
