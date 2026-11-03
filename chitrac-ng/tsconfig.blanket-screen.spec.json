@@ -1,7 +1,8 @@
 {
   "extends": "./tsconfig.spec.json",
   "include": [
-    "src/app/efficiency-screens/blanket-blaster-efficiency-screens.spec.ts",
+    "src/app/efficiency-screens/production-oee-library.spec.ts",
+    "src/app/efficiency-screens/efficiency-screen-lane/efficiency-screen-lane.elapsed.spec.ts",
     "src/**/*.d.ts"
   ]
 }

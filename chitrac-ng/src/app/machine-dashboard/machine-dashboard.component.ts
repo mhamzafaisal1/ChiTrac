@@ -1,3 +1,4 @@
+import { FullScreenLoaderComponent } from '../components/full-screen-loader/full-screen-loader.component';
 import {
   Component,
   OnInit,
@@ -111,7 +112,8 @@ interface MachineDashboardLayoutSnapshot {
     MatButtonModule,
     MatIconModule,
     DragDropModule,
-    BaseTableComponent
+    BaseTableComponent,
+    FullScreenLoaderComponent
   ],
   templateUrl: "./machine-dashboard.component.html",
   styleUrls: ["./machine-dashboard.component.scss"],

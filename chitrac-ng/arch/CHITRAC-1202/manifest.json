@@ -1,0 +1,513 @@
+{
+  "originalRoot": "chitrac-ng",
+  "files": [
+    {
+      "path": "src/app/blanket-blaster/blanket-blaster.module.ts",
+      "sha256": "2e562d1909dbae9f68956a1d948b69f8fb635c9b2ae046a4b7206b059adc9ac3"
+    },
+    {
+      "path": "src/app/blanket-blaster/demo-flipper/demo-flipper.component.html",
+      "sha256": "575dc7e371881aa8211ce81156311338cdad5a9e76c8f97c7ffab792c9a20869"
+    },
+    {
+      "path": "src/app/blanket-blaster/demo-flipper/demo-flipper.component.scss",
+      "sha256": "163ae3526519ba515669a4cb7825bafc954f9142e36a8cd4efab33b7a98ea7b9"
+    },
+    {
+      "path": "src/app/blanket-blaster/demo-flipper/demo-flipper.component.ts",
+      "sha256": "09ae893a0b3a57e8e38829092ed14e31f9dc96d84f89285e3f171f5759bb72fe"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-fault/lane-fault.component.html",
+      "sha256": "b0143e62345f2f9dce7a651124035cab708295b0c80c63e0352d5fa776f86fa9"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-fault/lane-fault.component.scss",
+      "sha256": "f791c7eec1cd4150afb40f48fc5b72292042424386c7f12bab0d4a8bc0e8d07c"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-fault/lane-fault.component.spec.ts",
+      "sha256": "7fb30cf7e66f69b10812540be8207fd55a8b6924700a6763cbc556c243de74e4"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-fault/lane-fault.component.ts",
+      "sha256": "75d358f0f8fcbf15ef38b85e8da0792dc097692bd6621a746b81f6772b86e5cb"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running/lane-running.component.html",
+      "sha256": "ed95feef3c98142bd171a1d901a075dbe2cf7f84e15d727bfeb7490c5cca2b87"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running/lane-running.component.scss",
+      "sha256": "45e90f1a16dbf7c9b2a549bed6be910df7200dfdd3ed2f258d931c5fca7dc642"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running/lane-running.component.spec.ts",
+      "sha256": "6f37bf189406797e928f8056842f58eb1e7636a12f53cc2287f0878a7a25592e"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running/lane-running.component.ts",
+      "sha256": "8d1cac3ac38e3833b68fbb6796cafa56126fdc2e9d24359ee194f997986e7dd6"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running-greyed/lane-running-greyed.component.html",
+      "sha256": "09de1c31d8d97287558c33597aeb57a42326d83523349a1b8f2e7de6903c294f"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running-greyed/lane-running-greyed.component.scss",
+      "sha256": "42117221f6b695903c2363e93234917ba23d1637b4f80f25fa3be9a757a02428"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running-greyed/lane-running-greyed.component.spec.ts",
+      "sha256": "4a06b56116d57117834af2518a5df884f6afd6be238fc347906fa8de0522d0ef"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-running-greyed/lane-running-greyed.component.ts",
+      "sha256": "3997165fd91fbbb52aad3687efe6b7a5cfd0ec1ba5e8f044aaef328860af0ec2"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-stop/lane-stop.component.html",
+      "sha256": "bfd0bf3225fdf517ec5fd513a8d88548940510587b1ea969b59e592f911a2cb7"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-stop/lane-stop.component.scss",
+      "sha256": "bedc9cd51c943f646bd7b9dbaa387de1322c89b2577cea87162a0b03d1525502"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-stop/lane-stop.component.spec.ts",
+      "sha256": "ffba6a8c55fc25906fa9060a97bebe9d43232733704fd86d3908ee538e2131ee"
+    },
+    {
+      "path": "src/app/blanket-blaster/lane-stop/lane-stop.component.ts",
+      "sha256": "7dbc2dbac56c5af47b7fc63f1486625939319167e1ef19169192d9ea956fed3e"
+    },
+    {
+      "path": "src/app/blanket-blaster/six-lane-flipper/six-lane-flipper.component.html",
+      "sha256": "cc30cdddc311bc60ce8e8eb9c3b90c53e7b5488b15cedb91ac98b718f44822f3"
+    },
+    {
+      "path": "src/app/blanket-blaster/six-lane-flipper/six-lane-flipper.component.scss",
+      "sha256": "e2f7dd05b9cded348fb20c1a5cf4efad705d7e6221952e4b25cb6edfe232644f"
+    },
+    {
+      "path": "src/app/blanket-blaster/six-lane-flipper/six-lane-flipper.component.ts",
+      "sha256": "b5f621df19eee00e235f19124f809933a24a66313d0f0e88d96bf04448a1c160"
+    },
+    {
+      "path": "src/app/charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component.html",
+      "sha256": "13c8f671da72487e3068be3dba45de8a07fa456fee8b0bb32bb5704253593fa9"
+    },
+    {
+      "path": "src/app/charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component.scss",
+      "sha256": "bd986c983650be9460faea62a2e6f027acf8de82bd40149306c701a9ed1034cc"
+    },
+    {
+      "path": "src/app/charts/daily-machine-item-stacked-bar-chart/daily-machine-item-stacked-bar-chart.component.ts",
+      "sha256": "dd18159f256a29e79e72c1190d759b7503f86eb68492956920a2a89c856cc87c"
+    },
+    {
+      "path": "src/app/charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component.html",
+      "sha256": "10d006b90e86b4bc41047b8011e337e4483e8eb484ce3b904a5d93bdc1b967a3"
+    },
+    {
+      "path": "src/app/charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component.scss",
+      "sha256": "1dafcba550fb5977f683a4d8544a20ccc699dc06454ef02a0544150b593b8470"
+    },
+    {
+      "path": "src/app/charts/data-aware-item-stacked-chart/data-aware-item-stacked-chart.component.ts",
+      "sha256": "0a05017f113493b346050d8736d0572aa2509cd9cb8ecc2431e5d7c372d91246"
+    },
+    {
+      "path": "src/app/charts/fault-stacked-bar-by machine/fault-stacked-bar-by-machine.component.html",
+      "sha256": "6cd68e9a2557615d6a611cd8c3080831be533a4050e7af840810e78ecc0b788a"
+    },
+    {
+      "path": "src/app/charts/fault-stacked-bar-by machine/fault-stacked-bar-by-machine.component.scss",
+      "sha256": "71e975b4738b24d7da1aa847dc37280dc1e6ce1ce4f2dc556a4ec0bd2c5ad76e"
+    },
+    {
+      "path": "src/app/charts/fault-stacked-bar-by machine/fault-stacked-bar-by-machine.component.ts",
+      "sha256": "acf642e87208b1692e8023f9919762015a9a6428ddc9ae0330d775a529bb6eb5"
+    },
+    {
+      "path": "src/app/charts/item-stacked-chart/item-stacked-chart.component.ts",
+      "sha256": "26cf05fa5310252ee3d1164ed1ceb08aeb557d8703abdf37089e592b857cfa7e"
+    },
+    {
+      "path": "src/app/charts/machine-status-stacked-chart/machine-status-stacked-chart.component.ts",
+      "sha256": "09cc44f3e554e454fcf06f82d1286be550274f1d8ae988ca5369913a71efedd2"
+    },
+    {
+      "path": "src/app/charts/plantwide-metrics-chart/plantwide-metrics-chart.component.html",
+      "sha256": "1bf81ae82cf093e62dc51ef02566724f9cc74ce5cb8ee65dc4f53f26c2723838"
+    },
+    {
+      "path": "src/app/charts/plantwide-metrics-chart/plantwide-metrics-chart.component.scss",
+      "sha256": "60f0a7975e5a7b5720a02d0212f3e1f52984a97c1792a99fc7098bc2e4980cd7"
+    },
+    {
+      "path": "src/app/charts/plantwide-metrics-chart/plantwide-metrics-chart.component.ts",
+      "sha256": "a5f8494f2694af56e05517223f48ef72e6533b48b2d21edfc1a6b39d60d6cb71"
+    },
+    {
+      "path": "src/app/charts/ranked-fault-bar-chart/ranked-fault-bar-chart.component.html",
+      "sha256": "8573cb7366ea3fbe8824cbd006929ed0a8ef1d554b5d63a4e630dc94f7779eaa"
+    },
+    {
+      "path": "src/app/charts/ranked-fault-bar-chart/ranked-fault-bar-chart.component.scss",
+      "sha256": "72a1a4249f1868e72619ca059efb51d9b07c3eee0c5ce5e3168c05545a754d96"
+    },
+    {
+      "path": "src/app/charts/ranked-fault-bar-chart/ranked-fault-bar-chart.component.ts",
+      "sha256": "9e84d3401239973a7f3bfbb6d3e86bebd79b3fa347401a536a050c5e15760aaa"
+    },
+    {
+      "path": "src/app/charts/ranked-oee-chart/ranked-oee-chart.component.ts",
+      "sha256": "bf478f2a9316f9679a27b5df88acda28b711c5bab1674df082e6802e48ea27ae"
+    },
+    {
+      "path": "src/app/charts/ranked-operator-bar-chart-with-tooltip/ranked-operator-bar-chart-with-tooltip.component.html",
+      "sha256": "61e521179fa8f1530e7d9e97536a3375a3c8d6dbf67354180816efb99b928e74"
+    },
+    {
+      "path": "src/app/charts/ranked-operator-bar-chart-with-tooltip/ranked-operator-bar-chart-with-tooltip.component.scss",
+      "sha256": "fb3f7ed3af4b5672f4106d5de504eb42192f5255bf8fcfe9478f451e6e9ddfda"
+    },
+    {
+      "path": "src/app/charts/ranked-operator-bar-chart-with-tooltip/ranked-operator-bar-chart-with-tooltip.component.ts",
+      "sha256": "3170fad6a0a23625824fcdf77acb8220f9747c9624df4fc78d27f4dc010f038b"
+    },
+    {
+      "path": "src/app/components/bar-chart/bar-chart.component.html",
+      "sha256": "5a43e5ea0d6be9d5704cffe1655cfc22f8e42cc9a7f23da797b5df6add0a3fd5"
+    },
+    {
+      "path": "src/app/components/bar-chart/bar-chart.component.scss",
+      "sha256": "6b24c79007cabf81a5625d604f7274a0d50c6a324f0acb10629c34687da9c6e0"
+    },
+    {
+      "path": "src/app/components/bar-chart/bar-chart.component.ts",
+      "sha256": "3eb97832b1e937d10c8ad314cb64f5a642cab90a87c1a1ebe626ac1de1ab5900"
+    },
+    {
+      "path": "src/app/components/error-modal/error-modal-demo.component.ts",
+      "sha256": "8fd6e4afaa9edd740c0150922bf4bfaaa04b0072263f7dab6c10a50b669ff7e9"
+    },
+    {
+      "path": "src/app/components/multiple-bar-and-line-chart/multiple-bar-and-line-chart.component.html",
+      "sha256": "5eb91c7a841f1a6e836dbaf901d7c378b472447920b94945c545d05894f021ee"
+    },
+    {
+      "path": "src/app/components/multiple-bar-and-line-chart/multiple-bar-and-line-chart.component.scss",
+      "sha256": "27017cbd6bf4b93eff11605f6f020b610333dd6d0e7f9679fce55f23b7eaa661"
+    },
+    {
+      "path": "src/app/components/multiple-bar-and-line-chart/multiple-bar-and-line-chart.component.ts",
+      "sha256": "549e1cc3b8ece41bb65813b6d6a8a4756e70ce9ed47d52b13762476270d53c60"
+    },
+    {
+      "path": "src/app/components/multiple-bar-chart/multiple-bar-chart.component.html",
+      "sha256": "5eb91c7a841f1a6e836dbaf901d7c378b472447920b94945c545d05894f021ee"
+    },
+    {
+      "path": "src/app/components/multiple-bar-chart/multiple-bar-chart.component.scss",
+      "sha256": "c89f81f6fa90b62822e2e6ca55fd5fcdfbd05579fff017475db7f62e6b77d24f"
+    },
+    {
+      "path": "src/app/components/multiple-bar-chart/multiple-bar-chart.component.ts",
+      "sha256": "1efedc6ca6f867a77652696aca2dcb638ae143893deee1f54882334dddcf32ca"
+    },
+    {
+      "path": "src/app/components/multiple-line-chart/multiple-line-chart.component.html",
+      "sha256": "d237fb620e3b0d12592dbf625e230a22cca5dc8b801e780284966f3668437dc5"
+    },
+    {
+      "path": "src/app/components/multiple-line-chart/multiple-line-chart.component.scss",
+      "sha256": "d50ecd57c5a55fb29055b1c053eee06284dfb1ee1507f783ab60d057cf06e29a"
+    },
+    {
+      "path": "src/app/components/multiple-line-chart/multiple-line-chart.component.ts",
+      "sha256": "22837c30445e25799c54c9cffdd9b86137451d0dd4ca6f0654fca2ea97619bde"
+    },
+    {
+      "path": "src/app/components/pie-chart/pie-chart.component.html",
+      "sha256": "95cb9da4f8f2181fb63bddc2f3c2216760f5a80cc7a85311da31bb89e0aef6c9"
+    },
+    {
+      "path": "src/app/components/pie-chart/pie-chart.component.scss",
+      "sha256": "d0d4c2adf06c0f0b664f47c0ade9c17c4cfba3e951193f80df92ef2529f6b508"
+    },
+    {
+      "path": "src/app/components/pie-chart/pie-chart.component.ts",
+      "sha256": "a323f6ca4c5444567d3c6a837fc67a93111c8b2ffe615ed44c02911d764ba7c8"
+    },
+    {
+      "path": "src/app/components/stacked-bar-chart/stacked-bar-chart.component.html",
+      "sha256": "d237fb620e3b0d12592dbf625e230a22cca5dc8b801e780284966f3668437dc5"
+    },
+    {
+      "path": "src/app/components/stacked-bar-chart/stacked-bar-chart.component.scss",
+      "sha256": "0cefe16f4e5f3b5467c45de9cfd944db7b25be1a55eaced848de05ec94617e58"
+    },
+    {
+      "path": "src/app/components/stacked-bar-chart/stacked-bar-chart.component.ts",
+      "sha256": "9f26000cf137d568350629d29a1d4f04f8bcc5769b76619d1db25e9b9319a563"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanket-blaster-efficiency-screens.spec.ts",
+      "sha256": "5055b993f206d341c3000e0f7d190d5b73d31ddb80653f5acb8fe26d98f1b263"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component.html",
+      "sha256": "80af5280ae584d89b456ca20d02aa01bdfb2003dbd21b2511ba8d6619f35f70d"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component.scss",
+      "sha256": "8e28778bcaee316e0808ce9ed66b33ee68309253dc90555e26a0b42fe72e82ca"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component.ts",
+      "sha256": "533d62aed267b7f3add6b31a0cb7423f0c17d7b7a75711d2cc8a3eb1b9ab2c99"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component.html",
+      "sha256": "80af5280ae584d89b456ca20d02aa01bdfb2003dbd21b2511ba8d6619f35f70d"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component.scss",
+      "sha256": "8e28778bcaee316e0808ce9ed66b33ee68309253dc90555e26a0b42fe72e82ca"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component.ts",
+      "sha256": "e184e364e6497db84dc109815f77095af64d7f5e10946e67432cd64eef1f7597"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen.html",
+      "sha256": "a944b553c867d88a8d359db4c4b4adbeade21039e078809846d2501184ffdcec"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen.scss",
+      "sha256": "64e3efdaa625c1ba83bf0b0f0c4e25cac652b9d96767cd8ca01000c53826134e"
+    },
+    {
+      "path": "src/app/efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen.ts",
+      "sha256": "982bcf3e97aa6defbf84354be5fd61369d2a517539e2ca05bb9ca075266715e1"
+    },
+    {
+      "path": "src/app/efficiency-screens/efficiecny-screen-machine/machine-efficiecny-lane.component.ts",
+      "sha256": "6315fe7c1e500f97da492b5aba5641824fba6e943e21784590733b459cd3e08d"
+    },
+    {
+      "path": "src/app/efficiency-screens/efficiecny-screen-machine/machine-efficiency-lane.component.html",
+      "sha256": "874ce4bee1a81e0534534eccd8fe963abd4d915b2002ad879fcfd65951299e23"
+    },
+    {
+      "path": "src/app/efficiency-screens/efficiecny-screen-machine/machine-efficiency-lane.component.scss",
+      "sha256": "75d90a731b3fbd01c19422b55cbb9ca8e5398d2bc3e79f24329ef9f0201ee249"
+    },
+    {
+      "path": "src/app/efficiency-screens/efficiency-screens.component.html",
+      "sha256": "c196bd33b488936d610094ef8cb046042b76a14c5c08c64762bc095e5640f041"
+    },
+    {
+      "path": "src/app/efficiency-screens/efficiency-screens.component.scss",
+      "sha256": "22bd746c784f04dab4713e81b2236b1fa0b343f238df8df1f4ebd28b851d0d9a"
+    },
+    {
+      "path": "src/app/efficiency-screens/efficiency-screens.component.ts",
+      "sha256": "1a4e213da837e7062ee40f590f7cf2ff02bd1b297f36c1187508dba230ccb9fb"
+    },
+    {
+      "path": "src/app/efficiency-screens/eight-station-demo/eight-station-demo.component.html",
+      "sha256": "36d494ea7f9c41545443c3560427e325f38dcaa2cf7ff5d2344fd2f457011028"
+    },
+    {
+      "path": "src/app/efficiency-screens/eight-station-demo/eight-station-demo.component.scss",
+      "sha256": "071b067d9c90e6b38e4cb6348a502746be23eecf236b3433973754671b8a8eb7"
+    },
+    {
+      "path": "src/app/efficiency-screens/eight-station-demo/eight-station-demo.component.ts",
+      "sha256": "4452e1e2ee56ce0f405d83051962c5776f87440fa12411085d54300962c14f39"
+    },
+    {
+      "path": "src/app/efficiency-screens/lpl-efficiency-screen/lpl-efficiecny-screen.component.html",
+      "sha256": "0f1344d7ea3cf0783cf10a3b1c343cff46343c614c148deb0365716a09c2a03e"
+    },
+    {
+      "path": "src/app/efficiency-screens/lpl-efficiency-screen/lpl-efficiecny-screen.component.scss",
+      "sha256": "f6a953141b68da72f480e4759a88a6dbfadf3f8a72a8bc650083884033b56971"
+    },
+    {
+      "path": "src/app/efficiency-screens/lpl-efficiency-screen/lpl-efficiecny-screen.component.ts",
+      "sha256": "fcb3e1d16605f204f1a92989f142452d3c696a55392548460af6cd3d1950719f"
+    },
+    {
+      "path": "src/app/efficiency-screens/LPLs-efficiency-screen/LPLs-efficiency-screen.html",
+      "sha256": "760d75bcc350ae865ea6c6c5b88a38096c2b79059aa2ff634618787b1316d4d0"
+    },
+    {
+      "path": "src/app/efficiency-screens/LPLs-efficiency-screen/LPLs-efficiency-screen.scss",
+      "sha256": "d0ca1b77546d4daa7667beb4fab816ed347c6e4e184a9130cab53b60897c1a7f"
+    },
+    {
+      "path": "src/app/efficiency-screens/LPLs-efficiency-screen/LPLs-efficiency-screen.ts",
+      "sha256": "282c5631d3a62981ddcf05723fcfea3980434f7fc15fc781896e22b1f84a482e"
+    },
+    {
+      "path": "src/app/efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component.html",
+      "sha256": "9fe1f7b587981a94203b1bcaf9deb94ba0c0c311fe9cc998a1206129cc3758a8"
+    },
+    {
+      "path": "src/app/efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component.scss",
+      "sha256": "5f6841a86a49835aed5061fcf67ce25acea544cf979b4c197411744d292bff5f"
+    },
+    {
+      "path": "src/app/efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component.ts",
+      "sha256": "d34deb3e1adb8874814a8bf52ab4e012f9c2ba4dbd379201ce683308f03b7340"
+    },
+    {
+      "path": "src/app/efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen.html",
+      "sha256": "558bcceda56fbe32bdead6dc9d7ebd43b45d7b9b3a01e5be674dfc31e71f0c8b"
+    },
+    {
+      "path": "src/app/efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen.scss",
+      "sha256": "9faef656cb93ce6c4bf536706dc2c749ff5a32b0985cbc477470bdb2ff48402d"
+    },
+    {
+      "path": "src/app/efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen.ts",
+      "sha256": "79e3abd6dc50b09708658bf24023ff795c7f48bb930fc352ce88b58e0b41603d"
+    },
+    {
+      "path": "src/app/efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component.html",
+      "sha256": "19a71725a12f02cdade5acf2756d04ae635de662afdb441ce1c9b224075c977e"
+    },
+    {
+      "path": "src/app/efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component.scss",
+      "sha256": "e12c84cb962238b7968fa48cc9c163f5707e26307d7479c533dc090a2a8c4fa0"
+    },
+    {
+      "path": "src/app/efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component.ts",
+      "sha256": "ed22dd87ef2d0478b9abe2f7753a62099d68df4d3a06705760ad41df4acdf401"
+    },
+    {
+      "path": "src/app/efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component.html",
+      "sha256": "1496084a9c1606c79f42406992bf74e24c737f5130ab61b81eebebcc121a0844"
+    },
+    {
+      "path": "src/app/efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component.scss",
+      "sha256": "d0ca1b77546d4daa7667beb4fab816ed347c6e4e184a9130cab53b60897c1a7f"
+    },
+    {
+      "path": "src/app/efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component.ts",
+      "sha256": "b2127ba94415f6ed78d3a1d6d7c953220daf1eb87322f059be03d3573af5fb9d"
+    },
+    {
+      "path": "src/app/layouts/column/column-layout/column-layout.component.html",
+      "sha256": "b893ab6f1ba630b828e5de809f12bc5fbb1d535699e48ef6d2ce59228e7a5cd6"
+    },
+    {
+      "path": "src/app/layouts/column/column-layout/column-layout.component.scss",
+      "sha256": "fbf8c73a54f09a951c27922efd640bc525b0d51de08ef85aa40e5c62bfef621e"
+    },
+    {
+      "path": "src/app/layouts/column/column-layout/column-layout.component.ts",
+      "sha256": "1f004783faa1c06e2f3406c326abe9509db121413991c2a1315fb28c0d066060"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-threebythree/layout-grid-threebythree.component.html",
+      "sha256": "58110a22b5f5de94de81adbc46395a60b8291b341650b2212542fcd9673970ce"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-threebythree/layout-grid-threebythree.component.scss",
+      "sha256": "6d9549fb2559f72eb72255acd5b337c4871a3ccf4813850511d3a25c1fd2f5ce"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-threebythree/layout-grid-threebythree.component.ts",
+      "sha256": "6d19e08ceec948950927a26b3d12f8b21dc808c701178de1abf90dfedd967764"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-twobythree/layout-grid-twobythree.component.html",
+      "sha256": "42e9d2c3e76eb93b910e73f2e25e5e02cf51a02710171a966a3b2be6e1988963"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-twobythree/layout-grid-twobythree.component.scss",
+      "sha256": "0ac8c77c53ebeda8bf4344e26f2452b293d58b716aa0485b5efb32c6f37910a6"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-twobythree/layout-grid-twobythree.component.ts",
+      "sha256": "7a5a002a1d3371cb161d15e487c47e8ee58d74b139b2e86861818f39a3e1b848"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-twobytwo/layout-grid-twobytwo.component.html",
+      "sha256": "9f8344da2f7e5cdd6cc2add68afa14e9a91905dd9ff786198b8b7fc616b1d80e"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-twobytwo/layout-grid-twobytwo.component.scss",
+      "sha256": "57d13858a698976b486efc924ba5a9bc750be81f0bc2fe7feea59e7464086b83"
+    },
+    {
+      "path": "src/app/layouts/grid/layout-grid-twobytwo/layout-grid-twobytwo.component.ts",
+      "sha256": "162a4d95ada6f6066b70ca4459a69f35c2fbd1b10589e26d918de369e9aa718c"
+    },
+    {
+      "path": "src/app/modules/column/cm-operator-efficiency/cm-operator-efficiency.component.html",
+      "sha256": "e7e2bd3fd1d5acdd1ad3d37cdfec47955a9f1713c5c06338550129b9f51a3513"
+    },
+    {
+      "path": "src/app/modules/column/cm-operator-efficiency/cm-operator-efficiency.component.scss",
+      "sha256": "a055639e44c8147d47aa3dca441d893d7dd8874c4818fa611dae55ab7e928198"
+    },
+    {
+      "path": "src/app/modules/column/cm-operator-efficiency/cm-operator-efficiency.component.ts",
+      "sha256": "862d9ba68f408fd452c77c910f3045cbed6bee904d82dcd40b90b61381dd0c50"
+    },
+    {
+      "path": "src/app/modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component.html",
+      "sha256": "975aded913a256c99e1837a7c94f105cbe1d46385ac9e81c729d8bee8fc5cfd6"
+    },
+    {
+      "path": "src/app/modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component.scss",
+      "sha256": "3aea85cb6fded5b2ad25aee7192b1bbf1a375d17554603a702e9d8282d4ebbb2"
+    },
+    {
+      "path": "src/app/modules/column/cm-operator-efficiency-test/cm-operator-efficiency-test.component.ts",
+      "sha256": "8c0319cf978ec3ab9e1eb3a5ac6a3a68e42bc3c4601f53d219ab9e21355dd8fc"
+    },
+    {
+      "path": "src/app/services/demo-flipper.service.ts",
+      "sha256": "f4df605d16ebe2f8e31070fba4e20d76657e030517b3dfc4591a64532415f06d"
+    },
+    {
+      "path": "src/app/settings-operators/settings-operators.component.html",
+      "sha256": "5205df83952ddfc350c2c1d4582eeb9b01fbb459aebd055766b0bb373026d044"
+    },
+    {
+      "path": "src/app/settings-operators/settings-operators.component.scss",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "src/app/settings-operators/settings-operators.component.spec.ts",
+      "sha256": "767bcb584d64d48be83e784aa31dfd6d6847ec8f4ff6e1cc40d7d50348245134"
+    },
+    {
+      "path": "src/app/settings-operators/settings-operators.component.ts",
+      "sha256": "4ae1fde413d8b29bbbc4d492f53a401b6427b4afd1de7860c37b1d928bcd5972"
+    },
+    {
+      "path": "src/app/use-modal/use-modal.component.html",
+      "sha256": "05100fc4ea1035cb01eb4972e8bf5443186caae2da0627702653a3b5d257fa59"
+    },
+    {
+      "path": "src/app/use-modal/use-modal.component.scss",
+      "sha256": "049509f75e8ccfdfd8fe2e9f66ee7311b46e320e90be0ebe59919e598d3045e4"
+    },
+    {
+      "path": "src/app/use-modal/use-modal.component.spec.ts",
+      "sha256": "09cecda1ad4c2978f912a4b020fd61dc33fd63f0f3637b0d70a79d06454619f5"
+    },
+    {
+      "path": "src/app/use-modal/use-modal.component.ts",
+      "sha256": "66547d0db6b2d232b70557d4cb2e7bdfd73a2c185caee3ac131af81f6af67b20"
+    }
+  ]
+}

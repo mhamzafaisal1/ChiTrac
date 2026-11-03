@@ -11,8 +11,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type jsPDF from 'jspdf';
+import { loadPdfTools } from '../../shared/utils/pdf-tools';
 
 import { ReportsService } from '../../services/reports.service';
 import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } from '../../components/timeframe-picker/timeframe-picker.component';
@@ -262,7 +262,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     this.isDownloading = true;
 
     try {
-      const doc = this.buildMachineReportPdf();
+      const doc = await this.buildMachineReportPdf();
 
       doc.save(`machine_report_${this.startTime}_${this.endTime}.pdf`);
     } catch (e) {
@@ -292,11 +292,11 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     });
   }
 
-  private emailMachineReport(to: string): void {
+  private async emailMachineReport(to: string): Promise<void> {
     this.isEmailing = true;
 
     try {
-      const doc = this.buildMachineReportPdf();
+      const doc = await this.buildMachineReportPdf();
       const dataUri = doc.output('datauristring');
       const pdfBase64 = dataUri.split(',')[1] ?? '';
 
@@ -363,7 +363,8 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 
-  private buildMachineReportPdf(): jsPDF {
+  private async buildMachineReportPdf(): Promise<jsPDF> {
+    const { jsPDF, autoTable } = await loadPdfTools();
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
     const margin = 24;
     let y = margin;

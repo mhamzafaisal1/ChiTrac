@@ -1,10 +1,12 @@
 import { Component, OnInit, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
 @Component({
     selector: 'ct-data-bar',
     templateUrl: './data-bar.component.html',
     styleUrls: ['./data-bar.component.scss'],
-    standalone: false
+    standalone: true,
+    imports: [CommonModule]
 })
 export class DataBarComponent implements OnInit, OnChanges {
 

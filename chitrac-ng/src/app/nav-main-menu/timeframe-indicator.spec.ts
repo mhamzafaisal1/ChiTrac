@@ -6,7 +6,7 @@ import { NavMainMenuComponent } from './nav-main-menu.component';
 import { DateTimeService } from '../services/date-time.service';
 
 describe('navbar timeframe indicator', () => {
-  function setup(failShiftLookup = false, library = of({systemLayouts: [], userLayouts: [], loading: false, error: ''}) as any) {
+  function setup(failShiftLookup = false, library = of({systemLayouts: [], userLayouts: [], loading: false, error: ''}) as any, preloader: any = null) {
     TestBed.configureTestingModule({ providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: library, refresh() {}, ensureFresh() {} } },
       { provide: BreakpointObserver, useValue: { observe: () => of({ matches: false }) } }
     ] });
@@ -25,7 +25,8 @@ describe('navbar timeframe indicator', () => {
       { context$: of(null), setEditing() {} } as any,
       dates,
       { getActiveShifts: shifts } as any,
-      { requests$: new Subject() } as any
+      { requests$: new Subject() } as any,
+      preloader
     ));
     component.ngOnInit();
     return { component, dates, shifts, cache, users };
@@ -35,6 +36,22 @@ describe('navbar timeframe indicator', () => {
     const library = new Subject(); const { component } = setup(false, library);
     tick(); expect(library.observed).toBeTrue();
     component.ngOnDestroy(); expect(library.observed).toBeFalse();
+  }));
+
+  it('starts code warmup after login and permission changes without repeating it on session refresh', fakeAsync(() => {
+    const downloads = new Subject();
+    const preloader = { preload: jasmine.createSpy().and.returnValue(downloads) };
+    const { component, users } = setup(false, undefined, preloader);
+    tick(); expect(preloader.preload).not.toHaveBeenCalled();
+    users.next({ username: 'admin', permissions: { level: 0 } });
+    expect(preloader.preload).toHaveBeenCalledTimes(1);
+    expect(downloads.observed).toBeTrue();
+    users.next({ username: 'admin', permissions: { level: 0 } });
+    expect(preloader.preload).toHaveBeenCalledTimes(1);
+    users.next({ username: 'admin', permissions: { level: 7 } });
+    expect(preloader.preload).toHaveBeenCalledTimes(2);
+    users.next(null); expect(downloads.observed).toBeFalse();
+    component.ngOnDestroy(); tick();
   }));
 
   it('tracks applied defaults and confirmed selections', fakeAsync(() => {
