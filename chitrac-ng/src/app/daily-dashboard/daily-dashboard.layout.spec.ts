@@ -2,11 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
-import { ExperimentalDailyDashboardComponent } from './experimental-daily-dashboard.component';
+import { DailyDashboardComponent } from './daily-dashboard.component';
 import { SummaryCardVisibilityDialogComponent } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { LayoutEditService } from '../services/layout-edit.service';
 
-describe('Experimental chart layout picker', () => {
+describe('Daily chart layout picker', () => {
   let fixture: any;
   let component: SummaryCardVisibilityDialogComponent;
   let close: jasmine.Spy;
@@ -91,8 +91,8 @@ describe('Experimental chart layout picker', () => {
   });
 });
 
-describe('Experimental dashboard layout state', () => {
-  let dashboard: ExperimentalDailyDashboardComponent;
+describe('Daily dashboard layout state', () => {
+  let dashboard: DailyDashboardComponent;
   let preferences: BehaviorSubject<any>;
   let editor: LayoutEditService;
   let settings: any;
@@ -107,11 +107,11 @@ describe('Experimental dashboard layout state', () => {
     editor = new LayoutEditService(user);
     settings = {
       timeFormat$: of('12h'), userPreferences$: preferences,
-      setExperimentalDailyDashboardChartOrder: jasmine.createSpy('set'),
-      saveExperimentalDailyDashboardChartOrder: jasmine.createSpy('save').and.returnValue(of({})),
+      setDailyDashboardChartOrder: jasmine.createSpy('set'),
+      saveDailyDashboardChartOrder: jasmine.createSpy('save').and.returnValue(of({})),
     };
     dialog = { open: jasmine.createSpy('open').and.returnValue({ afterClosed: () => closed }) };
-    dashboard = new ExperimentalDailyDashboardComponent(
+    dashboard = new DailyDashboardComponent(
       { ensureConnected() {}, status$: of('disconnected'), dashboardCache$: of({}) } as any,
       { getConfirmed: () => true } as any, {} as any, editor, settings, user, dialog, {} as any,
     );
@@ -142,9 +142,9 @@ describe('Experimental dashboard layout state', () => {
     expect(dialog.open.calls.mostRecent().args[1].data.layout).toBe('3x2');
     closed.next({ layout: '2x2', visibility: visibility(4), order: [] });
     expect(dashboard.visibleChartTiles.length).toBe(4);
-    expect(settings.setExperimentalDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
+    expect(settings.setDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
     dashboard.onChartDrop({ previousIndex: 0, currentIndex: 2 } as any);
-    expect(settings.setExperimentalDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
+    expect(settings.setDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
     (dashboard as any).revertLayoutChanges();
     expect(dashboard.gridLayout).toBe('3x2');
     expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(original);
@@ -156,19 +156,19 @@ describe('Experimental dashboard layout state', () => {
     closed.next({ layout: '2x2', visibility: visibility(5), order: [] });
     closed.next(undefined);
     expect(dashboard.gridLayout).toBe('3x2');
-    expect(settings.setExperimentalDailyDashboardChartOrder).not.toHaveBeenCalled();
+    expect(settings.setDailyDashboardChartOrder).not.toHaveBeenCalled();
   });
 
   it('saves the grid and visibility together and retains the draft if saving fails', () => {
     editor.toggle();
     dashboard.openChartVisibilityDialog();
     closed.next({ layout: '2x2', visibility: visibility(4), order: [] });
-    settings.saveExperimentalDailyDashboardChartOrder.and.returnValue(throwError(() => new Error('offline')));
+    settings.saveDailyDashboardChartOrder.and.returnValue(throwError(() => new Error('offline')));
     (dashboard as any).saveLayout().subscribe({ error() {} });
     expect(dashboard.gridLayout).toBe('2x2');
     expect(dashboard.layoutEditing).toBeTrue();
-    expect(settings.saveExperimentalDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
-    settings.saveExperimentalDailyDashboardChartOrder.and.returnValue(of({}));
+    expect(settings.saveDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
+    settings.saveDailyDashboardChartOrder.and.returnValue(of({}));
     (dashboard as any).saveLayout().subscribe();
     expect(dashboard.layoutEditing).toBeFalse();
   });

@@ -53,15 +53,15 @@ describe('Home login gate and DMC menu grid', () => {
     users.next(admin);const h=await RouterTestingHarness.create('/ng/home');
     expect(labels(h)).toEqual(['Daily Dashboard','Machine Dashboard','Operator Dashboard','Comparison Dashboard','Machine Report','Operator Report','Settings','Log Out']);
     expect(h.routeNativeElement!.querySelector('h1')).toBeNull();
+    expect(h.routeNativeElement!.querySelector('a[href="/ng/daily-dashboard"]')).not.toBeNull();
   });
 
   it('puts Main Menu first in submenus and returns up exactly one level without a separate heading',async()=>{
     users.next(admin);const h=await RouterTestingHarness.create('/ng/home?menu=main');
     expect(labels(h)).toEqual(['Home','Dashboards','Production Screens','Reports','Settings','Log Out']);
-    await press(h,'Dashboards');expect(labels(h)).toEqual(['Main Menu','Daily','Machine','Operator','Item','Summary','Comparison','Action Center','Downtime Pareto','Shift Handoff','Visual Ops','Experimental']);
+    await press(h,'Dashboards');expect(labels(h)).toEqual(['Main Menu','Daily','Machine','Operator','Item','Summary','Comparison','Action Center','Downtime Pareto','Shift Handoff','Visual Ops']);
     expect(h.routeNativeElement!.querySelector('h1')).toBeNull();
-    await press(h,'Experimental');expect(labels(h)).toEqual(['Main Menu','Daily Experimental']);
-    await press(h,'Main Menu');expect(TestBed.inject(Router).url).toBe('/ng/home?menu=dashboards');
+    expect(h.routeNativeElement!.querySelector('a[href="/ng/daily-dashboard"]')).not.toBeNull();
     expect(labels(h)[0]).toBe('Main Menu');
     await press(h,'Main Menu');expect(TestBed.inject(Router).url).toBe('/ng/home?menu=main');
     await press(h,'Reports');expect(labels(h)[0]).toBe('Main Menu');expect(labels(h)).toContain('Shift Comparison Report');
@@ -119,5 +119,17 @@ describe('Home login gate and DMC menu grid', () => {
     expect(fallback?.redirectTo).toBeUndefined();
     expect(fallback?.loadComponent).toBeDefined();
     expect(fallback?.canActivate?.length).toBeGreaterThan(0);
+  });
+
+  it('promotes the guarded Daily Dashboard and redirects both former URLs',()=>{
+    const daily = routes.find(route=>route.path==='ng/daily-dashboard');
+    expect(daily?.loadComponent).toBeDefined();
+    expect(daily?.canActivate?.length).toBeGreaterThan(0);
+    for (const path of ['ng/daily-analytics-split','ng/experimental/daily-dashboard']) {
+      const legacy = routes.find(route=>route.path===path);
+      expect(legacy?.redirectTo).toBe('ng/daily-dashboard');
+      expect(legacy?.pathMatch).toBe('full');
+      expect(legacy?.loadComponent).toBeUndefined();
+    }
   });
 });

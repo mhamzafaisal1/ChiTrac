@@ -42,17 +42,18 @@ const appRoutes: Routes = [
 	{ path: 'ng/operatorAnalytics', loadComponent: () => import('./operator-analytics-dashboard/operator-analytics-dashboard.component').then(m => m.OperatorAnalyticsDashboardComponent), data: { preload: true } },
 	{ path: 'ng/itemAnalytics', loadComponent: () => import('./item-analytics-dashboard/item-analytics-dashboard.component').then(m => m.ItemAnalyticsDashboardComponent), data: { preload: true } },
 	{ path: 'ng/daily-summary', loadComponent: () => import('./daily-summary-dashboard/daily-summary-dashboard.component').then(m => m.DailySummaryDashboardComponent), data: { preload: true } },
-	{ path: 'ng/daily-analytics-split', loadComponent: () => import('./daily-analytics-dashboard-split/daily-analytics-dashboard-split.component').then(m => m.DailyAnalyticsDashboardSplitComponent), data: { preload: true } },
+	{ path: 'ng/daily-analytics-split', redirectTo: 'ng/daily-dashboard', pathMatch: 'full' },
+	{ path: 'ng/experimental/daily-dashboard', redirectTo: 'ng/daily-dashboard', pathMatch: 'full' },
 	{ path: 'ng/comparison-dashboard', loadComponent: () => import('./comparison-dashboard/comparison-dashboard.component').then(m => m.ComparisonDashboardComponent), data: { preload: true } },
 	{ path: 'ng/action-center', loadComponent: () => import('./action-center/action-center.component').then(m => m.ActionCenterComponent), data: { preload: true } },
 	{ path: 'ng/downtime-pareto', loadComponent: () => import('./downtime-pareto/downtime-pareto.component').then(m => m.DowntimeParetoComponent), data: { preload: true } },
 	{ path: 'ng/shift-handoff', loadComponent: () => import('./shift-handoff/shift-handoff.component').then(m => m.ShiftHandoffComponent), data: { preload: true } },
 	{ path: 'ng/visual-ops', loadComponent: () => import('./visual-ops-dashboard/visual-ops-dashboard.component').then(m => m.VisualOpsDashboardComponent), data: { preload: true } },
 	{
-		path: 'ng/experimental/daily-dashboard',
+		path: 'ng/daily-dashboard',
 		data: { preload: true },
-		loadComponent: () => import('./experimental-daily-dashboard/experimental-daily-dashboard.component')
-			.then(m => m.ExperimentalDailyDashboardComponent)
+		loadComponent: () => import('./daily-dashboard/daily-dashboard.component')
+			.then(m => m.DailyDashboardComponent)
 	},
 	{ path: 'ng/analytics/machine-dashboard', loadComponent: () => import('./machine-dashboard/machine-dashboard.component').then(m => m.MachineDashboardComponent), data: { preload: true } },
 	

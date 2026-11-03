@@ -27,7 +27,7 @@ const menus: Record<NavigationMenu, NavigationEntry[]> = {
     { label: 'Log Out', icon: 'logout', action: 'logout' },
   ],
   dashboards: [
-    { label: 'Daily', icon: 'slow_motion_video', path: '/ng/daily-analytics-split' },
+    { label: 'Daily', icon: 'slow_motion_video', path: '/ng/daily-dashboard' },
     { label: 'Machine', icon: 'local_laundry_service', path: '/ng/analytics/machine-dashboard' },
     { label: 'Operator', icon: 'person', path: '/ng/operatorAnalytics' },
     { label: 'Item', icon: 'dry_cleaning', path: '/ng/itemAnalytics' },
@@ -37,11 +37,8 @@ const menus: Record<NavigationMenu, NavigationEntry[]> = {
     { label: 'Downtime Pareto', icon: 'waterfall_chart', path: '/ng/downtime-pareto' },
     { label: 'Shift Handoff', icon: 'assignment', path: '/ng/shift-handoff' },
     { label: 'Visual Ops', icon: 'monitoring', path: '/ng/visual-ops' },
-    { label: 'Experimental', icon: 'science', menu: 'experimental' },
   ],
-  experimental: [
-    { label: 'Daily Experimental', icon: 'dashboard_customize', path: '/ng/experimental/daily-dashboard' },
-  ],
+  experimental: [],
   productionScreens: [{ label: 'Production Screen', icon: 'live_tv', path: '/ng/production-screen' }],
   reports: [
     { label: 'Machine Report', icon: 'local_laundry_service', path: '/ng/reports/machine-report' },

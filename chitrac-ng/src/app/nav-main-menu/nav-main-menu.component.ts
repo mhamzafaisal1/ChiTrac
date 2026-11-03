@@ -150,7 +150,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   /** Prevents the opening click from immediately closing the menu via document:click. */
   private ignoreDocumentClick = false;
 
-  private readonly routeMenuMap = [
+  private readonly routeMenuMap: { menu: string; parent?: string; routes: string[] }[] = [
     {
       menu: 'dashboards',
       routes: [
@@ -162,16 +162,9 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/operatorAnalytics',
         '/ng/itemAnalytics',
         '/ng/daily-summary',
-        '/ng/daily-analytics-split',
+        '/ng/daily-dashboard',
         '/ng/comparison-dashboard',
         '/ng/analytics/machine-dashboard'
-      ]
-    },
-    {
-      menu: 'experimental',
-      parent: 'dashboards',
-      routes: [
-        '/ng/experimental/daily-dashboard'
       ]
     },
     {

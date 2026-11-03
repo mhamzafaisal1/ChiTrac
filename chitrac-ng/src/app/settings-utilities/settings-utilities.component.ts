@@ -213,7 +213,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
 
   saveCurrentUserLayoutsAsDefaults(): void {
     const confirmed = confirm(
-      'Save your Machine, Operator, and Experimental Daily dashboard layouts as the system defaults? ' +
+      'Save your Machine, Operator, and Daily dashboard layouts as the system defaults? ' +
       'Only layouts you have saved will be updated. Existing personal layouts will continue to override these defaults.'
     );
     if (!confirmed) return;
@@ -225,7 +225,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
         const labels: Record<string, string> = {
           machineDashboard: 'Machine',
           operatorDashboard: 'Operator',
-          experimentalDailyDashboard: 'Experimental Daily'
+          experimentalDailyDashboard: 'Daily'
         };
         const promoted = response.promotedLayouts.map(name => labels[name] || name).join(', ');
         this.snackBar.open(`System layout defaults saved: ${promoted}.`, 'Close', {

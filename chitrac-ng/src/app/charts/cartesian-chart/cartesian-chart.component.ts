@@ -87,6 +87,10 @@ import {
     private rootG!: d3.Selection<SVGGElement, unknown, null, undefined>;
     private tooltipEl?: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+    private hoverPointer: { clientX: number; clientY: number } | null = null;
+    private hoveredTooltip?: { cfg: CartesianChartConfig; context: CartesianTooltipContext };
+    private tooltipTargets = new WeakMap<Element, { cfg: CartesianChartConfig; context: CartesianTooltipContext }>();
+    private resizeFrame = 0;
     private resizeObserver?: ResizeObserver;
     private readonly chartTextColor = 'var(--theme-color-on-surface-variant, #333)';
     private readonly chartAxisColor = 'color-mix(in srgb, var(--theme-color-on-surface-variant, #333) 55%, transparent)';
@@ -122,6 +126,8 @@ import {
     ngOnDestroy(): void {
       this.clearTooltipTimer();
       this.resizeObserver?.disconnect();
+      if (this.resizeFrame) cancelAnimationFrame(this.resizeFrame);
+      if (this.host) d3.select(this.host.nativeElement).on('.tooltip', null);
     }
 
     private setupResizeObserver(): void {
@@ -131,7 +137,11 @@ import {
 
       this.resizeObserver?.disconnect();
       this.resizeObserver = new ResizeObserver(() => {
-        requestAnimationFrame(() => this.render());
+        if (this.resizeFrame) return;
+        this.resizeFrame = requestAnimationFrame(() => {
+          this.resizeFrame = 0;
+          this.render();
+        });
       });
       this.resizeObserver.observe(this.host.nativeElement);
     }
@@ -140,6 +150,16 @@ import {
     private initSvg() {
       const el = this.host.nativeElement;
       d3.select(el).selectAll('*').remove();
+      // Keep pointer tracking on the persistent host, not bars replaced by a refresh.
+      d3.select(el)
+        .on('pointerenter.tooltip pointermove.tooltip', (event: PointerEvent) => {
+          this.hoverPointer = { clientX: event.clientX, clientY: event.clientY };
+          this.syncTooltip();
+        })
+        .on('pointerleave.tooltip', () => {
+          this.hoverPointer = null;
+          this.hideTooltip();
+        });
   
       this.svg = d3.select(el)
         .append('svg')
@@ -167,19 +187,20 @@ import {
     }
   
     private render() {
-      this.hideTooltip();
       // ensure svg/rootG exist before any .attr()
       if (!this.svg) this.initSvg();
     
       if (!this.config || !this.config.series?.length) {
         // clear but don't re-init every time to avoid racing with initSvg
         this.rootG?.selectAll('*').remove();
+        this.hideTooltip();
         return;
       }
     
       const cfg = this.withDefaults(this.config);
       const hasPie = cfg.series.some(s => s.type === 'pie' || s.type === 'donut');
       if (hasPie) { 
+        this.hideTooltip();
         this.renderPie(this.rootG, cfg); 
         return; 
       }
@@ -429,6 +450,7 @@ import {
       // Lollipops
       const lolSeries = cfg.series.filter(s => s.type === 'lollipop');
       this.renderLollipops(g, lolSeries, cfg, xScale, yScale, yScaleH, innerW, innerH, isHorizontal);
+      this.syncTooltip();
     }
   
     /* ===== Helpers ===== */
@@ -712,33 +734,46 @@ import {
         .attr('class', 'cc-bar cc-bar-tooltip-target')
         .style('cursor', 'default')
         .style('pointer-events', 'all')
-        .on('pointerenter', (event: PointerEvent) => {
-          this.scheduleTooltip(event, cfg, context);
-        })
-        .on('pointermove', (event: PointerEvent) => {
-          this.positionTooltip(event);
-        })
-        .on('pointerleave', () => {
-          this.hideTooltip();
-        });
+        .each((_, index, nodes) => this.tooltipTargets.set(nodes[index], { cfg, context }));
     }
 
-    private scheduleTooltip(
-      event: MouseEvent | PointerEvent,
-      cfg: CartesianChartConfig,
-      context: CartesianTooltipContext
-    ): void {
+    private syncTooltip(): void {
+      if (!this.hoverPointer) return;
+      const { clientX, clientY } = this.hoverPointer;
+      const target = document.elementFromPoint(clientX, clientY)?.closest('.cc-bar-tooltip-target');
+      const next = target && this.host.nativeElement.contains(target) ? this.tooltipTargets.get(target) : undefined;
+      if (!next) {
+        this.hideTooltip();
+        return;
+      }
+      const previous = this.hoveredTooltip?.context;
+      const pointKey = (point: XYPoint) => point.x instanceof Date ? point.x.getTime() : point.x;
+      const sameTarget = previous?.series.id === next.context.series.id &&
+        pointKey(previous.point) === pointKey(next.context.point);
+      this.hoveredTooltip = next;
+      this.positionTooltip(this.hoverPointer);
+      if (this.tooltipEl?.classed('is-visible')) {
+        this.showTooltip();
+        return;
+      }
+      if (sameTarget && this.tooltipTimer) return;
       this.clearTooltipTimer();
-      this.positionTooltip(event);
 
       this.tooltipTimer = setTimeout(() => {
-        const lines = this.getTooltipLines(cfg, context);
-        this.tooltipEl
-          ?.html(lines.map(line => this.escapeHtml(line)).join('<br>'))
-          .style('opacity', '1')
-          .classed('is-visible', true);
-        this.positionTooltip(event);
-      }, cfg.tooltip?.delayMs ?? 750);
+        this.tooltipTimer = null;
+        this.showTooltip();
+      }, next.cfg.tooltip?.delayMs ?? 750);
+    }
+
+    private showTooltip(): void {
+      if (!this.hoveredTooltip || !this.hoverPointer) return;
+      const { cfg, context } = this.hoveredTooltip;
+      const lines = this.getTooltipLines(cfg, context);
+      this.tooltipEl
+        ?.html(lines.map(line => this.escapeHtml(line)).join('<br>'))
+        .style('opacity', '1')
+        .classed('is-visible', true);
+      this.positionTooltip(this.hoverPointer);
     }
 
     private getTooltipLines(
@@ -751,7 +786,7 @@ import {
       return [`${context.series.title}: ${this.formatNumber(context.value)}`];
     }
 
-    private positionTooltip(event: MouseEvent | PointerEvent): void {
+    private positionTooltip(event: { clientX: number; clientY: number }): void {
       if (!this.tooltipEl || !this.host) return;
       const [x, y] = d3.pointer(event, this.host.nativeElement);
       const hostEl = this.host.nativeElement;
@@ -779,6 +814,7 @@ import {
 
     private hideTooltip(): void {
       this.clearTooltipTimer();
+      this.hoveredTooltip = undefined;
       this.tooltipEl
         ?.style('opacity', '0')
         .classed('is-visible', false);

@@ -6,7 +6,7 @@ import { LayoutSaveConfirmComponent, openLayoutSaveConfirmDialog } from './layou
 import { MachineDashboardComponent } from '../../machine-dashboard/machine-dashboard.component';
 import { OperatorAnalyticsDashboardComponent } from '../../operator-analytics-dashboard/operator-analytics-dashboard.component';
 import { DailySummaryDashboardComponent } from '../../daily-summary-dashboard/daily-summary-dashboard.component';
-import { ExperimentalDailyDashboardComponent } from '../../experimental-daily-dashboard/experimental-daily-dashboard.component';
+import { DailyDashboardComponent } from '../../daily-dashboard/daily-dashboard.component';
 
 describe('Layout save dialog', () => {
   let fixture: any;
@@ -94,7 +94,7 @@ const dashboards = [
   [MachineDashboardComponent, 'saveLayoutPreferences', 'saveMachineDashboardLayout', 'setMachineDashboardLayout'],
   [OperatorAnalyticsDashboardComponent, 'saveLayoutPreferences', 'saveOperatorDashboardLayout', 'setOperatorDashboardLayout'],
   [DailySummaryDashboardComponent, 'saveSummaryCardLayout', 'saveSummaryDashboardLayout', 'setSummaryDashboardLayout'],
-  [ExperimentalDailyDashboardComponent, 'saveLayout', 'saveExperimentalDailyDashboardChartOrder', 'setExperimentalDailyDashboardChartOrder'],
+  [DailyDashboardComponent, 'saveLayout', 'saveDailyDashboardChartOrder', 'setDailyDashboardChartOrder'],
 ] as const;
 
 for (const [type, method, serverSave, localSave] of dashboards) {

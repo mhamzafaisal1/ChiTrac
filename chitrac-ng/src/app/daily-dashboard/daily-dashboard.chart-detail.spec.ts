@@ -12,11 +12,11 @@ import { LayoutEditService } from '../services/layout-edit.service';
 import { SettingsService } from '../services/settings.service';
 import { UserService } from '../user.service';
 import { Subject, BehaviorSubject } from 'rxjs';
-import { ExperimentalDailyDashboardComponent } from './experimental-daily-dashboard.component';
+import { DailyDashboardComponent } from './daily-dashboard.component';
 import { DAILY_CHART_COMPONENTS, DailyChartDetailComponent } from '../components/daily-chart-detail/daily-chart-detail.component';
 
-describe('Experimental Daily Dashboard chart detail', () => {
-  let dashboard: ExperimentalDailyDashboardComponent;
+describe('Daily Dashboard chart detail', () => {
+  let dashboard: DailyDashboardComponent;
   let closed: Subject<void>;
   let open: jasmine.Spy;
   let close: jasmine.Spy;
@@ -25,7 +25,7 @@ describe('Experimental Daily Dashboard chart detail', () => {
     closed = new Subject<void>();
     close = jasmine.createSpy('close');
     open = jasmine.createSpy('open').and.returnValue({ close, afterClosed: () => closed });
-    dashboard = new ExperimentalDailyDashboardComponent(
+    dashboard = new DailyDashboardComponent(
       {} as any, {} as any, {} as any,
       { unregister: () => {} } as any, {} as any, {} as any,
       { open } as any, {} as any,
@@ -123,11 +123,11 @@ describe('Experimental Daily Dashboard chart detail', () => {
 
 describe('Dashboard chart header controls', () => {
   let fixture: any;
-  let dashboard: ExperimentalDailyDashboardComponent;
+  let dashboard: DailyDashboardComponent;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [ExperimentalDailyDashboardComponent],
+      imports: [DailyDashboardComponent],
       providers: [provideNoopAnimations(),
         { provide: WebsocketService, useValue: { ensureConnected: () => {}, status$: new Subject(), dashboardCache$: new Subject() } },
         { provide: DateTimeService, useValue: { getConfirmed: () => true } },
@@ -137,10 +137,10 @@ describe('Dashboard chart header controls', () => {
         { provide: UserService, useValue: {} },
         { provide: MatDialog, useValue: {} },
       ],
-    }).overrideComponent(ExperimentalDailyDashboardComponent, {
+    }).overrideComponent(DailyDashboardComponent, {
       set: { imports: [CommonModule, ChartTileComponent, MatSlideToggleModule], schemas: [NO_ERRORS_SCHEMA] },
     });
-    fixture = TestBed.createComponent(ExperimentalDailyDashboardComponent);
+    fixture = TestBed.createComponent(DailyDashboardComponent);
     dashboard = fixture.componentInstance;
     spyOn(dashboard as any, 'setupChartResizeObserver');
     spyOn(dashboard as any, 'scheduleChartDimensionUpdate');
