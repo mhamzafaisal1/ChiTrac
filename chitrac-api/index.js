@@ -14,8 +14,7 @@ if (!config.mongoLog?.connectionString || typeof config.mongoLog.connectionStrin
 	throw new Error('MONGO_LOG_CONN_STRING is required');
 }
 
-/** Load Morgan for http logging */
-const morgan = require('morgan');
+const { createRequestLoggingMiddleware } = require('./modules/requestLogging');
 
 /** Load MongoDB for logger connection */
 const { MongoClient } = require('mongodb');
@@ -67,6 +66,7 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const app = express();
+app.use(createRequestLoggingMiddleware(logger));
 app.use(require('compression')());
 const port = config.port; // ✅ Using .env PORT
 
@@ -125,14 +125,6 @@ const allowCrossDomain = function(req, res, next) {
 };
 
 app.use(allowCrossDomain);
-
-const morganMiddleware = morgan(':method :url :status :res[content-length] - :response-time ms', {
-    stream: {
-        write: (message) => logger.http(message.trim())
-    }
-});
-
-app.use(morganMiddleware);
 
 /**** Initial Collection Setup */
 async function collectionExists(collectionName) {
