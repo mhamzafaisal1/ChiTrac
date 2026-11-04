@@ -1,7 +1,5 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
-const timestampsSchema = require('../schemas/timestampsSchema');
-const { sanitizeLogValue } = require('../utils/logSanitizer');
 
 const WS_PORT = 50001;
 const LOG_COLLECTION = 'ws-log';
@@ -206,12 +204,11 @@ function createLogHelpers(server) {
     const logger = server.logger;
 
     async function writeLog(event, details = {}) {
-        const doc = sanitizeLogValue({
+        const doc = {
+            timestamp: new Date(),
             event,
-            ...details,
-            timestamps: timestampsSchema.utils.stampInit(new Date())
-        });
-        delete doc.timestamp;
+            ...details
+        };
 
         try {
             await logDb.collection(LOG_COLLECTION).insertOne(doc);
@@ -221,14 +218,13 @@ function createLogHelpers(server) {
     }
 
     async function writeError(event, error, details = {}) {
-        const doc = sanitizeLogValue({
+        const doc = {
+            timestamp: new Date(),
             event,
             message: error?.message || String(error),
             stack: error?.stack,
-            ...details,
-            timestamps: timestampsSchema.utils.stampInit(new Date())
-        });
-        delete doc.timestamp;
+            ...details
+        };
 
         try {
             await logDb.collection(ERROR_COLLECTION).insertOne(doc);

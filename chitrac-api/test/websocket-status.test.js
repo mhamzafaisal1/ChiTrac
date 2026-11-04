@@ -7,13 +7,10 @@ const { startWebsocketServer } = require('../modules/websocketServer');
 
 test('public status connections exclude initial data, broadcasts and private request responses', async t => {
     let configurationReads = 0;
-    let onServerChange;
-    const logDocuments = [];
     const server = {
         config: {}, cache: {},
-        subscribe(callback) { onServerChange = callback; return { unsubscribe() {} }; },
         logger: { info() {}, error() {} },
-        logDb: { collection: name => ({ insertOne: async doc => { logDocuments.push({ name, doc }); } }) },
+        logDb: { collection: () => ({ insertOne: async () => {} }) },
         configurationSync: {
             snapshot: () => ({ type: 'configuration-cache', collections: { 'config-machine': [{ name: 'Private' }] } }),
             refresh: async () => { configurationReads++; return { type: 'configuration-cache' }; }
@@ -61,16 +58,5 @@ test('public status connections exclude initial data, broadcasts and private req
     for (const message of received) {
         assert.equal(message.type, 'connection-status');
         assert.deepEqual(Object.keys(message).sort(), ['timestamp', 'type']);
-    }
-    onServerChange({ type: 'set', path: 'config.systemName', timestamp: new Date().toISOString() });
-    wss.emit('error', new Error('Test error /path?token=secret-token'));
-    assert.ok(logDocuments.some(log => log.name === 'ws-log'));
-    assert.ok(logDocuments.some(log => log.name === 'ws-error'));
-    for (const { doc } of logDocuments) {
-        assert.ok(doc.timestamps.create instanceof Date);
-        assert.ok(doc.timestamps.active instanceof Date);
-        assert.ok(doc.timestamps.update instanceof Date);
-        assert.equal(doc.timestamp, undefined);
-        assert.ok(!JSON.stringify(doc).includes('secret-token'));
     }
 });

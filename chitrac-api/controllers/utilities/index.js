@@ -2699,7 +2699,7 @@ function constructor(server) {
       const skip = parseInt(req.query.skip) || 0;
 
       // Validate limit (max 1000 to prevent performance issues)
-      const safeLimit = Math.max(1, Math.min(limit, 1000));
+      const safeLimit = Math.min(limit, 1000);
       const safeSkip = Math.max(0, skip);
 
       // Fetch logs and total count
