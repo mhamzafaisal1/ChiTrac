@@ -1,112 +1,54 @@
-/**
- * Utility functions for querying server logs from the logging database
- */
+const timestampsSchema = require('../schemas/timestampsSchema');
+const { sanitizeLogValue } = require('./logSanitizer');
 
-/**
- * Fetch logs from the api-http collection
- * @param {Object} logDb - The logging database connection
- * @param {Object} options - Query options
- * @param {Date} options.start - Start date for filtering
- * @param {Date} options.end - End date for filtering
- * @param {string} options.level - Filter by log level (optional)
- * @param {number} options.limit - Maximum number of records to return
- * @param {number} options.skip - Number of records to skip for pagination
- * @returns {Promise<Array>} Array of log entries
- */
+function serverLogQuery({ start, end, level } = {}) {
+  const query = {};
+  if (start || end) {
+    const range = {};
+    if (start) range.$gte = timestampsSchema.utils.toDate(start);
+    if (end) range.$lte = timestampsSchema.utils.toDate(end);
+    // Keep the indexed range match before the mixed-format sort. A canonical
+    // timestamp wins; a legacy timestamp is only used when it is absent/null.
+    query.$or = [
+      { 'timestamps.create': range },
+      { 'timestamps.create': null, timestamp: range },
+    ];
+  }
+  if (level) query.level = level;
+  return query;
+}
+
+function formatServerLog(log) {
+  const timestamp = log.timestamps?.create || log.timestamp;
+  return sanitizeLogValue({
+    _id: log._id,
+    timestamps: log.timestamps?.create ? log.timestamps : timestampsSchema.utils.stampInit(timestamp),
+    // Compatibility alias for existing log-viewer clients, not a stored field.
+    timestamp,
+    level: log.level || 'unknown', message: log.message || '', hostname: log.hostname || 'unknown',
+    request: log.request, authentication: log.authentication,
+    meta: log.request || log.authentication ? {
+      ...(log.meta && typeof log.meta === 'object' ? log.meta : {}),
+      ...(log.request ? { request: log.request } : {}),
+      ...(log.authentication ? { authentication: log.authentication } : {}),
+    } : log.meta,
+  });
+}
+
 async function fetchServerLogs(logDb, options = {}) {
-  const {
-    start,
-    end,
-    level,
-    limit = 100,
-    skip = 0
-  } = options;
-
-  try {
-    const collection = logDb.collection('api-http');
-    
-    // Build query
-    const query = {};
-    
-    // Date range filter
-    if (start || end) {
-      query.timestamp = {};
-      if (start) {
-        query.timestamp.$gte = new Date(start);
-      }
-      if (end) {
-        query.timestamp.$lte = new Date(end);
-      }
-    }
-    
-    // Level filter
-    if (level) {
-      query.level = level;
-    }
-    
-    // Execute query
-    const logs = await collection
-      .find(query)
-      .sort({ timestamp: -1 }) // Most recent first
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-    
-    // Format logs for frontend
-    return logs.map(log => ({
-      _id: log._id,
-      timestamp: log.timestamp,
-      level: log.level || 'unknown',
-      message: log.message || '',
-      meta: log.meta,
-      hostname: log.hostname || 'unknown'
-    }));
-  } catch (error) {
-    throw new Error(`Failed to fetch server logs: ${error.message}`);
-  }
+  const { limit = 100, skip = 0 } = options;
+  const logs = await logDb.collection('api-http').aggregate([
+    { $match: serverLogQuery(options) },
+    { $addFields: { _logTimestamp: { $ifNull: ['$timestamps.create', '$timestamp'] } } },
+    { $sort: { _logTimestamp: -1, _id: -1 } },
+    { $skip: skip }, { $limit: limit },
+    { $project: { _logTimestamp: 0 } },
+  ], { allowDiskUse: true }).toArray();
+  return logs.map(formatServerLog);
 }
 
-/**
- * Get total count of logs matching the query (for pagination)
- * @param {Object} logDb - The logging database connection
- * @param {Object} options - Query options (same as fetchServerLogs)
- * @returns {Promise<number>} Total count of matching logs
- */
 async function getServerLogsCount(logDb, options = {}) {
-  const {
-    start,
-    end,
-    level
-  } = options;
-
-  try {
-    const collection = logDb.collection('api-http');
-    
-    // Build query (same as fetchServerLogs)
-    const query = {};
-    
-    if (start || end) {
-      query.timestamp = {};
-      if (start) {
-        query.timestamp.$gte = new Date(start);
-      }
-      if (end) {
-        query.timestamp.$lte = new Date(end);
-      }
-    }
-    
-    if (level) {
-      query.level = level;
-    }
-    
-    return await collection.countDocuments(query);
-  } catch (error) {
-    throw new Error(`Failed to count server logs: ${error.message}`);
-  }
+  return logDb.collection('api-http').countDocuments(serverLogQuery(options));
 }
 
-module.exports = {
-  fetchServerLogs,
-  getServerLogsCount
-};
-
+module.exports = { fetchServerLogs, getServerLogsCount, serverLogQuery, formatServerLog };

@@ -4,7 +4,7 @@ module.exports = function(db) {
 
 function constructor(db) {
     const winston = require('winston');
-    require('winston-mongodb');
+    const { MongoLogTransport, createLogFormat } = require('./mongoLogTransport');
     require('winston-daily-rotate-file');
     const path = require('path');
 
@@ -33,7 +33,7 @@ function constructor(db) {
 
     const logger = winston.createLogger({
         levels: winston.config.npm.levels,
-        format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+        format: createLogFormat(),
         transports: [errorFileTransport, httpFileTransport],
         exceptionHandlers: [errorFileTransport]
     });
@@ -47,7 +47,7 @@ function constructor(db) {
                     winston.format.colorize({ all: true }),
                     winston.format.align(),
                     winston.format.json(),
-                    winston.format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)
+                    winston.format.printf(info => `${info.timestamps.create.toISOString()} ${info.level}: ${info.message}`)
                 ),
                 level: 'silly'
             }));
@@ -62,20 +62,19 @@ function constructor(db) {
     }
     
     if (db) {
-        logger.add(new winston.transports.MongoDB({
+        logger.add(new MongoLogTransport({
             level: 'error',
             db: db,
-            collection: 'api-error',
-            options: { useUnifiedTopology: true },
-            storeHost: true
+            collection: 'api-error'
         }));
-        logger.add(new winston.transports.MongoDB({
+        logger.add(new MongoLogTransport({
             level: 'http',
             db: db,
-            collection: 'api-http',
-            options: { useUnifiedTopology: true },
-            storeHost: true
+            collection: 'api-http'
         }));
     }
+    // A logging database outage must not crash the API or recursively log back
+    // into the failing transport. File transports continue to receive entries.
+    logger.on('error', error => console.error('Logging transport failure:', error.code || error.name));
     return logger;
 }

@@ -4,6 +4,9 @@ const { createVerifyJwtMiddleware } = require('../utils/authMiddleware');
 
 
 function init(app, server) {
+    // Attribute supplied credentials even on public or authentication-bypassed
+    // routes. The access middleware still makes the authorization decision.
+    app.use('/api', require('../utils/authMiddleware').createTokenAuditMiddleware(server));
     // Must precede every API registration, including the direct machine XML routes.
     app.use('/api', require('../utils/apiControllerAccess').createApiControllerAccess(server));
     app.use('/api', require('../modules/configurationSync').configurationSyncMiddleware(server));
