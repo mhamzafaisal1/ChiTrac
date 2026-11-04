@@ -272,12 +272,13 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
       autoFocus: false,
       data: {
         title: 'Edit Layout',
-        description: 'Choose a layout and the charts to display. Hide or show charts to match the required count.',
+        description: 'Drag charts to reorder or move between Shown and Hidden, or use the arrows. Show exactly the number required by the layout.',
         showLabel: 'Shown',
         hideLabel: 'Hidden',
         emptyShownText: 'No charts shown',
         emptyHiddenText: 'No charts hidden',
         compactCards: true,
+        dragDropEnabled: true,
         exactVisible: this.maxVisibleCharts,
         layout: this.gridLayout,
         layoutOptions: [
@@ -299,6 +300,7 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
         this.layoutEditService.markEditsMade();
         this.gridLayout = gridLayout;
         this.chartVisibility = this.cleanChartVisibility(result.visibility);
+        this.applyChartOrder(result.order);
         this.settingsService.setDailyDashboardChartOrder(this.getChartOrder(), this.chartVisibility, this.gridLayout);
         this.scheduleChartDimensionUpdate();
       });
@@ -406,6 +408,7 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private applyChartOrder(chartOrder: string[]): void {
+    chartOrder = [...new Set(chartOrder)];
     const byId = new Map(this.chartTiles.map((tile) => [tile.id, tile]));
     const ordered = chartOrder
       .map((id) => byId.get(id))

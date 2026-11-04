@@ -81,15 +81,15 @@ describe('Daily Dashboard chart detail', () => {
 
   it('passes daily count choices into the enlarged chart without resetting on updates', () => {
     dashboard.setDailyCountOption('averageLine', false);
-    dashboard.setDailyCountOption('tooltip', false);
+    dashboard.setDailyCountOption('barColors', false);
     dashboard.openChartDetail(dashboard.chartTiles.find(tile => tile.id === 'daily-counts')!);
     const state = open.calls.mostRecent().args[1].data.componentInputs.state$;
     const detail = new DailyChartDetailComponent({} as any, {} as any);
     detail.chartId = 'daily-counts';
-    expect(detail.chartInputs(state.value)['displayOptions']).toEqual({ averageLine: false, barColors: true, tooltip: false });
+    expect(detail.chartInputs(state.value)['displayOptions']).toEqual({ averageLine: false, barColors: false });
     dashboard.preloadedData = { dailyCounts: [{ date: '2026-10-20', count: 42 }] };
     (dashboard as any).updateChartDetail();
-    expect(detail.chartInputs(state.value)['displayOptions']).toEqual({ averageLine: false, barColors: true, tooltip: false });
+    expect(detail.chartInputs(state.value)['displayOptions']).toEqual({ averageLine: false, barColors: false });
   });
 
   it('keeps each yesterday choice independent and passes it to the enlarged chart on cache updates', () => {
@@ -154,9 +154,11 @@ describe('Dashboard chart header controls', () => {
     expect(fixture.nativeElement.querySelector('.daily-count-controls')).toBeNull();
     dashboard.layoutEditing = true;
     fixture.detectChanges();
-    const inputs = fixture.nativeElement.querySelectorAll('.chart-tile-header input');
-    expect(inputs.length).toBe(3);
-    expect(Array.from(inputs as NodeListOf<HTMLInputElement>).every(input => input.checked)).toBeTrue();
+    const inputs = fixture.nativeElement.querySelectorAll('.chart-tile-header button[role="switch"]');
+    expect(inputs.length).toBe(2);
+    expect(Array.from(inputs as NodeListOf<HTMLButtonElement>).every(input => input.getAttribute('aria-checked') === 'true')).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.daily-count-controls input[type="checkbox"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.daily-count-controls').textContent).not.toContain('Tooltip');
     const shell = fixture.nativeElement.querySelector('.chart-shell');
     const propagated = jasmine.createSpy('propagated');
     shell.addEventListener('click', propagated);
@@ -210,23 +212,23 @@ describe('Dashboard chart header controls', () => {
 
   for (const width of [320, 360, 640]) {
     for (const dark of [false, true]) {
-      it(`keeps Yesterday switches in the title row, clear of drag handles at ${width}px (${dark ? 'dark' : 'light'})`, () => {
+      it(`keeps chart switches in the title row, clear of drag handles at ${width}px (${dark ? 'dark' : 'light'})`, () => {
         Object.assign(fixture.nativeElement.style, { display: 'block', width: `${width}px` });
         fixture.nativeElement.style.setProperty('--theme-color-text', dark ? '#fff' : '#222');
         if (dark) fixture.nativeElement.classList.add('dark-theme');
         dashboard.isDarkTheme = dark;
-        dashboard.chartTiles = dashboard.chartTiles.filter(tile => dashboard.yesterdayChartIds.includes(tile.id));
+        dashboard.chartTiles = dashboard.chartTiles.filter(tile => dashboard.yesterdayChartIds.includes(tile.id) || tile.id === 'daily-counts');
         dashboard.layoutEditing = true;
         dashboard.cacheSubtitle = 'Today'; dashboard.cacheUpdatedAt = 'Updated 12:30 PM';
         fixture.detectChanges();
         // Exercise a single tile's width independently of the viewport/grid breakpoint.
         fixture.nativeElement.querySelector('.charts-grid').style.gridTemplateColumns = 'minmax(0, 1fr)';
         const shells: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('.chart-shell'));
-        expect(shells.length).toBe(4);
+        expect(shells.length).toBe(5);
         for (const shell of shells) {
           const title = shell.querySelector('.chart-tile-title')!.getBoundingClientRect();
           const header = shell.querySelector('.chart-tile-header')!.getBoundingClientRect();
-          const control = shell.querySelector('.yesterday-controls')!.getBoundingClientRect();
+          const control = shell.querySelector('.yesterday-controls, .daily-count-controls')!.getBoundingClientRect();
           const drag = shell.querySelector('.chart-drag-handle')!.getBoundingClientRect();
           const toggle = shell.querySelector('button[role="switch"]')!.getBoundingClientRect();
           const handle = shell.querySelector('.mdc-switch__handle')!.getBoundingClientRect();

@@ -76,15 +76,14 @@
             class="daily-count-controls" role="group" aria-label="Daily count chart display"
             (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()"
             (pointerdown)="$event.stopPropagation()">
-            <label><input #averageLine type="checkbox" role="switch"
+            <mat-slide-toggle
               [checked]="dailyCountDisplayOptions.averageLine"
-              (change)="setDailyCountOption('averageLine', averageLine.checked)">Average line</label>
-            <label><input #barColors type="checkbox" role="switch"
+              aria-label="Show average line"
+              (change)="setDailyCountOption('averageLine', $event.checked)">Average line</mat-slide-toggle>
+            <mat-slide-toggle
               [checked]="dailyCountDisplayOptions.barColors"
-              (change)="setDailyCountOption('barColors', barColors.checked)">Bar colors</label>
-            <label><input #tooltip type="checkbox" role="switch"
-              [checked]="dailyCountDisplayOptions.tooltip"
-              (change)="setDailyCountOption('tooltip', tooltip.checked)">Tooltip</label>
+              aria-label="Use variance bar colors"
+              (change)="setDailyCountOption('barColors', $event.checked)">Bar colors</mat-slide-toggle>
           </div>
 
           <div chartTileActions *ngIf="yesterdayChartIds.includes(tile.id) && layoutEditing"

@@ -18,6 +18,7 @@ describe('Daily chart layout picker', () => {
       cards: Array.from({ length: 7 }, (_, i) => ({ id: `chart-${i}`, label: `Chart ${i}` })),
       visibility: { 'chart-6': false },
       layout: '3x2',
+      dragDropEnabled: true,
       layoutOptions: [
         { id: '3x2', label: '3 × 2 — 6 charts', exactVisible: 6 },
         { id: '2x2', label: '2 × 2 — 4 charts', exactVisible: 4 },
@@ -77,6 +78,28 @@ describe('Daily chart layout picker', () => {
     expect(component.canApply).toBeTrue();
     component.save();
     expect(close.calls.mostRecent().args[0].layout).toBe('3x2');
+  });
+
+  it('drags charts within Shown and between lists while enforcing the exact count', () => {
+    expect(component.dragDropEnabled).toBeTrue();
+    const shown = { data: component.showCards }, hidden = { data: component.hideCards };
+    const drop = (from: any, to: any, previousIndex: number, currentIndex: number) =>
+      component.drop({ previousContainer: from, container: to, previousIndex, currentIndex } as any, to === shown);
+    drop(shown, shown, 0, 2);
+    expect(component.showCards.map(card => card.id)).toEqual(['chart-1', 'chart-2', 'chart-0', 'chart-3', 'chart-4', 'chart-5']);
+    drop(shown, hidden, 2, 1);
+    expect(component.canApply).toBeFalse();
+    drop(hidden, shown, 0, 1);
+    expect(component.canApply).toBeTrue();
+    drop(hidden, shown, 0, 0); // A full layout must not accept another chart.
+    expect(component.showCards.length).toBe(6);
+    component.save();
+    const result = close.calls.mostRecent().args[0];
+    expect(result.order).toEqual(['chart-1', 'chart-6', 'chart-2', 'chart-3', 'chart-4', 'chart-5', 'chart-0']);
+    expect(result.visibility['chart-0']).toBeFalse();
+    expect(result.visibility['chart-6']).toBeTrue();
+    expect(data.cards.map((card: any) => card.id)).toEqual(Array.from({ length: 7 }, (_, i) => `chart-${i}`));
+    expect(data.visibility).toEqual({ 'chart-6': false });
   });
 
   it('rejects fewer than four and cancels without mutating the supplied layout or selection', () => {
@@ -149,6 +172,26 @@ describe('Daily dashboard layout state', () => {
     expect(dashboard.gridLayout).toBe('3x2');
     expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(original);
     expect(dashboard.layoutEditing).toBeFalse();
+  });
+
+  it('applies and saves modal drag order with visibility, and restores both on discard', () => {
+    const original = dashboard.chartTiles.map(tile => tile.id);
+    const order = [...original].reverse();
+    const selected = Object.fromEntries(order.map((id, index) => [id, index < 4]));
+    editor.toggle();
+    dashboard.openChartVisibilityDialog();
+    expect(dialog.open.calls.mostRecent().args[1].data.dragDropEnabled).toBeTrue();
+    closed.next({ layout: '2x2', visibility: selected, order });
+    expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(order.slice(0, 4));
+    expect(settings.setDailyDashboardChartOrder.calls.mostRecent().args).toEqual([order, selected, '2x2']);
+    (dashboard as any).saveLayout().subscribe();
+    expect(settings.saveDailyDashboardChartOrder.calls.mostRecent().args).toEqual([order, selected, '2x2']);
+    editor.toggle();
+    dashboard.openChartVisibilityDialog();
+    closed.next({ layout: '2x2', visibility: selected, order: original });
+    (dashboard as any).revertLayoutChanges();
+    expect(dashboard.chartTiles.map(tile => tile.id)).toEqual(order);
+    expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(order.slice(0, 4));
   });
 
   it('does not apply invalid chart counts or a cancelled dialog', () => {

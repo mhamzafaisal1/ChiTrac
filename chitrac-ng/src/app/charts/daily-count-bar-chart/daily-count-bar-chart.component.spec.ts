@@ -1,7 +1,6 @@
 import { SimpleChange } from '@angular/core';
-import { fakeAsync, tick, TestBed } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { DailyCountBarChartComponent, DEFAULT_DAILY_COUNT_DISPLAY_OPTIONS } from './daily-count-bar-chart.component';
-import { CartesianChartComponent } from '../cartesian-chart/cartesian-chart.component';
 import { DashboardService } from '../../services/dashboard.service';
 import { PollingService } from '../../services/polling-service.service';
 import { DateTimeService } from '../../services/date-time.service';
@@ -53,37 +52,17 @@ describe('Daily total count display options', () => {
     expect(component.chartConfig!.series.length).toBe(1);
     expect(component.chartConfig!.series[0].data[2].color).toBe('#ef5350');
     expect(tooltip('2026-10-21', 150)).toContain('Vs 7-Day Avg: +25 (+20.0%)');
-    options({ barColors: false, tooltip: false });
+    options({ barColors: false });
     expect(component.chartConfig!.series[0].data.every(point => point.color === '#42a5f5')).toBeTrue();
-    expect(component.chartConfig!.tooltip!.show).toBeFalse();
-    options({ averageLine: true, barColors: true, tooltip: true });
+    expect(component.chartConfig!.tooltip!.show).toBeTrue();
+    options({ averageLine: true, barColors: true });
     expect(component.chartConfig!.series.length).toBe(2);
     expect(component.chartConfig!.tooltip!.show).toBeTrue();
     expect(dashboard.getDailyCountTotals).not.toHaveBeenCalled();
   });
 
-  it('hides an open tooltip and cancels a pending tooltip when disabled', fakeAsync(() => {
-    const fixture = TestBed.createComponent(CartesianChartComponent);
-    fixture.componentRef.setInput('config', component.chartConfig);
-    fixture.detectChanges();
-    const chart = fixture.componentInstance;
-    const element = fixture.nativeElement.querySelector('.cc-tooltip') as HTMLElement;
-    const context = { series: component.chartConfig!.series[0], xLabel: '2026-10-21', value: 150 };
-    (chart as any).scheduleTooltip(new MouseEvent('mousemove'), component.chartConfig, context);
-    tick(750);
-    expect(element.classList.contains('is-visible')).toBeTrue();
-    (chart as any).scheduleTooltip(new MouseEvent('mousemove'), component.chartConfig, context);
-    options({ tooltip: false });
-    fixture.componentRef.setInput('config', component.chartConfig);
-    fixture.detectChanges();
-    expect(element.classList.contains('is-visible')).toBeFalse();
-    tick(750);
-    expect(element.classList.contains('is-visible')).toBeFalse();
-    fixture.destroy();
-  }));
-
   it('retains choices on data refresh and resize', () => {
-    options({ averageLine: false, barColors: false, tooltip: false });
+    options({ averageLine: false, barColors: false });
     component.preloadedData = [{ date: '2026-10-23', count: 200 }];
     component.ngOnChanges({ preloadedData: new SimpleChange(rows, component.preloadedData, false) });
     component.chartWidth = 900;
@@ -92,7 +71,7 @@ describe('Daily total count display options', () => {
     expect(component.chartConfig!.series.length).toBe(1);
     expect(component.chartConfig!.series[0].data[0].y).toBe(200);
     expect(component.chartConfig!.series[0].data[0].color).toBe('#42a5f5');
-    expect(component.chartConfig!.tooltip!.show).toBeFalse();
+    expect(component.chartConfig!.tooltip!.show).toBeTrue();
   });
 
   it('compares the actual previous calendar date after sorting, including negative deltas', () => {

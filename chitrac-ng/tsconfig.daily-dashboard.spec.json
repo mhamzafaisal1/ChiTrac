@@ -2,6 +2,8 @@
   "extends": "./tsconfig.spec.json",
   "include": [
     "src/app/daily-dashboard/*.spec.ts",
+    "src/app/charts/daily-count-bar-chart/daily-count-bar-chart.component.spec.ts",
+    "src/app/components/summary-card-visibility-dialog/summary-card-visibility-dialog.component.spec.ts",
     "src/app/charts/cartesian-chart/cartesian-chart.tooltip.spec.ts",
     "src/app/charts/yesterday-comparison.spec.ts",
     "src/app/charts/machine-timeline-chart/machine-timeline-layout.spec.ts",
