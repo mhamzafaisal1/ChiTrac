@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { DateTime } = require('luxon');
+const { productionHistoryStart } = require('../utils/productionStatsCache');
 const MINUTE = 60000;
 const RETENTION_SECONDS = 48 * 60 * 60;
 const ALLOWED_TYPES = new Set(['machine', 'operator-machine', 'machine-item', 'item', 'operator-item']);
@@ -117,13 +118,19 @@ class DatafeedMinuteSync {
         // recreating a pruned entry without its timestamps and documents.
         liveFrame.committed = true;
       }
-      this.onChange();
+      const now = this.productionClock
+        ? this.productionClock.asOf + performance.now() - this.productionClock.monotonicAt
+        : this.clock();
+      if (frame.complete && frame.minuteStart.getTime() < productionHistoryStart(now)) {
+        this.live.delete(key);
+      } else {
+        this.onChange();
+      }
       return ack;
     });
   }
-  overlay(documents, now = this.clock()) {
-    // Index each persisted bucket once. Scanning the entire day for every
-    // retained live frame blocks the event loop as the recovery window grows.
+  indexDocuments(documents) {
+    if (this.persistedIndex?.documents === documents) return this.persistedIndex;
     const result = new Map();
     const persistedBuckets = new Map();
     const resultBuckets = new Map();
@@ -137,23 +144,30 @@ class DatafeedMinuteSync {
       if (!resultBuckets.has(bucket)) resultBuckets.set(bucket, new Set());
       resultBuckets.get(bucket).add(identity);
     }
+    this.persistedIndex = { documents, result, persistedBuckets, resultBuckets };
+    return this.persistedIndex;
+  }
+  overlay(documents, now = this.clock()) {
+    const index = this.indexDocuments(documents);
+    // Only copy the row map if a live bucket actually replaces persisted rows.
+    let result = index.result;
+    const earliest = productionHistoryStart(now);
     const sourceTimes = [];
     for (const key of this.checkpoints.keys()) if (new Date(key.slice(-24)).getTime() < now - RETENTION_SECONDS * 1000) this.checkpoints.delete(key);
     let connected = this.connections.size > 0, stale = false;
     for (const [key, frame] of this.live) {
       if (frame.minuteStart.getTime() < now - RETENTION_SECONDS * 1000) { this.live.delete(key); this.checkpoints.delete(key); continue; }
+      if (frame.committed && frame.minuteStart.getTime() < earliest) { this.live.delete(key); continue; }
       const expected = frame.documents.filter(doc => ['machine', 'operator-machine'].includes(doc.type));
       const bucket = `${String(frame.machineId)}:${frame.minuteStart.getTime()}`;
-      const persisted = persistedBuckets.get(bucket) || [];
+      const persisted = index.persistedBuckets.get(bucket) || [];
       if (frame.committed && persisted.length === expected.length && expected.every(doc => persisted.some(row => row.id === doc.id && row.sync?.revision >= frame.revision))) { this.live.delete(key); continue; }
-      for (const identity of resultBuckets.get(bucket) || []) result.delete(identity);
-      const identities = new Set();
+      if (result === index.result) result = new Map(result);
+      for (const identity of index.resultBuckets.get(bucket) || []) result.delete(identity);
       for (const document of frame.documents) {
         const identity = entityKey(document);
         result.set(identity, document);
-        identities.add(identity);
       }
-      resultBuckets.set(bucket, identities);
       if (!frame.complete) {
         sourceTimes.push(frame.calculatedAt); connected ||= frame.connected;
         stale ||= !frame.connected || now - frame.receivedAt > 75000 || now - frame.calculatedAt.getTime() > 75000;

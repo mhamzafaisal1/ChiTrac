@@ -300,6 +300,7 @@ async function refreshCountSparklineCache(server, options = {}) {
 }
 
 async function refreshProductionStatsCache(server, options = {}) {
+  const started = performance.now();
   const nextCache = options.liveOnly
     ? buildLiveProductionStatsCache(server.minuteTotalsSync, options.now)
     : await loadProductionStatsCache(server.db, server.config, options.now, server.minuteTotalsSync);
@@ -307,11 +308,7 @@ async function refreshProductionStatsCache(server, options = {}) {
   ensureCache(server);
   server.cache.dashboard.production = nextCache;
 
-  if (server.logger) {
-    server.logger.info(
-      `[mongoWatchers] Updated production stats cache with ${Object.keys(nextCache.machines).length} machines and ${Object.keys(nextCache.operators).length} operator-machine records`
-    );
-  }
+  server.logger?.debug?.(`[mongoWatchers] Production stats ${options.liveOnly ? "live" : "full"} refresh took ${Math.round(performance.now() - started)} ms`);
   if (options.broadcast !== false) {
     broadcastDashboardCache(server, "production");
   }

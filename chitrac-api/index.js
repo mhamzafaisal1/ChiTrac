@@ -249,7 +249,7 @@ async function startServer() {
             minuteRefreshTimer = setTimeout(() => {
                 minuteRefreshTimer = null;
                 require('./modules/mongoWatchers').refreshProductionStatsCache(server, { liveOnly: true }).catch(error => logger.error(error.message));
-            }, 50);
+            }, 2000);
         } });
         Object.defineProperty(server, 'minuteTotalsSync', { value: minuteSync, configurable: true });
         await minuteSync.start();

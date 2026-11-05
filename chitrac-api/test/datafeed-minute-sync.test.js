@@ -123,6 +123,26 @@ test('overlay indexes historical records once rather than rescanning them per li
   assert.equal(merged.documents.filter(doc => doc.totals.count === 2).length, 150);
   assert.ok(timestampReads <= documents.length * 3,
     `Historical timestamps should be read a bounded number of times, got ${timestampReads}`);
+  const indexedReads = timestampReads;
+  service.overlay(documents, start + 2800 * 60000);
+  assert.equal(timestampReads, indexedReads, 'A live refresh reuses the persisted snapshot index');
+});
+
+test('old replay commits and acknowledges corrections without triggering live rebuilds', async () => {
+  const { db, service } = fixture();
+  let now = start + 1439 * 60000 + 59999;
+  service.clock = () => now;
+  let changes = 0;
+  service.onChange = () => changes++;
+  await service.receive(snapshot({ complete: true }), 'owner');
+  assert.equal(service.live.size, 1);
+  now++;
+  assert.deepEqual(service.overlay([], now).documents, []);
+  const ack = await service.receive(snapshot({ complete: true, revision: 2, count: 8 }), 'owner');
+  assert.equal(ack.revision, 2);
+  assert.equal(db.collection('totals-minute').rows[0].totals.count, 8);
+  assert.equal(service.live.size, 0);
+  assert.equal(changes, 1);
 });
 
 test('overlay replaces only the matching machine and minute, including removed entities', () => {

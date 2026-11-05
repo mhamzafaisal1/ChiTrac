@@ -21,17 +21,21 @@ function serialFromMachine(machine) {
   return Number.isFinite(serial) ? serial : null;
 }
 
+function productionHistoryStart(nowMs) {
+  return (Math.floor(nowMs / 60000) - (24 * 60 - 1)) * 60000;
+}
+
 function productionWindowRanges(nowInput = new Date()) {
   const now = DateTime.fromJSDate(new Date(nowInput), { zone: SYSTEM_TIMEZONE });
-  const currentMinute = now.startOf("minute");
   return Object.fromEntries(WINDOW_DEFINITIONS.map((definition) => {
-    const start = definition.key === "today"
-      ? now.startOf("day")
-      : currentMinute.minus({ minutes: definition.minutes - 1 });
+    let start;
+    if (definition.key === "last24Hours") start = new Date(productionHistoryStart(now.toMillis()));
+    else if (definition.key === "today") start = now.startOf("day").toJSDate();
+    else start = now.startOf("minute").minus({ minutes: definition.minutes - 1 }).toJSDate();
     return [definition.key, {
       key: definition.key,
       label: definition.label,
-      start: start.toJSDate(),
+      start,
       end: now.toJSDate(),
     }];
   }));
@@ -396,6 +400,7 @@ function buildLiveProductionStatsCache(minuteSync, nowInput) {
 }
 
 module.exports = {
+  productionHistoryStart,
   buildLiveProductionStatsCache,
   WINDOW_DEFINITIONS,
   buildProductionStatsCache,
