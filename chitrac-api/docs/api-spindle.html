@@ -527,6 +527,35 @@ GET /api/spindle/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.
 { "error": "Shift not found" }
 { "error": "start must be a valid ISO date string" }</code></pre>
 
+    <h3>GET /api/spindle/machine/sessions</h3>
+    <p>Returns an array of raw <code>session-machine</code> documents, ordered by
+      start time and then <code>_id</code>. Omit <code>serial</code> for sessions
+      from all machines, including historical machines. An empty result is <code>[]</code>.</p>
+    <p>Timeframe inputs are the same as machine details. The default is today in plant time.
+      Use <code>timeframe=custom</code> with an ISO <code>start</code> and optional
+      <code>end</code> (defaults to now and is capped at now), or use
+      <code>timeframe=shift</code> with a numeric <code>shift</code> for today's shift.</p>
+    <p>A custom request can span up to <strong>7 full days in plant time</strong>.
+      A request from Monday at 08:00 through the following Monday at 08:00 is valid.
+      Split longer exports into consecutive windows. The API checks the requested range
+      before capping a future end at now. Longer ranges receive HTTP 400:</p>
+    <pre><code>{ "error": "Session requests are limited to 7 days. Split longer ranges into separate requests." }</code></pre>
+    <p>Sessions are included when they overlap the requested interval, including open
+      sessions. Shift requests include untagged sessions within the shift window.
+      Each document retains its original timestamps and all stored fields, including
+      embedded counts and states when present. A session
+      spanning adjacent requests can appear in both, so use its <code>_id</code> when storing it.</p>
+    <pre><code>GET /api/spindle/machine/sessions?serial=90003&amp;timeframe=custom&amp;start=2026-05-20T05:00:00Z&amp;end=2026-05-21T12:00:00Z</code></pre>
+
+    <h3>GET /api/spindle/operator/sessions</h3>
+    <p>Returns complete <code>session-operator</code> documents, including any embedded events.
+      Filter by <code>operatorid</code>, machine <code>serial</code>, both, or neither to
+      include all operators and machines. The default timeframe is today in plant time.
+      The same overlap rules, ordering, shift selection, and 7-day custom range limit
+      as <code>/api/spindle/machine/sessions</code> apply. Longer ranges return HTTP 400.
+      Use the session <code>_id</code> to reconcile open sessions across requests.</p>
+    <pre><code>GET /api/spindle/operator/sessions?operatorid=183462&amp;serial=90003&amp;timeframe=custom&amp;start=2026-05-20T05:00:00Z&amp;end=2026-05-21T12:00:00Z</code></pre>
+
     <h3>GET /api/spindle/operator/details</h3>
     <p>
       Returns operator modal/detail payloads in the same shape as the standard

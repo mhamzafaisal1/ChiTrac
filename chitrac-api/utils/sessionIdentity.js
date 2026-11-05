@@ -22,13 +22,17 @@ function sessionMachineQuery(machine) {
   return identityQuery('machine', machine, 'serial');
 }
 
+function sessionOperatorQuery(operatorId) {
+  return identityQuery('operator', operatorId, 'code');
+}
+
 function sessionIdentityQuery(machine, operatorId) {
   const query = sessionMachineQuery(machine);
   if (operatorId === undefined) return query;
-  return { $and: [...query.$and, ...identityQuery('operator', operatorId, 'code').$and] };
+  return { $and: [...query.$and, ...sessionOperatorQuery(operatorId).$and] };
 }
 
-module.exports = { normalizeMachine, sessionMachineQuery, sessionIdentityQuery };
+module.exports = { normalizeMachine, sessionMachineQuery, sessionOperatorQuery, sessionIdentityQuery };
 
 async function distinctSessionMachineIds(collection, query) {
   const rows = await collection.aggregate([
