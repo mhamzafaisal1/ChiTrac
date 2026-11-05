@@ -185,4 +185,44 @@ describe('shared configuration websocket cache', () => {
     reconnected.open();
     expect(reconnected.sent[0].type).toBe('connection-status-request');
   }));
+
+  it('opts signed-in connections into compact dashboard updates without changing the public channel', () => {
+    expect(new URL(socket.url).searchParams.get('dashboardUpdates')).toBe('partial');
+    websocket.ensureConnected('status');
+    expect(new URL(TestSocket.instances.at(-1)!.url).searchParams.has('dashboardUpdates')).toBeFalse();
+  });
+
+  it('merges production deltas without replacing unrelated dashboards, history or active shift', () => {
+    socket.receive({ type: 'dashboard-cache', cache: {
+      today: { machinesSummary: [{ id: 1 }] },
+      currentShift: { meta: { mode: 'current', shiftId: 'shift-1' } },
+      dashboard: {
+        machines: { today: { machinesSummary: [{ id: 1 }] }, history: { days: [{ date: 'yesterday' }] } },
+        operators: { today: { operatorsSummary: [{ id: 7 }] } },
+        dailyAnalytics: { today: { data: { chart: [1, 2, 3] } } },
+        production: { operators: { old: { status: 1 } }, machines: {} },
+      }
+    } });
+    const before = websocket.getDashboardCacheSnapshot();
+    const production = { updatedAt: 'now', operators: {}, machines: { '90008': { status: 1 } } };
+    socket.receive({ type: 'dashboard-cache-update', scope: 'production', partial: true,
+      cache: { dashboard: { production } } });
+    const after = websocket.getDashboardCacheSnapshot();
+    expect(after.dashboard!.production).toEqual(production as any);
+    expect(after.dashboard!.machines).toBe(before.dashboard!.machines);
+    expect(after.dashboard!.operators).toBe(before.dashboard!.operators);
+    expect(after.dashboard!.dailyAnalytics).toBe(before.dashboard!.dailyAnalytics);
+    expect(after.today).toBe(before.today);
+    expect(after.currentShift).toBe(before.currentShift);
+    expect(after.activeShift).toBe(before.activeShift);
+    expect(before.dashboard!.production!.operators['old']).toBeDefined();
+  });
+
+  it('continues accepting complete production messages from older servers', () => {
+    socket.receive({ type: 'dashboard-cache', cache: { dashboard: { machines: { today: { machinesSummary: [{ id: 1 }] } } } } });
+    const dashboard = { production: { machines: {}, operators: {} }, operators: { today: { operatorsSummary: [{ id: 7 }] } } };
+    socket.receive({ type: 'dashboard-cache-update', scope: 'production', cache: { dashboard } });
+    expect(websocket.getDashboardCacheSnapshot().dashboard).toEqual(dashboard as any);
+  });
+
 });

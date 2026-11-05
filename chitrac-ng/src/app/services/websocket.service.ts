@@ -162,6 +162,7 @@ interface DashboardCacheMessage {
   scope?: DashboardCacheScope | 'all' | 'dashboard' | 'dashboardHistory' | 'countSparkline' | 'production' | 'initial';
   cache?: DashboardCacheEnvelope | DashboardCacheState;
   dashboard?: DashboardCacheState['dashboard'];
+  partial?: boolean;
 }
 
 @Injectable({
@@ -361,6 +362,7 @@ export class WebsocketService {
     return Array.from(new Set([sameOrigin, legacyPort])).map(value => {
       const url = new URL(value);
       if (this.connectionMode === 'status') url.searchParams.set('channel', 'connection-status');
+      else url.searchParams.set('dashboardUpdates', 'partial');
       return url.toString();
     });
   }
@@ -496,9 +498,10 @@ export class WebsocketService {
     }
 
     if (message.scope === 'production') {
+      const dashboard = message.dashboard || cache?.dashboard;
       this.dashboardCacheSubject.next({
         ...current,
-        dashboard: message.dashboard || cache?.dashboard || current.dashboard
+        dashboard: message.partial ? { ...current.dashboard, ...dashboard } : dashboard || current.dashboard
       });
       return;
     }
