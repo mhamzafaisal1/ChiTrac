@@ -136,7 +136,16 @@ function operatorDashboardEnvelope(operatorsSummary, meta, idleOperatorSummary) 
   };
 }
 
-function buildDashboardCacheMessage(server, scope = "all") {
+function buildDashboardCacheMessage(server, scope = "all", options = {}) {
+  if (scope === "production" && options.partial) {
+    return {
+      type: "dashboard-cache-update",
+      timestamp: new Date().toISOString(),
+      scope,
+      partial: true,
+      cache: { dashboard: { production: server.cache?.dashboard?.production || {} } },
+    };
+  }
   return {
     type: "dashboard-cache-update",
     timestamp: new Date().toISOString(),
@@ -155,7 +164,10 @@ function buildDashboardCacheMessage(server, scope = "all") {
 
 function broadcastDashboardCache(server, scope) {
   if (typeof server.broadcastWebsocket !== "function") return;
-  server.broadcastWebsocket(buildDashboardCacheMessage(server, scope));
+  server.broadcastWebsocket(
+    buildDashboardCacheMessage(server, scope, { partial: scope === "production" }),
+    scope === "production" ? () => buildDashboardCacheMessage(server, scope) : undefined
+  );
 }
 
 function buildCacheSignature(cache) {

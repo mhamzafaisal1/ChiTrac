@@ -247,13 +247,7 @@ function sendJson(ws, payload) {
 }
 
 function broadcastJson(wss, payload) {
-    const message = JSON.stringify(payload);
-
-    wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN && !client.isDatafeedService && !client.isStatusOnly) {
-            client.send(message);
-        }
-    });
+    broadcastJsonToServers([wss], payload);
 }
 
 function sendJsonToClientSession(server, sessionId, payload) {
@@ -286,8 +280,26 @@ function getWebsocketServers(server) {
         : [];
 }
 
-function broadcastJsonToServers(websocketServers, payload) {
-    websocketServers.forEach((wss) => broadcastJson(wss, payload));
+function broadcastJsonToServers(websocketServers, payload, legacyPayload) {
+    const clients = new Set();
+    for (const wss of websocketServers) {
+        for (const client of wss.clients) {
+            if (client.readyState === WebSocket.OPEN && !client.isDatafeedService && !client.isStatusOnly) clients.add(client);
+        }
+    }
+    // Build and serialize only payloads that have recipients, once per format
+    // across both listeners. Older browser tabs retain their full-cache protocol.
+    const send = (recipients, buildPayload) => {
+        if (!recipients.length) return;
+        const message = JSON.stringify(buildPayload());
+        for (const client of recipients) client.send(message);
+    };
+    if (payload.partial && typeof legacyPayload === 'function') {
+        send([...clients].filter(client => client.supportsPartialDashboardCache), () => payload);
+        send([...clients].filter(client => !client.supportsPartialDashboardCache), legacyPayload);
+    } else {
+        send([...clients], () => payload);
+    }
 }
 
 function attachServerClientSessionHelpers(server, wss) {
@@ -323,7 +335,7 @@ function attachServerClientSessionHelpers(server, wss) {
         Object.defineProperty(server, 'broadcastWebsocket', {
             enumerable: false,
             configurable: true,
-            value: (payload) => broadcastJsonToServers(getWebsocketServers(server), payload)
+            value: (payload, legacyPayload) => broadcastJsonToServers(getWebsocketServers(server), payload, legacyPayload)
         });
     }
 }
@@ -373,7 +385,8 @@ function startWebsocketServer(server, options = {}) {
     });
 
     wss.on('connection', (ws, req) => {
-        const channel = new URLSearchParams((req.url || '/').split('?')[1] || '').get('channel');
+        const params = new URLSearchParams((req.url || '/').split('?')[1] || '');
+        const channel = params.get('channel');
         if (channel === 'connection-status') {
             ws.isStatusOnly = true;
             const sendStatus = () => {
@@ -393,6 +406,7 @@ function startWebsocketServer(server, options = {}) {
             return;
         }
         const sessionId = createSessionId();
+        ws.supportsPartialDashboardCache = params.get('dashboardUpdates') === 'partial';
         const socketInfo = getSocketInfo(req);
         const session = {
             id: sessionId,
