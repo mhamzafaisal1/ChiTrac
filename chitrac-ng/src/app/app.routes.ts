@@ -1,49 +1,14 @@
 import { Router, Routes } from '@angular/router';
+import { legacyProductionRoutes } from './production-screen-legacy.routes';
 import { inject } from '@angular/core';
 import { OperatorGridComponent } from './operator-grid/operator-grid.component';
 import { ItemGridComponent } from './item-grid/item-grid.component';
-import { UserRegisterComponent } from './user-register/user-register.component';
-import { OperatorAnalyticsDashboardComponent } from './operator-analytics-dashboard/operator-analytics-dashboard.component';
-import { DailySummaryDashboardComponent } from './daily-summary-dashboard/daily-summary-dashboard.component';
-import { ItemAnalyticsDashboardComponent } from './item-analytics-dashboard/item-analytics-dashboard.component';
 import { AuthGuard } from './guards/auth.guard';
-import { MachineDashboardComponent } from './machine-dashboard/machine-dashboard.component';
-import { MachineReportComponent } from './reports/machine-report/machine-report.component';
-import { ShiftMachineReportComponent } from './reports/shift-machine-report/shift-machine-report.component';
-import { ShiftComparisonReportComponent } from './reports/shift-comparison-report/shift-comparison-report.component';
-import { OperatorReportComponent } from './reports/operator-report/operator-report.component';
-import { ItemReportComponent } from './reports/item-report/item-report.component';
-import { FaultReportComponent } from './reports/fault-report/fault-report.component';
-import { ReportSubscriptionComponent } from './reports/report-subscription/report-subscription.component';
-import { BlanketBlasteroneEfficiencyScreen } from './efficiency-screens/blanket-blasterone-efficiency-screen/blanket-blasterone-efficiency-screen.component';
-import { BlanketBlastertwoEfficiencyScreen } from './efficiency-screens/blanket-blastertwo-efficiency-screen/blanket-blastertwo-efficiency-screen.component';
 import { MachineGridComponent } from './machine-grid/machine-grid.component';
-import { SplEfficiencyScreen } from './efficiency-screens/spl-efficiency-screen/spl-efficiecny-screen.component';
-import { LplEfficiencyScreen } from './efficiency-screens/lpl-efficiency-screen/lpl-efficiecny-screen.component';
-import { MachineEfficiencyLaneComponent } from './efficiency-screens/efficiecny-screen-machine/machine-efficiecny-lane.component';
-import { DailyAnalyticsDashboardSplitComponent } from './daily-analytics-dashboard-split/daily-analytics-dashboard-split.component';
-import { SplColEfficiencyScreenComponent } from './efficiency-screens/spl-col-efficiency-screen/spl-col-efficiency-screen.component';
-import { SpfColEfficiencyScreenComponent } from './efficiency-screens/spf-col-efficiency-screen/spf-col-efficiency-screen.component';
-import { LPLsEfficiencyScreenComponent } from './efficiency-screens/LPLs-efficiency-screen/LPLs-efficiency-screen';
-import { SPFsEfficiencyScreenComponent } from './efficiency-screens/SPFs-efficiency-screen/SPFs-efficiency-screen';
-import { BlanketBlastersEfficiencyScreenComponent } from './efficiency-screens/blanketBlasters-efficiency-screen/blanketBlasters-efficiency-screen';
-import { EightStationDemoComponent } from './efficiency-screens/eight-station-demo/eight-station-demo.component';
-import { ErrorModalDemoComponent } from './components/error-modal/error-modal-demo.component';
-import { TokenManagementComponent } from './token-management/token-management.component';
-import { UserManagementComponent } from './user-management/user-management.component';
-import { UserProfileComponent } from './user-profile/user-profile.component';
-import { ServerLogsInterfaceComponent } from './server-logs-interface/server-logs-interface';
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 import { MaintenanceShiftSettingsComponent } from './shift-management/maintenance-shift-settings.component';
-import { SettingsUtilitiesComponent } from './settings-utilities/settings-utilities.component';
 import { SystemSettingsComponent } from './system-settings/system-settings.component';
 import { PermissionLevels } from './user.service';
-import { ComparisonDashboardComponent } from './comparison-dashboard/comparison-dashboard.component';
-import { TestComponent } from './test/test.component';
-import { ActionCenterComponent } from './action-center/action-center.component';
-import { DowntimeParetoComponent } from './downtime-pareto/downtime-pareto.component';
-import { ShiftHandoffComponent } from './shift-handoff/shift-handoff.component';
-import { VisualOpsDashboardComponent } from './visual-ops-dashboard/visual-ops-dashboard.component';
 import { SettingsMenuComponent } from './settings-menu/settings-menu.component';
 import { HomeComponent } from './home/home.component';
 
@@ -54,15 +19,15 @@ const appRoutes: Routes = [
 	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/system', component: SystemSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
-	{ path: 'ng/settings/profile', component: UserProfileComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.profile } },
+	{ path: 'ng/settings/profile', loadComponent: () => import('./user-profile/user-profile.component').then(m => m.UserProfileComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.profile } },
 	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },
 	{ path: 'ng/settings/maintenance-shifts', component: MaintenanceShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },
-	{ path: 'ng/settings/tokens', component: TokenManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.apiTokens } },
-	{ path: 'ng/settings/root/users', component: UserManagementComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
-	{ path: 'ng/settings/root/users/register', component: UserRegisterComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.users } },
-	{ path: 'ng/settings/root/utilities', component: SettingsUtilitiesComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.utilities } },
-	{ path: 'ng/settings/server-logs', component: ServerLogsInterfaceComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.serverLogs } },
-	{ path: 'ng/test', component: TestComponent, canActivate: [AuthGuard] },
+	{ path: 'ng/settings/tokens', loadComponent: () => import('./token-management/token-management.component').then(m => m.TokenManagementComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.apiTokens } },
+	{ path: 'ng/settings/root/users', loadComponent: () => import('./user-management/user-management.component').then(m => m.UserManagementComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.users } },
+	{ path: 'ng/settings/root/users/register', loadComponent: () => import('./user-register/user-register.component').then(m => m.UserRegisterComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.users } },
+	{ path: 'ng/settings/root/utilities', loadComponent: () => import('./settings-utilities/settings-utilities.component').then(m => m.SettingsUtilitiesComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.utilities } },
+	{ path: 'ng/settings/server-logs', loadComponent: () => import('./server-logs-interface/server-logs-interface').then(m => m.ServerLogsInterfaceComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.serverLogs } },
+	{ path: 'ng/test', loadComponent: () => import('./test/test.component').then(m => m.TestComponent), canActivate: [AuthGuard], data: { preload: false } },
 	
 	// Login/Auth
 	{ path: 'ng/login', redirectTo: ({ queryParams }) => inject(Router).createUrlTree(['/ng/home'], {
@@ -73,47 +38,40 @@ const appRoutes: Routes = [
 	}) },
 	
 	// Main Dashboards
-	{ path: 'ng/machineAnalytics', component: MachineDashboardComponent },
-	{ path: 'ng/operatorAnalytics', component: OperatorAnalyticsDashboardComponent },
-	{ path: 'ng/itemAnalytics', component: ItemAnalyticsDashboardComponent },
-	{ path: 'ng/daily-summary', component: DailySummaryDashboardComponent },
-	{ path: 'ng/daily-analytics-split', component: DailyAnalyticsDashboardSplitComponent },
-	{ path: 'ng/comparison-dashboard', component: ComparisonDashboardComponent },
-	{ path: 'ng/action-center', component: ActionCenterComponent },
-	{ path: 'ng/downtime-pareto', component: DowntimeParetoComponent },
-	{ path: 'ng/shift-handoff', component: ShiftHandoffComponent },
-	{ path: 'ng/visual-ops', component: VisualOpsDashboardComponent },
+	{ path: 'ng/machineAnalytics', loadComponent: () => import('./machine-dashboard/machine-dashboard.component').then(m => m.MachineDashboardComponent), data: { preload: true } },
+	{ path: 'ng/operatorAnalytics', loadComponent: () => import('./operator-analytics-dashboard/operator-analytics-dashboard.component').then(m => m.OperatorAnalyticsDashboardComponent), data: { preload: true } },
+	{ path: 'ng/itemAnalytics', loadComponent: () => import('./item-analytics-dashboard/item-analytics-dashboard.component').then(m => m.ItemAnalyticsDashboardComponent), data: { preload: true } },
+	{ path: 'ng/daily-summary', loadComponent: () => import('./daily-summary-dashboard/daily-summary-dashboard.component').then(m => m.DailySummaryDashboardComponent), data: { preload: true } },
+	{ path: 'ng/daily-analytics-split', redirectTo: 'ng/daily-dashboard', pathMatch: 'full' },
+	{ path: 'ng/experimental/daily-dashboard', redirectTo: 'ng/daily-dashboard', pathMatch: 'full' },
+	{ path: 'ng/comparison-dashboard', loadComponent: () => import('./comparison-dashboard/comparison-dashboard.component').then(m => m.ComparisonDashboardComponent), data: { preload: true } },
+	{ path: 'ng/action-center', loadComponent: () => import('./action-center/action-center.component').then(m => m.ActionCenterComponent), data: { preload: true } },
+	{ path: 'ng/downtime-pareto', loadComponent: () => import('./downtime-pareto/downtime-pareto.component').then(m => m.DowntimeParetoComponent), data: { preload: true } },
+	{ path: 'ng/shift-handoff', loadComponent: () => import('./shift-handoff/shift-handoff.component').then(m => m.ShiftHandoffComponent), data: { preload: true } },
+	{ path: 'ng/visual-ops', loadComponent: () => import('./visual-ops-dashboard/visual-ops-dashboard.component').then(m => m.VisualOpsDashboardComponent), data: { preload: true } },
 	{
-		path: 'ng/experimental/daily-dashboard',
-		loadComponent: () => import('./experimental-daily-dashboard/experimental-daily-dashboard.component')
-			.then(m => m.ExperimentalDailyDashboardComponent)
+		path: 'ng/daily-dashboard',
+		data: { preload: true },
+		loadComponent: () => import('./daily-dashboard/daily-dashboard.component')
+			.then(m => m.DailyDashboardComponent)
 	},
-	{ path: 'ng/analytics/machine-dashboard', component: MachineDashboardComponent },
+	{ path: 'ng/analytics/machine-dashboard', loadComponent: () => import('./machine-dashboard/machine-dashboard.component').then(m => m.MachineDashboardComponent), data: { preload: true } },
 	
 	// Reports
-	{ path: 'ng/reports/machine-report', component: MachineReportComponent },
-	{ path: 'ng/reports/shift-machine-report', component: ShiftMachineReportComponent },
-	{ path: 'ng/reports/shift-comparison-report', component: ShiftComparisonReportComponent },
-	{ path: 'ng/reports/operator-report', component: OperatorReportComponent },
-	{ path: 'ng/reports/item-report', component: ItemReportComponent },
-	{ path: 'ng/reports/fault-report', component: FaultReportComponent },
-	{ path: 'ng/reports/report-subscriptions', component: ReportSubscriptionComponent },
+	{ path: 'ng/reports/machine-report', loadComponent: () => import('./reports/machine-report/machine-report.component').then(m => m.MachineReportComponent), data: { preload: true } },
+	{ path: 'ng/reports/shift-machine-report', loadComponent: () => import('./reports/shift-machine-report/shift-machine-report.component').then(m => m.ShiftMachineReportComponent), data: { preload: true } },
+	{ path: 'ng/reports/shift-comparison-report', loadComponent: () => import('./reports/shift-comparison-report/shift-comparison-report.component').then(m => m.ShiftComparisonReportComponent), data: { preload: true } },
+	{ path: 'ng/reports/operator-report', loadComponent: () => import('./reports/operator-report/operator-report.component').then(m => m.OperatorReportComponent), data: { preload: true } },
+	{ path: 'ng/reports/item-report', loadComponent: () => import('./reports/item-report/item-report.component').then(m => m.ItemReportComponent), data: { preload: true } },
+	{ path: 'ng/reports/fault-report', loadComponent: () => import('./reports/fault-report/fault-report.component').then(m => m.FaultReportComponent), data: { preload: true } },
+	{ path: 'ng/reports/report-subscriptions', loadComponent: () => import('./reports/report-subscription/report-subscription.component').then(m => m.ReportSubscriptionComponent), data: { preload: true } },
 	
+	// Retired display URLs remain guarded, but no longer load the old pages.
+	...legacyProductionRoutes,
+
 	// Production/Efficiency Screens
-	{ path: 'ng/production-screen', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent) },
-	{ path: 'ng/blanket-blaster-one', component: BlanketBlasteroneEfficiencyScreen },
-	{ path: 'ng/blanket-blaster-two', component: BlanketBlastertwoEfficiencyScreen },
-	{ path: 'ng/spl-efficiency-screen', component: SplEfficiencyScreen },
-	{ path: 'ng/lpl-efficiency-screen', component: LplEfficiencyScreen },
-	{ path: 'ng/lpl-efficiency-screen/:line', component: LplEfficiencyScreen },
-	{ path: 'ng/machine-efficiency-lane', component: MachineEfficiencyLaneComponent },
-	{ path: 'ng/spl-col-efficiency-screen', component: SplColEfficiencyScreenComponent },
-	{ path: 'ng/spf-col-efficiency-screen', component: SpfColEfficiencyScreenComponent },
-	{ path: 'ng/lpls-efficiency-screen', component: LPLsEfficiencyScreenComponent },
-	{ path: 'ng/spfs-efficiency-screen', component: SPFsEfficiencyScreenComponent },
+	{ path: 'ng/production-screen', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent), data: { preload: true } },
 	{ path: 'ng/experimental/spf', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent) },
-	{ path: 'ng/blanket-blasters-efficiency-screen', component: BlanketBlastersEfficiencyScreenComponent },
-	{ path: 'ng/eight-station-demo', component: EightStationDemoComponent },
 	
 	// Redirects
 	{ path: 'ng/home', component: HomeComponent },

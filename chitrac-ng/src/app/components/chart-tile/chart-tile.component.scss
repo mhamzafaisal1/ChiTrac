@@ -100,17 +100,29 @@
   }
 }
 
-:host(.daily-count-editing) {
+// Keep comparison switches alongside the title, clear of the edit drag handle.
+:host(.daily-count-editing),
+:host(.yesterday-editing) {
   .chart-tile-header {
-    flex-wrap: wrap;
-    gap: 0;
+    padding-inline-end: 52px;
+    gap: 8px;
   }
 
-  .chart-tile-title-group {
-    padding-right: 36px;
+  .chart-tile-subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+:host(.daily-count-editing) {
+  .chart-tile-container {
+    container-type: inline-size;
   }
 
-  .chart-tile-actions {
-    flex-basis: 100%;
+  // Keep both labelled switches usable in narrow tiles; the title still identifies the chart.
+  @container (max-width: 340px) {
+    .chart-tile-title-group mat-icon {
+      display: none;
+    }
   }
 }

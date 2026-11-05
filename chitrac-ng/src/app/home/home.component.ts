@@ -32,7 +32,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   section: NavigationMenu | 'home' = 'home';
   readonly menuTitles = menuTitles;
   readonly destinations = [
-    { label: 'Daily Dashboard', icon: 'slow_motion_video', path: '/ng/experimental/daily-dashboard' },
+    { label: 'Daily Dashboard', icon: 'slow_motion_video', path: '/ng/daily-dashboard' },
     { label: 'Machine Dashboard', icon: 'local_laundry_service', path: '/ng/analytics/machine-dashboard' },
     { label: 'Operator Dashboard', icon: 'person', path: '/ng/operatorAnalytics' },
     { label: 'Comparison Dashboard', icon: 'compare', path: '/ng/comparison-dashboard' },

@@ -22,6 +22,7 @@
     >
       <div
         class="chart-shell"
+        cdkMonitorElementFocus
         *ngFor="let tile of visibleChartTiles; trackBy: trackTile"
         cdkDrag
         [cdkDragDisabled]="!layoutEditing"
@@ -61,7 +62,8 @@
           </app-chart-tile>
         } @else {
         <app-chart-tile
-          [class.daily-count-editing]="(tile.id === 'daily-counts' || yesterdayChartIds.includes(tile.id)) && layoutEditing"
+          [class.daily-count-editing]="tile.id === 'daily-counts' && layoutEditing"
+          [class.yesterday-editing]="yesterdayChartIds.includes(tile.id) && layoutEditing"
           [title]="tile.title"
           [icon]="tile.icon"
           [subtitle]="chartSubtitle(tile)"
@@ -74,24 +76,24 @@
             class="daily-count-controls" role="group" aria-label="Daily count chart display"
             (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()"
             (pointerdown)="$event.stopPropagation()">
-            <label><input #averageLine type="checkbox" role="switch"
+            <mat-slide-toggle
               [checked]="dailyCountDisplayOptions.averageLine"
-              (change)="setDailyCountOption('averageLine', averageLine.checked)">Average line</label>
-            <label><input #barColors type="checkbox" role="switch"
+              aria-label="Show average line"
+              (change)="setDailyCountOption('averageLine', $event.checked)">Average line</mat-slide-toggle>
+            <mat-slide-toggle
               [checked]="dailyCountDisplayOptions.barColors"
-              (change)="setDailyCountOption('barColors', barColors.checked)">Bar colors</label>
-            <label><input #tooltip type="checkbox" role="switch"
-              [checked]="dailyCountDisplayOptions.tooltip"
-              (change)="setDailyCountOption('tooltip', tooltip.checked)">Tooltip</label>
+              aria-label="Use variance bar colors"
+              (change)="setDailyCountOption('barColors', $event.checked)">Bar colors</mat-slide-toggle>
           </div>
 
           <div chartTileActions *ngIf="yesterdayChartIds.includes(tile.id) && layoutEditing"
-            class="daily-count-controls" role="group" aria-label="Previous-day chart comparison"
+            class="yesterday-controls" role="group" aria-label="Previous-day chart comparison"
             (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()"
             (pointerdown)="$event.stopPropagation()">
-            <label><input #yesterday type="checkbox" role="switch"
+            <mat-slide-toggle
               [checked]="yesterdayVisibility[tile.id] !== false"
-              (change)="setYesterdayVisibility(tile.id, yesterday.checked)">Yesterday</label>
+              [aria-label]="'Show Yesterday comparison for ' + tile.title"
+              (change)="setYesterdayVisibility(tile.id, $event.checked)">Yesterday</mat-slide-toggle>
           </div>
 
           <app-daily-machine-stacked-bar-chart

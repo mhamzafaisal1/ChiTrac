@@ -8,8 +8,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfTools } from '../../shared/utils/pdf-tools';
 
 import { BaseTableComponent } from '../../components/base-table/base-table.component';
 import { ReportsService } from '../../services/reports.service';
@@ -152,8 +151,9 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     this.isLoading = true;
     this.isDownloading = true;
 
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
+        const { jsPDF, autoTable } = await loadPdfTools();
         const doc = new jsPDF();
         doc.setFontSize(14);
         doc.text('ITEM SUMMARY REPORT', 14, 15);

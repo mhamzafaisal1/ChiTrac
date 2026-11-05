@@ -1,3 +1,4 @@
+import { FullScreenLoaderComponent } from '../components/full-screen-loader/full-screen-loader.component';
 import { Component, OnInit, OnDestroy, ElementRef, Renderer2, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
@@ -71,6 +72,7 @@ interface OperatorDashboardLayoutSnapshot {
         HttpClientModule,
         FormsModule,
         BaseTableComponent,
+        FullScreenLoaderComponent,
         MatTableModule,
         MatSortModule,
         MatButtonModule,

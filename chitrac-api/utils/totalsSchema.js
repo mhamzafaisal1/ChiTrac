@@ -249,12 +249,33 @@ function legacyAliasStage() {
   };
 }
 
+const plantMinutes = new Map();
+const MAX_PLANT_MINUTES = 20000;
+
+function plantFields(created) {
+  const millis = new Date(created).getTime();
+  if (!Number.isFinite(millis)) return null;
+  const minute = Math.floor(millis / 60000);
+  const cached = plantMinutes.get(minute);
+  if (cached) return cached;
+  const local = DateTime.fromMillis(millis, { zone: SYSTEM_TIMEZONE });
+  if (!local.isValid) return null;
+  const fields = {
+    date: local.toISODate(),
+    dayStart: local.startOf("day").toMillis(),
+    dateHourStr: local.startOf("hour").toISO({ suppressMilliseconds: true }),
+    hour: local.hour,
+  };
+  if (plantMinutes.size >= MAX_PLANT_MINUTES) plantMinutes.clear();
+  plantMinutes.set(minute, fields);
+  return fields;
+}
+
 function normalizeTotalsDocument(document) {
   if (!document || typeof document !== "object") return document;
   if (!document.type && !document.timestamps && !document.totals) return document;
   const result = { ...document };
   const created = document.timestamps?.create;
-  const plantDate = created ? DateTime.fromJSDate(new Date(created), { zone: SYSTEM_TIMEZONE }) : null;
   const totals = document.totals || {};
 
   result.entityType ??= document.type;
@@ -285,11 +306,12 @@ function normalizeTotalsDocument(document) {
       end: document.timestamps?.end,
     };
   }
-  if (plantDate?.isValid) {
-    result.date ??= plantDate.toISODate();
-    result.dateObj ??= plantDate.startOf("day").toJSDate();
-    result.dateHourStr ??= plantDate.startOf("hour").toISO({ suppressMilliseconds: true });
-    result.hour ??= plantDate.hour;
+  const fields = created && plantFields(created);
+  if (fields) {
+    result.date ??= fields.date;
+    result.dateObj ??= new Date(fields.dayStart);
+    result.dateHourStr ??= fields.dateHourStr;
+    result.hour ??= fields.hour;
   }
   return result;
 }

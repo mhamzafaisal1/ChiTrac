@@ -11,13 +11,11 @@ import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 export interface DailyCountDisplayOptions {
   averageLine: boolean;
   barColors: boolean;
-  tooltip: boolean;
 }
 
 export const DEFAULT_DAILY_COUNT_DISPLAY_OPTIONS: Readonly<DailyCountDisplayOptions> = {
   averageLine: true,
   barColors: true,
-  tooltip: true,
 };
 
 type DailyCountPoint = {
@@ -301,7 +299,7 @@ export class DailyCountBarChartComponent implements OnInit, OnDestroy, OnChanges
       },
       legend: { show: false, position: 'top' },
       tooltip: {
-        show: this.displayOptions.tooltip,
+        show: true,
         delayMs: 750,
         formatter: ({ series, xLabel, value }) => this.formatTooltip(series.id, xLabel, value, points)
       },

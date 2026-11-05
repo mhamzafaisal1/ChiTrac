@@ -1,7 +1,7 @@
 import { isNavigationMenu, navigationEntries } from '../services/navigation-menu';
-import { Component, inject, Output, Input, EventEmitter, ViewChild, HostListener, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, Output, Input, EventEmitter, ViewChild, HostListener, OnInit, OnDestroy, Optional } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { Router, RouterPreloader } from '@angular/router';
 
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { ConnectedPosition, Overlay, OverlayModule } from '@angular/cdk/overlay';
@@ -19,7 +19,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { trigger, style, animate, transition, query, group } from '@angular/animations';
 
-import { Observable, Subscription, combineLatest, of } from 'rxjs';
+import { EMPTY, Observable, Subscription, combineLatest, of } from 'rxjs';
 import { map, shareReplay, switchMap, catchError, startWith, distinctUntilChanged, auditTime } from 'rxjs/operators';
 import { DateTimeService } from '../services/date-time.service';
 import { ShiftService } from '../services/shift.service';
@@ -150,7 +150,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   /** Prevents the opening click from immediately closing the menu via document:click. */
   private ignoreDocumentClick = false;
 
-  private readonly routeMenuMap = [
+  private readonly routeMenuMap: { menu: string; parent?: string; routes: string[] }[] = [
     {
       menu: 'dashboards',
       routes: [
@@ -162,16 +162,9 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
         '/ng/operatorAnalytics',
         '/ng/itemAnalytics',
         '/ng/daily-summary',
-        '/ng/daily-analytics-split',
+        '/ng/daily-dashboard',
         '/ng/comparison-dashboard',
         '/ng/analytics/machine-dashboard'
-      ]
-    },
-    {
-      menu: 'experimental',
-      parent: 'dashboards',
-      routes: [
-        '/ng/experimental/daily-dashboard'
       ]
     },
     {
@@ -219,6 +212,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   private userSub?: Subscription;
   private productionLayoutsSub?: Subscription;
+  private featurePreloadSub?: Subscription;
   private navigationActionsSub?: Subscription;
   private settingsAfterLogin = false;
   private settingsSub?: Subscription;
@@ -270,13 +264,21 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
     private layoutEditService: LayoutEditService,
     private dateTimeService: DateTimeService,
     private shiftService: ShiftService,
-    private navigationActions: NavigationActionsService
+    private navigationActions: NavigationActionsService,
+    @Optional() private preloader: RouterPreloader | null = null
   ) {}
 
   ngOnInit() {
     this.subscribeToUser();
     // The shell outlives routed pages: warm the shared menu once and retain it.
     this.productionLayoutsSub = this.productionLayouts.state$.subscribe();
+    // Router preloading also runs after navigation. Retry it after login, when
+    // the anonymous Home route may stay mounted, and when permissions change.
+    this.featurePreloadSub = this.userService.user.pipe(
+      distinctUntilChanged((a, b) => a?.username === b?.username && a?.permissions?.level === b?.permissions?.level),
+      switchMap(user => user?.username && this.preloader ? this.preloader.preload() : EMPTY),
+      catchError(() => EMPTY)
+    ).subscribe();
     this.navigationActionsSub = this.navigationActions.requests$.subscribe(action => {
       if (action === 'settings') {
         this.openSettingsMenu();
@@ -336,6 +338,7 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.featurePreloadSub?.unsubscribe();
     this.productionLayoutsSub?.unsubscribe();
     this.hideConnectionTooltip();
     this.timeframeSub?.unsubscribe();

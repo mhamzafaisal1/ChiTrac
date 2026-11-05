@@ -1,18 +1,15 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { FullScreenLoaderComponent } from '../full-screen-loader/full-screen-loader.component';
 
 @Component({
   selector: 'app-page-load-state',
   standalone: true,
-  imports: [MatButtonModule, MatProgressSpinnerModule],
+  imports: [MatButtonModule, FullScreenLoaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (loading) {
-      <div class="load-state" role="status" aria-live="polite">
-        <mat-spinner diameter="32" [attr.aria-label]="label"></mat-spinner>
-        <p>{{ label }}</p>
-      </div>
+      <app-full-screen-loader [label]="label" />
     } @else if (error) {
       <div class="load-state" role="alert">
         <p>{{ error }}</p>

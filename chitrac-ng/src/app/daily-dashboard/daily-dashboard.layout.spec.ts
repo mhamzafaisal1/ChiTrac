@@ -2,11 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
-import { ExperimentalDailyDashboardComponent } from './experimental-daily-dashboard.component';
+import { DailyDashboardComponent } from './daily-dashboard.component';
 import { SummaryCardVisibilityDialogComponent } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { LayoutEditService } from '../services/layout-edit.service';
 
-describe('Experimental chart layout picker', () => {
+describe('Daily chart layout picker', () => {
   let fixture: any;
   let component: SummaryCardVisibilityDialogComponent;
   let close: jasmine.Spy;
@@ -18,6 +18,7 @@ describe('Experimental chart layout picker', () => {
       cards: Array.from({ length: 7 }, (_, i) => ({ id: `chart-${i}`, label: `Chart ${i}` })),
       visibility: { 'chart-6': false },
       layout: '3x2',
+      dragDropEnabled: true,
       layoutOptions: [
         { id: '3x2', label: '3 × 2 — 6 charts', exactVisible: 6 },
         { id: '2x2', label: '2 × 2 — 4 charts', exactVisible: 4 },
@@ -79,6 +80,28 @@ describe('Experimental chart layout picker', () => {
     expect(close.calls.mostRecent().args[0].layout).toBe('3x2');
   });
 
+  it('drags charts within Shown and between lists while enforcing the exact count', () => {
+    expect(component.dragDropEnabled).toBeTrue();
+    const shown = { data: component.showCards }, hidden = { data: component.hideCards };
+    const drop = (from: any, to: any, previousIndex: number, currentIndex: number) =>
+      component.drop({ previousContainer: from, container: to, previousIndex, currentIndex } as any, to === shown);
+    drop(shown, shown, 0, 2);
+    expect(component.showCards.map(card => card.id)).toEqual(['chart-1', 'chart-2', 'chart-0', 'chart-3', 'chart-4', 'chart-5']);
+    drop(shown, hidden, 2, 1);
+    expect(component.canApply).toBeFalse();
+    drop(hidden, shown, 0, 1);
+    expect(component.canApply).toBeTrue();
+    drop(hidden, shown, 0, 0); // A full layout must not accept another chart.
+    expect(component.showCards.length).toBe(6);
+    component.save();
+    const result = close.calls.mostRecent().args[0];
+    expect(result.order).toEqual(['chart-1', 'chart-6', 'chart-2', 'chart-3', 'chart-4', 'chart-5', 'chart-0']);
+    expect(result.visibility['chart-0']).toBeFalse();
+    expect(result.visibility['chart-6']).toBeTrue();
+    expect(data.cards.map((card: any) => card.id)).toEqual(Array.from({ length: 7 }, (_, i) => `chart-${i}`));
+    expect(data.visibility).toEqual({ 'chart-6': false });
+  });
+
   it('rejects fewer than four and cancels without mutating the supplied layout or selection', () => {
     choose('2x2'); hideOne(); hideOne(); hideOne();
     expect(component.canApply).toBeFalse();
@@ -91,8 +114,8 @@ describe('Experimental chart layout picker', () => {
   });
 });
 
-describe('Experimental dashboard layout state', () => {
-  let dashboard: ExperimentalDailyDashboardComponent;
+describe('Daily dashboard layout state', () => {
+  let dashboard: DailyDashboardComponent;
   let preferences: BehaviorSubject<any>;
   let editor: LayoutEditService;
   let settings: any;
@@ -107,11 +130,11 @@ describe('Experimental dashboard layout state', () => {
     editor = new LayoutEditService(user);
     settings = {
       timeFormat$: of('12h'), userPreferences$: preferences,
-      setExperimentalDailyDashboardChartOrder: jasmine.createSpy('set'),
-      saveExperimentalDailyDashboardChartOrder: jasmine.createSpy('save').and.returnValue(of({})),
+      setDailyDashboardChartOrder: jasmine.createSpy('set'),
+      saveDailyDashboardChartOrder: jasmine.createSpy('save').and.returnValue(of({})),
     };
     dialog = { open: jasmine.createSpy('open').and.returnValue({ afterClosed: () => closed }) };
-    dashboard = new ExperimentalDailyDashboardComponent(
+    dashboard = new DailyDashboardComponent(
       { ensureConnected() {}, status$: of('disconnected'), dashboardCache$: of({}) } as any,
       { getConfirmed: () => true } as any, {} as any, editor, settings, user, dialog, {} as any,
     );
@@ -142,13 +165,33 @@ describe('Experimental dashboard layout state', () => {
     expect(dialog.open.calls.mostRecent().args[1].data.layout).toBe('3x2');
     closed.next({ layout: '2x2', visibility: visibility(4), order: [] });
     expect(dashboard.visibleChartTiles.length).toBe(4);
-    expect(settings.setExperimentalDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
+    expect(settings.setDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
     dashboard.onChartDrop({ previousIndex: 0, currentIndex: 2 } as any);
-    expect(settings.setExperimentalDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
+    expect(settings.setDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
     (dashboard as any).revertLayoutChanges();
     expect(dashboard.gridLayout).toBe('3x2');
     expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(original);
     expect(dashboard.layoutEditing).toBeFalse();
+  });
+
+  it('applies and saves modal drag order with visibility, and restores both on discard', () => {
+    const original = dashboard.chartTiles.map(tile => tile.id);
+    const order = [...original].reverse();
+    const selected = Object.fromEntries(order.map((id, index) => [id, index < 4]));
+    editor.toggle();
+    dashboard.openChartVisibilityDialog();
+    expect(dialog.open.calls.mostRecent().args[1].data.dragDropEnabled).toBeTrue();
+    closed.next({ layout: '2x2', visibility: selected, order });
+    expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(order.slice(0, 4));
+    expect(settings.setDailyDashboardChartOrder.calls.mostRecent().args).toEqual([order, selected, '2x2']);
+    (dashboard as any).saveLayout().subscribe();
+    expect(settings.saveDailyDashboardChartOrder.calls.mostRecent().args).toEqual([order, selected, '2x2']);
+    editor.toggle();
+    dashboard.openChartVisibilityDialog();
+    closed.next({ layout: '2x2', visibility: selected, order: original });
+    (dashboard as any).revertLayoutChanges();
+    expect(dashboard.chartTiles.map(tile => tile.id)).toEqual(order);
+    expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(order.slice(0, 4));
   });
 
   it('does not apply invalid chart counts or a cancelled dialog', () => {
@@ -156,19 +199,19 @@ describe('Experimental dashboard layout state', () => {
     closed.next({ layout: '2x2', visibility: visibility(5), order: [] });
     closed.next(undefined);
     expect(dashboard.gridLayout).toBe('3x2');
-    expect(settings.setExperimentalDailyDashboardChartOrder).not.toHaveBeenCalled();
+    expect(settings.setDailyDashboardChartOrder).not.toHaveBeenCalled();
   });
 
   it('saves the grid and visibility together and retains the draft if saving fails', () => {
     editor.toggle();
     dashboard.openChartVisibilityDialog();
     closed.next({ layout: '2x2', visibility: visibility(4), order: [] });
-    settings.saveExperimentalDailyDashboardChartOrder.and.returnValue(throwError(() => new Error('offline')));
+    settings.saveDailyDashboardChartOrder.and.returnValue(throwError(() => new Error('offline')));
     (dashboard as any).saveLayout().subscribe({ error() {} });
     expect(dashboard.gridLayout).toBe('2x2');
     expect(dashboard.layoutEditing).toBeTrue();
-    expect(settings.saveExperimentalDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
-    settings.saveExperimentalDailyDashboardChartOrder.and.returnValue(of({}));
+    expect(settings.saveDailyDashboardChartOrder.calls.mostRecent().args[2]).toBe('2x2');
+    settings.saveDailyDashboardChartOrder.and.returnValue(of({}));
     (dashboard as any).saveLayout().subscribe();
     expect(dashboard.layoutEditing).toBeFalse();
   });

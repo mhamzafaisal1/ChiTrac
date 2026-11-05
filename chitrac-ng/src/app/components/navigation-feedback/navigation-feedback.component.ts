@@ -2,19 +2,16 @@ import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationCancel, NavigationEnd, NavigationError, NavigationSkipped, NavigationStart, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { FullScreenLoaderComponent } from '../full-screen-loader/full-screen-loader.component';
 
 @Component({
   selector: 'app-navigation-feedback',
   standalone: true,
-  imports: [MatButtonModule, MatProgressSpinnerModule],
+  imports: [MatButtonModule, FullScreenLoaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (showProgress()) {
-      <div class="navigation-loading" role="status" aria-live="polite">
-        <mat-spinner diameter="20" aria-label="Loading page"></mat-spinner>
-        <p>{{ message() }}</p>
-      </div>
+      <app-full-screen-loader class="navigation-loading" [label]="message()" />
     }
     @if (error()) {
       <div class="navigation-error" role="alert">
@@ -25,21 +22,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
     }
   `,
   styles: [`
-    .navigation-loading {
-      position: fixed;
-      top: 64px;
-      inset-inline: 0;
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.75rem;
-      padding: 0.5rem 1rem;
-      pointer-events: none;
-      background: var(--theme-color-surface);
-      color: var(--theme-color-text);
-    }
-    p { margin: 0; }
     .navigation-error {
       position: relative;
       z-index: 1000;
@@ -96,8 +78,8 @@ export class NavigationFeedbackComponent {
     this.message.set(/^\/ng\/settings(?:[/?#]|$)/.test(url) ? 'Loading settings…' : 'Loading page…');
     this.error.set('');
     this.pending.set(true);
-    // Fast local transitions need no spinner. Keep the previous page visible
-    // during genuine waits; pending still makes its routed content inert.
+    // Fast local transitions need no spinner. Genuine waits use the shared
+    // full-screen blur loader; pending makes routed content inert immediately.
     this.progressTimer = setTimeout(() => this.showProgress.set(true), 200);
   }
 }
