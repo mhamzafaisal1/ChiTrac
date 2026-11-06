@@ -1,4 +1,7 @@
 const express = require("express");
+const { sessionMachineQuery, sessionOperatorQuery } = require("../../utils/sessionIdentity");
+const { sessionShiftFilter } = require("../../utils/reportShiftFilter");
+const { realFaultSessionQuery, isFaultSession } = require("../../utils/faultTimeSummary");
 const { DateTime } = require("luxon");
 
 const config = require("../../modules/config");
@@ -1266,98 +1269,67 @@ function constructor(server) {
     return res.json(data);
   }
 
-  async function resolveDetailsTimeframe(req, keyPrefix) {
+  async function resolveDetailsWindow(req, { maxDays } = {}) {
     const timeframe = req.query.timeframe || "today";
-    if (!["today", "custom", "shift"].includes(timeframe)) {
-      return { error: { status: 400, message: "Invalid timeframe" } };
+    const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
+    if (timeframe === "today") return { timeframe, now, ...todayBounds(now) };
+    if (timeframe === "custom") {
+      try {
+        const start = parseIsoDate(req.query.start, "start");
+        const requestedEnd = req.query.end ? parseIsoDate(req.query.end, "end") : now;
+        const end = requestedEnd > now ? now : requestedEnd;
+        if (maxDays && end > start.plus({ days: maxDays })) {
+          return { error: { status: 400, message: `Session requests are limited to ${maxDays} days. Split longer ranges into separate requests.` } };
+        }
+        if (start >= end) return { error: { status: 400, message: "Start date must be before end date" } };
+        return { timeframe, now, start, end };
+      } catch (error) {
+        return { error: { status: 400, message: error.message } };
+      }
     }
+    if (timeframe !== "shift") return { error: { status: 400, message: "Invalid timeframe" } };
+    const id = parseRequiredInteger(req.query.shift);
+    if (Number.isNaN(id)) return { error: { status: 400, message: "shift is required and must be an integer" } };
+    const shiftDoc = await db.collection(config.shiftCollectionName).findOne({ id });
+    if (!shiftDoc) return { error: { status: 404, message: "Shift not found" } };
+    try {
+      const window = shiftWindowForToday(shiftDoc, now);
+      if (!window || window.end <= window.start) return { timeframe, now, shiftDoc };
+      return { timeframe, now, shiftDoc, dateStr: window.dateStr,
+        start: DateTime.fromJSDate(window.start, { zone: SYSTEM_TIMEZONE }),
+        end: DateTime.fromJSDate(window.end, { zone: SYSTEM_TIMEZONE }) };
+    } catch (error) {
+      return { error: { status: 400, message: error.message } };
+    }
+  }
 
-    let shiftDoc = null;
+  async function resolveDetailsTimeframe(req, keyPrefix) {
+    const window = await resolveDetailsWindow(req);
+    if (window.error) return window;
+    const { timeframe, now, start, end, dateStr, shiftDoc = null } = window;
     let cacheSegments = [];
     let sessionSegments = [];
     let cacheCollectionName = config.totalsDailyCollectionName;
     let cacheBaseFilter = {};
     let sessionOptions = {};
-    const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
 
-    try {
-      if (timeframe === "today") {
-        const today = todayBounds(now);
-        cacheSegments = [
-          {
-            key: `${keyPrefix}-daily:${today.dateStr}`,
-            dateStr: today.dateStr,
-            start: today.start.toJSDate(),
-            end: today.end.toJSDate(),
-          },
-        ];
-      } else if (timeframe === "custom") {
-        const startDT = parseIsoDate(req.query.start, "start");
-        const endDT = req.query.end ? parseIsoDate(req.query.end, "end") : now;
-        const clampedEndDT = endDT > now ? now : endDT;
-
-        if (startDT >= clampedEndDT) {
-          return { error: { status: 400, message: "Start date must be before end date" } };
-        }
-
-        const split = splitCustomRange(startDT, clampedEndDT);
-        cacheSegments = split.cacheSegments.map((segment) => ({
-          ...segment,
-          key: `${keyPrefix}-daily:${segment.dateStr}`,
-        }));
-        sessionSegments = split.sessionSegments.map((segment, index) => ({
-          ...segment,
-          key: `${keyPrefix}-session:${index}:${segment.start.getTime()}-${segment.end.getTime()}`,
-        }));
-      } else {
-        const shiftIntegerId = parseRequiredInteger(req.query.shift);
-        if (Number.isNaN(shiftIntegerId)) {
-          return {
-            error: {
-              status: 400,
-              message: "shift is required and must be an integer",
-            },
-          };
-        }
-
-        shiftDoc = await db.collection(config.shiftCollectionName).findOne({
-          id: shiftIntegerId,
-        });
-
-        if (!shiftDoc) {
-          return { error: { status: 404, message: "Shift not found" } };
-        }
-
-        const shiftWindow = shiftWindowForToday(shiftDoc, now);
-        if (!shiftWindow || shiftWindow.end <= shiftWindow.start) {
-          return {
-            timeframe,
-            shiftDoc,
-            cacheSegments: [],
-            sessionSegments: [],
-            cacheCollectionName,
-            cacheBaseFilter,
-            sessionOptions,
-            activeShifts: [shiftDoc],
-            allSegments: [],
-            now,
-          };
-        }
-
+    if (timeframe === "custom") {
+      const split = splitCustomRange(start, end);
+      cacheSegments = split.cacheSegments.map(segment => ({
+        ...segment, key: `${keyPrefix}-daily:${segment.dateStr}`,
+      }));
+      sessionSegments = split.sessionSegments.map((segment, index) => ({
+        ...segment, key: `${keyPrefix}-session:${index}:${segment.start.getTime()}-${segment.end.getTime()}`,
+      }));
+    } else if (start) {
+      let key = `${keyPrefix}-daily:${dateStr}`;
+      if (shiftDoc) {
         cacheCollectionName = totalsShiftCollectionName;
         cacheBaseFilter = { shiftId: shiftDoc._id.toString() };
         sessionOptions = { shiftId: shiftDoc._id.toString() };
-        cacheSegments = [
-          {
-            key: `${keyPrefix}-shift:${shiftDoc._id.toString()}:${shiftWindow.dateStr}`,
-            dateStr: shiftWindow.dateStr,
-            start: shiftWindow.start,
-            end: shiftWindow.end,
-          },
-        ];
+        key = `${keyPrefix}-shift:${shiftDoc._id.toString()}:${dateStr}`;
       }
-    } catch (error) {
-      return { error: { status: 400, message: error.message } };
+      cacheSegments = [{ key, dateStr, start: start.toJSDate(), end: end.toJSDate() }];
     }
 
     const activeShifts = shiftDoc ? [shiftDoc] : await loadActiveShifts();
@@ -2150,6 +2122,67 @@ function constructor(server) {
       res.status(500).json({ error: "Failed to fetch Spindle machine overview" });
     }
   });
+
+  async function rawRecords(req, res, { collection, entity, event = false, operator = false }) {
+    try {
+      const operatorId = operator ? parseOperatorId(req.query.operatorid) : null;
+      if (Number.isNaN(operatorId)) return badRequest(res, "operatorid must be numeric");
+      const serial = parseSerial(req.query.serial);
+      if (Number.isNaN(serial)) return badRequest(res, "serial must be numeric");
+      const window = await resolveDetailsWindow(req, { maxDays: 7 });
+      if (window.error) return res.status(window.error.status).json({ error: window.error.message });
+      if (!window.start) return res.json([]);
+
+      const range = { $gte: window.start.toJSDate(), $lt: window.end.toJSDate() };
+      const filters = event ? [{ "timestamps.create": range }] : [
+        { "timestamps.start": { $lt: window.end.toJSDate() } },
+        { $or: [{ "timestamps.end": null }, { "timestamps.end": { $gt: window.start.toJSDate() } }] },
+      ];
+      if (serial !== null) filters.push(sessionMachineQuery(serial));
+      if (operatorId !== null) filters.push(sessionOperatorQuery(operatorId));
+      if (window.shiftDoc) filters.push(sessionShiftFilter(window.shiftDoc._id, { includeUntagged: true }));
+      if (entity === "fault") filters.push(realFaultSessionQuery());
+      const records = db.collection(collection);
+      if (event) {
+        const cursor = records.find({ $and: filters }).sort({ "timestamps.create": 1, _id: 1 });
+        return await streamEvents(cursor, res);
+      }
+      const sessions = await records.find({ $and: filters }).sort({ "timestamps.start": 1, _id: 1 }).toArray();
+      return res.json(entity === "fault" ? sessions.filter(isFaultSession) : sessions);
+    } catch (error) {
+      logger.error(`[spindle] Error fetching ${entity} records:`, error);
+      if (res.headersSent || res.destroyed) return res.destroy();
+      return res.status(500).json({ error: `Failed to fetch Spindle ${entity}${event ? "" : " sessions"}` });
+    }
+  }
+
+  async function streamEvents(cursor, res) {
+    const { once } = require("node:events");
+    const disconnected = new AbortController();
+    const close = () => disconnected.abort();
+    res.once("close", close);
+    try {
+      res.type("json");
+      let first = true;
+      for await (const record of cursor) {
+        if (res.destroyed) return;
+        if (!res.write((first ? "[" : ",") + JSON.stringify(record))) {
+          await once(res, "drain", { signal: disconnected.signal });
+        }
+        first = false;
+      }
+      if (!res.destroyed) res.end(first ? "[]" : "]");
+    } finally {
+      res.off("close", close);
+      await cursor.close();
+    }
+  }
+
+  router.get("/machine/sessions", (req, res) => rawRecords(req, res, { entity: "machine", collection: config.machineSessionCollectionName }));
+  router.get("/operator/sessions", (req, res) => rawRecords(req, res, { entity: "operator", collection: config.operatorSessionCollectionName, operator: true }));
+  router.get("/fault/sessions", (req, res) => rawRecords(req, res, { entity: "fault", collection: config.machineSessionCollectionName }));
+  router.get("/states", (req, res) => rawRecords(req, res, { entity: "states", collection: config.machineStateCollectionName, event: true }));
+  router.get("/counts", (req, res) => rawRecords(req, res, { entity: "counts", collection: config.countCollectionName, event: true, operator: true }));
 
   router.get("/machine/details", async (req, res) => {
     try {
