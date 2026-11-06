@@ -640,6 +640,8 @@ async function getMachineStateTimeBySerial(db, config, machineSerials, start, en
 }
 
 module.exports = {
+  realFaultSessionQuery,
+  isFaultSession: session => !NON_FAULT_CODES.has(sessionStateCode(session)),
   getMachineFaultTimeBySerial,
   getMachineFaultSummariesBySerial,
   getOperatorFaultTimeByOperatorId,

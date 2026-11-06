@@ -53,6 +53,12 @@ async function ensureAnalyticsIndexes(db, config, logger) {
   await Promise.all([
     ensureRuntimeCollectionIndexes(db, config, logger),
     ensureProductionIngestionIndexes(db, config),
+    ...[config.countCollectionName, config.machineStateCollectionName].map(name =>
+      createIndex(db.collection(name), { "timestamps.create": 1, _id: 1 },
+        { name: "spindle_event_chronology" }, logger)),
+    ...[machineSessions, operatorSessions].map(collection =>
+      createIndex(collection, { "timestamps.start": 1, _id: 1 },
+        { name: "spindle_session_chronology" }, logger)),
     createIndex(
       totalsDaily,
       { type: 1, "timestamps.create": 1, "machine.id": 1 },

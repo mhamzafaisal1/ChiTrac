@@ -538,7 +538,7 @@ GET /api/spindle/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.
     <p>A custom request can span up to <strong>7 full days in plant time</strong>.
       A request from Monday at 08:00 through the following Monday at 08:00 is valid.
       Split longer exports into consecutive windows. The API checks the requested range
-      before capping a future end at now. Longer ranges receive HTTP 400:</p>
+      after capping a future end at now. Longer ranges receive HTTP 400:</p>
     <pre><code>{ "error": "Session requests are limited to 7 days. Split longer ranges into separate requests." }</code></pre>
     <p>Sessions are included when they overlap the requested interval, including open
       sessions. Shift requests include untagged sessions within the shift window.
@@ -555,6 +555,30 @@ GET /api/spindle/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.
       as <code>/api/spindle/machine/sessions</code> apply. Longer ranges return HTTP 400.
       Use the session <code>_id</code> to reconcile open sessions across requests.</p>
     <pre><code>GET /api/spindle/operator/sessions?operatorid=183462&amp;serial=90003&amp;timeframe=custom&amp;start=2026-05-20T05:00:00Z&amp;end=2026-05-21T12:00:00Z</code></pre>
+
+    <h3>Raw fault sessions, states and counts</h3>
+    <p>Each endpoint returns a JSON array of complete stored records and accepts
+      the same optional machine <code>serial</code>, today, shift and custom timeframe
+      inputs as machine sessions. Today is the default. Specify both
+      <code>timeframe=shift</code> and <code>shift</code> to select a shift.
+      Custom requests over seven full plant days receive HTTP 400.</p>
+    <ul>
+      <li><code>GET /api/spindle/fault/sessions</code> returns machine fault sessions
+        overlapping the window, including open faults. A fault spanning requests can
+        appear in each response with the same <code>_id</code>.</li>
+      <li><code>GET /api/spindle/states</code> returns individual machine state events,
+        once per stored machine transition.</li>
+      <li><code>GET /api/spindle/counts</code> returns raw count collection records,
+        including stored misfeeds. Optionally narrow by numeric <code>operatorid</code>.</li>
+    </ul>
+    <p>States and counts are ordered by event time and then <code>_id</code>. The start
+      is inclusive and the end exclusive, so consecutive windows share no boundary event.
+      If a streamed response is interrupted, even after HTTP 200, discard the incomplete
+      JSON array and retry the same window with explicit start and end times. Use each
+      record's <code>_id</code> to avoid duplicates when retrying.</p>
+    <pre><code>GET /api/spindle/fault/sessions?serial=90003
+GET /api/spindle/states?timeframe=shift&amp;shift=1
+GET /api/spindle/counts?operatorid=183462&amp;timeframe=custom&amp;start=2026-05-20T05:00:00Z&amp;end=2026-05-20T06:00:00Z</code></pre>
 
     <h3>GET /api/spindle/operator/details</h3>
     <p>

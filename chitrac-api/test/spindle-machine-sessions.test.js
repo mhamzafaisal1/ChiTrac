@@ -82,13 +82,14 @@ test('accepts a full plant week across DST and rejects longer requests before re
   const { request, queries } = fixture();
   const custom = { timeframe: 'custom', start: '2026-10-27T08:00' };
   assert.equal((await request({ ...custom, end: '2026-11-03T08:00' })).code, 200);
-  for (const query of [{ ...custom, end: '2026-11-03T08:00:00.001' }, custom,
-    { ...custom, start: '2026-11-03T08:00', end: '2026-12-01T08:00' }]) {
+  for (const query of [{ ...custom, end: '2026-11-03T08:00:00.001' }, custom]) {
     const res = await request(query);
     assert.equal(res.code, 400);
     assert.match(res.body.error, /limited to 7 days/);
   }
   assert.equal(queries.length, 1);
+  assert.equal((await request({ ...custom, start: '2026-11-03T08:00', end: '2026-12-01T08:00' })).code, 200);
+  assert.equal(+queries[1].$and[0]['timestamps.start'].$lt, Settings.now());
 });
 
 test('shift requests include untagged sessions only within the selected time window', async t => {

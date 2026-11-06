@@ -1,6 +1,7 @@
 const express = require("express");
 const { sessionMachineQuery, sessionOperatorQuery } = require("../../utils/sessionIdentity");
 const { sessionShiftFilter } = require("../../utils/reportShiftFilter");
+const { realFaultSessionQuery, isFaultSession } = require("../../utils/faultTimeSummary");
 const { DateTime } = require("luxon");
 
 const config = require("../../modules/config");
@@ -1276,10 +1277,10 @@ function constructor(server) {
       try {
         const start = parseIsoDate(req.query.start, "start");
         const requestedEnd = req.query.end ? parseIsoDate(req.query.end, "end") : now;
-        if (maxDays && requestedEnd > start.plus({ days: maxDays })) {
+        const end = requestedEnd > now ? now : requestedEnd;
+        if (maxDays && end > start.plus({ days: maxDays })) {
           return { error: { status: 400, message: `Session requests are limited to ${maxDays} days. Split longer ranges into separate requests.` } };
         }
-        const end = requestedEnd > now ? now : requestedEnd;
         if (start >= end) return { error: { status: 400, message: "Start date must be before end date" } };
         return { timeframe, now, start, end };
       } catch (error) {
@@ -2122,9 +2123,9 @@ function constructor(server) {
     }
   });
 
-  async function rawSessions(req, res, entity) {
+  async function rawRecords(req, res, { collection, entity, event = false, operator = false }) {
     try {
-      const operatorId = entity === "operator" ? parseOperatorId(req.query.operatorid) : null;
+      const operatorId = operator ? parseOperatorId(req.query.operatorid) : null;
       if (Number.isNaN(operatorId)) return badRequest(res, "operatorid must be numeric");
       const serial = parseSerial(req.query.serial);
       if (Number.isNaN(serial)) return badRequest(res, "serial must be numeric");
@@ -2132,25 +2133,56 @@ function constructor(server) {
       if (window.error) return res.status(window.error.status).json({ error: window.error.message });
       if (!window.start) return res.json([]);
 
-      const filters = [
+      const range = { $gte: window.start.toJSDate(), $lt: window.end.toJSDate() };
+      const filters = event ? [{ "timestamps.create": range }] : [
         { "timestamps.start": { $lt: window.end.toJSDate() } },
         { $or: [{ "timestamps.end": null }, { "timestamps.end": { $gt: window.start.toJSDate() } }] },
       ];
       if (serial !== null) filters.push(sessionMachineQuery(serial));
       if (operatorId !== null) filters.push(sessionOperatorQuery(operatorId));
       if (window.shiftDoc) filters.push(sessionShiftFilter(window.shiftDoc._id, { includeUntagged: true }));
-      const collection = entity === "operator" ? config.operatorSessionCollectionName : config.machineSessionCollectionName;
-      const sessions = await db.collection(collection)
-        .find({ $and: filters }).sort({ "timestamps.start": 1, _id: 1 }).toArray();
-      return res.json(sessions);
+      if (entity === "fault") filters.push(realFaultSessionQuery());
+      const records = db.collection(collection);
+      if (event) {
+        const cursor = records.find({ $and: filters }).sort({ "timestamps.create": 1, _id: 1 });
+        return await streamEvents(cursor, res);
+      }
+      const sessions = await records.find({ $and: filters }).sort({ "timestamps.start": 1, _id: 1 }).toArray();
+      return res.json(entity === "fault" ? sessions.filter(isFaultSession) : sessions);
     } catch (error) {
-      logger.error(`[spindle] Error in /${entity}/sessions route:`, error);
-      return res.status(500).json({ error: `Failed to fetch Spindle ${entity} sessions` });
+      logger.error(`[spindle] Error fetching ${entity} records:`, error);
+      if (res.headersSent || res.destroyed) return res.destroy();
+      return res.status(500).json({ error: `Failed to fetch Spindle ${entity}${event ? "" : " sessions"}` });
     }
   }
 
-  router.get("/machine/sessions", (req, res) => rawSessions(req, res, "machine"));
-  router.get("/operator/sessions", (req, res) => rawSessions(req, res, "operator"));
+  async function streamEvents(cursor, res) {
+    const { once } = require("node:events");
+    const disconnected = new AbortController();
+    const close = () => disconnected.abort();
+    res.once("close", close);
+    try {
+      res.type("json");
+      let first = true;
+      for await (const record of cursor) {
+        if (res.destroyed) return;
+        if (!res.write((first ? "[" : ",") + JSON.stringify(record))) {
+          await once(res, "drain", { signal: disconnected.signal });
+        }
+        first = false;
+      }
+      if (!res.destroyed) res.end(first ? "[]" : "]");
+    } finally {
+      res.off("close", close);
+      await cursor.close();
+    }
+  }
+
+  router.get("/machine/sessions", (req, res) => rawRecords(req, res, { entity: "machine", collection: config.machineSessionCollectionName }));
+  router.get("/operator/sessions", (req, res) => rawRecords(req, res, { entity: "operator", collection: config.operatorSessionCollectionName, operator: true }));
+  router.get("/fault/sessions", (req, res) => rawRecords(req, res, { entity: "fault", collection: config.machineSessionCollectionName }));
+  router.get("/states", (req, res) => rawRecords(req, res, { entity: "states", collection: config.machineStateCollectionName, event: true }));
+  router.get("/counts", (req, res) => rawRecords(req, res, { entity: "counts", collection: config.countCollectionName, event: true, operator: true }));
 
   router.get("/machine/details", async (req, res) => {
     try {
