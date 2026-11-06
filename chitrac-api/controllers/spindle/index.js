@@ -36,6 +36,10 @@ function constructor(server) {
     return res.status(400).json({ error: message });
   }
 
+  function requestTimeframe(query) {
+    return query.timeframe ?? (query.shift !== undefined ? "shift" : "today");
+  }
+
   function parseSerial(raw) {
     if (typeof raw === "undefined" || raw === null || raw === "") return null;
     const serial = Number.parseInt(String(raw), 10);
@@ -1013,7 +1017,7 @@ function constructor(server) {
   }
 
   async function buildMachineOverview(req, res) {
-    const timeframe = req.query.timeframe || "today";
+    const timeframe = requestTimeframe(req.query);
     if (!["today", "custom", "shift"].includes(timeframe)) {
       return badRequest(res, "Invalid timeframe");
     }
@@ -1186,7 +1190,7 @@ function constructor(server) {
   }
 
   async function buildOperatorOverview(req, res) {
-    const timeframe = req.query.timeframe || "today";
+    const timeframe = requestTimeframe(req.query);
     if (!["today", "custom", "shift"].includes(timeframe)) {
       return badRequest(res, "Invalid timeframe");
     }
@@ -1348,7 +1352,7 @@ function constructor(server) {
   }
 
   async function resolveDetailsTimeframe(req, keyPrefix) {
-    const timeframe = req.query.timeframe || "today";
+    const timeframe = requestTimeframe(req.query);
     if (!["today", "custom", "shift"].includes(timeframe)) {
       return { error: { status: 400, message: "Invalid timeframe" } };
     }

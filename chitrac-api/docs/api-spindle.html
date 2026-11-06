@@ -190,7 +190,7 @@
           <td><code>timeframe</code></td>
           <td>string</td>
           <td>No</td>
-          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. When omitted, defaults to <code>shift</code> if a shift is supplied, otherwise <code>today</code>.</td>
         </tr>
         <tr>
           <td><code>shift</code></td>
@@ -225,7 +225,7 @@
     <h4>Example Requests</h4>
     <pre><code>GET /api/spindle/machine/overview
 GET /api/spindle/machine/overview?serial=90003
-GET /api/spindle/machine/overview?timeframe=shift&amp;shift=1
+GET /api/spindle/machine/overview?shift=1
 GET /api/spindle/machine/overview?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
 
     <h4>Example Response</h4>
@@ -321,7 +321,7 @@ GET /api/spindle/machine/overview?timeframe=custom&amp;start=2026-05-20T05:00:00
           <td><code>timeframe</code></td>
           <td>string</td>
           <td>No</td>
-          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. When omitted, defaults to <code>shift</code> if a shift is supplied, otherwise <code>today</code>.</td>
         </tr>
         <tr>
           <td><code>shift</code></td>
@@ -356,7 +356,7 @@ GET /api/spindle/machine/overview?timeframe=custom&amp;start=2026-05-20T05:00:00
     <h4>Example Requests</h4>
     <pre><code>GET /api/spindle/operator/overview
 GET /api/spindle/operator/overview?operatorid=183462
-GET /api/spindle/operator/overview?timeframe=shift&amp;shift=1
+GET /api/spindle/operator/overview?shift=1
 GET /api/spindle/operator/overview?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
 
     <h4>Example Response</h4>
@@ -463,7 +463,7 @@ GET /api/spindle/operator/overview?timeframe=custom&amp;start=2026-05-20T05:00:0
           <td><code>timeframe</code></td>
           <td>string</td>
           <td>No</td>
-          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. When omitted, defaults to <code>shift</code> if a shift is supplied, otherwise <code>today</code>.</td>
         </tr>
         <tr>
           <td><code>shift</code></td>
@@ -498,7 +498,7 @@ GET /api/spindle/operator/overview?timeframe=custom&amp;start=2026-05-20T05:00:0
     <h4>Example Requests</h4>
     <pre><code>GET /api/spindle/machine/details
 GET /api/spindle/machine/details?serial=90003
-GET /api/spindle/machine/details?timeframe=shift&amp;shift=1
+GET /api/spindle/machine/details?shift=1
 GET /api/spindle/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
 
     <h4>Example Response Shape</h4>
@@ -575,7 +575,7 @@ GET /api/spindle/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.
           <td><code>timeframe</code></td>
           <td>string</td>
           <td>No</td>
-          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. Defaults to <code>today</code>.</td>
+          <td>One of <code>today</code>, <code>custom</code>, or <code>shift</code>. When omitted, defaults to <code>shift</code> if a shift is supplied, otherwise <code>today</code>.</td>
         </tr>
         <tr>
           <td><code>shift</code></td>
@@ -611,7 +611,7 @@ GET /api/spindle/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.
     <pre><code>GET /api/spindle/operator/details
 GET /api/spindle/operator/details?operatorid=183462
 GET /api/spindle/operator/details?operatorid=183462&amp;serial=90003
-GET /api/spindle/operator/details?timeframe=shift&amp;shift=1
+GET /api/spindle/operator/details?shift=1
 GET /api/spindle/operator/details?timeframe=custom&amp;start=2026-05-20T05:00:00.000Z&amp;end=2026-05-21T12:00:00.000Z</code></pre>
 
     <h4>Example Response Shape</h4>
@@ -639,6 +639,30 @@ GET /api/spindle/operator/details?timeframe=custom&amp;start=2026-05-20T05:00:00
 { "error": "shift is required and must be an integer" }
 { "error": "Shift not found" }
 { "error": "start must be a valid ISO date string" }</code></pre>
+    <h2>Raw data routes (preview)</h2>
+    <p>These routes are implemented on the Spindle feature branch. Beta release
+      <code>1.3.0.4</code> currently provides the overview and details routes above.
+      Check which release your server runs before using the raw routes.</p>
+    <table>
+      <thead><tr><th>GET route</th><th>Records returned</th><th>Optional filters</th></tr></thead>
+      <tbody>
+        <tr><td><code>/api/spindle/machine/sessions</code></td><td>Full machine sessions, including stored counts and states</td><td><code>serial</code></td></tr>
+        <tr><td><code>/api/spindle/operator/sessions</code></td><td>Full operator sessions</td><td><code>operatorid</code>, <code>serial</code></td></tr>
+        <tr><td><code>/api/spindle/fault/sessions</code></td><td>Machine sessions in a fault state</td><td><code>serial</code></td></tr>
+        <tr><td><code>/api/spindle/states</code></td><td>Individual machine state events</td><td><code>serial</code></td></tr>
+        <tr><td><code>/api/spindle/counts</code></td><td>Individual count records, including stored misfeeds</td><td><code>operatorid</code>, <code>serial</code></td></tr>
+      </tbody>
+    </table>
+    <p>The default window is today in plant time. For a shift, send
+      <code>timeframe=shift&amp;shift=2</code>. For an export, use <code>timeframe=custom</code>
+      with an ISO <code>start</code> and optional <code>end</code> (defaults to now).
+      The maximum window is seven plant days. Longer windows return HTTP 400.</p>
+    <pre><code>GET /api/spindle/machine/sessions?serial=99004&amp;timeframe=shift&amp;shift=2
+GET /api/spindle/counts?operatorid=100029&amp;timeframe=custom&amp;start=2026-11-05T12:00:00Z&amp;end=2026-11-05T13:00:00Z</code></pre>
+    <p>Each response is a JSON array. Sessions that overlap the window are returned
+      whole and may recur in adjacent requests; use <code>_id</code> to update your
+      stored copy. States and counts include events at the start and exclude events
+      at the end. If a streamed array is interrupted, retry the same window.</p>
   </body>
 </html>
 
