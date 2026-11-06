@@ -583,10 +583,15 @@ async function getMachineStateTimeBySerial(db, config, machineSerials, start, en
     }));
   }
 
+  const projection = { _id: 0, type: 1, status: 1, machine: 1, timestamps: 1 };
+  if (options.includeFaultData) {
+    projection["states.start.status"] = 1;
+    projection["startState.status"] = 1;
+  }
   const machineSessions = await db
     .collection(config.machineSessionCollectionName)
     .find(sessionMatch)
-    .project({ _id: 0, type: 1, status: 1, machine: 1, timestamps: 1 })
+    .project(projection)
     .toArray();
 
   const serialSet = new Set(serials.map(String));
@@ -621,7 +626,13 @@ async function getMachineStateTimeBySerial(db, config, machineSerials, start, en
     }
 
     for (const clipped of clipInterval(interval, clipIntervals)) {
-      intervalsBySerial.get(serial)[bucket].push(clipped);
+      const group = intervalsBySerial.get(serial);
+      group[bucket].push(clipped);
+      if (options.includeFaultData && bucket === "faultTime") {
+        group.cycles ??= [];
+        group.cycles.push({ faultCode: type, faultType: sessionStateName(session),
+          start: clipped.start, end: clipped.end, duration: clipped.end - clipped.start });
+      }
     }
   }
 
@@ -633,13 +644,30 @@ async function getMachineStateTimeBySerial(db, config, machineSerials, start, en
       runtime: totalMergedMs(runtimeIntervals),
       pausedTime: totalUncoveredMs(intervals.pausedTime, [...runtimeIntervals, ...faultIntervals]),
       faultTime: totalMergedMs(faultIntervals),
+      ...(options.includeFaultData ? { faultData: summarizeCycles(intervals.cycles || []) } : {}),
     });
   }
 
   return totalsBySerial;
 }
 
+function summarizeCycles(cycles) {
+  const summaries = new Map();
+  for (const cycle of cycles) {
+    const key = JSON.stringify([cycle.faultCode, cycle.faultType]);
+    const summary = summaries.get(key) || { faultCode: cycle.faultCode, faultType: cycle.faultType, count: 0, totalDuration: 0 };
+    summary.count++;
+    summary.totalDuration += cycle.duration;
+    summaries.set(key, summary);
+  }
+  return {
+    faultCycles: cycles.sort((a, b) => a.start - b.start),
+    faultSummaries: [...summaries.values()].sort((a, b) => b.totalDuration - a.totalDuration),
+  };
+}
+
 module.exports = {
+  sessionStateCode,
   getMachineFaultTimeBySerial,
   getMachineFaultSummariesBySerial,
   getOperatorFaultTimeByOperatorId,

@@ -1,4 +1,5 @@
 const express = require("express");
+const { sessionStateCode, getMachineStateTimeBySerial } = require("../../utils/faultTimeSummary");
 const { DateTime } = require("luxon");
 
 const config = require("../../modules/config");
@@ -326,6 +327,8 @@ function constructor(server) {
       machineSerial: Number(machine.serial),
       machineName: machine.name || `Serial ${machine.serial}`,
       runtimeMs: 0,
+      faultTimeMs: 0,
+      pausedTimeMs: 0,
       workedTimeMs: 0,
       totalCounts: 0,
       totalMisfeeds: 0,
@@ -369,6 +372,11 @@ function constructor(server) {
     const aggregate = aggregateMap.get(serial);
     aggregate.machineName = record.machineName || aggregate.machineName;
     aggregate.runtimeMs += record.runtimeMs || 0;
+    // A daily total cannot supply a fault or pause duration for only part of that day.
+    if (!segment.partialDay) {
+      aggregate.pausedTimeMs += Number(record.pausedTimeMs) || 0;
+      aggregate.faultTimeMs += Number(record.faultTimeMs) || 0;
+    }
     aggregate.workedTimeMs += record.workedTimeMs || 0;
     aggregate.totalCounts += record.totalCounts || record.totalCount || 0;
     aggregate.totalMisfeeds += record.totalMisfeeds || record.misfeedCount || 0;
@@ -417,6 +425,9 @@ function constructor(server) {
         machine: 1,
         timestamps: 1,
         activeStations: 1,
+        type: 1,
+        status: 1,
+        "startState.status": 1,
         workTime: 1,
         runtime: 1,
         metrics: 1,
@@ -472,8 +483,11 @@ function constructor(server) {
           totalTimeCreditMs: 0,
         };
 
-      bucket.runtimeMs += runtimeMs;
-      bucket.workedTimeMs += workedTimeMs;
+      const stateCode = options.classifyRuntime ? sessionStateCode(session) : null;
+      if (stateCode === null || stateCode === 1) {
+        bucket.runtimeMs += runtimeMs;
+        bucket.workedTimeMs += workedTimeMs;
+      }
       bucket.totalCounts +=
         (Number(session.metrics?.totals?.counts?.valid) ||
           Number(session.totalCount) ||
@@ -1576,6 +1590,7 @@ function constructor(server) {
       resolved.cacheSegments = resolved.sessionSegments.map((segment) => ({
         ...segment,
         key: `machine-detail-daily:${segment.dateStr}`,
+        partialDay: true,
       }));
       resolved.sessionSegments = [];
       resolved.cacheCollectionName = config.totalsDailyCollectionName;
@@ -1602,7 +1617,7 @@ function constructor(server) {
         resolved.cacheCollectionName,
         resolved.cacheBaseFilter,
         requestedSerials,
-        { ...resolved.sessionOptions, skipRawCounts: true }
+        { ...resolved.sessionOptions, skipRawCounts: true, classifyRuntime: true }
       );
 
       if (serial === null) {
@@ -1626,7 +1641,7 @@ function constructor(server) {
         aggregateMap,
         segment,
         requestedSerials,
-        { ...resolved.sessionOptions, skipRawCounts: true }
+        { ...resolved.sessionOptions, skipRawCounts: true, classifyRuntime: true }
       );
 
       if (serial === null) {
@@ -1645,8 +1660,16 @@ function constructor(server) {
       }
     }
 
+    const requestStart = new Date(Math.min(...resolved.allSegments.map(segment => +segment.start)));
+    const requestEnd = new Date(Math.max(...resolved.allSegments.map(segment => +segment.end)));
+    const stateTimes = await getMachineStateTimeBySerial(db, config, requestedSerials, requestStart, requestEnd, {
+      ...resolved.sessionOptions, includeUntaggedShift: true, includeFaultData: true,
+    });
+    if (serial !== null && stateTimes.has(serial) && !aggregateMap.has(serial)) {
+      aggregateMap.set(serial, createAggregate({ serial, name: machineMap.get(serial)?.name }));
+    }
     const aggregates = [...aggregateMap.values()].filter((aggregate) => {
-      if (serial !== null) return aggregate.machineSerial === serial && aggregate.hasData;
+      if (serial !== null) return aggregate.machineSerial === serial && (aggregate.hasData || stateTimes.has(serial));
       return requestedSerials.includes(aggregate.machineSerial);
     });
 
@@ -1711,18 +1734,21 @@ function constructor(server) {
     const operatorMachineBySerial = groupRecordsBySerial(operatorMachineRecords);
     const operatorMachineHourlyBySerial = groupRecordsBySerial(operatorMachineHourlyRecords);
     const machineItemHourlyBySerial = groupRecordsBySerial(machineItemHourlyRecords);
-    const requestStart = resolved.allSegments[0].start;
-    const requestEnd = resolved.allSegments[resolved.allSegments.length - 1].end;
 
     const results = await Promise.all(
       aggregates.map(async (aggregate) => {
         const machineSerial = aggregate.machineSerial;
         const machine = machineMap.get(machineSerial);
         const machineName = aggregate.machineName || machine?.name || `Serial ${machineSerial}`;
+        const times = stateTimes.get(machineSerial);
         const record = {
           machineSerial,
           machineName,
           runtimeMs: Math.round(aggregate.runtimeMs || 0),
+          pausedTimeMs: times?.pausedTime ?? aggregate.pausedTimeMs,
+          faultTimeMs: times?.faultTime ?? aggregate.faultTimeMs,
+          downTimeMs: Math.max((aggregate.productiveMs || requestEnd - requestStart) - aggregate.runtimeMs,
+            (times?.pausedTime ?? aggregate.pausedTimeMs) + (times?.faultTime ?? aggregate.faultTimeMs)),
           workedTimeMs: Math.round(aggregate.workedTimeMs || 0),
           totalCounts: Math.round(aggregate.totalCounts || 0),
           totalMisfeeds: Math.round(aggregate.totalMisfeeds || 0),
@@ -1799,7 +1825,7 @@ function constructor(server) {
             null,
             cacheDateForCharts
           ),
-          faultData: {
+          faultData: times?.faultData ?? {
             faultSummaries: [],
             faultCycles: [],
           },
