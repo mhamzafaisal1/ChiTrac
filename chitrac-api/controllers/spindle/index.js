@@ -16,7 +16,6 @@ const {
   buildOperatorEfficiencyFromRecords,
 } = require("../../utils/machineFunctions");
 const {
-  buildItemSummaryFromCache,
   buildItemHourlyStackFromCacheForOperator,
   buildOperatorCyclePieFromCache,
   buildDailyEfficiencyFromCache,
@@ -654,6 +653,15 @@ function constructor(server) {
     };
   }
 
+  function accumulateItem(items, row) {
+    const key = JSON.stringify([row.machineSerial ?? null, row.itemId ?? row.itemName ?? null]);
+    const item = items.get(key) || { ...row, totalCounts: 0, totalMisfeeds: 0, workedTimeMs: 0 };
+    item.totalCounts += Number(row.totalCounts ?? row.totalCount) || 0;
+    item.totalMisfeeds += Number(row.totalMisfeeds ?? row.misfeedCount) || 0;
+    item.workedTimeMs += Number(row.workedTimeMs ?? row.runtimeMs) || 0;
+    items.set(key, item);
+  }
+
   function createOperatorAggregate(operatorId, operatorName = null) {
     return {
       operatorId: Number(operatorId),
@@ -670,6 +678,7 @@ function constructor(server) {
       rangeStart: null,
       rangeEnd: null,
       efficiencyData: [],
+      items: new Map(),
       hasData: false,
     };
   }
@@ -699,6 +708,7 @@ function constructor(server) {
 
     const aggregate = aggregateMap.get(operatorId);
     aggregate.operatorName = operatorName || aggregate.operatorName;
+    for (const item of record.itemRows || []) accumulateItem(aggregate.items, item);
     aggregate.runtimeMs += record.runtimeMs || 0;
     aggregate.workedTimeMs += record.workedTimeMs || 0;
     aggregate.totalCounts += record.totalCounts || record.totalCount || 0;
@@ -795,13 +805,34 @@ function constructor(server) {
         storedWorkSec > 0 ? storedWorkSec * 1000 * overlapFactor : runtimeMs;
       const totalTimeCreditMs =
         Number(session.totalTimeCredit || 0) * 1000 * overlapFactor;
-      const totalCounts = Number(session.totalCount || 0) * overlapFactor;
-      const totalMisfeeds = Number(session.misfeedCount || 0) * overlapFactor;
+      const items = new Map();
+      const machineSerial = session.machine?.serial ?? session.machine?.id;
+      const machineName = session.machine?.name;
+      for (const [events, scalar, field] of [
+        [session.counts, session.totalCount, "totalCounts"],
+        [session.misfeeds, session.misfeedCount, "totalMisfeeds"],
+      ]) {
+        if (!Array.isArray(events) || !events.length) {
+          const count = Math.round((Number(scalar) || 0) * overlapFactor);
+          if (count) accumulateItem(items, { machineSerial, machineName, [field]: count });
+          continue;
+        }
+        for (const event of events) {
+          const at = new Date(event.timestamps?.create ?? event.timestamp).getTime();
+          if (!(at >= +segment.start && at < +segment.end)) continue;
+          accumulateItem(items, { machineSerial, machineName, itemId: event.item?.id,
+            itemName: event.item?.name, itemStandard: event.item?.standard, [field]: 1 });
+        }
+      }
+      const itemRows = [...items.values()];
+      const totalCounts = itemRows.reduce((sum, row) => sum + row.totalCounts, 0);
+      const totalMisfeeds = itemRows.reduce((sum, row) => sum + row.totalMisfeeds, 0);
 
       const bucket =
         sessionBuckets.get(operatorId) ||
         {
           operatorId,
+          items: new Map(),
           operatorName: formatName(session.operator?.name, `Operator ${operatorId}`),
           machineSerial: session.machine?.serial ?? session.machine?.id ?? null,
           machineName: session.machine?.name ?? null,
@@ -813,6 +844,10 @@ function constructor(server) {
         };
 
       bucket.runtimeMs += runtimeFromStoredMs;
+      for (const row of itemRows) {
+        row.workedTimeMs = totalCounts ? workedTimeMs * row.totalCounts / totalCounts : 0;
+        accumulateItem(bucket.items, row);
+      }
       bucket.workedTimeMs += workedTimeMs;
       bucket.totalCounts += totalCounts;
       bucket.totalMisfeeds += totalMisfeeds;
@@ -828,7 +863,7 @@ function constructor(server) {
     for (const record of sessionBuckets.values()) {
       record.totalCounts = Math.round(record.totalCounts);
       record.totalMisfeeds = Math.round(record.totalMisfeeds);
-      addOperatorRecordToAggregate(aggregateMap, record, segment);
+      addOperatorRecordToAggregate(aggregateMap, { ...record, itemRows: record.items.values() }, segment);
     }
   }
 
@@ -852,14 +887,46 @@ function constructor(server) {
       filter.operatorId = { $in: operatorIds };
     }
 
-    const records = await db.collection(collectionName).find(filter).toArray();
+    if (!operatorIds.length) return;
+    const collection = db.collection(collectionName);
+    const [records, itemRecords] = await Promise.all([
+      collection.find(filter).toArray(),
+      collection.find({ ...filter, entityType: "operator-item" }).toArray(),
+    ]);
+    const byMachine = new Map();
+    const keyOf = row => JSON.stringify([Number(row.operatorId), Number(row.machineSerial)]);
+    for (const row of itemRecords) {
+      const key = keyOf(row);
+      if (!byMachine.has(key)) byMachine.set(key, []);
+      byMachine.get(key).push(row);
+    }
     const foundOperatorIds = new Set();
 
-    for (const record of records) {
+    function apply(record, itemRows) {
       const operatorId = Number(record.operatorId);
-      if (!Number.isFinite(operatorId) || operatorId === -1) continue;
+      if (!Number.isFinite(operatorId) || operatorId === -1) return;
       foundOperatorIds.add(operatorId);
-      addOperatorRecordToAggregate(aggregateMap, record, segment);
+      const counts = itemRows.reduce((n, row) => n + Number(row.totalCounts ?? row.totalCount ?? 0), 0);
+      const misses = itemRows.reduce((n, row) => n + Number(row.totalMisfeeds ?? row.misfeedCount ?? 0), 0);
+      const unknown = Math.max(0, Number(record.totalCounts ?? record.totalCount ?? 0) - counts);
+      const unknownMisses = Math.max(0, Number(record.totalMisfeeds ?? record.misfeedCount ?? 0) - misses);
+      if (unknown || unknownMisses) itemRows.push({ machineSerial: record.machineSerial, machineName: record.machineName,
+        totalCounts: unknown, totalMisfeeds: unknownMisses });
+      if (collectionName !== totalsShiftCollectionName && record.workedTimeMs > 0 && counts + unknown > 0) {
+        itemRows = itemRows.map(row => ({ ...row, workedTimeMs:
+          record.workedTimeMs * (Number(row.totalCounts ?? row.totalCount) || 0) / (counts + unknown) }));
+      }
+      addOperatorRecordToAggregate(aggregateMap, { ...record, itemRows, totalCounts: counts + unknown,
+        totalMisfeeds: misses + unknownMisses }, segment);
+    }
+    for (const record of records) {
+      const key = keyOf(record);
+      apply(record, byMachine.get(key) || []);
+      byMachine.delete(key);
+    }
+    for (const rows of byMachine.values()) {
+      const { operatorId, operatorName, machineSerial, machineName } = rows[0];
+      apply({ operatorId, operatorName, machineSerial, machineName }, rows);
     }
 
     const missingOperatorIds = operatorIds.filter(
@@ -1208,7 +1275,7 @@ function constructor(server) {
       operatorId !== null ? [operatorId] : [...operatorMap.keys()];
     const aggregateMap = new Map();
 
-    const allSegments = [...cacheSegments, ...sessionSegments];
+    const allSegments = [...cacheSegments, ...sessionSegments].sort((a, b) => a.start - b.start);
     for (const segment of allSegments) {
       segment.productiveMs = computeShiftElapsedMs(
         activeShifts,
@@ -1375,7 +1442,7 @@ function constructor(server) {
     }
 
     const activeShifts = shiftDoc ? [shiftDoc] : await loadActiveShifts();
-    const allSegments = [...cacheSegments, ...sessionSegments];
+    const allSegments = [...cacheSegments, ...sessionSegments].sort((a, b) => a.start - b.start);
     for (const segment of allSegments) {
       segment.productiveMs = computeShiftElapsedMs(
         activeShifts,
@@ -1846,7 +1913,7 @@ function constructor(server) {
     return res.json(results.sort((a, b) => a.machine.serial - b.machine.serial));
   }
 
-  function buildOperatorItemSummaryRowsFromRecords(records, operatorName) {
+  function buildOperatorItemSummaryRowsFromRecords(records, operatorName, normalizeStandard = false) {
     return records.map((record) => {
       const workedMs =
         Number(record.workedTimeMs) ||
@@ -1857,7 +1924,8 @@ function constructor(server) {
       const standard = Number(record.itemStandard || 0);
       const hours = workedMs / 3600000;
       const pph = hours > 0 ? count / hours : 0;
-      const efficiency = standard > 0 ? pph / standard : 0;
+      const standardPPH = normalizeStandard && standard > 0 && standard < 60 ? standard * 60 : standard;
+      const efficiency = standardPPH > 0 ? pph / standardPPH : 0;
       return {
         operatorName,
         machineSerial: record.machineSerial ?? "Unknown",
@@ -1980,34 +2048,8 @@ function constructor(server) {
         serial !== null
           ? { ...resolved.cacheBaseFilter, machineSerial: serial }
           : resolved.cacheBaseFilter;
-      if (resolved.cacheCollectionName === totalsShiftCollectionName) {
-        const filter = {
-          ...baseFilter,
-          entityType: "operator-machine",
-          date: segment.dateStr,
-        };
-        if (requestedOperatorIds.length === 1) {
-          filter.operatorId = requestedOperatorIds[0];
-        } else if (requestedOperatorIds.length > 1) {
-          filter.operatorId = { $in: requestedOperatorIds };
-        }
-        const records = await db
-          .collection(resolved.cacheCollectionName)
-          .find(filter)
-          .toArray();
-        for (const record of records) {
-          addOperatorRecordToAggregate(aggregateMap, record, segment);
-        }
-      } else {
-        await addOperatorCacheSegment(
-          aggregateMap,
-          segment,
-          resolved.cacheCollectionName,
-          baseFilter,
-          requestedOperatorIds,
-          sessionOptions
-        );
-      }
+      await addOperatorCacheSegment(aggregateMap, segment, resolved.cacheCollectionName,
+        baseFilter, requestedOperatorIds, sessionOptions);
     }
 
     for (const segment of resolved.sessionSegments) {
@@ -2039,16 +2081,7 @@ function constructor(server) {
         const operatorName =
           operatorMap.get(id)?.name || aggregate.operatorName || `Operator ${id}`;
         if (resolved.cacheCollectionName === totalsShiftCollectionName) {
-          const shiftItemRecords = await queryEntityRecords(
-            resolved.cacheCollectionName,
-            "operator-item",
-            resolved.cacheSegments,
-            resolved.cacheBaseFilter,
-            {
-              operatorId: id,
-              ...(serial !== null ? { machineSerial: serial } : {}),
-            }
-          );
+          const shiftItemRecords = [...aggregate.items.values()];
           const runtimeMs = Math.round(aggregate.runtimeMs || 0);
           const windowMs = Math.max(0, requestEnd - requestStart);
           const pausedMs = Math.max(0, windowMs - runtimeMs);
@@ -2099,13 +2132,6 @@ function constructor(server) {
           };
         }
 
-        const itemSummary = await buildItemSummaryFromCache(
-          db,
-          id,
-          startIso,
-          endIso,
-          serial
-        );
         const [countByItem, cyclePie, dailyEfficiency] = await Promise.all([
           buildItemHourlyStackFromCacheForOperator(db, logger, id, startIso, endIso, serial),
           buildOperatorCyclePieFromCache(db, logger, id, startIso, endIso, serial),
@@ -2125,31 +2151,13 @@ function constructor(server) {
           dailyEfficiency.operator.name = operatorName;
         }
 
-        const transformedItemSummary = itemSummary.sessions.flatMap((session) => {
-          if (!Array.isArray(session.items) || !session.items.length) return [];
-          const machineSerial = session.machine?.serial ?? serial ?? "Unknown";
-          const machineName = session.machine?.name ?? "Unknown";
-          return session.items.map((item) => ({
-            operatorName,
-            machineSerial,
-            machineName,
-            itemName: item.name || "Unknown",
-            count: item.countTotal || 0,
-            misfeed: 0,
-            standard: item.standard || 0,
-            valid: item.countTotal || 0,
-            pph: item.pph || 0,
-            efficiency: item.efficiency || 0,
-            workedTimeFormatted: session.workedTimeFormatted || formatDuration(0),
-          }));
-        });
 
         return {
           operator: {
             id,
             name: operatorName,
           },
-          itemSummary: transformedItemSummary,
+          itemSummary: buildOperatorItemSummaryRowsFromRecords([...aggregate.items.values()], operatorName, true),
           countByItem,
           cyclePie,
           dailyEfficiency,

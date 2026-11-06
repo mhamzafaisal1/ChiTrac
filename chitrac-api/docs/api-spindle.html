@@ -535,6 +535,11 @@ GET /api/spindle/machine/details?timeframe=custom&amp;start=2026-05-20T05:00:00.
 { "error": "start must be a valid ISO date string" }</code></pre>
 
     <h3>GET /api/spindle/operator/details</h3>
+    <p>For the same operator and timeframe across all machines, the sum of
+      <code>itemSummary[].count</code> corresponds to <code>metrics.output.totalCount</code>
+      on operator overview. Misfeeds are reported separately. Counts that cannot be
+      attributed to a stored item appear under <code>Unknown</code>. A machine serial
+      on details narrows its results to that machine.</p>
     <p>
       Returns operator modal/detail payloads in the same shape as the standard
       operator details cache route. The route supports all active operators or
