@@ -44,16 +44,8 @@ server.cache = {
     watchers: {}
 };
 
-server.defaults = {
-    machine: require('./defaults/machine').machine,
-    item: require('./defaults/item').item,
-    operator: require('./defaults/operator').operator,
-    status: require('./defaults/status').status,
-    alarm: require('./defaults/alarm').alarm,
-    shift: require('./defaults/shift').shift,
-    user: require('./defaults/user').user
-}
-const { cloneDefaultDocuments } = require('./defaults/utils');
+server.defaults = require('./defaults');
+const { initializeConfigCollections, ensureCollection: ensureDbCollection } = require('./modules/initializeConfigCollections');
 
 const xmlParser = require('./modules/xmlParser');
 const cookieParser = require('cookie-parser');
@@ -127,68 +119,15 @@ const allowCrossDomain = function(req, res, next) {
 app.use(allowCrossDomain);
 
 /**** Initial Collection Setup */
-async function collectionExists(collectionName) {
-    return db.listCollections({ name: collectionName }).hasNext();
-}
-
 async function ensureCollection(collectionName) {
-    if (await collectionExists(collectionName)) {
-        logger.debug(`${collectionName} collection already exists.`);
-        return db.collection(collectionName);
-    }
-
-    try {
-        await db.createCollection(collectionName);
-        logger.debug(`${collectionName} collection initialized.`);
-    } catch (error) {
-        if (error.codeName !== 'NamespaceExists') {
-            throw error;
-        }
-        logger.debug(`${collectionName} collection already exists.`);
-    }
-
-    return db.collection(collectionName);
-}
-
-async function ensureDefaultCollection(collectionName, defaults) {
-    logger.debug(`Initializing ${collectionName} collection...`);
-    const collection = await ensureCollection(collectionName);
-    const documentCount = await collection.estimatedDocumentCount();
-
-    if (documentCount > 0) {
-        logger.debug(`${collectionName} collection already populated.`);
-        return;
-    }
-
-    const documents = cloneDefaultDocuments(defaults);
-    if (!documents.length) {
-        logger.debug(`${collectionName} collection has no defaults to insert.`);
-        return;
-    }
-
-    await collection.insertMany(documents);
-    logger.debug(`${collectionName} collection populated with ${documents.length} default documents.`);
+    return ensureDbCollection(db, collectionName);
 }
 
 async function initializeCollections() {
-    const defaultCollections = [
-        { collectionName: config.machineCollectionName, defaults: server.defaults.machine },
-        { collectionName: config.itemCollectionName, defaults: server.defaults.item },
-        { collectionName: config.statusCollectionName, defaults: server.defaults.status },
-        { collectionName: config.operatorCollectionName, defaults: server.defaults.operator },
-        { collectionName: config.shiftCollectionName, defaults: server.defaults.shift },
-        { collectionName: config.userCollectionName, defaults: server.defaults.user },
-    ];
-
-    for (const { collectionName, defaults } of defaultCollections) {
-        try {
-            await ensureDefaultCollection(collectionName, defaults);
-        } catch (error) {
-            logger.error(`Failed to initialize ${collectionName}: ${error.toString()}`);
-        }
-    }
-
-    await require('./modules/initializeAlarms').initializeAlarms(db, config, server.defaults.alarm);
+    await initializeConfigCollections(db, config, {
+        onResult: row => logger.debug(`${row.collection}: ${row.status} (${row.count} documents)`),
+        onError: (error, collectionName) => logger.error(`Failed to initialize ${collectionName}: ${error.toString()}`)
+    });
 
     const runtimeCollections = [
         config.itemSessionCollectionName,
