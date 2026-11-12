@@ -9,6 +9,7 @@ import { ConfigurationCacheService } from './services/configuration-cache.servic
 
 /** Model imports */
 import { FaultConfig } from './shared/models/fault.model';
+import { AlarmConfig } from './shared/models/alarm.model';
 import { StatusConfig } from './shared/models/status.model';
 import { OperatorConfig } from './shared/models/operator.model';
 import { ItemConfig } from './shared/models/item.model';
@@ -26,7 +27,21 @@ export class ConfigurationService {
 
   /** Fault */
   public getFaultConfigs(code?: number): Observable<FaultConfig[]> {
-    return this.cache.read<FaultConfig>('fault');
+    return this.getAlarmConfigs().pipe(map(rows => rows
+      .filter(row => row.fault && (code == null || row.id === code))
+      .map(row => new FaultConfig().deserialize({ ...row, code: row.id }))));
+  }
+
+  public getAlarmConfigs(): Observable<AlarmConfig[]> {
+    return this.cache.read<AlarmConfig>('alarm');
+  }
+
+  public putAlarmConfig(alarm: AlarmConfig) {
+    return this.http.put(`/api/alarm/config/${alarm._id ?? alarm.id}`, alarm);
+  }
+
+  public deleteAlarmConfig(id: string | number) {
+    return this.http.delete(`/api/alarm/config/${id}`);
   }
 
   /** Status */

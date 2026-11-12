@@ -62,7 +62,8 @@ module.exports = {
   machineCollectionName: 'config-machine',
   operatorCollectionName: 'config-operator',
   itemCollectionName: 'config-item',
-  faultCollectionName: 'config-fault',
+  faultCollectionName: 'config-fault', // Legacy migration source only; runtime configuration uses alarms.
+  alarmCollectionName: 'config-alarm',
   statusCollectionName: 'config-status',
   userCollectionName: 'config-user',
   shiftCollectionName: 'config-shift',

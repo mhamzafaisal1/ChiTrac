@@ -1,12 +1,5 @@
-import { Deserializable } from './deserializable.model';
+import { AlarmConfig } from './alarm.model';
 
-export class FaultConfig implements Deserializable {
+export class FaultConfig extends AlarmConfig {
 	public code: number;
-	public name: string;
-	public jam: number;
-
-	deserialize(input: any) {
-        Object.assign(this, input);
-        return this;
-    }
 }
