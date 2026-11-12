@@ -15,6 +15,8 @@ function setup() {
             start: '2026-10-23T11:00:00Z', end: '2026-10-23T19:00:00Z'
         }, breaks: [{ timestamps: { start: '2026-10-23T15:00:00Z', end: '2026-10-23T15:15:00Z' } }] }],
         'config-extra': [{ _id: 'x1', setting: 2 }],
+        'config-fault': [{ id: 99, name: 'Legacy configuration must not be published' }],
+        'config-alarm': [{ id: 20, name: 'Alarm', fault: true, stop: true }],
         'config-user': [{ password: 'must-never-be-sent' }],
         'private-users': [{ password: 'must-never-be-read' }]
     };
@@ -42,8 +44,14 @@ function setup() {
 test('initial sync includes every config collection and excludes users, including a renamed user collection', async () => {
     const { server, reads } = setup();
     const snapshot = await server.configurationSync.refresh();
-    assert.deepEqual(Object.keys(snapshot.names).sort(), ['fault', 'item', 'machine', 'maintenanceShift', 'operator', 'shift', 'status']);
+    assert.deepEqual(Object.keys(snapshot.names).sort(), ['alarm', 'item', 'machine', 'maintenanceShift', 'operator', 'shift', 'status']);
     assert.ok(snapshot.collections['config-extra']);
+    assert.equal(snapshot.names.fault, undefined);
+    assert.equal(snapshot.names.alarm, 'config-alarm');
+    assert.equal(reads.filter(name => name === 'config-alarm').length, 1);
+    assert.equal(Object.values(snapshot.collections).filter(rows => rows.some(row => row.name === 'Alarm')).length, 1);
+    assert.equal(snapshot.collections['config-fault'], undefined);
+    assert.ok(!reads.includes('config-fault'));
     assert.ok(snapshot.collections['config-shift-maintenance']);
     assert.equal(snapshot.collections['config-user'], undefined);
     assert.equal(snapshot.collections['private-users'], undefined);
@@ -120,12 +128,17 @@ test('successful configuration saves refresh before the response, while rejected
     resolve();
     await new Promise(done => setImmediate(done));
     assert.deepEqual(sent, [{ saved: true }]);
+    const alarmResponse = { statusCode: 200, end() { return this; } };
+    middleware({ method: 'PUT', originalUrl: '/api/alarm/config/20' }, alarmResponse, () => {});
+    alarmResponse.end({});
+    resolve();
+    await new Promise(done => setImmediate(done));
     for (const [method, path, statusCode] of [['PUT', '/api/machine/config/m1', 400], ['GET', '/api/machine/config', 200], ['PUT', '/api/users/u1', 200]]) {
         const response = { statusCode, end() { return this; } };
         middleware({ method, originalUrl: path }, response, () => {});
         response.end({});
     }
-    assert.equal(refreshes, 1);
+    assert.equal(refreshes, 2);
 });
 
 test('websocket clients receive initial config, live changes and a complete fresh snapshot on reconnect', async t => {

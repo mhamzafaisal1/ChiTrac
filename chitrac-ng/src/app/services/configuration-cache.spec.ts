@@ -26,11 +26,14 @@ class TestSocket {
 
 describe('shared configuration websocket cache', () => {
   const names = { machine: 'config-machine', operator: 'config-operator', item: 'config-item',
-    shift: 'config-shift', maintenanceShift: 'config-shift-maintenance', fault: 'config-fault', status: 'config-status' };
+    shift: 'config-shift', maintenanceShift: 'config-shift-maintenance', alarm: 'config-alarm', status: 'config-status' };
   const initial = (): any => ({ type: 'configuration-cache', epoch: 'server-1', revision: 1, names, collections: {
     'config-machine': [{ _id: 'm1', id: 1, name: 'SPF1', active: true, stations: [1, 2] }],
     'config-operator': [{ _id: 'o1', id: 123 }, { _id: 'o2', id: 500001 }],
-    'config-item': [], 'config-fault': [{ code: 2 }], 'config-status': [{ code: 1 }],
+    'config-item': [], 'config-alarm': [
+      { id: 2, name: 'Fault without stop', fault: true, stop: false },
+      { id: 3, name: 'Stop without fault', fault: false, stop: true }
+    ], 'config-status': [{ code: 1 }],
     'config-shift': [{ _id: 's2', active: false, name: 'Later', startTime: { hour: 15, minute: 0 } },
       { _id: 's1', active: true, name: 'Morning', startTime: { hour: 6, minute: 0 } }],
     'config-shift-maintenance': [], 'config-user': [{ password: 'excluded' }]
@@ -61,7 +64,7 @@ describe('shared configuration websocket cache', () => {
     forkJoin({ machines: configuration.getMachineConfigs(), operators: configuration.getOperatorConfigs(),
       items: configuration.getItemConfigs(), shifts: TestBed.inject(ShiftService).getActiveShifts(),
       maintenance: TestBed.inject(ShiftService).getAllMaintenanceShifts(),
-      faults: configuration.getFaultConfigs(), statuses: configuration.getStatusConfigs()
+      faults: configuration.getFaultConfigs(), alarms: configuration.getAlarmConfigs(), statuses: configuration.getStatusConfigs()
     }).subscribe({ next: value => result = value, complete: () => completed = true });
     expect(result).toBeUndefined();
     socket.receive(initial());
@@ -69,6 +72,10 @@ describe('shared configuration websocket cache', () => {
     expect(result.machines[0].name).toBe('SPF1');
     expect(result.operators.map((row: any) => row.id)).toEqual([123]);
     expect(result.items).toEqual([]);
+    expect(result.faults.map((row: any) => row.id)).toEqual([2]);
+    expect(result.faults[0].stop).toBeFalse();
+    expect(result.alarms.length).toBe(2);
+    expect(result.alarms[1].fault).toBeFalse();
     expect(result.shifts.shifts.map((row: any) => row._id)).toEqual(['s1']);
     expect(result.maintenance.shifts).toEqual([]);
     expect(TestSocket.instances.length).toBe(1);

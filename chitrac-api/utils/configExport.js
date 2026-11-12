@@ -2,7 +2,7 @@ const CONFIG_COLLECTION_KEYS = Object.freeze([
   "machineCollectionName",
   "operatorCollectionName",
   "itemCollectionName",
-  "faultCollectionName",
+  "alarmCollectionName",
   "statusCollectionName",
   "userCollectionName",
   "shiftCollectionName",

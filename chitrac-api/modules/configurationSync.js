@@ -1,12 +1,13 @@
 const { randomUUID, createHash } = require('crypto');
 const { addDerivedShiftTimeComponents, getTimeComponentsFromTimestamp } = require('../utils/shiftTimeComponents');
 
-const CONFIG_KEYS = ['machine', 'operator', 'item', 'fault', 'status', 'shift', 'maintenanceShift'];
+const CONFIG_KEYS = ['machine', 'operator', 'item', 'alarm', 'status', 'shift', 'maintenanceShift'];
 const DEFAULT_NAMES = { maintenanceShift: 'config-shift-maintenance' };
 
 function publicConfigName(name, config) {
     return typeof name === 'string' && name.startsWith('config-') &&
-        name !== 'config-user' && name !== config.userCollectionName;
+        name !== 'config-user' && name !== config.userCollectionName &&
+        name !== 'config-fault' && name !== config.faultCollectionName;
 }
 
 function normalizeShift(shift) {
@@ -119,7 +120,7 @@ function configurationSyncMiddleware(server) {
     return (req, res, next) => {
         const path = (req.originalUrl || req.url).split('?')[0];
         if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ||
-            !/^\/api\/(?:(?:machine|item|operator|status|faults?)\/config(?:\/[^/]+)?|alpha\/(?:shifts|maintenance-shifts)(?:\/[^/]+)?)\/?$/.test(path)) return next();
+            !/^\/api\/(?:(?:machine|item|operator|status|faults?|alarm)\/config(?:\/[^/]+)?|alpha\/(?:shifts|maintenance-shifts)(?:\/[^/]+)?)\/?$/.test(path)) return next();
         const end = res.end;
         res.end = function(...args) {
             res.end = end;

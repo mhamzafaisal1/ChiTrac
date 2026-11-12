@@ -78,7 +78,7 @@ export class SettingsUtilitiesComponent implements OnInit, OnDestroy {
     { name: 'config-machine', label: 'Machines' },
     { name: 'config-operator', label: 'Operators' },
     { name: 'config-item', label: 'Items' },
-    { name: 'config-fault', label: 'Faults' },
+    { name: 'config-alarm', label: 'Alarms' },
     { name: 'config-status', label: 'Statuses' },
     { name: 'config-user', label: 'Users' },
     { name: 'config-shift', label: 'Shifts' },

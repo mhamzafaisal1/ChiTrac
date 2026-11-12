@@ -49,7 +49,7 @@ server.defaults = {
     item: require('./defaults/item').item,
     operator: require('./defaults/operator').operator,
     status: require('./defaults/status').status,
-    fault: require('./defaults/fault').fault,
+    alarm: require('./defaults/alarm').alarm,
     shift: require('./defaults/shift').shift,
     user: require('./defaults/user').user
 }
@@ -174,7 +174,6 @@ async function initializeCollections() {
     const defaultCollections = [
         { collectionName: config.machineCollectionName, defaults: server.defaults.machine },
         { collectionName: config.itemCollectionName, defaults: server.defaults.item },
-        { collectionName: config.faultCollectionName, defaults: server.defaults.fault },
         { collectionName: config.statusCollectionName, defaults: server.defaults.status },
         { collectionName: config.operatorCollectionName, defaults: server.defaults.operator },
         { collectionName: config.shiftCollectionName, defaults: server.defaults.shift },
@@ -188,6 +187,8 @@ async function initializeCollections() {
             logger.error(`Failed to initialize ${collectionName}: ${error.toString()}`);
         }
     }
+
+    await require('./modules/initializeAlarms').initializeAlarms(db, config, server.defaults.alarm);
 
     const runtimeCollections = [
         config.itemSessionCollectionName,
