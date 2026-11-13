@@ -1,5 +1,6 @@
 const express = require('express');
 const { registerProductionLayoutRoutes } = require('./production-layouts');
+const { registerDailyLayoutRoutes } = require('./daily-layouts');
 const { sanitizeSpfLayout, configuredProductionStations } = require('../../utils/spfLayout');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
@@ -509,7 +510,7 @@ function constructor(server) {
     try {
       const existing = await systemPreferences.ensureSystemPreferences(db, config);
       const preferences = systemPreferencesSchema.utils.normalizePreferences(req.body, existing, config);
-      const { _id, productionScreenLayouts, ...updates } = preferences;
+      const { _id, productionScreenLayouts, dailyDashboardLayouts, ...updates } = preferences;
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
         { $set: updates, $setOnInsert: { _id }, $unset: { createdAt: '', updatedAt: '' } },
@@ -533,7 +534,7 @@ function constructor(server) {
         config,
         { preserveExistingSystemName: false }
       );
-      const { _id, productionScreenLayouts, ...updates } = preferences;
+      const { _id, productionScreenLayouts, dailyDashboardLayouts, ...updates } = preferences;
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
         { $set: updates, $setOnInsert: { _id }, $unset: { createdAt: '', updatedAt: '', systemName: '' } },
@@ -571,7 +572,7 @@ function constructor(server) {
         existing,
         config
       );
-      const { _id, productionScreenLayouts, ...updates } = preferences;
+      const { _id, productionScreenLayouts, dailyDashboardLayouts, ...updates } = preferences;
 
       await systemPreferencesCollection.updateOne(
         { _id: SYSTEM_SINGLETON_ID },
@@ -615,6 +616,7 @@ function constructor(server) {
       }
       const updates = buildUserPreferenceUpdates(preferences);
       if (preferences.dashboardLayouts?.experimentalSpf) updates.defaultProductionScreenLayout = null;
+      if (preferences.dashboardLayouts?.experimentalDailyDashboard) updates.defaultDailyDashboardLayout = null;
       const existing = await userPreferencesCollection.findOne({ userId: req.authUserId });
       updates.timestamps = buildUserPreferenceTimestamps(existing || {});
       await userPreferencesCollection.updateOne(
@@ -712,6 +714,7 @@ function constructor(server) {
   });
 
   registerProductionLayoutRoutes(router,{db,config,systemPreferences,requireUser,requirePermissionLevel});
+  registerDailyLayoutRoutes(router,{db,config,systemPreferences,requireUser,requirePermissionLevel});
 
   router.get('/system', getSystemPreferences);
   router.get('/system/config', getSystemPreferences);

@@ -9,7 +9,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { BehaviorSubject, Observable, of, Subject, tap } from 'rxjs';
 import { ModalWrapperComponent } from '../components/modal-wrapper-component/modal-wrapper-component.component';
 import { DAILY_CHART_COMPONENTS, DailyChartDetailComponent, DailyChartDetailState } from '../components/daily-chart-detail/daily-chart-detail.component';
-import { takeUntil } from 'rxjs/operators';
+import { map, pairwise, distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { openLayoutSaveConfirmDialog } from '../components/layout-save-confirm/layout-save-confirm.component';
 import {
   SummaryCardVisibilityDialogComponent,
@@ -31,6 +31,8 @@ import { LayoutEditService } from '../services/layout-edit.service';
 import { DailyDashboardGridLayout, SettingsService } from '../services/settings.service';
 import { DashboardCacheScope, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { UserService } from '../user.service';
+import { DailyDashboardLayout, DailyLayoutActivation } from '../services/daily-layout.models';
+import { CreateDailyLayoutDialogComponent, LoadDailyLayoutDialogComponent } from './daily-layout-dialogs.component';
 
 interface DailyChartTile {
   id: string;
@@ -117,6 +119,9 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
   private resizeFrame: number | null = null;
   private destroy$ = new Subject<void>();
   private layoutSnapshot: DailyDashboardLayoutSnapshot | null = null;
+  private namedLayoutDialog?: MatDialogRef<any>;
+  private layoutSaveDialog?: MatDialogRef<any>;
+  private chartLayoutDialog?: MatDialogRef<SummaryCardVisibilityDialogComponent>;
   private chartDetailRef?: MatDialogRef<ModalWrapperComponent>;
   private chartDetailState?: BehaviorSubject<DailyChartDetailState>;
   private expandedTile?: DailyChartTile;
@@ -138,6 +143,15 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
     this.layoutEditService.register(this.layoutContextId, 'Daily Dashboard');
     this.subscribeToLayoutEditing();
     this.subscribeToUserPreferences();
+    this.userService.user?.pipe(
+      map(user => user?.username || null), distinctUntilChanged(), pairwise(), takeUntil(this.destroy$)
+    ).subscribe(() => {
+      this.namedLayoutDialog?.close();
+      this.layoutSaveDialog?.close();
+      this.chartLayoutDialog?.close();
+      this.layoutSnapshot = null;
+      this.layoutEditService.setEditing(false);
+    });
     this.websocketService.ensureConnected();
 
     if (!this.dateTimeService.getConfirmed()) {
@@ -169,6 +183,9 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   ngOnDestroy(): void {
+    this.namedLayoutDialog?.close();
+    this.layoutSaveDialog?.close();
+    this.chartLayoutDialog?.close();
     this.chartDetailRef?.close();
     this.chartDetailState?.complete();
     this.layoutEditService.unregister(this.layoutContextId);
@@ -266,6 +283,7 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   openChartVisibilityDialog(): void {
+    if (this.namedLayoutDialog || this.chartLayoutDialog || this.layoutSaveDialog) return;
     const dialogRef = this.dialog.open(SummaryCardVisibilityDialogComponent, {
       width: '800px',
       maxWidth: '94vw',
@@ -290,9 +308,11 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
       },
     });
 
+    this.chartLayoutDialog = dialogRef;
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result: SummaryCardVisibilityDialogResult | undefined) => {
+        this.chartLayoutDialog = undefined;
         if (!result) return;
         const gridLayout = result.layout === '2x2' ? '2x2' : '3x2';
         const requiredCount = gridLayout === '2x2' ? 4 : 6;
@@ -362,12 +382,15 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private confirmAndSaveLayout(): void {
+    if (this.namedLayoutDialog || this.chartLayoutDialog) return;
     const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayout(), this.destroy$);
     if (!dialogRef) return;
+    this.layoutSaveDialog = dialogRef;
 
     dialogRef.afterClosed()
       .pipe(takeUntil(this.destroy$))
       .subscribe((result) => {
+        this.layoutSaveDialog = undefined;
         if (result === 'discard') {
           this.revertLayoutChanges();
         }
@@ -390,6 +413,53 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
         this.layoutEditService.setEditing(false);
       })
     );
+  }
+
+  get canSaveNamedLayout(): boolean {
+    return Boolean(this.userService.getToken()) && this.userService.hasPermissionLevel(7);
+  }
+
+  openCreateLayout(): void {
+    if (!this.layoutEditing || !this.canSaveNamedLayout || this.namedLayoutDialog || this.chartLayoutDialog || this.layoutSaveDialog) return;
+    this.openNamedLayoutDialog(this.dialog.open(CreateDailyLayoutDialogComponent, {
+      width: '520px', maxWidth: '94vw', autoFocus: false,
+      data: { layout: this.copyDailyLayout(), systemAllowed: this.userService.hasPermissionLevel(7) }
+    }));
+  }
+
+  openLoadLayout(): void {
+    if (!this.layoutEditing || !this.canSaveNamedLayout || this.namedLayoutDialog || this.chartLayoutDialog || this.layoutSaveDialog) return;
+    this.openNamedLayoutDialog(this.dialog.open(LoadDailyLayoutDialogComponent, {
+      width: '520px', maxWidth: '94vw', autoFocus: false,
+      data: { hasUnsavedChanges: this.hasUnsavedLayoutChanges() }
+    }));
+  }
+
+  private openNamedLayoutDialog(ref: MatDialogRef<any>): void {
+    this.namedLayoutDialog = ref;
+    ref.afterClosed().pipe(takeUntil(this.destroy$)).subscribe((result: DailyLayoutActivation | undefined) => {
+      this.namedLayoutDialog = undefined;
+      if (!result) return;
+      const layout = result.preferences.dashboardLayouts?.experimentalDailyDashboard;
+      if (!layout) return;
+      this.gridLayout = layout.gridLayout === '2x2' ? '2x2' : '3x2';
+      this.chartVisibility = { ...(layout.chartVisibility || {}) };
+      this.applyChartOrder(layout.chartOrder || this.defaultChartOrder);
+      this.layoutSnapshot = null;
+      this.layoutEditService.setEditing(false);
+    });
+  }
+
+  private copyDailyLayout(): DailyDashboardLayout {
+    return { gridLayout: this.gridLayout, chartOrder: this.getChartOrder(), chartVisibility: this.getChartVisibilityForDialog() };
+  }
+
+  private hasUnsavedLayoutChanges(): boolean {
+    if (!this.layoutSnapshot) return false;
+    const current = this.copyDailyLayout();
+    return current.gridLayout !== this.layoutSnapshot.gridLayout ||
+      JSON.stringify(current.chartOrder) !== JSON.stringify(this.layoutSnapshot.chartOrder) ||
+      current.chartOrder.some(id => current.chartVisibility[id] !== (this.layoutSnapshot!.chartVisibility[id] !== false));
   }
 
   private revertLayoutChanges(): void {

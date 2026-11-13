@@ -104,6 +104,20 @@ test('experimental grid layout survives saving, reloading and unrelated partial 
   assert.equal((await h.request('get', 'alice')).payload.dashboardLayouts.experimentalDailyDashboard.gridLayout, '3x2');
 });
 
+test('daily working edits clear the named selection while preserving saved definitions and unrelated preferences', async () => {
+  const h = harness();
+  const doc = h.users.get('alice');
+  doc.dailyDashboardLayouts = { saved: { name: 'Saved' } };
+  doc.defaultDailyDashboardLayout = { scope: 'user', id: 'saved' };
+  await h.request('put', 'alice', { timeFormat: '24h' });
+  assert.equal(h.users.get('alice').defaultDailyDashboardLayout.id, 'saved');
+  const result = await h.request('put', 'alice', { dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '2x2' } } });
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.defaultDailyDashboardLayout, null);
+  assert.equal(result.payload.dailyDashboardLayouts.saved.name, 'Saved');
+  assert.equal(result.payload.theme, 'dark');
+});
+
 test('experimental layout rejects invalid grids and keeps legacy preferences compatible', async () => {
   const h = harness();
   for (const gridLayout of ['4x4', '', 4, null]) {

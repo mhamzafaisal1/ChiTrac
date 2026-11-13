@@ -1,15 +1,13 @@
 <div class="dashboard-container" [class.dark-mode]="isDarkTheme" [class.layout-editing]="layoutEditing">
   <div class="dashboard-wrapper">
-    <button
-      class="chart-library-button"
-      type="button"
-      *ngIf="layoutEditing"
-      (click)="openChartVisibilityDialog()"
-      aria-label="Edit chart layout"
-    >
-      <mat-icon>dashboard_customize</mat-icon>
-      <span>Edit Layout</span>
-    </button>
+    <div class="layout-toolbar" *ngIf="layoutEditing" role="group" aria-label="Daily Dashboard layout">
+      <button mat-stroked-button type="button" (click)="openChartVisibilityDialog()">
+        <mat-icon>dashboard_customize</mat-icon> Edit Layout
+      </button>
+      <span>Drag charts to reorder. Lock the layout to save.</span>
+      <button mat-stroked-button type="button" *ngIf="canSaveNamedLayout" (click)="openLoadLayout()">Load Layout</button>
+      <button mat-stroked-button type="button" *ngIf="canSaveNamedLayout" (click)="openCreateLayout()">Create Layout</button>
+    </div>
 
     <div
       class="charts-grid"
