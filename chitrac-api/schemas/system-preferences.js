@@ -1,5 +1,6 @@
 const Ajv = require('ajv');
 const { librarySchema } = require('../utils/productionLayouts');
+const { librarySchema: dailyLibrarySchema } = require('../utils/dailyDashboardLayouts');
 const addFormats = require('ajv-formats');
 const ajv = new Ajv();
 addFormats(ajv);
@@ -194,6 +195,7 @@ const schema = {
     oePercentBreakpoints: buildPercentBreakpointSchema('OE percentage threshold for'),
     dashboardLayouts: dashboardLayoutsSchema,
     productionScreenLayouts: librarySchema,
+    dailyDashboardLayouts: dailyLibrarySchema,
     userSessionExpirationHours: {
       type: 'number',
       exclusiveMinimum: 0,
@@ -265,6 +267,7 @@ function buildDefaultPreferences(config = {}) {
     oePercentBreakpoints: config.oePercentBreakpoints || { ...DEFAULT_OE_PERCENT_BREAKPOINTS },
     dashboardLayouts: {},
     productionScreenLayouts: {},
+    dailyDashboardLayouts: {},
     userSessionExpirationHours: Number(config.userSessionExpirationHours) > 0
       ? Number(config.userSessionExpirationHours)
       : 48,
@@ -388,6 +391,7 @@ function normalizePreferences(input = {}, existing = {}, config = {}, options = 
     oePercentBreakpoints,
     dashboardLayouts: normalizeDashboardLayouts(dashboardLayouts),
     productionScreenLayouts: existing.productionScreenLayouts || {},
+    dailyDashboardLayouts: existing.dailyDashboardLayouts || {},
     userSessionExpirationHours,
     userPermissionsLevels,
     timestamps: {

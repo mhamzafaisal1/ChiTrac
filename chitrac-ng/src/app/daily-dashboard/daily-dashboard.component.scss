@@ -12,6 +12,8 @@
 }
 
 .dashboard-wrapper {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 100vw;
   height: 93.25vh;
@@ -28,6 +30,8 @@
 }
 
 .charts-grid {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(var(--chart-columns, 3), minmax(0, 1fr));
   grid-auto-rows: minmax(0, 1fr);
@@ -36,28 +40,22 @@
   box-sizing: border-box;
 }
 
-.chart-library-button {
-  position: absolute;
-  bottom: 14px;
-  right: 14px;
-  z-index: 4;
-  display: inline-flex;
+.layout-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
-  min-height: 2.2rem;
-  padding: 0 0.85rem;
-  border: 1px solid color-mix(in srgb, var(--theme-color-primary) 36%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--theme-background) 88%, transparent);
-  color: var(--theme-color-primary);
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--theme-background);
+  color: var(--theme-color-text);
 
-  mat-icon {
-    width: 18px;
-    height: 18px;
-    font-size: 18px;
+  > span {
+    flex: 1 1 240px;
+  }
+
+  @media (max-width: 600px) {
+    > span { flex-basis: 100%; }
   }
 }
 
