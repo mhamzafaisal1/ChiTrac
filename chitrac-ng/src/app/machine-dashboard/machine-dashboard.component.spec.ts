@@ -26,7 +26,7 @@ describe('Machine dashboard shift infobox', () => {
 
   it('shows the selected active shift and its scheduled times', () => {
     expect(dashboard.getShiftInfoCard()).toEqual({
-      label: 'Shift: Morning', value: '08:00 — 12:00', icon: 'schedule', tone: 'neutral',
+      label: 'Shift: Morning', value: '08:00 — 12:00', icon: 'schedule', tone: 'neutral', isTimeRange: true,
     });
   });
 

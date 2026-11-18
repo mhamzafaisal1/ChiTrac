@@ -1687,6 +1687,9 @@ hue-6-2: #e6c07b
         <h1 data-line="0" class="code-line" dir="auto" id="chitrac-api" tabindex="-1">ChiTrac API</h1>
 <p data-line="2" class="code-line" dir="auto">The ChiTrac API is a Web Service and Application Programming Interface (API) for providing current, configuration, and historical information about networked Chicago Dryer (CD) equipment. Data is available in JSON format from all routes.</p>
 <hr data-line="6" class="code-line" dir="auto">
+<h2 id="maintenance-backfills">Maintenance backfills</h2>
+<p><code>POST /api/utilities/backfill</code> rebuilds historical sessions. <code>POST /api/utilities/backfill-totals</code> rebuilds daily totals and may create missing sessions. Both write to the database.</p>
+<p>Send JSON with <code>date</code> (for example, <code>"2026-11-15"</code>) and optional <code>overwrite</code> (boolean, default <code>false</code>). POST also accepts the existing query parameters. GET, HEAD, and other unsupported methods return <code>405 Method Not Allowed</code> with <code>Allow: POST</code>. Existing authentication requirements still apply.</p>
 <h2 data-line="7" class="code-line" dir="auto" id="available-routes" tabindex="-1">Available Routes</h2>
 <h3 data-line="9" class="code-line" dir="auto" id="dashboard" tabindex="-1">Dashboard</h3>
 <ul data-line="10" class="code-line" dir="auto">
@@ -1765,7 +1768,6 @@ hue-6-2: #e6c07b
 <li data-line="80" class="code-line" dir="auto"><a href="#apialphaanalyticsmachineoperator-efficiency" data-href="#apialphaanalyticsmachineoperator-efficiency">/api/alpha/analytics/machine/operator-efficiency</a></li>
 <li data-line="81" class="code-line" dir="auto"><a href="#apialphaanalyticsmachineoperator-efficiency-fromsessions" data-href="#apialphaanalyticsmachineoperator-efficiency-fromsessions">/api/alpha/analytics/machine/operator-efficiency-fromSessions</a></li>
 <li data-line="82" class="code-line" dir="auto"><a href="#apialphaanalyticsmachine-details" data-href="#apialphaanalyticsmachine-details">/api/alpha/analytics/machine-details</a></li>
-<li data-line="83" class="code-line" dir="auto"><a href="#apialphaanalyticsmachine-item-sessions-summary" data-href="#apialphaanalyticsmachine-item-sessions-summary">/api/alpha/analytics/machine-item-sessions-summary</a></li>
 <li data-line="84" class="code-line" dir="auto"><a href="#apialphaanalyticsmachines-summary" data-href="#apialphaanalyticsmachines-summary">/api/alpha/analytics/machines-summary</a></li>
 <li data-line="85" class="code-line" dir="auto"><a href="#apialphaanalyticsoperator-performance" data-href="#apialphaanalyticsoperator-performance">/api/alpha/analytics/operator-performance</a></li>
 <li data-line="86" class="code-line" dir="auto"><a href="#apialphaanalyticsoperator-item-summary" data-href="#apialphaanalyticsoperator-item-summary">/api/alpha/analytics/operator-item-summary</a></li>
@@ -1774,12 +1776,9 @@ hue-6-2: #e6c07b
 <li data-line="89" class="code-line" dir="auto"><a href="#apialphaanalyticsoperatordaily-efficiency" data-href="#apialphaanalyticsoperatordaily-efficiency">/api/alpha/analytics/operator/daily-efficiency</a></li>
 <li data-line="90" class="code-line" dir="auto"><a href="#apialphaanalyticsoperator-fault-history" data-href="#apialphaanalyticsoperator-fault-history">/api/alpha/analytics/operator-fault-history</a></li>
 <li data-line="91" class="code-line" dir="auto"><a href="#apialphaanalyticsoperator-details" data-href="#apialphaanalyticsoperator-details">/api/alpha/analytics/operator-details</a></li>
-<li data-line="92" class="code-line" dir="auto"><a href="#apialphaanalyticsoperator-item-sessions-summary" data-href="#apialphaanalyticsoperator-item-sessions-summary">/api/alpha/analytics/operator-item-sessions-summary</a></li>
 <li data-line="93" class="code-line" dir="auto"><a href="#apialphaanalyticsoperator-summary" data-href="#apialphaanalyticsoperator-summary">/api/alpha/analytics/operator-summary</a></li>
 <li data-line="94" class="code-line" dir="auto"><a href="#apialphaanalyticsitem-summary" data-href="#apialphaanalyticsitem-summary">/api/alpha/analytics/item-summary</a></li>
 <li data-line="95" class="code-line" dir="auto"><a href="#apialphaanalyticsitem-dashboard-summary" data-href="#apialphaanalyticsitem-dashboard-summary">/api/alpha/analytics/item-dashboard-summary</a></li>
-<li data-line="96" class="code-line" dir="auto"><a href="#apialphaanalyticsitem-sessions-summary" data-href="#apialphaanalyticsitem-sessions-summary">/api/alpha/analytics/item-sessions-summary</a></li>
-<li data-line="97" class="code-line" dir="auto"><a href="#apialphahistoric-data-test" data-href="#apialphahistoric-data-test">/api/alpha/historic-data-test</a></li>
 <li data-line="98" class="code-line" dir="auto"><a href="#apialphamachineoverview" data-href="#apialphamachineoverview">/api/alpha/machineOverview</a></li>
 <li class="code-line" dir="auto"><a href="#apialphamachineoverview" data-href="#apialphamachineoverview">/api/alpha/sample/machineOverview</a> (legacy alias)</li>
 </ul>
@@ -4272,12 +4271,6 @@ GET /api/reports/analytics/operator-item-sessions-summary-cache?start=2025-05-01
 <strong>Idempotent:</strong> Yes</p>
 <hr data-line="2423" class="code-line" dir="auto">
 <h3 data-line="2425" class="code-line" dir="auto" id="analytics-routes-alpha-only" tabindex="-1">Analytics routes (alpha-only)</h3>
-<h3 data-line="2427" class="code-line" dir="auto" id="apialphahistoric-data-test" tabindex="-1">/api/alpha/historic-data-test</h3>
-<p data-line="2429" class="code-line" dir="auto">Test route for historic data pipelines (alpha). See server implementation for current behavior and parameters.</p>
-<p data-line="2431" class="code-line" dir="auto"><strong>Method:</strong> GET<br>
-<strong>Auth:</strong> Same as other /api/alpha routes<br>
-<strong>Idempotent:</strong> Yes</p>
-<hr data-line="2435" class="code-line" dir="auto">
 <h3 data-line="2437" class="code-line" dir="auto" id="apialphaanalyticsmachine-details" tabindex="-1">/api/alpha/analytics/machine-details</h3>
 <p data-line="2439" class="code-line" dir="auto">Returns a full, multi-tab detail payload for a single machine over a time window, suitable for a dashboard "details" drawer/page. The response includes:</p>
 <p data-line="2441" class="code-line" dir="auto">Current Operators (latest operator-session rows for operators on this machine)
@@ -4490,138 +4483,6 @@ Fault Data (if available; bookended to the active time range)</p>
 </code></pre>
 <p data-line="2596" class="code-line" dir="auto"><strong>Versioning &amp; Stability:</strong></p>
 <p data-line="2598" class="code-line" dir="auto">Route path and response shape are Alpha and may evolve. New fields will be additive; existing fields will maintain types and semantics.</p>
-<h3 data-line="2600" class="code-line" dir="auto" id="apialphaanalyticsmachine-item-sessions-summary" tabindex="-1">/api/alpha/analytics/machine-item-sessions-summary</h3>
-<p data-line="2602" class="code-line" dir="auto">Returns per‑machine item performance for sessions overlapping a window. Each machine includes the clipped session slices in the window and an aggregate "machineSummary", with prorated standard and efficiency computed from item mix.</p>
-<p data-line="2604" class="code-line" dir="auto"><strong>Method:</strong> GET<br>
-<strong>Auth:</strong> Same as other /api/alpha routes<br>
-<strong>Idempotent:</strong> Yes</p>
-<p data-line="2608" class="code-line" dir="auto"><strong>Query Parameters:</strong></p>
-<table data-line="2609" class="code-line" dir="auto">
-<thead data-line="2609" class="code-line" dir="auto">
-<tr data-line="2609" class="code-line" dir="auto">
-<th>Label</th>
-<th>Type</th>
-<th>Required</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody data-line="2611" class="code-line" dir="auto">
-<tr data-line="2611" class="code-line" dir="auto">
-<td>start</td>
-<td>ISO 8601 timestamp (UTC)</td>
-<td>Yes</td>
-<td>Window start (inclusive).</td>
-</tr>
-<tr data-line="2612" class="code-line" dir="auto">
-<td>end</td>
-<td>ISO 8601 timestamp (UTC)</td>
-<td>Yes</td>
-<td>Window end (exclusive).</td>
-</tr>
-<tr data-line="2613" class="code-line" dir="auto">
-<td>serial</td>
-<td>Integer</td>
-<td>No</td>
-<td>If present, only include sessions for this machine serial.</td>
-</tr>
-</tbody>
-</table>
-<p data-line="2615" class="code-line" dir="auto"><strong>Example Request:</strong></p>
-<pre><code data-line="2616" class="code-line" dir="auto">GET /api/alpha/analytics/machine-item-sessions-summary?start=2025-05-01T12:00:00Z&amp;end=2025-05-01T16:00:00Z&amp;serial=67808
-</code></pre>
-<p data-line="2620" class="code-line" dir="auto"><strong>Error Responses:</strong></p>
-<p data-line="2622" class="code-line" dir="auto"><strong>500 Internal Server Error</strong></p>
-<pre><code data-line="2623" class="code-line language-json" dir="auto"><span class="hljs-punctuation">{</span><span class="hljs-attr">"error"</span><span class="hljs-punctuation">:</span><span class="hljs-string">"Failed to generate machine item summary"</span><span class="hljs-punctuation">}</span>
-</code></pre>
-<p data-line="2627" class="code-line" dir="auto"><strong>Versioning &amp; Stability:</strong></p>
-<p data-line="2629" class="code-line" dir="auto">All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.</p>
-<h3 data-line="2631" class="code-line" dir="auto" id="apialphaanalyticsitem-sessions-summary" tabindex="-1">/api/alpha/analytics/item-sessions-summary</h3>
-<p data-line="2633" class="code-line" dir="auto">Returns an item‑centric summary across all active machines in the window, using item‑sessions and bookended machine running windows to avoid idle gaps. Each item includes total valid counts, worked time, PPH, standard, and efficiency.</p>
-<p data-line="2635" class="code-line" dir="auto"><strong>Method:</strong> GET<br>
-<strong>Auth:</strong> Same as other /api/alpha routes<br>
-<strong>Idempotent:</strong> Yes</p>
-<p data-line="2639" class="code-line" dir="auto"><strong>Query Parameters:</strong></p>
-<table data-line="2640" class="code-line" dir="auto">
-<thead data-line="2640" class="code-line" dir="auto">
-<tr data-line="2640" class="code-line" dir="auto">
-<th>Label</th>
-<th>Type</th>
-<th>Required</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody data-line="2642" class="code-line" dir="auto">
-<tr data-line="2642" class="code-line" dir="auto">
-<td>start</td>
-<td>ISO 8601 timestamp (UTC)</td>
-<td>Yes</td>
-<td>Window start (inclusive).</td>
-</tr>
-<tr data-line="2643" class="code-line" dir="auto">
-<td>end</td>
-<td>ISO 8601 timestamp (UTC)</td>
-<td>Yes</td>
-<td>Window end (exclusive).</td>
-</tr>
-</tbody>
-</table>
-<p data-line="2645" class="code-line" dir="auto"><strong>Example Request:</strong></p>
-<pre><code data-line="2646" class="code-line" dir="auto">GET /api/alpha/analytics/item-sessions-summary?start=2025-05-01T12:00:00Z&amp;end=2025-05-01T18:00:00Z
-</code></pre>
-<p data-line="2650" class="code-line" dir="auto"><strong>Error Responses:</strong></p>
-<p data-line="2652" class="code-line" dir="auto"><strong>416 Range Not Satisfiable</strong></p>
-<pre><code data-line="2653" class="code-line language-json" dir="auto"><span class="hljs-punctuation">{</span><span class="hljs-attr">"error"</span><span class="hljs-punctuation">:</span><span class="hljs-string">"start must be before end"</span><span class="hljs-punctuation">}</span>
-</code></pre>
-<p data-line="2657" class="code-line" dir="auto"><strong>500 Internal Server Error</strong></p>
-<pre><code data-line="2658" class="code-line language-json" dir="auto"><span class="hljs-punctuation">{</span><span class="hljs-attr">"error"</span><span class="hljs-punctuation">:</span><span class="hljs-string">"Failed to generate item summary report"</span><span class="hljs-punctuation">}</span>
-</code></pre>
-<p data-line="2662" class="code-line" dir="auto"><strong>Versioning &amp; Stability:</strong></p>
-<p data-line="2664" class="code-line" dir="auto">Alpha route; fields may be extended. Additions will be backward-compatible (additive).</p>
-<h3 data-line="2666" class="code-line" dir="auto" id="apialphaanalyticsoperator-item-sessions-summary" tabindex="-1">/api/alpha/analytics/operator-item-sessions-summary</h3>
-<p data-line="2668" class="code-line" dir="auto">Returns operator × machine × item rows for operator‑sessions overlapping the window, including valid counts, misfeeds, pph, and efficiency.</p>
-<p data-line="2670" class="code-line" dir="auto"><strong>Method:</strong> GET<br>
-<strong>Auth:</strong> Same as other /api/alpha routes<br>
-<strong>Idempotent:</strong> Yes</p>
-<p data-line="2674" class="code-line" dir="auto"><strong>Query Parameters:</strong></p>
-<table data-line="2675" class="code-line" dir="auto">
-<thead data-line="2675" class="code-line" dir="auto">
-<tr data-line="2675" class="code-line" dir="auto">
-<th>Label</th>
-<th>Type</th>
-<th>Required</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody data-line="2677" class="code-line" dir="auto">
-<tr data-line="2677" class="code-line" dir="auto">
-<td>start</td>
-<td>ISO 8601 timestamp (UTC)</td>
-<td>Yes</td>
-<td>Window start (inclusive).</td>
-</tr>
-<tr data-line="2678" class="code-line" dir="auto">
-<td>end</td>
-<td>ISO 8601 timestamp (UTC)</td>
-<td>Yes</td>
-<td>Window end (exclusive).</td>
-</tr>
-<tr data-line="2679" class="code-line" dir="auto">
-<td>operatorId</td>
-<td>Integer</td>
-<td>No</td>
-<td>Limit to a single operator. If omitted, returns rows for all operators active in window.</td>
-</tr>
-</tbody>
-</table>
-<p data-line="2681" class="code-line" dir="auto"><strong>Example Request:</strong></p>
-<pre><code data-line="2682" class="code-line" dir="auto">GET /api/alpha/analytics/operator-item-sessions-summary?operatorId=135790&amp;start=2025-05-01T12:00:00Z&amp;end=2025-05-01T16:00:00Z
-</code></pre>
-<p data-line="2686" class="code-line" dir="auto"><strong>Error Responses:</strong></p>
-<p data-line="2688" class="code-line" dir="auto"><strong>500 Internal Server Error</strong></p>
-<pre><code data-line="2689" class="code-line language-json" dir="auto"><span class="hljs-punctuation">{</span><span class="hljs-attr">"error"</span><span class="hljs-punctuation">:</span><span class="hljs-string">"Failed to generate operator item summary report"</span><span class="hljs-punctuation">}</span>
-</code></pre>
-<p data-line="2693" class="code-line" dir="auto"><strong>Versioning &amp; Stability:</strong></p>
-<p data-line="2695" class="code-line" dir="auto">All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.</p>
 <h3 data-line="2697" class="code-line" dir="auto" id="apialphamachineoverview" tabindex="-1">/api/alpha/machineOverview</h3>
 <p class="code-line" dir="auto">The legacy <code>/api/alpha/sample/machineOverview</code> path is an alias that returns the same response.</p>
 <p data-line="2699" class="code-line" dir="auto">Returns a comprehensive machine overview snapshot for a single machine using <strong>today’s</strong> date in the <code>America/Chicago</code> timezone. Data is sourced from the <code>totals-daily</code> cache, state ticker, and fault-session collections and is intended primarily as a sample/utility route for dashboards.</p>

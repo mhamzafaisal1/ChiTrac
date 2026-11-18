@@ -5,8 +5,12 @@ async function ensureLogIndexes(db, { apply = false } = {}) {
   for (const name of collections) {
     const indexes = [
       { key: { 'timestamps.create': -1 }, options: { name: 'log_created', sparse: true } },
-      ...(name === 'api-http' ? [{ key: { 'authentication.tokenId': 1, 'timestamps.create': -1 },
-        options: { name: 'log_token_created', partialFilterExpression: { 'authentication.tokenId': { $type: 'string' } } } }] : []),
+      ...(name === 'api-http' ? [
+        { key: { 'authentication.tokenId': 1, 'timestamps.create': -1 },
+          options: { name: 'log_token_created', partialFilterExpression: { 'authentication.tokenId': { $type: 'string' } } } },
+        { key: { 'request.path': 1, 'timestamps.create': -1 },
+          options: { name: 'log_path_created', partialFilterExpression: { 'request.path': { $type: 'string' } } } },
+      ] : []),
     ];
     for (const index of indexes) {
       if (apply) await db.collection(name).createIndex(index.key, index.options);

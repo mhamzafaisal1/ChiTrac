@@ -133,12 +133,16 @@ test('mixed-format logs filter/count/sort consistently before pagination and pre
 
 test('log index setup is read-only by default and apply only creates the declared indexes', async () => {
   const preview = await ensureLogIndexes(null);
-  assert.equal(preview.length, 5); assert.ok(preview.every(item => !item.applied));
+  assert.equal(preview.length, 6); assert.ok(preview.every(item => !item.applied));
   const writes = [];
   const db = { collection: name => ({ createIndex: async (key, options) => writes.push({ name, key, options }) }) };
   const applied = await ensureLogIndexes(db, { apply: true });
-  assert.equal(writes.length, 5); assert.ok(applied.every(item => item.applied));
+  assert.equal(writes.length, 6); assert.ok(applied.every(item => item.applied));
   assert.deepEqual(writes.filter(item => item.options.name === 'log_token_created')[0].key,
     { 'authentication.tokenId': 1, 'timestamps.create': -1 });
+  const pathIndex = writes.find(item => item.options.name === 'log_path_created');
+  assert.equal(pathIndex.name, 'api-http');
+  assert.deepEqual(pathIndex.key, { 'request.path': 1, 'timestamps.create': -1 });
+  assert.deepEqual(pathIndex.options.partialFilterExpression, { 'request.path': { $type: 'string' } });
   assert.ok(writes.every(item => item.options.expireAfterSeconds === undefined));
 });

@@ -998,21 +998,31 @@ function constructor(server) {
 
   // ==================== END CACHE BUILDER HELPER FUNCTIONS ====================
 
-  router.get("/backfill", async (req, res) => {
+  // Backfills write historical data; reads and unsupported methods must never run them.
+  router.all(["/backfill", "/backfill-totals"], (req, res, next) => {
+    if (req.method === "POST") return next();
+    return res.set("Allow", "POST").status(405).json({ error: "Use POST to run a backfill" });
+  });
+
+  router.post("/backfill", async (req, res) => {
     try {
       // Step 1: Parse and validate input date
-      const { date, overwrite } = req.query;
+      // Accept query parameters on POST for existing maintenance scripts.
+      const date = req.body?.date ?? req.query.date;
+      const overwrite = req.body?.overwrite ?? req.query.overwrite;
       
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required (format: YYYY-MM-DD)" });
       }
 
-      const inputDate = DateTime.fromISO(date, { zone: 'America/Chicago' });
+      const inputDate = typeof date === 'string'
+        ? DateTime.fromISO(date, { zone: 'America/Chicago' })
+        : DateTime.invalid('Date must be a string');
       if (!inputDate.isValid) {
         return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
       }
 
-      const allowOverwrite = overwrite === 'true';
+      const allowOverwrite = overwrite === true || overwrite === 'true';
 
       // Calculate day boundaries
       const dayStart = inputDate.startOf('day').toJSDate();
@@ -1734,21 +1744,25 @@ function constructor(server) {
     }
   });
 
-  router.get("/backfill-totals", async (req, res) => {
+  router.post("/backfill-totals", async (req, res) => {
     try {
       // Step 1: Parse and validate input date
-      const { date, overwrite } = req.query;
+      // Accept query parameters on POST for existing maintenance scripts.
+      const date = req.body?.date ?? req.query.date;
+      const overwrite = req.body?.overwrite ?? req.query.overwrite;
       
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required (format: YYYY-MM-DD)" });
       }
 
-      const inputDate = DateTime.fromISO(date, { zone: 'America/Chicago' });
+      const inputDate = typeof date === 'string'
+        ? DateTime.fromISO(date, { zone: 'America/Chicago' })
+        : DateTime.invalid('Date must be a string');
       if (!inputDate.isValid) {
         return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
       }
 
-      const allowOverwrite = overwrite === 'true';
+      const allowOverwrite = overwrite === true || overwrite === 'true';
 
       // Calculate day boundaries
       const dayStart = inputDate.startOf('day').toJSDate();

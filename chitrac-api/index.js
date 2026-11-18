@@ -182,6 +182,8 @@ async function startServer() {
         const { ensureAnalyticsIndexes } = require('./modules/analyticsIndexes');
         await ensureAnalyticsIndexes(db, config, logger);
         await server.configurationSync.start();
+        await require('./controllers/reports/reportSubscription').registerSubscriptionsAtStartup(server)
+            .catch(error => logger.error('[reportSubscription] startup registration failed:', error));
         const { DatafeedMinuteSync } = require('./modules/datafeedMinuteSync');
         let minuteRefreshTimer;
         const minuteSync = new DatafeedMinuteSync({ db, token: process.env.DATAFEED_SYNC_TOKEN, logger, onChange: () => {

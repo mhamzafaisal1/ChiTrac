@@ -1,6 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { of } from 'rxjs';
 
 import { OperatorGridComponent } from './operator-grid.component';
+import { ConfigurationService } from '../configuration.service';
 
 describe('OperatorGridComponent', () => {
   let component: OperatorGridComponent;
@@ -8,7 +11,11 @@ describe('OperatorGridComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [OperatorGridComponent]
+      imports: [OperatorGridComponent],
+      providers: [
+        provideNoopAnimations(),
+        { provide: ConfigurationService, useValue: { watchOperatorConfigs: () => of([]) } },
+      ],
     })
     .compileComponents();
 

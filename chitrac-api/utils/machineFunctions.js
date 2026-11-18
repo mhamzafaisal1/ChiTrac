@@ -2241,10 +2241,8 @@ async function getActiveMachineSerials(db, start, end) {
   // getMachinesSummaryRealTime
   // Used as fallback when cached data is missing or on error.
   // Used in:
-  //   - chitrac-api/controllers/alpha/machineRoutes.js
-  //     GET /analytics/machines-summary-daily-cached (fallback when no cache or on error)
-  //   - chitrac-api/controllers/alpha/machineSessions.js
-  //     Various analytics routes that fall back to real-time summary (e.g. hybrid routes)
+  //   - chitrac-api/controllers/machine/index.js
+  //     GET /machine/analytics/machines-summary-daily-cached (fallback when no cache or on error)
   // ---------------------------------------------------------------------------
   function getMachinesSummaryRealTime(db, logger, config) {
     return async function (req, res) {

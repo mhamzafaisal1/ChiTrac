@@ -3469,12 +3469,8 @@ async function fetchOperatorDashboardData(db, start, end) {
 // Used as fallback when cached operator summary data is missing or on error.
 //
 // Used in:
-//   - chitrac-api/controllers/alpha/operatorRoutes.js
-//     GET /analytics/operators-summary-daily-cached (fallback when no cache or on error)
-//   - chitrac-api/controllers/alpha/operatorSessions.js
-//     Multiple analytics routes that fall back to real-time operator summary:
-//     operators-summary-cached, operators-summary-daily-cached, operators-summary-hybrid,
-//     and other routes that call getOperatorsSummaryRealTime on empty cache or error.
+//   - chitrac-api/controllers/operator/index.js
+//     GET /operator/analytics/operators-summary-daily-cached (fallback when no cache or on error)
 // ============================================================
 function getOperatorsSummaryRealTime(db, logger, config) {
   return async function (req, res) {

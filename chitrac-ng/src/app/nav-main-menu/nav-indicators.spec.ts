@@ -1,7 +1,7 @@
 import { ProductionScreenLayoutsService, ProductionScreenMenuState } from '../services/production-screen-layouts.service';
 import { Component, EventEmitter, Output } from '@angular/core';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { NoPreloading, provideRouter, withPreloading } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { MatDialog } from '@angular/material/dialog';
@@ -40,7 +40,7 @@ describe('DMC navigation indicators', () => {
     });
     TestBed.configureTestingModule({
       imports: [NavMainMenuComponent],
-      providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {} } },provideRouter([{path:'ng/home',children:[]}]), provideNoopAnimations(),
+      providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {}, ensureFresh() {} } },provideRouter([{path:'ng/home',children:[]}], withPreloading(NoPreloading)), provideNoopAnimations(),
         { provide: UserService, useValue: { user: users, hasPermissionLevel: () => true, logout } },
         { provide: SettingsService, useValue: { settings$: of(null) } },
         { provide: MatDialog, useValue: { afterOpened: new Subject() } },

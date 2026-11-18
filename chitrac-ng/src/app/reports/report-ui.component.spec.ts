@@ -1,5 +1,5 @@
 import { Type } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
 import { TimeframePickerComponent } from '../components/timeframe-picker/timeframe-picker.component';
@@ -54,11 +54,14 @@ for (const type of [MachineReportComponent, OperatorReportComponent, ItemReportC
     });
 
     if (type === MachineReportComponent || type === OperatorReportComponent) {
-      it('shows the single item name, keeps multiple-item counts and hides empty badges', () => {
+      it('shows the single item name, keeps multiple-item counts and hides empty badges', fakeAsync(() => {
+        fixture.nativeElement.style.width = '1200px';
         const badge = (items: any[]) => {
           component.reportGroups = [{ key: 'one', summary: { Machine: 'SPF1', Operator: 'Operator' }, details: items }];
           fixture.detectChanges();
-          return fixture.nativeElement.querySelector('.detail-count') as HTMLElement | null;
+          tick(100);
+          fixture.detectChanges();
+          return fixture.nativeElement.querySelector('.group-label .count') as HTMLElement | null;
         };
         expect(badge([{ Item: 'Bath Towel' }])?.textContent?.trim()).toBe('Bath Towel');
         expect(badge([{ Item: 'Bath Towel' }, { Item: 'Hand Towel' }])?.textContent?.trim()).toBe('2 items');
@@ -66,7 +69,7 @@ for (const type of [MachineReportComponent, OperatorReportComponent, ItemReportC
         const longName = 'Extra Large Hospitality Bath Towel With Extended Item Description';
         expect(badge([{ Item: longName }])?.textContent?.trim()).toBe(longName);
         expect(badge([{ Item: '' }])?.textContent?.trim()).toBe('Unknown Item');
-      });
+      }));
     }
   });
 }
