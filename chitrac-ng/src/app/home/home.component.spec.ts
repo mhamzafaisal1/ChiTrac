@@ -59,7 +59,7 @@ describe('Home login gate and DMC menu grid', () => {
   it('puts Main Menu first in submenus and returns up exactly one level without a separate heading',async()=>{
     users.next(admin);const h=await RouterTestingHarness.create('/ng/home?menu=main');
     expect(labels(h)).toEqual(['Home','Dashboards','Production Screens','Reports','Settings','Log Out']);
-    await press(h,'Dashboards');expect(labels(h)).toEqual(['Main Menu','Daily','Machine','Operator','Item','Summary','Comparison','Action Center','Downtime Pareto','Shift Handoff','Visual Ops']);
+    await press(h,'Dashboards');expect(labels(h)).toEqual(['Main Menu','Daily','Machine','Operator','Item','Summary','Comparison','Action Center','Downtime Pareto','Shift Handoff','Visual Ops','Cascade (MQTT)']);
     expect(h.routeNativeElement!.querySelector('h1')).toBeNull();
     expect(h.routeNativeElement!.querySelector('a[href="/ng/daily-dashboard"]')).not.toBeNull();
     expect(labels(h)[0]).toBe('Main Menu');
