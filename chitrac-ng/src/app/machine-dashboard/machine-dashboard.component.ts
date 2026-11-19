@@ -123,6 +123,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   startTime: string = "";
   endTime: string = "";
   machineData: any[] = [];
+  readonly cascadeMetricColumns = CASCADE_DASHBOARD_METRICS;
   columns: string[] = [];
   rows: any[] = [];
   private readonly transientRowIds = new WeakMap<object, string>();
