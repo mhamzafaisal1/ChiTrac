@@ -140,6 +140,8 @@ function constructor(server) {
       }
     });
 
+    const configurations = await loadConfiguredMachines(db, config, serial);
+    const types = new Map(configurations.map(machine => [machineSerialFromConfig(machine), machine.type]));
     return records.map(record => {
       const machineSerial = Number(record.machineSerial);
       const runtimeMs = Number(record.runtimeMs) || 0;
@@ -153,6 +155,7 @@ function constructor(server) {
         machine: {
           serial: machineSerial,
           name: record.machineName || `Serial ${machineSerial}`,
+          type: types.get(machineSerial),
         },
         currentStatus: statusBySerial.get(machineSerial) || {
           code: 0,
@@ -1169,6 +1172,7 @@ function constructor(server) {
       }
 
       const configuredMachines = await loadConfiguredMachines(db, config, machineSerialFilter);
+      const machineTypeBySerial = new Map(configuredMachines.map(machine => [machineSerialFromConfig(machine), machine.type]));
       const stationCountBySerial = buildStationCountBySerial(configuredMachines);
       const machineTotalsSerials = new Set(
         machineTotals
@@ -1368,6 +1372,7 @@ function constructor(server) {
             machine: {
               serial,
               name: record.machineName || `Serial ${serial}`,
+              type: machineTypeBySerial.get(serial),
             },
             currentStatus: record.configOnlyOffline
               ? {

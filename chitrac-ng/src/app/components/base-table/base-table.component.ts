@@ -576,6 +576,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private toggleGroup(key: string): void {
+    if (this.rowGroups?.find(group => group.key === key)?.expandable === false) return;
     if (this.expandedGroups.has(key)) this.expandedGroups.delete(key);
     else this.expandedGroups.add(key);
     this.refreshGroupedRows();
