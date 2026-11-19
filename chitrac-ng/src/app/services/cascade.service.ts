@@ -7,12 +7,20 @@ export interface CascadeSignals {
   paused: boolean;
   running: boolean;
   lowAir: boolean;
+  rts2?: boolean;
+  rts3?: boolean;
+}
+
+export interface CascadeMachineStatus {
+  code: number;
+  name: string;
 }
 
 export interface CascadeSourceStatus {
   source: string;
   topic: string;
   signals: CascadeSignals;
+  status?: CascadeMachineStatus;
   lastChangedAt: string;
   lastSeenAt: string;
   stale: boolean;
@@ -30,6 +38,9 @@ export interface CascadeEvent {
   timestamp: string;
   signals: CascadeSignals;
   previous: CascadeSignals | null;
+  events?: string[];
+  status?: CascadeMachineStatus;
+  statusChanged?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

@@ -12,15 +12,27 @@
  *   - EVENT_COLLECTION: one document per signal change (not per message), so
  *     a 1 Hz publish rate does not flood the database.
  *
- * Signal meanings are stored exactly as published. Polarity / machine-state
- * mapping has not been confirmed with controls yet, so nothing is derived.
+ * Signals are retained as published; the adapter derives the normal ChiTrac
+ * running, paused and configured low-air alarm statuses for the datafeed.
  */
 
 const os = require('os');
+const {
+  detectCascadeEvents,
+  deriveCascadeStatus,
+  sameStatus,
+  buildDatafeedStatusMessage,
+  readCascadeDatafeedConfig,
+  createDatafeedForwarder
+} = require('./cascadeEvents');
 
 const CURRENT_COLLECTION = 'state-cascade-mqtt';
 const EVENT_COLLECTION = 'log-cascade-mqtt';
 const SIGNAL_KEYS = ['readyToStart', 'paused', 'running', 'lowAir'];
+// Extra ready-to-start bits (M2104 "RTS 2", M2105 "RTS3"). Optional so older
+// PLC payloads without them stay valid.
+const OPTIONAL_SIGNAL_KEYS = ['rts2', 'rts3'];
+const ALL_SIGNAL_KEYS = [...SIGNAL_KEYS, ...OPTIONAL_SIGNAL_KEYS];
 const DEFAULT_TOPIC = 'chitrac/cascade/bench/status';
 const DEFAULT_HEARTBEAT_MS = 10000;
 const DEFAULT_STALE_AFTER_MS = 30000;
@@ -46,11 +58,18 @@ function parseCascadeStatus(payload) {
     }
     signals[key] = data[key];
   }
+  for (const key of OPTIONAL_SIGNAL_KEYS) {
+    if (data[key] === undefined) continue;
+    if (typeof data[key] !== 'boolean') {
+      return { ok: false, error: `${key} must be boolean` };
+    }
+    signals[key] = data[key];
+  }
   return { ok: true, value: { source: data.source.trim(), signals } };
 }
 
 function sameSignals(a, b) {
-  return !!a && !!b && SIGNAL_KEYS.every(key => a[key] === b[key]);
+  return !!a && !!b && ALL_SIGNAL_KEYS.every(key => a[key] === b[key]);
 }
 
 /** Read Cascade MQTT settings from environment variables. */
@@ -68,12 +87,22 @@ function readCascadeMqttConfig(env = process.env) {
 }
 
 /** Handles parsed messages and writes state; independent of the MQTT library so it can be tested. */
-function createCascadeStatusStore({ db, logger = console, now = () => new Date(), heartbeatMs = DEFAULT_HEARTBEAT_MS } = {}) {
+function createCascadeStatusStore({ db, logger = console, now = () => new Date(), heartbeatMs = DEFAULT_HEARTBEAT_MS,
+  datafeedHeartbeatMs = 5000, forwarder = null, machine = null } = {}) {
   if (!db) throw new Error('db is required');
   const current = db.collection(CURRENT_COLLECTION);
   const events = db.collection(EVENT_COLLECTION);
   const lastBySource = new Map();
+  const lastForwardedBySource = new Map();
   let indexesReady = null;
+
+  function forwardStatus(source, status, at, force = false) {
+    if (!forwarder || !machine) return;
+    const previous = lastForwardedBySource.get(source);
+    if (!force && previous !== undefined && at.getTime() - previous < datafeedHeartbeatMs) return;
+    const accepted = forwarder.send(buildDatafeedStatusMessage({ serial: machine.serial, name: machine.name, timestamp: at, status }));
+    if (accepted !== false) lastForwardedBySource.set(source, at.getTime());
+  }
 
   function ensureIndexes() {
     if (!indexesReady) {
@@ -113,13 +142,17 @@ function createCascadeStatusStore({ db, logger = console, now = () => new Date()
     // machine does not get a fresh "change" event every time the server starts.
     if (!last) {
       const stored = await current.findOne({ source });
-      if (stored && sameSignals(stored.signals, signals)) {
-        last = { signals, writtenAt: 0 };
+      if (stored && stored.signals) {
+        last = { signals: stored.signals, writtenAt: 0, status: stored.status || deriveCascadeStatus(stored.signals) };
         lastBySource.set(source, last);
       }
     }
 
     if (last && sameSignals(last.signals, signals)) {
+      // A fresh PLC snapshot proves liveness. Do not replay stored state on a
+      // timer after the PLC disappears; let the datafeed watchdog mark Offline.
+      // The first fresh snapshot after a bridge restart also initializes the datafeed.
+      forwardStatus(source, deriveCascadeStatus(signals), at);
       if (at - last.writtenAt < heartbeatMs) return { action: 'unchanged' };
       await current.updateOne({ source }, { $set: { lastSeenAt: at, topic } }, { upsert: true });
       last.writtenAt = at;
@@ -127,15 +160,19 @@ function createCascadeStatusStore({ db, logger = console, now = () => new Date()
     }
 
     const previous = last ? last.signals : null;
-    await events.insertOne({ source, topic, timestamp: at, signals, previous });
+    const eventNames = detectCascadeEvents(previous, signals);
+    const status = deriveCascadeStatus(signals);
+    const statusChanged = !last || !sameStatus(last.status, status);
+    await events.insertOne({ source, topic, timestamp: at, signals, previous, events: eventNames, status, statusChanged });
     await current.updateOne(
       { source },
-      { $set: { source, topic, signals, lastChangedAt: at, lastSeenAt: at } },
+      { $set: { source, topic, signals, status, lastChangedAt: at, lastSeenAt: at } },
       { upsert: true }
     );
-    lastBySource.set(source, { signals, writtenAt: at });
-    logger.info(`Cascade MQTT: ${source} signals ${previous ? 'changed' : 'received'}: ${JSON.stringify(signals)}`);
-    return { action: previous ? 'changed' : 'first' };
+    lastBySource.set(source, { signals, writtenAt: at, status });
+    logger.info(`Cascade MQTT: ${source} ${eventNames.length ? eventNames.join(', ') : 'received'} -> status ${status.code} ${status.name}`);
+    forwardStatus(source, status, at, statusChanged);
+    return { action: previous ? 'changed' : 'first', events: eventNames, status, statusChanged };
   }
 
   return { handleMessage, ensureIndexes };
@@ -151,10 +188,18 @@ function isCascadeStatusStale(doc, nowDate = new Date(), staleAfterMs = DEFAULT_
  * Connect to the broker and start storing status. `mqttConnect` defaults to the
  * `mqtt` package's connect(); it is injectable for tests.
  */
-function startCascadeMqttSubscriber({ db, logger = console, config = readCascadeMqttConfig(), mqttConnect, now } = {}) {
+function startCascadeMqttSubscriber({ db, logger = console, config = readCascadeMqttConfig(), datafeedConfig = readCascadeDatafeedConfig(), mqttConnect, fetchImpl, now } = {}) {
   if (!config.url) throw new Error('CASCADE_MQTT_URL is required');
   const connect = mqttConnect || require('mqtt').connect;
-  const store = createCascadeStatusStore({ db, logger, now, heartbeatMs: config.heartbeatMs });
+  let forwarder = null;
+  if (datafeedConfig && datafeedConfig.url) {
+    forwarder = createDatafeedForwarder({ url: datafeedConfig.url, retryMs: datafeedConfig.retryMs,
+      maxQueue: datafeedConfig.maxQueue, requestTimeoutMs: datafeedConfig.requestTimeoutMs, fetchImpl, logger });
+    logger.info(`Cascade MQTT: forwarding statuses and fresh-snapshot heartbeats to ${datafeedConfig.url} as serial ${datafeedConfig.serial}`);
+  }
+  const machine = datafeedConfig ? { serial: datafeedConfig.serial, name: datafeedConfig.name } : null;
+  const store = createCascadeStatusStore({ db, logger, now, heartbeatMs: config.heartbeatMs,
+    datafeedHeartbeatMs: datafeedConfig?.heartbeatMs, forwarder, machine });
 
   const client = connect(config.url, {
     clientId: config.clientId,
@@ -183,7 +228,11 @@ function startCascadeMqttSubscriber({ db, logger = console, config = readCascade
   return {
     client,
     store,
-    stop: () => new Promise(resolve => client.end(false, {}, () => resolve()))
+    forwarder,
+    stop: () => new Promise(resolve => {
+      if (forwarder) forwarder.stop();
+      client.end(false, {}, () => resolve());
+    })
   };
 }
 
@@ -191,6 +240,7 @@ module.exports = {
   CURRENT_COLLECTION,
   EVENT_COLLECTION,
   SIGNAL_KEYS,
+  OPTIONAL_SIGNAL_KEYS,
   DEFAULT_TOPIC,
   parseCascadeStatus,
   readCascadeMqttConfig,

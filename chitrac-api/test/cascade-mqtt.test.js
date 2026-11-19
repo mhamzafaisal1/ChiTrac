@@ -50,6 +50,15 @@ test('parses the exact payload the PLC publishes', () => {
   });
 });
 
+test('accepts optional rts2/rts3 and rejects non-boolean values', () => {
+  const parsed = parseCascadeStatus(payload({ rts2: true, rts3: false }));
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.value.signals.rts2, true);
+  assert.equal(parsed.value.signals.rts3, false);
+  assert.equal('rts2' in parseCascadeStatus(payload()).value.signals, false);
+  assert.match(parseCascadeStatus(payload({ rts3: 1 })).error, /rts3 must be boolean/);
+});
+
 test('rejects malformed payloads', () => {
   assert.equal(parseCascadeStatus('not json').ok, false);
   assert.equal(parseCascadeStatus('[]').ok, false);

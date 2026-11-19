@@ -9,6 +9,8 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
   { key: 'paused', label: 'Paused', device: 'M2101' },
   { key: 'running', label: 'Running', device: 'M2102' },
   { key: 'lowAir', label: 'Low air', device: 'M2103' },
+  { key: 'rts2', label: 'RTS 2', device: 'M2104' },
+  { key: 'rts3', label: 'RTS3', device: 'M2105' },
 ];
 
 /** Live view of the Cascade PLC status received over MQTT. Polls every 5 s. */
@@ -36,6 +38,9 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
           <div class="cs-card">
             <div class="cs-card-header">
               <h2 class="cs-card-title">{{ src.source }}</h2>
+              @if (src.status) {
+                <span class="cs-status" [class]="'cs-status cs-status-' + statusClass(src.status.code)">{{ src.status.name }} ({{ src.status.code }})</span>
+              }
               <span class="cs-badge" [class.cs-badge-offline]="src.stale">{{ src.stale ? 'No data' : 'Live' }}</span>
             </div>
             <div class="cs-signals">
@@ -43,7 +48,7 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
                 <div class="cs-signal" [class.cs-on]="src.signals[sig.key]" [class.cs-dim]="src.stale">
                   <span class="cs-dot"></span>
                   <span class="cs-label">{{ sig.label }}</span>
-                  <span class="cs-value">{{ src.signals[sig.key] ? 'ON' : 'OFF' }}</span>
+                  <span class="cs-value">{{ onOff(src.signals[sig.key]) }}</span>
                   <span class="cs-device">{{ sig.device }}</span>
                 </div>
               }
@@ -57,15 +62,16 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
           <div class="cs-card">
             <h2 class="cs-card-title">Recent changes</h2>
             <table class="cs-table">
-              <thead><tr><th>Time</th><th>Source</th>@for (sig of signalDefs; track sig.key) {<th>{{ sig.label }}</th>}</tr></thead>
+              <thead><tr><th>Time</th><th>Events</th><th>Status</th>@for (sig of signalDefs; track sig.key) {<th>{{ sig.label }}</th>}</tr></thead>
               <tbody>
                 @for (e of events(); track $index) {
                   <tr>
                     <td>{{ e.timestamp | date: 'medium' }}</td>
-                    <td>{{ e.source }}</td>
+                    <td>{{ eventLabels(e.events) }}</td>
+                    <td [class.cs-status-sent]="e.statusChanged">{{ e.status ? e.status.name + ' (' + e.status.code + ')' : '—' }}</td>
                     @for (sig of signalDefs; track sig.key) {
                       <td [class.cs-changed]="e.previous && e.previous[sig.key] !== e.signals[sig.key]"
-                          [class.cs-cell-on]="e.signals[sig.key]">{{ e.signals[sig.key] ? 'ON' : 'OFF' }}</td>
+                          [class.cs-cell-on]="e.signals[sig.key]">{{ onOff(e.signals[sig.key]) }}</td>
                     }
                   </tr>
                 }
@@ -86,6 +92,13 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
     .cs-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
     .cs-card-title { margin: 0 0 .75rem; font-size: 1.1rem; font-weight: 600; color: var(--theme-color-text); }
     .cs-card-header .cs-card-title { margin: 0; }
+    .cs-card-header { gap: .75rem; }
+    .cs-card-header .cs-card-title { flex: 1; }
+    .cs-status { padding: .2rem .65rem; border-radius: 999px; font-size: .8rem; font-weight: 700; background: rgba(255,255,255,.12); color: var(--theme-color-text); }
+    .cs-status-run { background: #2e7d32; color: #fff; }
+    .cs-status-fault { background: #c62828; color: #fff; }
+    .cs-status-idle { background: #f9a825; color: #000; }
+    .cs-status-sent { font-weight: 700; }
     .cs-badge { padding: .2rem .65rem; border-radius: 999px; font-size: .8rem; font-weight: 700; background: #2e7d32; color: #fff; }
     .cs-badge-offline { background: #c62828; }
     .cs-signals { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .75rem; }
@@ -114,6 +127,26 @@ export class CascadeStatusComponent {
   readonly status = signal<CascadeStatusResponse | null>(null);
   readonly events = signal<CascadeEvent[]>([]);
   readonly error = signal<string | null>(null);
+
+  private static readonly EVENT_LABELS: Record<string, string> = {
+    start: 'Start', stop: 'Stop', pause: 'Pause', resume: 'Resume',
+    fault: 'Fault', faultCleared: 'Fault cleared', ready: 'Ready', notReady: 'Not ready',
+    rts2On: 'RTS 2 on', rts2Off: 'RTS 2 off', rts3On: 'RTS3 on', rts3Off: 'RTS3 off'
+  };
+
+  /** Optional bits (RTS 2 / RTS3) show N/A until the PLC payload includes them. */
+  onOff(value: boolean | undefined): string {
+    return value === undefined ? 'N/A' : value ? 'ON' : 'OFF';
+  }
+
+  eventLabels(events?: string[]): string {
+    if (!events) return '—';
+    return events.length ? events.map(e => CascadeStatusComponent.EVENT_LABELS[e] || e).join(', ') : 'Signal change';
+  }
+
+  statusClass(code: number): string {
+    return code === 1 ? 'run' : code > 1 ? 'fault' : 'idle';
+  }
 
   constructor() {
     timer(0, 5000).pipe(
