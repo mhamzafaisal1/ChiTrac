@@ -188,7 +188,6 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
       menu: 'reports',
       routes: [
         '/ng/reports/machine-report',
-        '/ng/reports/shift-machine-report',
         '/ng/reports/shift-comparison-report',
         '/ng/reports/operator-report',
         '/ng/reports/item-report',

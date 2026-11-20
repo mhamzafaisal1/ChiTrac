@@ -42,7 +42,6 @@ const menus: Record<NavigationMenu, NavigationEntry[]> = {
   productionScreens: [{ label: 'Production Screen', icon: 'live_tv', path: '/ng/production-screen' }],
   reports: [
     { label: 'Machine Report', icon: 'local_laundry_service', path: '/ng/reports/machine-report' },
-    { label: 'Shift Machine Report', icon: 'schedule', path: '/ng/reports/shift-machine-report' },
     { label: 'Shift Comparison Report', icon: 'compare_arrows', path: '/ng/reports/shift-comparison-report' },
     { label: 'Operator Report', icon: 'person', path: '/ng/reports/operator-report' },
     { label: 'Item Report', icon: 'dry_cleaning', path: '/ng/reports/item-report' },

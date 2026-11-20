@@ -59,7 +59,8 @@ const appRoutes: Routes = [
 	
 	// Reports
 	{ path: 'ng/reports/machine-report', loadComponent: () => import('./reports/machine-report/machine-report.component').then(m => m.MachineReportComponent), data: { preload: true } },
-	{ path: 'ng/reports/shift-machine-report', loadComponent: () => import('./reports/shift-machine-report/shift-machine-report.component').then(m => m.ShiftMachineReportComponent), data: { preload: true } },
+  { path: 'ng/reports/shift-machine-report', pathMatch: 'full', redirectTo: ({ queryParams, fragment }) =>
+      inject(Router).createUrlTree(['/ng/reports/machine-report'], { queryParams, fragment }) },
 	{ path: 'ng/reports/shift-comparison-report', loadComponent: () => import('./reports/shift-comparison-report/shift-comparison-report.component').then(m => m.ShiftComparisonReportComponent), data: { preload: true } },
 	{ path: 'ng/reports/operator-report', loadComponent: () => import('./reports/operator-report/operator-report.component').then(m => m.OperatorReportComponent), data: { preload: true } },
 	{ path: 'ng/reports/item-report', loadComponent: () => import('./reports/item-report/item-report.component').then(m => m.ItemReportComponent), data: { preload: true } },

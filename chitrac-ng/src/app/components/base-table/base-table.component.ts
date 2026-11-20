@@ -50,7 +50,7 @@ import {
 import { parseDurationDisplay } from '../../shared/utils/duration-format';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { BaseTableHeaderComponent } from './base-table-header.component';
-import { BaseTableGroup, groupedTableRows } from './base-table-groups';
+import { BaseTableGroup, groupedTableRows, isReportGroupExpandable } from './base-table-groups';
 import { BaseTableGroupCellComponent } from './base-table-group-cell.component';
 
 export function reconcileColumnOrder(columns: string[] = [], columnOrder: string[] = []): string[] {
@@ -178,7 +178,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['rowGroups'] || changes['groupIdentityColumn'] || changes['columns']) {
-      const validKeys = new Set(this.rowGroups?.map(group => group.key));
+      const validKeys = new Set(this.rowGroups?.filter(isReportGroupExpandable).map(group => group.key));
       this.expandedGroups = new Set([...this.expandedGroups].filter(key => validKeys.has(key)));
       this.refreshGroupedRows();
     }
@@ -307,6 +307,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     const group = params.data?.__baseTableGroup;
     if (group) {
       classes.push(`report-${group.kind}`);
+      if (group.kind === 'summary' && !group.expandable) classes.push('report-static-summary');
     }
     if (params.data?.cssClass) classes.push(params.data.cssClass);
     if (params.data?.isDummy) classes.push('dummy-row');
@@ -576,6 +577,8 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private toggleGroup(key: string): void {
+    const group = this.rowGroups?.find(group => group.key === key);
+    if (!group || !isReportGroupExpandable(group)) return;
     if (this.expandedGroups.has(key)) this.expandedGroups.delete(key);
     else this.expandedGroups.add(key);
     this.refreshGroupedRows();

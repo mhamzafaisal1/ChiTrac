@@ -64,7 +64,7 @@ describe('Home login gate and DMC menu grid', () => {
     expect(h.routeNativeElement!.querySelector('a[href="/ng/daily-dashboard"]')).not.toBeNull();
     expect(labels(h)[0]).toBe('Main Menu');
     await press(h,'Main Menu');expect(TestBed.inject(Router).url).toBe('/ng/home?menu=main');
-    await press(h,'Reports');expect(labels(h)[0]).toBe('Main Menu');expect(labels(h)).toContain('Shift Comparison Report');
+    await press(h,'Reports');expect(labels(h)[0]).toBe('Main Menu');expect(labels(h)).toContain('Shift Comparison Report');expect(labels(h)).not.toContain('Shift Machine Report');
   });
 
   it('uses the same production destinations, with distinct scope links for identically named saved layouts',async()=>{
@@ -131,5 +131,16 @@ describe('Home login gate and DMC menu grid', () => {
       expect(legacy?.pathMatch).toBe('full');
       expect(legacy?.loadComponent).toBeUndefined();
     }
+  });
+});
+
+
+describe('Retired Machine Shift Report', () => {
+  it('redirects bookmarked URLs to Machine Report without dropping query parameters', async () => {
+    const legacy = routes.find(route => route.path === 'ng/reports/shift-machine-report')!;
+    expect(legacy.loadComponent).toBeUndefined(); expect(legacy.data?.['preload']).not.toBeTrue();
+    TestBed.configureTestingModule({ providers: [provideRouter([legacy,{ path: 'ng/reports/machine-report', component: ReturnTarget }])] });
+    await RouterTestingHarness.create('/ng/reports/shift-machine-report?shiftId=morning#summary');
+    expect(TestBed.inject(Router).url).toBe('/ng/reports/machine-report?shiftId=morning#summary');
   });
 });

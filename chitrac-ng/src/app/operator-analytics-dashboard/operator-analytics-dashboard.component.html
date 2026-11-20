@@ -16,7 +16,7 @@
   >
     <article
       class="summary-card"
-      *ngFor="let card of summaryCards"
+      *ngFor="let card of summaryCards; trackBy: trackBySummaryCard"
       [ngClass]="card.tone"
       [class.layout-editing]="layoutEditing"
       cdkDrag
@@ -49,6 +49,7 @@
         *ngIf="rows.length"
         [columns]="columns"
         [rows]="rows"
+        [rowIdentity]="getOperatorRowIdentity"
         [columnTooltips]="columnTooltips"
         [selectedRow]="selectedRow"
         (rowClicked)="onRowSelected($event)"

@@ -1883,7 +1883,7 @@ GET /api/reports/shifts
 
 ### /api/reports/analytics/machine-report-cache
 
-JSON payload for the **Machine Report** and **Shift Machine Report** Angular tables. Primarily uses the `totals-daily` cache (`entityType` `machine` and `machine-item`), with session-based fallback when cache is empty for the requested window. When **`shiftId`** is present, data is computed from sessions for that shift and time window instead of daily cache.
+JSON payload for the **Machine Report** Angular table, including shift-filtered reports. Primarily uses the `totals-daily` cache (`entityType` `machine` and `machine-item`), with session-based fallback when cache is empty for the requested window. When **`shiftId`** is present, data is computed from sessions for that shift and time window instead of daily cache.
 
 Session-centric summaries that iterate raw machine/item sessions may expose **different shapes** and aggregation rules. **Integrators mirroring the HTML machine / shift reports should use this cache-first route.**
 
