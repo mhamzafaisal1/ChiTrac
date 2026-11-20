@@ -1,3 +1,7 @@
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
+import { CASCADE_DASHBOARD_METRICS } from '../../shared/utils/machine-presentation';
 import { BaseTableComponent, haveSameColumns, reconcileColumnOrder } from './base-table.component';
 
 describe('reconcileColumnOrder', () => {
@@ -102,5 +106,46 @@ describe('haveSameColumns', () => {
     expect(haveSameColumns(['Status', 'Machine'], ['Machine', 'Status'])).toBeFalse();
     expect(haveSameColumns(['Status'], ['Status', 'Machine'])).toBeFalse();
     expect(haveSameColumns(['Status', 'Machine'], ['Status'])).toBeFalse();
+  });
+});
+
+
+describe('Rendered dashboard numeric placeholders', () => {
+  it('preserves Cascade em dashes beside real numbers through refresh, sorting and CSV export', fakeAsync(() => {
+    TestBed.configureTestingModule({ imports: [BaseTableComponent], providers: [provideNoopAnimations(),
+      { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } }] });
+    const fixture = TestBed.createComponent(BaseTableComponent), root: HTMLElement = fixture.nativeElement;
+    root.style.width = '1600px';
+    const columns = ['Machine Name', ...CASCADE_DASHBOARD_METRICS, 'Availability'];
+    const row = (name: string, value: number | string) => ({ 'Machine Name': name,
+      ...Object.fromEntries(CASCADE_DASHBOARD_METRICS.map(column => [column,value])), Availability: '75%' });
+    fixture.componentRef.setInput('columns',columns);
+    fixture.componentRef.setInput('mixedValueColumns',CASCADE_DASHBOARD_METRICS);
+    fixture.componentRef.setInput('enableToolbar',false);
+    fixture.componentRef.setInput('rows',[row('SPF',12),row('Cascade','—'),row('Blanket',3)]);
+    fixture.detectChanges(); tick(100); fixture.detectChanges();
+    const cell = (index: number,column: string) => root.querySelector<HTMLElement>('.ag-row[row-index="' + index + '"] .ag-cell[col-id="' + column + '"]')?.textContent?.trim();
+    for (const column of CASCADE_DASHBOARD_METRICS) {
+      expect(cell(0,column)).withContext(column + ' normal value').toBe('12');
+      expect(cell(1,column)).withContext(column + ' Cascade value').toBe('—');
+    }
+    expect(root.textContent).not.toContain('Invalid Number');
+    const api = (fixture.componentInstance as any).gridApi;
+    const csv = api.getDataAsCsv(); expect(csv).toContain('—'); expect(csv).not.toContain('Invalid Number');
+    api.applyColumnState({ state: [{ colId: 'Total Count', sort: 'asc' }] });
+    const sorted: string[] = []; api.forEachNodeAfterFilterAndSort((node: any) => sorted.push(node.data['Machine Name']));
+    expect(sorted.indexOf('Blanket')).toBeLessThan(sorted.indexOf('SPF'));
+    fixture.componentRef.setInput('rows',[row('SPF',0),row('Cascade','—')]);
+    fixture.detectChanges(); tick(100); fixture.detectChanges();
+    expect(root.textContent).not.toContain('Invalid Number');
+    const values: any[] = []; api.forEachNode((node: any) => values.push(node.data['Total Count']));
+    expect(values).toEqual([0,'—']); fixture.destroy();
+  }));
+  it('keeps ordinary table data-type behavior unless a mixed column is explicitly configured', () => {
+    const table = new BaseTableComponent({} as any); table.columns = ['Total Count','PPH']; table.ngOnInit();
+    expect(table.columnDefs.every(column => column.cellDataType === undefined)).toBeTrue();
+    table.mixedValueColumns = ['Total Count']; table.ngOnChanges({ mixedValueColumns: {} as any });
+    expect(table.columnDefs[0].cellDataType).toBeFalse(); expect(table.columnDefs[1].cellDataType).toBeUndefined();
+    table.ngOnDestroy();
   });
 });

@@ -1,3 +1,4 @@
+import { BaseTableGroupCellComponent } from './base-table-group-cell.component';
 import { groupedTableRows, BaseTableGroup } from './base-table-groups';
 import { BaseTableComponent } from './base-table.component';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';

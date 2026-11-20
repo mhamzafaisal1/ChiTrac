@@ -1,3 +1,4 @@
+import { CASCADE_DASHBOARD_METRICS, CASCADE_MODAL_TABS, isCascadeMachine, presentMachineMetrics } from '../shared/utils/machine-presentation';
 import { FullScreenLoaderComponent } from '../components/full-screen-loader/full-screen-loader.component';
 import {
   Component,
@@ -122,6 +123,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   startTime: string = "";
   endTime: string = "";
   machineData: any[] = [];
+  readonly cascadeMetricColumns = CASCADE_DASHBOARD_METRICS;
   columns: string[] = [];
   rows: any[] = [];
   private readonly transientRowIds = new WeakMap<object, string>();
@@ -556,7 +558,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
                   }));
 
                   this.columns = Object.keys(formattedData[0]);
-                  this.rows = formattedData;
+                  this.rows = formattedData.map((row, index) =>
+                    presentMachineMetrics(row, this.machineData[index]?.machine, CASCADE_DASHBOARD_METRICS));
                 })
               );
           },
@@ -801,7 +804,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     });
 
     this.columns = Object.keys(formattedData[0]).filter((col) => col !== "");
-    this.rows = formattedData;
+    this.rows = formattedData.map((row, index) =>
+      presentMachineMetrics(row, this.machineData[index]?.machine, CASCADE_DASHBOARD_METRICS));
   }
 
   private updateSummaryCards(responses: any[], cache?: DashboardCacheState | null): void {
@@ -2175,7 +2179,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           legendWidthPx: 120,
         },
       },
-    ];
+    ].filter(tab => !isCascadeMachine(machineData?.machine) ||
+      (CASCADE_MODAL_TABS as readonly string[]).includes(tab.label));
 
     const dialogRef = this.dialog.open(ModalWrapperComponent, {
       width: "90vw",
@@ -2314,7 +2319,8 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     });
 
     this.columns = Object.keys(formattedData[0]).filter((col) => col !== "");
-    this.rows = formattedData;
+    this.rows = formattedData.map((row, index) =>
+      presentMachineMetrics(row, this.machineData[index]?.machine, CASCADE_DASHBOARD_METRICS));
     this.isLoading = false;
     return true;
   }

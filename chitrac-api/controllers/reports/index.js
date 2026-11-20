@@ -1056,9 +1056,10 @@ module.exports = function (server) {
                 { id: { $in: serialCandidates } },
               ],
             })
-            .project({ serial: 1, id: 1, stations: 1, lanes: 1 })
+            .project({ serial: 1, id: 1, type: 1, stations: 1, lanes: 1 })
             .toArray()
         : [];
+      const machineTypeBySerial = new Map(machineConfigs.map(machine => [String(machine.serial ?? machine.id), machine.type]));
       const stationCountBySerial = new Map(
         machineConfigs.map((machine) => [
           String(machine.serial ?? machine.id),
@@ -1226,6 +1227,7 @@ module.exports = function (server) {
             name: machineData.machineName,
             serial: machineData.machineSerial,
             stationCount,
+            type: machineTypeBySerial.get(String(serial)),
           },
           machineSummary: {
             totalCount: itemTotalCounts,
