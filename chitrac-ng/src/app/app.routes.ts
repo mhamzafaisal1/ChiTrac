@@ -49,6 +49,7 @@ const appRoutes: Routes = [
 	{ path: 'ng/downtime-pareto', loadComponent: () => import('./downtime-pareto/downtime-pareto.component').then(m => m.DowntimeParetoComponent), data: { preload: true } },
 	{ path: 'ng/shift-handoff', loadComponent: () => import('./shift-handoff/shift-handoff.component').then(m => m.ShiftHandoffComponent), data: { preload: true } },
 	{ path: 'ng/visual-ops', loadComponent: () => import('./visual-ops-dashboard/visual-ops-dashboard.component').then(m => m.VisualOpsDashboardComponent), data: { preload: true } },
+	{ path: 'ng/cascade-status', loadComponent: () => import('./cascade-status/cascade-status.component').then(m => m.CascadeStatusComponent) },
 	{
 		path: 'ng/daily-dashboard',
 		data: { preload: true },

@@ -370,7 +370,7 @@ async function loadConfiguredMachines(db, config, serial = null) {
   return db
     .collection(config.machineCollectionName)
     .find(filter)
-    .project({ _id: 0, id: 1, serial: 1, name: 1, active: 1, stations: 1 })
+    .project({ _id: 0, id: 1, serial: 1, name: 1, type: 1, active: 1, stations: 1 })
     .sort({ name: 1, id: 1, serial: 1 })
     .toArray();
 }
@@ -384,6 +384,7 @@ function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd, faultS
     machine: {
       serial,
       name: machine.name || `Serial ${serial}`,
+      type: machine.type,
     },
     currentStatus: {
       code: null,
@@ -467,6 +468,8 @@ async function appendConfiguredOfflineMachineRows(db, config, rows, requestStart
     ? options.configuredMachines
     : await loadConfiguredMachines(db, config, serial);
   if (!configuredMachines.length) return rows;
+  const types = new Map(configuredMachines.map(machine => [machineSerialFromConfig(machine), machine.type]));
+  rows = rows.map(row => ({ ...row, machine: { ...row.machine, type: types.get(Number(row.machine?.serial)) } }));
 
   const existingSerials = new Set(
     rows

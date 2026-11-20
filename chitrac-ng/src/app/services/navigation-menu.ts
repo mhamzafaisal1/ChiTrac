@@ -37,6 +37,7 @@ const menus: Record<NavigationMenu, NavigationEntry[]> = {
     { label: 'Downtime Pareto', icon: 'waterfall_chart', path: '/ng/downtime-pareto' },
     { label: 'Shift Handoff', icon: 'assignment', path: '/ng/shift-handoff' },
     { label: 'Visual Ops', icon: 'monitoring', path: '/ng/visual-ops' },
+    { label: 'Cascade (MQTT)', icon: 'sensors', path: '/ng/cascade-status' },
   ],
   experimental: [],
   productionScreens: [{ label: 'Production Screen', icon: 'live_tv', path: '/ng/production-screen' }],

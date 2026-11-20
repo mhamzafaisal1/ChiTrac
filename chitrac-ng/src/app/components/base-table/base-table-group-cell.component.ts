@@ -12,7 +12,7 @@ interface GroupCellParams extends ICellRendererParams {
 @Component({
   selector: 'base-table-group-cell', standalone: true, imports: [CommonModule, MatIconModule],
   template: `
-    <button *ngIf="group?.kind === 'summary'; else item" type="button" class="group-label"
+    <button *ngIf="group?.kind === 'summary' && group.expandable; else item" type="button" class="group-label"
       [attr.aria-expanded]="group.expanded" [attr.aria-label]="(group.expanded ? 'Collapse ' : 'Expand ') + label"
       (click)="toggle($event)">
       <mat-icon aria-hidden="true">{{ group.expanded ? 'expand_more' : 'chevron_right' }}</mat-icon>
@@ -45,6 +45,6 @@ export class BaseTableGroupCellComponent implements ICellRendererAngularComp {
   refresh(params: GroupCellParams): boolean { this.agInit(params); return true; }
   toggle(event: MouseEvent): void {
     event.stopPropagation();
-    this.params.onToggle(this.group.key);
+    if (this.group.expandable) this.params.onToggle(this.group.key);
   }
 }

@@ -89,6 +89,8 @@ let nextTooltipId = 0;
 export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   @Input() columns: string[] = [];
   @Input() rows: any[] = [];
+  /** Columns that intentionally combine numeric values with display placeholders. */
+  @Input() mixedValueColumns: readonly string[] = [];
   /** Supply before grid creation when immutable refreshes should preserve row nodes. */
   @Input() rowIdentity: ((row: any) => string) | null = null;
   @Input() selectedRow: any | null = null;
@@ -185,6 +187,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     const columnDefinitionInputs = [
       'columns',
       'columnTooltips',
+      'mixedValueColumns',
       'disableSorting',
       'responsiveHiddenColumns',
       'columnEditMode',
@@ -424,7 +427,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
       headerName: column,
       wrapHeaderText: true,
       autoHeaderHeight: true,
-      cellDataType: this.rowGroups ? false : undefined,
+      cellDataType: this.rowGroups || this.mixedValueColumns.includes(column) ? false : undefined,
       // Expansion updates renderer metadata while the displayed identity stays the same.
       equals: this.rowGroups && column === this.groupIdentityColumn ? () => false : undefined,
       headerTooltip: this.columnTooltips?.[column] || undefined,
@@ -576,6 +579,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private toggleGroup(key: string): void {
+    if (this.rowGroups?.find(group => group.key === key)?.expandable === false) return;
     if (this.expandedGroups.has(key)) this.expandedGroups.delete(key);
     else this.expandedGroups.add(key);
     this.refreshGroupedRows();

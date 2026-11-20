@@ -1,3 +1,4 @@
+import { BaseTableGroupCellComponent } from './base-table-group-cell.component';
 import { groupedTableRows, BaseTableGroup } from './base-table-groups';
 import { BaseTableComponent } from './base-table.component';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
@@ -218,3 +219,21 @@ for (const identity of ['Machine', 'Operator']) {
     }));
   });
 }
+
+
+describe('Nonexpandable machine report summaries', () => {
+  it('ignores saved expansion and blocks row-click expansion', () => {
+    const group: BaseTableGroup = { key: 'cascade', summary: { Machine: 'Cascade' }, details: [{ Item: 'Stale item' }], expandable: false };
+    expect(groupedTableRows([group],new Set(['cascade']),'Machine').length).toBe(1);
+    const table: any = new BaseTableComponent({} as any); table.rowGroups = [group]; table.toggleGroup('cascade');
+    expect(table.expandedGroups.has('cascade')).toBeFalse();
+  });
+  it('renders a plain machine name without an expansion button', () => {
+    TestBed.configureTestingModule({ imports: [BaseTableGroupCellComponent] });
+    const fixture = TestBed.createComponent(BaseTableGroupCellComponent);
+    const data = groupedTableRows([{ key: 'cascade', summary: { Machine: 'Cascade' }, details: [], expandable: false }],new Set(),'Machine')[0];
+    const onToggle = jasmine.createSpy(); fixture.componentInstance.agInit({ data,value: 'Cascade',onToggle } as any); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent.trim()).toBe('Cascade'); expect(fixture.nativeElement.querySelector('button')).toBeNull();
+    fixture.componentInstance.toggle(new MouseEvent('click')); expect(onToggle).not.toHaveBeenCalled(); fixture.destroy();
+  });
+});

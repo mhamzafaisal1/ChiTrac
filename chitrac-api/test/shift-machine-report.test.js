@@ -60,7 +60,7 @@ function totals(day, count = 100) {
   }));
 }
 
-function harness({ sessions = [], cached = [], shiftDocs = shifts } = {}) {
+function harness({ sessions = [], cached = [], shiftDocs = shifts, machineType = 'SPF' } = {}) {
   let shiftCacheQueries = 0;
   let sessionQueries = 0;
   const db = wrapDatabase({ collection(name) {
@@ -73,7 +73,7 @@ function harness({ sessions = [], cached = [], shiftDocs = shifts } = {}) {
         return cursor(cached.filter(record => matches(record, query)));
       }
     };
-    if (name === config.machineCollectionName) return { find: () => cursor([{ serial: 90001, stations: [1] }]) };
+    if (name === config.machineCollectionName) return { find: () => cursor([{ serial: 90001, stations: [1], type: machineType }]) };
     if (name === config.machineSessionCollectionName) return {
       find: query => cursor(sessions.filter(record => matches(record, query))),
       aggregate(pipeline) {
@@ -233,4 +233,13 @@ test('strict shift matching remains the default for other session filter callers
   assert.equal(matches({}, fallback), true);
   assert.equal(matches({ shiftId: String(morningId) }, fallback), true);
   assert.equal(matches({ shift: { id: String(afternoonId) } }, fallback), false);
+});
+
+
+test('machine reports include configured Cascade type without changing numeric metrics', async () => {
+  const h = harness({ machineType: 'Cascade', sessions: [session('06',['07:00','08:00'])] });
+  const { status, body } = await h.request(instant('06','06:00'),instant('06','12:00'));
+  assert.equal(status,200);
+  assert.equal(body.results[0].machine.type,'Cascade');
+  assert.equal(body.results[0].machineSummary.totalCount,2);
 });
