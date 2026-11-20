@@ -91,6 +91,16 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   operatorId?: number;
   columns: string[] = [];
   rows: any[] = [];
+  private readonly transientRowIds = new WeakMap<object, string>();
+  private nextTransientRowId = 0;
+  readonly getOperatorRowIdentity = (row: any): string => {
+    const id = row['Operator ID'];
+    if (!row.isDummy && id != null && String(id).trim() !== '') return 'operator:' + String(id).trim();
+    let key = this.transientRowIds.get(row);
+    if (!key) { key = 'transient:' + this.nextTransientRowId++; this.transientRowIds.set(row, key); }
+    return key;
+  };
+  trackBySummaryCard = (_index: number, card: SummaryCard): string => card.label;
   summaryCards: SummaryCard[] = [];
   allSummaryCards: SummaryCard[] = [];
   layoutEditing = false;
@@ -1000,14 +1010,18 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
       if (this.tryApplyWebsocketDashboardData(null)) {
         return;
       }
-      this.isLoading = true;
-      this.addDummyLoadingRow();
+      this.showDashboardLoading();
       return;
     }
 
-    this.isLoading = true;
-    this.addDummyLoadingRow();
+    this.showDashboardLoading();
     this.fetchRestDashboardData();
+  }
+
+  private showDashboardLoading(): void {
+    const hasData = this.rows.some(row => !row.isDummy);
+    this.isLoading = !hasData;
+    if (!hasData) this.addDummyLoadingRow();
   }
 
   private fetchRestDashboardData(): void {
@@ -1024,7 +1038,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
           },
           error: (error) => {
             console.error('Error fetching analytics data:', error);
-            this.rows = [];
+            if (!this.rows.some(row => !row.isDummy)) this.rows = [];
             this.isLoading = false;
           }
         });
@@ -1046,7 +1060,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error('Error fetching analytics data:', error);
-          this.rows = [];
+          if (!this.rows.some(row => !row.isDummy)) this.rows = [];
           this.isLoading = false;
         }
       });
@@ -1195,7 +1209,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   onRowSelected(row: any): void {
-    if (this.selectedRow === row) {
+    if (!row || row.isDummy) return;
+    if (this.selectedRow && this.getOperatorRowIdentity(this.selectedRow) === this.getOperatorRowIdentity(row)) {
       this.selectedRow = null;
       return;
     }

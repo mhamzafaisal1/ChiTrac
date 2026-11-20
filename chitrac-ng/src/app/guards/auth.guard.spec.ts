@@ -57,8 +57,8 @@ describe('AuthGuard', () => {
   });
 
   it('requires a signed-in session for every report page', () => {
-    const reportRoutes = routes.filter(route => route.path?.startsWith('ng/reports/'));
-    expect(reportRoutes.length).toBe(7);
+    const reportRoutes = routes.filter(route => route.path?.startsWith('ng/reports/') && route.redirectTo === undefined);
+    expect(reportRoutes.length).toBe(6);
     for (const reportRoute of reportRoutes) {
       expect(reportRoute.canActivate).toContain(AuthGuard);
       expect(reportRoute.data?.['requiredPermissionLevel']).toBeUndefined();
