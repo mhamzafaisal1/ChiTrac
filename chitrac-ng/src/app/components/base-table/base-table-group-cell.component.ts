@@ -53,6 +53,5 @@ export class BaseTableGroupCellComponent implements ICellRendererAngularComp {
   toggle(event: MouseEvent): void {
     event.stopPropagation();
     if (this.group.expandable) this.params.onToggle(this.group.key);
-    if (this.group.expandable) this.params.onToggle(this.group.key);
   }
 }

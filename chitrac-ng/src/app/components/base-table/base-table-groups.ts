@@ -3,7 +3,6 @@ export interface BaseTableGroup {
   summary: Record<string, any>;
   details: Record<string, any>[];
   expandable?: boolean;
-  expandable?: boolean;
 }
 
 export interface BaseTableGroupRow {
@@ -13,7 +12,6 @@ export interface BaseTableGroupRow {
   kind: 'summary' | 'detail' | 'empty-detail';
   summary: Record<string, any>;
   expanded: boolean;
-  expandable: boolean;
   expandable: boolean;
   detailCount: number;
   singleItem: string;
