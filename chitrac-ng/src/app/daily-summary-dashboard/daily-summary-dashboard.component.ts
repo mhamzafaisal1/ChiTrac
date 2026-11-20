@@ -5,7 +5,8 @@ import {
   ElementRef,
   Renderer2,
   ChangeDetectorRef,
-} from "@angular/core";
+  inject,
+} from '@angular/core';
 import { CommonModule } from "@angular/common";
 import { MatButtonModule } from "@angular/material/button";
 import { FormsModule } from "@angular/forms";
@@ -49,6 +50,9 @@ import {
   hasConnectedActivity,
 } from '../../utils/dashboard-status-counts';
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 interface SummaryCard {
   id: string;
   label: string;
@@ -79,10 +83,11 @@ interface SummaryDashboardLayoutSnapshot {
     styleUrls: ["./daily-summary-dashboard.component.scss"]
 })
 export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   startTime: string = "";
   endTime: string = "";
   isDarkTheme: boolean = false;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   machineColumns: string[] = ["Status", "Machine Name", "Total Count", "OEE"];
   machineRows: any[] = [];
   selectedMachine: any = null;
@@ -191,12 +196,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
 
     this.detectTheme();
 
-    if (this.observer) this.observer.disconnect();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
+    if (this.themeSubscription) this.themeSubscription.unsubscribe();
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     // Subscribe to live mode changes
     this.dateTimeService.liveMode$.pipe(
@@ -209,7 +210,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
         // Reset startTime to today at 00:00
         const start = new Date();
         start.setHours(0, 0, 0, 0);
-        this.startTime = this.formatDateForInput(start);
+        this.startTime = toDateTimeLocalInput(start);
         this.dateTimeService.setStartTime(this.startTime);
 
         // Reset endTime to now
@@ -247,8 +248,8 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.observer) {
-      this.observer.disconnect();
+    if (this.themeSubscription) {
+      this.themeSubscription.unsubscribe();
     }
     this.destroy$.next();
     this.destroy$.complete();
@@ -257,7 +258,7 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   detectTheme(): void {
-    const isDark = document.body.classList.contains("dark-theme");
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
   }
 
@@ -626,35 +627,23 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   }
 
   private subscribeToLayoutEditing(): void {
-    this.layoutEditService.context$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((context) => {
-        const nextEditing = context?.id === this.layoutContextId && context.editing;
-        if (nextEditing && !this.layoutEditing) {
-          this.layoutSnapshot = {
+    this.layoutEditService.bindSession({
+      id: this.layoutContextId,
+      destroyed: this.destroy$,
+      isEditing: () => this.layoutEditing,
+      setEditing: editing => this.layoutEditing = editing,
+      onEnter: () => {
+        this.layoutSnapshot = {
             summaryCardOrder: [...this.getSummaryCardOrder()],
             summaryCardVisibility: { ...this.summaryCardVisibility },
           };
-        } else if (!nextEditing && this.layoutEditing) {
-          this.layoutSnapshot = null;
-        }
-        this.layoutEditing = nextEditing;
-      });
-
-    this.layoutEditService.lockRequested$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.confirmAndSaveLayout());
+      },
+      onExit: () => this.layoutSnapshot = null,
+      confirm: () => openLayoutSaveConfirmDialog(this.dialog, () => this.saveSummaryCardLayout(), this.destroy$)?.afterClosed(),
+      discard: () => this.revertSummaryCardLayout(),
+    });
   }
 
-  private confirmAndSaveLayout(): void {
-    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveSummaryCardLayout(), this.destroy$);
-    if (!dialogRef) return;
-    dialogRef.afterClosed()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((result) => {
-        if (result === 'discard') this.revertSummaryCardLayout();
-      });
-  }
 
   private saveSummaryCardLayout(): Observable<unknown> {
     const order = this.getSummaryCardOrder();
@@ -1114,14 +1103,6 @@ export class DailySummaryDashboardComponent implements OnInit, OnDestroy {
   
   
   
-  private formatDateForInput(date: Date): string {
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const day = date.getDate().toString().padStart(2, "0");
-    const hours = date.getHours().toString().padStart(2, "0");
-    const minutes = date.getMinutes().toString().padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  }
 
   // Add this helper for dynamic color coding
   getPerformanceClass = (value: any, column?: string): string => {

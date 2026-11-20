@@ -1,3 +1,4 @@
+const { isRunning, isPaused, isFault } = require("../../utils/machineStatus");
 const { normalizeMachine, sessionMachineQuery, sessionIdentityQuery } = require('../../utils/sessionIdentity');
 /*** alpha API controller */
 /*** Contributors: RTI II */
@@ -96,8 +97,10 @@ const xml = require("xml2js");
 const schedule = require("node-schedule");
 const { sendScheduledJobTestEmail } = require("../../modules/sendScheduledJobTestEmail");
 
-function alphaController(server) {
-  return constructor(server);
+// `routers` lets routes/index.js pass the controllers it already built, so each
+// controller (and its startup side effects) exists once for /api and /api/alpha.
+function alphaController(server, routers = {}) {
+  return constructor(server, routers);
 }
 
 function registerMachineXmlRoutes(app, server) {
@@ -296,17 +299,17 @@ alphaController.registerMachineXmlRoutes = registerMachineXmlRoutes;
 
 module.exports = alphaController;
 
-function constructor(server) {
+function constructor(server, routers = {}) {
   const db = server.db;
   const logger = server.logger;
   const passport = server.passport;
 
   // Import machine-related routes from machine controller (analytics + config)
-  const machineRoutes = require("../machine")(server);
+  const machineRoutes = routers.machine || require("../machine")(server);
   router.use("/analytics", machineRoutes);
 
   // Import operator-related routes from operator controller (analytics + config)
-  const operatorRoutes = require("../operator")(server);
+  const operatorRoutes = routers.operator || require("../operator")(server);
   router.use("/", operatorRoutes);
 
   // Import daily dashboard-related routes (legacy sessions routes removed)
@@ -333,19 +336,19 @@ function constructor(server) {
   });
 
   // Import report routes from reports controller (cached machine/operator/item summaries)
-  const reportRoutes = require("../reports")(server);
+  const reportRoutes = routers.reports || require("../reports")(server);
   router.use("/", reportRoutes);
 
   // Import item routes from item controller (cached + hybrid analytics)
-  const itemRoutes = require("../item")(server);
+  const itemRoutes = routers.item || require("../item")(server);
   router.use("/", itemRoutes);
 
   // Import fault routes from fault controller
-  const faultRoutes = require("../fault")(server);
+  const faultRoutes = routers.fault || require("../fault")(server);
   router.use("/", faultRoutes);
 
   // Import dashboard-related routes from dashboard controller
-  const dashboardRoutes = require("../dashboard")(server);
+  const dashboardRoutes = routers.dashboard || require("../dashboard")(server);
   router.use("/", dashboardRoutes);
 
   router.get("/timestamp", (req, res, next) => {
@@ -382,7 +385,7 @@ function constructor(server) {
       .limit(1)
       .toArray();
     const lastStatus = Object.assign({}, lastStatusFind[0]);
-    if (lastStatus.status.code == 0) {
+    if (isPaused(lastStatus.status.code)) {
       //System_Paused
       //Machine is currently paused, find the start of the session, then find the counts in the session
       let lastRunningStatusFind = await statusCollection
@@ -397,7 +400,7 @@ function constructor(server) {
       lastSessionStartTS = new Date(lastSessionStart.timestamp);
       lastSessionEnd = lastStatus;
       lastSessionEndTS = new Date(lastSessionEnd.timestamp);
-    } else if (lastStatus.status.code == 1) {
+    } else if (isRunning(lastStatus.status.code)) {
       lastSessionStart = lastStatus;
       lastSessionStartTS = new Date(lastSessionStart.timestamp);
     }
@@ -1177,7 +1180,7 @@ function constructor(server) {
       let diff;
       if (
         machineStatesMostRecent.status &&
-        machineStatesMostRecent.status.code == 1
+        isRunning(machineStatesMostRecent.status.code)
       ) {
         let machineStatesNextMostRecent;
         do {
@@ -1192,7 +1195,7 @@ function constructor(server) {
             .toArray();
           if (machineStatesMostRecentFind.length) {
             machineStatesNextMostRecent = machineStatesMostRecentFind[0];
-            if (machineStatesNextMostRecent.status.code == 1) {
+            if (isRunning(machineStatesNextMostRecent.status.code)) {
               machineStatesMostRecent = Object.assign(
                 {},
                 machineStatesNextMostRecent
@@ -1206,7 +1209,7 @@ function constructor(server) {
           } else {
             break;
           }
-        } while (machineStatesNextMostRecent.status.code == 1);
+        } while (isRunning(machineStatesNextMostRecent.status.code));
         diff = Interval.fromDateTimes(
           DateTime.fromISO(machineStatesMostRecentTimestamp.toISOString()),
           DateTime.now()
@@ -1247,7 +1250,7 @@ function constructor(server) {
 
     const machineRunTimesArray = await Promise.all(
       activeMachineStates.map(async (machineState) => {
-        if (machineState.status.code == 1) {
+        if (isRunning(machineState.status.code)) {
           const serial = machineState.machine.serial;
           const session = await machineSession(serial);
           //const machineDuration = arr.reduce((duration, session) => duration + session.duration, 0);
@@ -1357,12 +1360,12 @@ function constructor(server) {
             delete machineState.status.softrolColor;
           }
           let fault = null;
-          if (machineState.status.code >= 2) {
+          if (isFault(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Red";
             }
             fault = machineState.status;
-          } else if (machineState.status.code == 1) {
+          } else if (isRunning(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Green";
             }
@@ -1404,12 +1407,12 @@ function constructor(server) {
             delete machineState.status.softrolColor;
           }
           let fault = null;
-          if (machineState.status.code >= 2) {
+          if (isFault(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Red";
             }
             fault = machineState.status;
-          } else if (machineState.status.code == 1) {
+          } else if (isRunning(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Green";
             }
@@ -1479,7 +1482,7 @@ function constructor(server) {
         do {
           lastSessionStart = machineStatesHistory.pop();
 
-          if (lastSessionStart.status.code == 1) {
+          if (isRunning(lastSessionStart.status.code)) {
             const lastSessionStartTSCheck = new Date(
               lastSessionStart.timestamps?.create
             );
@@ -1491,7 +1494,7 @@ function constructor(server) {
           }
         } while (
           machineStatesHistory.length &&
-          lastSessionStart.status.code != 1
+          !isRunning(lastSessionStart.status.code)
         ); //HERE, NEED TO CONTINUE UNITL END FOUND
 
         if (machineStatesHistory.length) {
@@ -1499,9 +1502,9 @@ function constructor(server) {
             lastSessionEnd = machineStatesHistory.pop();
           } while (
             machineStatesHistory.length &&
-            lastSessionEnd.status.code == 1
+            isRunning(lastSessionEnd.status.code)
           );
-          if (!lastSessionEnd || lastSessionEnd.status.code == 1) {
+          if (!lastSessionEnd || isRunning(lastSessionEnd.status.code)) {
             lastSessionEndTS = new Date();
           } else {
             lastSessionEndTS = new Date(lastSessionEnd.timestamps?.create);
@@ -1655,12 +1658,12 @@ function constructor(server) {
           delete machineState.status.softrolColor;
         }
         let fault = null;
-        if (machineState.status.code >= 2) {
+        if (isFault(machineState.status.code)) {
           if (machineState.status.color == null) {
             machineState.status.color = "Red";
           }
           fault = machineState.status;
-        } else if (machineState.status.code == 1) {
+        } else if (isRunning(machineState.status.code)) {
           if (machineState.status.color == null) {
             machineState.status.color = "Green";
           }

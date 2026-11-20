@@ -9,7 +9,10 @@ import {
     ElementRef,
     Renderer2,
     Inject,
-  } from '@angular/core';
+  inject,
+} from '@angular/core';
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
+import { ThemeService } from '../services/theme.service';
   import { CommonModule } from '@angular/common';
   import { HttpClientModule } from '@angular/common/http';
   import { FormsModule } from '@angular/forms';
@@ -42,6 +45,7 @@ import {
     styleUrls: ['./operator-machine-summary.component.scss'],
   })
   export class OperatorMachineSummaryComponent implements OnInit, OnChanges, OnDestroy {
+  private readonly theme = inject(ThemeService);
     @Input() operatorId: number | null = null;
     @Input() startTime = '';
     @Input() endTime = '';
@@ -102,7 +106,7 @@ import {
         if (this.liveMode) {
           const start = new Date();
           start.setHours(0, 0, 0, 0);
-          this.startTime = this.formatDateForInput(start);
+          this.startTime = toDateTimeLocalInput(start);
           this.endTime = this.polling.updateEndTimestampToNow();
   
           this.lastParams = { operatorId: this.operatorId ?? null, startTime: this.startTime, endTime: this.endTime };
@@ -274,24 +278,15 @@ import {
     }
   
     private observeTheme(): void {
-      const observer = new MutationObserver(() => this.detectTheme());
-      observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      this.theme.isDark$.pipe(takeUntil(this.destroy$)).subscribe(() => this.detectTheme());
     }
   
     private detectTheme(): void {
-      this.isDarkTheme = document.body.classList.contains('dark-theme');
+      this.isDarkTheme = this.theme.isDark;
       const el = this.elRef.nativeElement;
       this.renderer.setAttribute(el, 'data-theme', this.isDarkTheme ? 'dark' : 'light');
     }
   
-    private formatDateForInput(date: Date): string {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      const hh = String(date.getHours()).padStart(2, '0');
-      const mm = String(date.getMinutes()).padStart(2, '0');
-      return `${y}-${m}-${d}T${hh}:${mm}`;
-    }
   
     private formatDuration(totalSeconds: number): string {
       return formatDurationSeconds(totalSeconds);

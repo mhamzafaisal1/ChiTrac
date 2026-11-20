@@ -6,8 +6,7 @@ import {
   Renderer2,
   Input,
   SimpleChanges,
-  OnChanges
-} from '@angular/core';
+  OnChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -23,6 +22,9 @@ import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
 import { formatDurationSeconds } from '../shared/utils/duration-format';
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 @Component({
     selector: 'app-operator-fault-history',
     imports: [
@@ -39,6 +41,7 @@ import { formatDurationSeconds } from '../shared/utils/duration-format';
     styleUrls: ['./operator-fault-history.component.scss']
 })
 export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChanges {
+  private readonly theme = inject(ThemeService);
   @Input() startTime: string = '';
   @Input() endTime: string = '';
   @Input() operatorId: string = '';
@@ -68,7 +71,7 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
 
   lastFetchedData: any | null = null;
   lastParams: { startTime: string; endTime: string; operatorId: string } | null = null;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
   private fetchTrigger$ = new Subject<void>();
@@ -112,7 +115,7 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
         if (this.liveMode) {
           const start = new Date();
           start.setHours(0, 0, 0, 0);
-          this.startTime = this.formatDateForInput(start);
+          this.startTime = toDateTimeLocalInput(start);
           this.endTime = this.pollingService.updateEndTimestampToNow();
           
           // Set lastParams before fetching to prevent duplicate calls
@@ -169,19 +172,18 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
   }
 
   ngOnDestroy() {
-    if (this.observer) this.observer.disconnect();
+    if (this.themeSubscription) this.themeSubscription.unsubscribe();
     this.stopPolling();
     this.destroy$.next();
     this.destroy$.complete();
   }
 
   private observeTheme() {
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
   }
 
   private detectTheme() {
-    const isDark = document.body.classList.contains('dark-theme');
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
     const el = this.elRef.nativeElement;
   }
@@ -404,12 +406,4 @@ export class OperatorFaultHistoryComponent implements OnInit, OnDestroy, OnChang
     }, 0);
   }
 
-  private formatDateForInput(date: Date): string {
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  }
 }

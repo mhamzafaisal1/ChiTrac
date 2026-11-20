@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, ElementRef, Renderer2, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, ElementRef, Renderer2, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -6,6 +6,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 @Component({
     selector: 'app-operator-cycle-pie-chart',
     imports: [
@@ -20,6 +22,7 @@ import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../char
     styleUrl: './operator-cycle-pie-chart.component.scss'
 })
 export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChanges {
+  private readonly theme = inject(ThemeService);
   @Input() startTime: string = '';
   @Input() endTime: string = '';
   @Input() operatorId: number;
@@ -41,7 +44,7 @@ export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChan
   loading = false;
   error: string | null = null;
   isDarkTheme = false;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
 
   constructor(
     private renderer: Renderer2,
@@ -50,8 +53,7 @@ export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChan
 
   ngOnInit(): void {
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     // Standalone API-driven mode removed; component now relies on dashboardData when used
   }
@@ -63,11 +65,11 @@ export class OperatorCyclePieChartComponent implements OnInit, OnDestroy, OnChan
   }
 
   ngOnDestroy(): void {
-    this.observer?.disconnect();
+    this.themeSubscription?.unsubscribe();
   }
 
   private detectTheme(): void {
-    const isDark = document.body.classList.contains('dark-theme');
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
     const element = this.elRef.nativeElement;
   }

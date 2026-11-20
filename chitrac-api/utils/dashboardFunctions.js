@@ -29,7 +29,7 @@ const {
 } = require("./operatorFunctions");
 const config = require("../modules/config");
 
-const recordTimestamp = (record) => record?.timestamps?.create;
+const { recordTimestamp } = require("./records");
 const tickerTimestamp = (record) =>
   record?.timestamps?.update || record?.timestamps?.create;
 

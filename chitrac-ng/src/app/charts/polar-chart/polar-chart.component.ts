@@ -6,11 +6,12 @@ import {
   OnChanges,
   OnDestroy,
   SimpleChanges,
-  ViewChild
-} from '@angular/core';
+  ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as d3 from 'd3';
 
+import { ThemeService } from '../../services/theme.service';
+import { Subscription, skip } from 'rxjs';
 export interface PolarChartAxis {
   key: string;
   label: string;
@@ -45,6 +46,7 @@ interface PolarPoint {
   styleUrls: ['./polar-chart.component.scss']
 })
 export class PolarChartComponent implements AfterViewInit, OnChanges, OnDestroy {
+  private readonly theme = inject(ThemeService);
   @Input() data: PolarChartData | null = null;
   @Input() title: string = 'Polar Chart';
   @Input() levels: number = 5;
@@ -64,7 +66,7 @@ export class PolarChartComponent implements AfterViewInit, OnChanges, OnDestroy 
     '#14b8a6',
     '#eab308'
   ];
-  private mutationObserver?: MutationObserver;
+  private themeSubscription?: Subscription;
   private resizeObserver?: ResizeObserver;
   private tooltip?: d3.Selection<HTMLDivElement, unknown, null, undefined>;
 
@@ -73,11 +75,11 @@ export class PolarChartComponent implements AfterViewInit, OnChanges, OnDestroy 
     this.createTooltip();
     this.renderChart();
 
-    this.mutationObserver = new MutationObserver(() => {
+    // Re-render on theme changes only; the first render already happened above.
+    this.themeSubscription = this.theme.isDark$.pipe(skip(1)).subscribe(() => {
       this.detectTheme();
       this.renderChart();
     });
-    this.mutationObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.renderChart());
@@ -95,7 +97,7 @@ export class PolarChartComponent implements AfterViewInit, OnChanges, OnDestroy 
   }
 
   ngOnDestroy(): void {
-    this.mutationObserver?.disconnect();
+    this.themeSubscription?.unsubscribe();
     this.resizeObserver?.disconnect();
     this.tooltip?.remove();
   }

@@ -62,3 +62,9 @@ Thumbs.db
 *.mov
 *.wmv
 
+# Local config exports written by scripts/export-alpha-config-*.js and
+# scripts/normalize-alpha-config-timestamps.js; they can contain operator data.
+backups/
+
+# Runtime state dumps
+chitrac.state.json

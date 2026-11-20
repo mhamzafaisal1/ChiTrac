@@ -27,10 +27,6 @@ describe('Machine dashboard table refresh', () => {
   };
 
   beforeEach(async () => {
-    dashboard = new MachineDashboardComponent(
-      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
-      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any
-    );
     await TestBed.configureTestingModule({
       imports: [BaseTableComponent],
       providers: [provideNoopAnimations(), {
@@ -38,6 +34,10 @@ describe('Machine dashboard table refresh', () => {
         useValue: new PercentBreakpointService({ getSettings: (): null => null } as any)
       }]
     }).compileComponents();
+    dashboard = TestBed.runInInjectionContext(() => new MachineDashboardComponent(
+      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any
+    ));
     fixture = TestBed.createComponent(BaseTableComponent);
     fixture.nativeElement.style.width = '1200px';
     fixture.componentRef.setInput('enableToolbar', false);

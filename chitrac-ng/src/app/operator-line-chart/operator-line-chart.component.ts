@@ -8,8 +8,7 @@ import {
   SimpleChanges,
   OnChanges,
   ViewChild,
-  AfterViewInit
-} from '@angular/core';
+  AfterViewInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -18,6 +17,8 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 function toDateTimeLocalString(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -39,6 +40,7 @@ function toDateTimeLocalString(dateStr: string): string {
     styleUrls: ['./operator-line-chart.component.scss']
 })
 export class OperatorLineChartComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
+  private readonly theme = inject(ThemeService);
   @Input() startTime: string = '';
   @Input() endTime: string = '';
   @Input() operatorId: string = '';
@@ -66,7 +68,7 @@ export class OperatorLineChartComponent implements OnInit, AfterViewInit, OnDest
   error: string | null = null;
   isDarkTheme = false;
 
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   private resizeObserver!: ResizeObserver;
 
   constructor(
@@ -105,17 +107,16 @@ export class OperatorLineChartComponent implements OnInit, AfterViewInit, OnDest
   }
 
   ngOnDestroy(): void {
-    this.observer?.disconnect();
+    this.themeSubscription?.unsubscribe();
     this.resizeObserver?.disconnect();
   }
 
   private observeTheme(): void {
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
   }
 
   private detectTheme(): void {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
+    this.isDarkTheme = this.theme.isDark;
     const el = this.elRef.nativeElement;
   }
 

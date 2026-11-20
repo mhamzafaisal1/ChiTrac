@@ -1,3 +1,4 @@
+const { isRunning, isFault } = require("../../utils/machineStatus");
 /*** statuses API controller */
 /*** Contributors: RTI II */
 
@@ -80,7 +81,7 @@ function constructor(server) {
       let diff;
       if (
         machineStatesMostRecent.status &&
-        machineStatesMostRecent.status.code == 1
+        isRunning(machineStatesMostRecent.status.code)
       ) {
         let machineStatesNextMostRecent;
         do {
@@ -95,7 +96,7 @@ function constructor(server) {
             .toArray();
           if (machineStatesMostRecentFind.length) {
             machineStatesNextMostRecent = machineStatesMostRecentFind[0];
-            if (machineStatesNextMostRecent.status.code == 1) {
+            if (isRunning(machineStatesNextMostRecent.status.code)) {
               machineStatesMostRecent = Object.assign(
                 {},
                 machineStatesNextMostRecent
@@ -109,7 +110,7 @@ function constructor(server) {
           } else {
             break;
           }
-        } while (machineStatesNextMostRecent.status.code == 1);
+        } while (isRunning(machineStatesNextMostRecent.status.code));
         diff = Interval.fromDateTimes(
           DateTime.fromISO(machineStatesMostRecentTimestamp.toISOString()),
           DateTime.now()
@@ -150,7 +151,7 @@ function constructor(server) {
 
     const machineRunTimesArray = await Promise.all(
       activeMachineStates.map(async (machineState) => {
-        if (machineState.status.code == 1) {
+        if (isRunning(machineState.status.code)) {
           const serial = machineState.machine.serial;
           const session = await machineSession(serial);
           const machineDuration = session.duration;
@@ -258,12 +259,12 @@ function constructor(server) {
             delete machineState.status.softrolColor;
           }
           let fault = null;
-          if (machineState.status.code >= 2) {
+          if (isFault(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Red";
             }
             fault = machineState.status;
-          } else if (machineState.status.code == 1) {
+          } else if (isRunning(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Green";
             }
@@ -305,12 +306,12 @@ function constructor(server) {
             delete machineState.status.softrolColor;
           }
           let fault = null;
-          if (machineState.status.code >= 2) {
+          if (isFault(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Red";
             }
             fault = machineState.status;
-          } else if (machineState.status.code == 1) {
+          } else if (isRunning(machineState.status.code)) {
             if (machineState.status.color == null) {
               machineState.status.color = "Green";
             }

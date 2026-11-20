@@ -1,5 +1,5 @@
 import { FullScreenLoaderComponent } from '../components/full-screen-loader/full-screen-loader.component';
-import { Component, OnInit, OnDestroy, ElementRef, Renderer2, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ElementRef, Renderer2, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -49,6 +49,10 @@ import {
   SummaryCardVisibilityOption,
 } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
+import { placeholderRows } from '../shared/utils/placeholder-rows';
 interface SummaryCard {
   label: string;
   value: string | number;
@@ -84,8 +88,9 @@ interface OperatorDashboardLayoutSnapshot {
     styleUrl: './operator-analytics-dashboard.component.scss'
 })
 export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   isDarkTheme: boolean = false;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   startTime = '';
   endTime = '';
   operatorId?: number;
@@ -278,13 +283,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.detectTheme();
-    this.observer = new MutationObserver(() => {
-      this.detectTheme();
-    });
-    this.observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     // Subscribe to live mode changes
     this.dateTimeService.liveMode$.pipe(
@@ -295,7 +294,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
         // Reset startTime to today at 00:00
         const start = new Date();
         start.setHours(0, 0, 0, 0);
-        this.startTime = this.formatDateForInput(start);
+        this.startTime = toDateTimeLocalInput(start);
         this.dateTimeService.setStartTime(this.startTime);
 
         // Reset endTime to now
@@ -334,8 +333,8 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.layoutEditService.unregister(this.layoutContextId);
-    if (this.observer) {
-      this.observer.disconnect();
+    if (this.themeSubscription) {
+      this.themeSubscription.unsubscribe();
     }
     this.destroy$.next();
     this.destroy$.complete();
@@ -405,7 +404,7 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   detectTheme(): void {
-    const isDark = document.body.classList.contains('dark-theme');
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
   }
 
@@ -681,35 +680,20 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private subscribeToLayoutEditing(): void {
-    this.layoutEditService.context$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((context) => {
-        const nextEditing = context?.id === this.layoutContextId && context.editing;
-        if (nextEditing && !this.layoutEditing) {
-          this.captureLayoutSnapshot();
-        } else if (!nextEditing && this.layoutEditing) {
-          this.layoutSnapshot = null;
-        }
-        this.layoutEditing = nextEditing;
-      });
-
-    this.layoutEditService.lockRequested$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.confirmAndSaveLayout());
+    this.layoutEditService.bindSession({
+      id: this.layoutContextId,
+      destroyed: this.destroy$,
+      isEditing: () => this.layoutEditing,
+      setEditing: editing => this.layoutEditing = editing,
+      onEnter: () => {
+        this.captureLayoutSnapshot();
+      },
+      onExit: () => this.layoutSnapshot = null,
+      confirm: () => openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayoutPreferences(), this.destroy$)?.afterClosed(),
+      discard: () => this.revertLayoutChanges(),
+    });
   }
 
-  private confirmAndSaveLayout(): void {
-    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayoutPreferences(), this.destroy$);
-    if (!dialogRef) return;
-
-    dialogRef.afterClosed()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((result) => {
-        if (result === 'discard') {
-          this.revertLayoutChanges();
-        }
-      });
-  }
 
   private saveLayoutPreferences(): Observable<unknown> {
     this.summaryCardOrder = this.getSummaryCardOrder();
@@ -1463,14 +1447,6 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
     return Number.isFinite(numericPph) ? Math.round(numericPph) : 0;
   }
 
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 
   private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
     if (!this.shouldUseWebsocketDashboardData()) {
@@ -1517,109 +1493,23 @@ export class OperatorAnalyticsDashboardComponent implements OnInit, OnDestroy {
 
   private addDummyLoadingRow(): void {
     this.summaryCards = [];
-    // Add a dummy row with loading state
-    this.rows = [
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        'Operator Name': '',
-        'Operator ID': '',
-        'Current Machine': '',
-        'Current Machine Serial': '',
-        'Worked Time': '',
-        'Downtime': '',
-        'Paused Time': '',
-        'Fault Time': '',
-        'Total Count': '',
-        'Misfeed Count': '',
-        'PPH': '',
-        'Availability': '',
-        'Throughput': '',
-        'Efficiency': '',
-        'OEE': '',
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        'Operator Name': '',
-        'Operator ID': '',
-        'Current Machine': '',
-        'Current Machine Serial': '',
-        'Worked Time': '',
-        'Downtime': '',
-        'Paused Time': '',
-        'Fault Time': '',
-        'Total Count': '',
-        'Misfeed Count': '',
-        'PPH': '',
-        'Availability': '',
-        'Throughput': '',
-        'Efficiency': '',
-        'OEE': '',
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        'Operator Name': '',
-        'Operator ID': '',
-        'Current Machine': '',
-        'Current Machine Serial': '',
-        'Worked Time': '',
-        'Downtime': '',
-        'Paused Time': '',
-        'Fault Time': '',
-        'Total Count': '',
-        'Misfeed Count': '',
-        'PPH': '',
-        'Availability': '',
-        'Throughput': '',
-        'Efficiency': '',
-        'OEE': '',
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        'Operator Name': '',
-        'Operator ID': '',
-        'Current Machine': '',
-        'Current Machine Serial': '',
-        'Worked Time': '',
-        'Downtime': '',
-        'Paused Time': '',
-        'Fault Time': '',
-        'Total Count': '',
-        'Misfeed Count': '',
-        'PPH': '',
-        'Availability': '',
-        'Throughput': '',
-        'Efficiency': '',
-        'OEE': '',
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        'Operator Name': '',
-        'Operator ID': '',
-        'Current Machine': '',
-        'Current Machine Serial': '',
-        'Worked Time': '',
-        'Downtime': '',
-        'Paused Time': '',
-        'Fault Time': '',
-        'Total Count': '',
-        'Misfeed Count': '',
-        'PPH': '',
-        'Availability': '',
-        'Throughput': '',
-        'Efficiency': '',
-        'OEE': '',
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-    ];
+    this.rows = placeholderRows([
+      "Operator Name",
+      "Operator ID",
+      "Current Machine",
+      "Current Machine Serial",
+      "Worked Time",
+      "Downtime",
+      "Paused Time",
+      "Fault Time",
+      "Total Count",
+      "Misfeed Count",
+      "PPH",
+      "Availability",
+      "Throughput",
+      "Efficiency",
+      "OEE",
+    ]);
 
     // Set columns if not already set
     if (this.columns.length === 0) {

@@ -134,10 +134,10 @@ describe('Daily dashboard layout state', () => {
       saveDailyDashboardChartOrder: jasmine.createSpy('save').and.returnValue(of({})),
     };
     dialog = { open: jasmine.createSpy('open').and.returnValue({ afterClosed: () => closed }) };
-    dashboard = new DailyDashboardComponent(
+    dashboard = TestBed.runInInjectionContext(() => new DailyDashboardComponent(
       { ensureConnected() {}, status$: of('disconnected'), dashboardCache$: of({}) } as any,
       { getConfirmed: () => true } as any, {} as any, editor, settings, user, dialog, {} as any,
-    );
+    ));
     spyOn(dashboard as any, 'scheduleChartDimensionUpdate');
     dashboard.ngOnInit();
   });

@@ -1,3 +1,4 @@
+const { isRunning } = require("../../utils/machineStatus");
 /*** alpha API controller */
 /*** Contributors: RTI II */
 
@@ -81,7 +82,7 @@ function constructor(server) {
         if (machineSessionArray.length) {
             let session = machineSessionArray[0];
             const sessionID = session['_id'];
-            if (stateType == 'status' && state.status.code != 1) {
+            if (stateType == 'status' && !isRunning(state.status.code)) {
                 //Open session needs to close
                 const now = new Date();
                 const standard = 240;
@@ -168,7 +169,7 @@ function constructor(server) {
             if (operatorSessionArray.length) {
                 let session = operatorSessionArray[0];
                 const sessionID = session['_id'];
-                if (stateType == 'status' && state.status.code != 1) {
+                if (stateType == 'status' && !isRunning(state.status.code)) {
                     //Open session needs to close
                     const now = new Date();
                     const itemDefinition = getItemDefinition(item.id);

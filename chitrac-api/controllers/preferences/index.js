@@ -4,7 +4,7 @@ const { sanitizeSpfLayout, configuredProductionStations } = require('../../utils
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
-const { assertPermissionLevel } = require('../../modules/permissions');
+const { findPermittedUser } = require('../../modules/permissions');
 const systemPreferences = require('../../modules/systemPreferences');
 const systemPreferencesSchema = require('../../schemas/system-preferences');
 const timestampsSchema = require('../../schemas/timestampsSchema');
@@ -105,8 +105,7 @@ function constructor(server) {
         const tokenUserId = getTokenUserId(payload);
         if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 
-        const user = await userCollection.findOne({ _id: new ObjectId(tokenUserId) });
-        assertPermissionLevel(user, requiredLevel);
+        const user = await findPermittedUser(userCollection, tokenUserId, requiredLevel);
         req.tokenPayload = payload;
         req.authUser = user;
         req.authUserId = tokenUserId;

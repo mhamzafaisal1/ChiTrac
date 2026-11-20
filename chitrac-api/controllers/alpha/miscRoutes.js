@@ -43,7 +43,7 @@ const { loadActiveShifts, computeShiftElapsedMs } = require("../../utils/shiftEl
 
 const { getBookendedStatesAndTimeRange } = require("../../utils/machineFunctions");
 
-const recordTimestamp = (record) => record?.timestamps?.create;
+const { recordTimestamp } = require("../../utils/records");
 
 module.exports = function (server) {
   const router = express.Router();
@@ -2531,6 +2531,8 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
 
       // Step 3: Get hourly intervals
       const hourlyIntervals = getHourlyIntervals(paddedStart, paddedEnd);
+      // Availability is runtime over scheduled shift time, matching the production stats cache.
+      const activeShifts = await loadActiveShifts(db).catch(() => []);
 
       // Step 4: Get states and counts for the entire period
       const states = await fetchStatesForMachine(
@@ -2613,9 +2615,9 @@ router.get("/analytics/machine-hourly-states", async (req, res) => {
             };
           }
 
-          // Calculate OEE for this hour
-          const hourDuration = interval.end - interval.start;
-          const availability = (totalRuntime / hourDuration) * 100;
+          // Calculate OEE for this hour (shift-aware denominator)
+          const shiftElapsedMs = computeShiftElapsedMs(activeShifts, interval.start, interval.end);
+          const availability = shiftElapsedMs > 0 ? (totalRuntime / shiftElapsedMs) * 100 : 0;
 
           const avgEfficiency =
             Object.values(operatorMetrics).length > 0

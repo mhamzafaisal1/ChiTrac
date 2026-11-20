@@ -1,3 +1,4 @@
+const { isRunning, isFault } = require("./machineStatus");
 const { sessionMachineQuery } = require('./sessionIdentity');
 const {
     extractAllCyclesFromStates,
@@ -27,7 +28,7 @@ const {
   liveDowntimeMs,
 } = require("./availabilityLive");
 
-const recordTimestamp = (record) => record?.timestamps?.create;
+const { recordTimestamp, overlap } = require("./records");
 
 
 // ============================================================
@@ -1311,18 +1312,6 @@ function buildOperatorFaultHistoryOptimized(preprocessedData, start, end) {
 const safe = n => (typeof n === "number" && isFinite(n) ? n : 0);
 const toHours = ms => ms / 3_600_000;
 
-const overlap = (sStart, sEnd, wStart, wEnd) => {
-  if (!sStart) return { ovSec: 0, fullSec: 0, factor: 0 };
-  const ss = new Date(sStart);
-  const se = new Date(sEnd || wEnd);
-  const os = ss > wStart ? ss : wStart;
-  const oe = se < wEnd ? se : wEnd;
-  const ovSec = Math.max(0, (oe - os) / 1000);
-  const fullSec = Math.max(0, (se - ss) / 1000);
-  const factor = fullSec > 0 ? ovSec / fullSec : 0;
-  return { ovSec, fullSec, factor, ovStart: os, ovEnd: oe };
-};
-
 const hourlyWindows = (start, end) => {
   const s = DateTime.fromJSDate(new Date(start)).startOf("hour");
   const e = DateTime.fromJSDate(new Date(end)).endOf("hour");
@@ -2447,8 +2436,8 @@ function operatorTimelineStatusFromSession(session) {
     session.endState?.code;
   const code = Number(codeValue);
   if (Number.isFinite(code)) {
-    if (code === 1) return { key: "running", label: "Running", code };
-    if (code >= 2) return { key: "faulted", label: status.name || "Faulted", code };
+    if (isRunning(code)) return { key: "running", label: "Running", code };
+    if (isFault(code)) return { key: "faulted", label: status.name || "Faulted", code };
     return { key: "paused", label: status.name || "Paused", code };
   }
 

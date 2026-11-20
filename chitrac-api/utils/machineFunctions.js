@@ -1,3 +1,4 @@
+const { STATUS, isRunning, isPaused, isFault } = require("./machineStatus");
 const { sessionMachineQuery } = require('./sessionIdentity');
   const {
     parseAndValidateQueryParams,
@@ -32,7 +33,7 @@ const { sessionMachineQuery } = require('./sessionIdentity');
   const { loadActiveShifts, resolveShiftHourEnvelopeForDisplay } = require("./shiftElapsed");
   const { getLiveProductiveWindowMs, liveDowntimeMs } = require("./availabilityLive");
 
-  const recordTimestamp = (record) => record?.timestamps?.create;
+  const { recordTimestamp, overlap } = require("./records");
   const tickerTimestamp = (record) => record?.timestamps?.update || record?.timestamps?.create;
 
   function safe(n) {
@@ -41,18 +42,6 @@ const { sessionMachineQuery } = require('./sessionIdentity');
 
   function toHours(ms) {
     return ms / 3600000;
-  }
-
-  function overlap(sStart, sEnd, wStart, wEnd) {
-    if (!sStart) return { ovSec: 0, fullSec: 0, factor: 0, ovStart: wStart, ovEnd: wEnd };
-    const ss = new Date(sStart);
-    const se = new Date(sEnd || wEnd);
-    const os = ss > wStart ? ss : wStart;
-    const oe = se < wEnd ? se : wEnd;
-    const ovSec = Math.max(0, (oe - os) / 1000);
-    const fullSec = Math.max(0, (se - ss) / 1000);
-    const factor = fullSec > 0 ? ovSec / fullSec : 0;
-    return { ovSec, fullSec, factor, ovStart: os, ovEnd: oe };
   }
 
   function hourlyWindows(start, end) {
@@ -345,9 +334,9 @@ async function getActiveMachineSerials(db, start, end) {
 
       // Running cycles
       if (!mode || mode === 'running') {
-        if (code === 1 && !currentRunningStart) {
+        if (isRunning(code) && !currentRunningStart) {
           currentRunningStart = timestamp;
-        } else if (code !== 1 && currentRunningStart) {
+        } else if (!isRunning(code) && currentRunningStart) {
           const clampedStart = currentRunningStart < startTime ? startTime : currentRunningStart;
           const clampedEnd = timestamp > endTime ? endTime : timestamp;
           if (clampedStart < clampedEnd) {
@@ -363,9 +352,9 @@ async function getActiveMachineSerials(db, start, end) {
 
       // Paused cycles
       if (!mode || mode === 'paused') {
-        if (code === 0 && !currentPauseStart) {
+        if (isPaused(code) && !currentPauseStart) {
           currentPauseStart = timestamp;
-        } else if (code !== 0 && currentPauseStart) {
+        } else if (!isPaused(code) && currentPauseStart) {
           const clampedStart = currentPauseStart < startTime ? startTime : currentPauseStart;
           const clampedEnd = timestamp > endTime ? endTime : timestamp;
           if (clampedStart < clampedEnd) {
@@ -381,9 +370,9 @@ async function getActiveMachineSerials(db, start, end) {
 
       // Fault cycles
       if (!mode || mode === 'fault') {
-        if (code > 1 && !currentFaultStart) {
+        if (isFault(code) && !currentFaultStart) {
           currentFaultStart = timestamp;
-        } else if (code <= 1 && currentFaultStart) {
+        } else if (code <= STATUS.RUNNING && currentFaultStart) {
           const clampedStart = currentFaultStart < startTime ? startTime : currentFaultStart;
           const clampedEnd = timestamp > endTime ? endTime : timestamp;
           if (clampedStart < clampedEnd) {

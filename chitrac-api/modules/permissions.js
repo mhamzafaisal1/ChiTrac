@@ -1,3 +1,5 @@
+const { ObjectId } = require('mongodb');
+
 function getPermissionLevel(user) {
   const level = user?.permissions?.level;
   return typeof level === 'number' && Number.isFinite(level) ? level : null;
@@ -25,8 +27,20 @@ function assertPermissionLevel(user, requiredLevel) {
   return true;
 }
 
+/**
+ * Shared step of every requirePermissionLevel middleware: load the token's user
+ * and check the level. How the token is read and verified stays with each
+ * controller, because those rules differ (permanent tokens, revocation checks).
+ */
+async function findPermittedUser(userCollection, userId, requiredLevel) {
+  const user = await userCollection.findOne({ _id: new ObjectId(userId) });
+  assertPermissionLevel(user, requiredLevel);
+  return user;
+}
+
 module.exports = {
   getPermissionLevel,
   hasPermissionLevel,
-  assertPermissionLevel
+  assertPermissionLevel,
+  findPermittedUser
 };

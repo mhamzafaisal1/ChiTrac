@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -18,6 +18,8 @@ import { PercentBreakpointService } from '../../services/percent-breakpoint.serv
 import { displayInteger } from '../../shared/utils/display-number';
 import { formatDurationParts, parseDurationDisplay } from '../../shared/utils/duration-format';
 
+import { ThemeService } from '../../services/theme.service';
+import { Subscription } from 'rxjs';
 interface ShiftMachineReportGroup {
   key: string;
   summary: any;
@@ -44,6 +46,7 @@ interface ShiftMachineReportGroup {
   styleUrls: ['./shift-machine-report.component.scss'],
 })
 export class ShiftMachineReportComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   startDate: Date | null = null;
   endDate: Date | null = null;
   shifts: ShiftListItem[] = [];
@@ -69,7 +72,7 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
   sortColumn: string | null = null;
   sortDirection: 'asc' | 'desc' = 'asc';
   shiftsLoadError: string | null = null;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
 
   get displayedRows(): any[] {
     return this.rows;
@@ -89,10 +92,7 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
     this.endDate = end;
 
     this.detectTheme();
-    this.observer = new MutationObserver(() => {
-      this.detectTheme();
-    });
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     this.shiftService.getActiveShifts().subscribe({
       next: (res) => {
@@ -108,13 +108,13 @@ export class ShiftMachineReportComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
-    if (this.observer) {
-      this.observer.disconnect();
+    if (this.themeSubscription) {
+      this.themeSubscription.unsubscribe();
     }
   }
 
   detectTheme() {
-    const isDark = document.body.classList.contains('dark-theme');
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
   }
 

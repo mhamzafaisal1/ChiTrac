@@ -1,3 +1,4 @@
+const { isRunning } = require("../../utils/machineStatus");
 const { createVendorAnalytics } = require("../shared/vendorAnalytics");
 const express = require("express");
 const { sessionMachineQuery, sessionOperatorQuery } = require("../../utils/sessionIdentity");
@@ -206,7 +207,7 @@ function constructor(server) {
         };
 
       const stateCode = options.classifyRuntime ? sessionStateCode(session) : null;
-      if (stateCode === null || stateCode === 1) {
+      if (stateCode === null || isRunning(stateCode)) {
         bucket.runtimeMs += runtimeMs;
         bucket.workedTimeMs += workedTimeMs;
       }

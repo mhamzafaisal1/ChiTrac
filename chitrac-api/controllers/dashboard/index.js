@@ -1,3 +1,4 @@
+const { isRunning } = require("../../utils/machineStatus");
 // Dashboard routes. The following 6 routes are for daily-dashboard (6 charts):
 //   GET /analytics/daily/machine-status-cache
 //   GET /analytics/daily/machine-oee
@@ -787,7 +788,7 @@ module.exports = function (server) {
       const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const todayDateStr = now.toFormat("yyyy-MM-dd");
 
-      if (statusCode !== 1) {
+      if (!isRunning(statusCode)) {
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -1017,7 +1018,7 @@ module.exports = function (server) {
       const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
       const todayDateStr = now.toFormat("yyyy-MM-dd");
 
-      if (statusCode !== 1) {
+      if (!isRunning(statusCode)) {
         const performanceData = await Promise.all(
           onMachineOperators.map(async (op) => {
             const batchItem = await resolveBatchItemFromSessions(db, serialNum, op.id);
@@ -1243,7 +1244,7 @@ module.exports = function (server) {
       const statusCode = ticker.status?.id ?? ticker.status?.code ?? 0;
 
       if (!hasOperator) {
-        if (statusCode !== 1) {
+        if (!isRunning(statusCode)) {
           return res.json({
             status: statusCode,
             fault: ticker.status?.name ?? "Unknown",
@@ -1307,7 +1308,7 @@ module.exports = function (server) {
         });
       }
 
-      if (statusCode !== 1) {
+      if (!isRunning(statusCode)) {
         const batchItem = await resolveBatchItemFromSessions(db, serialNum, operator.id);
         const operatorName = formatHumanName(operator.name);
         return res.json({

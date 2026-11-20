@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { of, Subject, Subscription } from 'rxjs';
@@ -11,6 +11,7 @@ import { FaultService } from '../services/fault.service';
 import { PollingService } from '../services/polling-service.service';
 import { DashboardCacheScope, WebsocketService } from '../services/websocket.service';
 
+import { ThemeService } from '../services/theme.service';
 interface ParetoRow {
   fault: string;
   machine: string;
@@ -29,6 +30,7 @@ interface ParetoRow {
   styleUrl: './downtime-pareto.component.scss',
 })
 export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
+  private readonly theme = inject(ThemeService);
   @Input() startTime = '';
   @Input() endTime = '';
   @Input() serial: string | number | null = null;
@@ -44,7 +46,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   rows: ParetoRow[] = [];
   totalDuration = 0;
   totalCount = 0;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   private destroy$ = new Subject<void>();
   private pollingSubscription: Subscription | null = null;
   private cacheSubscription: Subscription | null = null;
@@ -61,8 +63,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
 
   ngOnInit(): void {
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     if (this.isDashboardMode()) {
       this.loadModalData();
@@ -91,7 +92,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.observer?.disconnect();
+    this.themeSubscription?.unsubscribe();
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
@@ -261,7 +262,7 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private detectTheme(): void {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
+    this.isDarkTheme = this.theme.isDark;
   }
 
   private subscribeToTimeframePicker(): void {

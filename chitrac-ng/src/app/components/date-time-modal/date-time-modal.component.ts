@@ -303,13 +303,13 @@ export class DateTimeModalComponent implements OnInit, OnDestroy {
     if (this.selectedOption === 'today' && !this.selectedShiftId) this.endDateTime = new Date();
     if (!Number.isFinite(this.startDateTime?.getTime()) ||
         !Number.isFinite(this.endDateTime?.getTime()) || this.endDateTime <= this.startDateTime) return;
-    this.dateTimeService.setStartTime(this.startDateTime.toISOString());
-    this.dateTimeService.setEndTime(this.endDateTime.toISOString());
-    this.dateTimeService.setLiveMode(this.selectedOption === 'today');
-    this.dateTimeService.setShiftId(this.selectedShiftId || '');
-    this.dateTimeService.setTimeframe(this.selectedTimeframe || '');
-    this.dateTimeService.setConfirmed(true);
-    this.dateTimeService.triggerConfirm();
+    this.dateTimeService.applySelection({
+      start: this.startDateTime.toISOString(),
+      end: this.endDateTime.toISOString(),
+      live: this.selectedOption === 'today',
+      shiftId: this.selectedShiftId || '',
+      timeframe: this.selectedTimeframe || '',
+    });
     this.closeModal.emit();
   }
 

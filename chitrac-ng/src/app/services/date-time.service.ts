@@ -2,6 +2,7 @@ import { Injectable } from "@angular/core";
 import { BehaviorSubject, Subject } from "rxjs";
 import { ShiftListItem } from "./shift.service";
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
 export interface DashboardTimeframeSelection {
   start: Date;
   end: Date;
@@ -65,6 +66,21 @@ export class DateTimeService {
 
   triggerConfirm() {
     this.confirmTriggerSubject.next();
+  }
+
+  /**
+   * Applies a confirmed timeframe as one step. Range, shift and timeframe are all
+   * set before live mode changes or the confirm fires, so subscribers that react
+   * to either never read a half-updated selection (e.g. the previous shift).
+   */
+  applySelection(selection: { start: string; end: string; live: boolean; shiftId?: string | null; timeframe?: string | null }): void {
+    this.setStartTime(selection.start);
+    this.setEndTime(selection.end);
+    this.setShiftId(selection.shiftId);
+    this.setTimeframe(selection.timeframe || "");
+    this.setConfirmed(true);
+    this.setLiveMode(selection.live);
+    this.triggerConfirm();
   }
 
   private liveModeSubject = new BehaviorSubject<boolean>(true); // live mode ON by default
@@ -161,12 +177,7 @@ export class DateTimeService {
   }
 
   formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    const h = String(date.getHours()).padStart(2, "0");
-    const min = String(date.getMinutes()).padStart(2, "0");
-    return `${y}-${m}-${d}T${h}:${min}`;
+    return toDateTimeLocalInput(date);
   }
 
   private currentSelection(now: Date): DashboardTimeframeSelection {

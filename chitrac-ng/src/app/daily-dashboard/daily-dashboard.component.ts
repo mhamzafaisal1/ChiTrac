@@ -1,7 +1,7 @@
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { A11yModule } from '@angular/cdk/a11y';
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -32,6 +32,7 @@ import { DailyDashboardGridLayout, SettingsService } from '../services/settings.
 import { DashboardCacheScope, WebsocketConnectionStatus, WebsocketService } from '../services/websocket.service';
 import { UserService } from '../user.service';
 
+import { ThemeService } from '../services/theme.service';
 interface DailyChartTile {
   id: string;
   title: string;
@@ -68,6 +69,7 @@ interface DailyDashboardLayoutSnapshot {
   styleUrl: './daily-dashboard.component.scss'
 })
 export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit {
+  private readonly theme = inject(ThemeService);
   @ViewChild('chartsGrid') chartsGrid!: ElementRef<HTMLElement>;
   @ViewChild(DailyCountByItemChartComponent) itemChart!: DailyCountByItemChartComponent;
 
@@ -134,6 +136,8 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
 
   ngOnInit(): void {
     this.detectTheme();
+    // Follow light/dark switches while the page is open (previously read once).
+    this.theme.isDark$.pipe(takeUntil(this.destroy$)).subscribe(() => this.detectTheme());
     this.applyDefaultChartVisibility();
     this.layoutEditService.register(this.layoutContextId, 'Daily Dashboard');
     this.subscribeToLayoutEditing();
@@ -307,25 +311,22 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private subscribeToLayoutEditing(): void {
-    this.layoutEditService.context$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((context) => {
-        const nextEditing = context?.id === this.layoutContextId && context.editing;
-        if (nextEditing && !this.layoutEditing) {
-          this.layoutSnapshot = {
+    this.layoutEditService.bindSession({
+      id: this.layoutContextId,
+      destroyed: this.destroy$,
+      isEditing: () => this.layoutEditing,
+      setEditing: editing => this.layoutEditing = editing,
+      onEnter: () => {
+        this.layoutSnapshot = {
             gridLayout: this.gridLayout,
             chartOrder: [...this.getChartOrder()],
             chartVisibility: { ...this.chartVisibility },
           };
-        } else if (!nextEditing && this.layoutEditing) {
-          this.layoutSnapshot = null;
-        }
-        this.layoutEditing = nextEditing;
-      });
-
-    this.layoutEditService.lockRequested$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.confirmAndSaveLayout());
+      },
+      onExit: () => this.layoutSnapshot = null,
+      confirm: () => openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayout(), this.destroy$)?.afterClosed(),
+      discard: () => this.revertLayoutChanges(),
+    });
   }
 
   private subscribeToUserPreferences(): void {
@@ -361,18 +362,6 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
     this.scheduleChartDimensionUpdate();
   }
 
-  private confirmAndSaveLayout(): void {
-    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayout(), this.destroy$);
-    if (!dialogRef) return;
-
-    dialogRef.afterClosed()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((result) => {
-        if (result === 'discard') {
-          this.revertLayoutChanges();
-        }
-      });
-  }
 
   private saveLayout(): Observable<unknown> {
     const chartOrder = this.getChartOrder();
@@ -489,7 +478,7 @@ export class DailyDashboardComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private detectTheme(): void {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
+    this.isDarkTheme = this.theme.isDark;
   }
 
   private setupChartResizeObserver(): void {

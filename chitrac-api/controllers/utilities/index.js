@@ -1,3 +1,4 @@
+const { isRunning, isPaused, isFault } = require("../../utils/machineStatus");
 /*** Utilites API controller */
 
 /** MODULE REQUIRES */
@@ -22,7 +23,7 @@ const {
 } = require("../../utils/configExport");
 const { REBOOT_DELAY_SECONDS, createLinuxRebootScheduler } = require("../../utils/rebootScheduler");
 
-const recordTimestamp = (record) => record?.timestamps?.create;
+const { recordTimestamp, overlap } = require("../../utils/records");
 
 let usbPackage = null;
 
@@ -595,16 +596,6 @@ function constructor(server) {
   /**
    * Helper function to calculate overlap factor between session and query window
    */
-  function overlap(sStart, sEnd, wStart, wEnd) {
-    const ss = new Date(sStart);
-    const se = new Date(sEnd || wEnd);
-    const os = ss > wStart ? ss : wStart;
-    const oe = se < wEnd ? se : wEnd;
-    const ovSec = Math.max(0, (oe - os) / 1000);
-    const fullSec = Math.max(0, (se - ss) / 1000);
-    const f = fullSec > 0 ? ovSec / fullSec : 0;
-    return { ovSec, fullSec, factor: f };
-  }
 
   /**
    * Safe number extraction
@@ -1310,7 +1301,7 @@ function constructor(server) {
           const statusCode = state.status?.code;
 
           // Check if this is a Running state (code 1)
-          if (statusCode === 1) {
+          if (isRunning(statusCode)) {
             // Start new machine session if not already in one
             if (!currentMachineSession) {
               // Get unique items from program.items
@@ -1430,7 +1421,7 @@ function constructor(server) {
             }
           } 
           // Check if this is a Fault state (code >= 2)
-          else if (statusCode >= 2) {
+          else if (isFault(statusCode)) {
             // End machine session if one is active
             if (currentMachineSession) {
               await endMachineSession(currentMachineSession, state);
@@ -1496,7 +1487,7 @@ function constructor(server) {
             }
           }
           // Timeout state (code 0)
-          else if (statusCode === 0) {
+          else if (isPaused(statusCode)) {
             // End machine session if one is active
             if (currentMachineSession) {
               await endMachineSession(currentMachineSession, state);
@@ -1867,7 +1858,7 @@ function constructor(server) {
             const state = states[i];
             const statusCode = state.status?.code;
 
-            if (statusCode === 1) {
+            if (isRunning(statusCode)) {
               if (!currentMachineSession) {
                 const itemsInProgram = extractItemsArray(state.program?.items);
                 const uniqueItemIds = [...new Set(itemsInProgram.map(it => it.id).filter(id => id && id > 0))];
@@ -1973,7 +1964,7 @@ function constructor(server) {
                 currentFaultSession = null;
               }
             } 
-            else if (statusCode >= 2) {
+            else if (isFault(statusCode)) {
               if (currentMachineSession) {
                 await endMachineSession(currentMachineSession, state);
                 backfilledSessions.machineSessions.push(currentMachineSession);
@@ -2032,7 +2023,7 @@ function constructor(server) {
                 currentFaultSession.states.push(state);
               }
             }
-            else if (statusCode === 0) {
+            else if (isPaused(statusCode)) {
               if (currentMachineSession) {
                 await endMachineSession(currentMachineSession, state);
                 backfilledSessions.machineSessions.push(currentMachineSession);
