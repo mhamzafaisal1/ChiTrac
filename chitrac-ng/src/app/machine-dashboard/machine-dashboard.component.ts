@@ -6,7 +6,8 @@ import {
   OnDestroy,
   ElementRef,
   Renderer2,
-} from "@angular/core";
+  inject,
+} from '@angular/core';
 import { CommonModule } from "@angular/common";
 import { HttpClientModule } from "@angular/common/http";
 import { FormsModule } from "@angular/forms";
@@ -54,6 +55,10 @@ import {
   SummaryCardVisibilityOption,
 } from "../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component";
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
+import { placeholderRows } from '../shared/utils/placeholder-rows';
 interface SummaryCard {
   isTimeRange?: boolean;
   label: string;
@@ -120,6 +125,7 @@ interface MachineDashboardLayoutSnapshot {
   styleUrls: ["./machine-dashboard.component.scss"],
 })
 export class MachineDashboardComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   startTime: string = "";
   endTime: string = "";
   machineData: any[] = [];
@@ -214,7 +220,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   tableColumnOrder: string[] = [];
   summaryCardVisibility: Record<string, boolean> = {};
 
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
   private websocketStatus: WebsocketConnectionStatus = "disconnected";
@@ -375,11 +381,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     // Subscribe to live mode changes
     this.dateTimeService.liveMode$
@@ -390,7 +392,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
         if (this.liveMode) {
           const start = new Date();
           start.setHours(0, 0, 0, 0);
-          this.startTime = this.formatDateForInput(start);
+          this.startTime = toDateTimeLocalInput(start);
           this.endTime = this.pollingService.updateEndTimestampToNow();
           this.dateTimeService.setShiftId("");
 
@@ -490,7 +492,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.layoutEditService.unregister(this.layoutContextId);
-    if (this.observer) this.observer.disconnect();
+    if (this.themeSubscription) this.themeSubscription.unsubscribe();
     this.stopPolling();
     this.destroy$.next();
     this.destroy$.complete();
@@ -498,7 +500,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   detectTheme(): void {
-    const isDark = document.body.classList.contains("dark-theme");
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
   }
 
@@ -510,31 +512,10 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
             this.endTime = this.pollingService.updateEndTimestampToNow();
             const shiftId = this.dateTimeService.getShiftId();
 
-            return forkJoin({
-              data: this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId),
-              projection: this.machineService
-                .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
-                .pipe(catchError(() => of(null))),
-              allDayData: shiftId
-                ? this.machineService.getMachinesSummary(this.startTime, this.endTime)
-                  .pipe(catchError(() => of(null)))
-                : of(null),
-              allDayProjection: shiftId
-                ? this.machineService.getShiftProjectionWindow(this.getProjectionDate())
-                  .pipe(catchError(() => of(null)))
-                : of(null),
-              currentShiftProjection: shiftId
-                ? of(null)
-                : this.isCurrentDayView()
-                  ? this.getCurrentShiftProjectionRequest()
-                  : of(null),
-            }).pipe(
-                tap(({ data, projection, allDayData, allDayProjection, currentShiftProjection }: any) => {
-                  this.shiftProjectionWindow = projection;
-                  this.setAllDayProjectionData(shiftId ? allDayData : data, shiftId ? allDayProjection : projection);
-                  if (!shiftId) {
-                    this.setCurrentShiftProjectionData(currentShiftProjection);
-                  }
+            return this.loadDashboardBundle(shiftId, (shift) =>
+              this.machineService.getMachinesSummary(this.startTime, this.endTime, shift)
+            ).pipe(
+                tap(({ data }) => {
                   const responses = Array.isArray(data) ? data : [data];
                   this.machineData = responses;
                   this.updateSummaryCards(responses, this.websocketService.getDashboardCacheSnapshot());
@@ -616,32 +597,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     const shiftId = this.dateTimeService.getShiftId();
 
     if (timeframe) {
-      forkJoin({
-        data: this.machineService.getMachineSummaryWithTimeframe(timeframe, shiftId),
-        projection: this.machineService
-          .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
-          .pipe(catchError(() => of(null))),
-        allDayData: shiftId
-          ? this.machineService.getMachineSummaryWithTimeframe(timeframe)
-            .pipe(catchError(() => of(null)))
-          : of(null),
-        allDayProjection: shiftId
-          ? this.machineService.getShiftProjectionWindow(this.getProjectionDate())
-            .pipe(catchError(() => of(null)))
-          : of(null),
-        currentShiftProjection: shiftId
-          ? of(null)
-          : this.isCurrentDayView()
-            ? this.getCurrentShiftProjectionRequest()
-            : of(null),
-      })
+      this.loadDashboardBundle(shiftId, (shift) => this.machineService.getMachineSummaryWithTimeframe(timeframe, shift))
         .subscribe({
-          next: ({ data, projection, allDayData, allDayProjection, currentShiftProjection }: any) => {
-            this.shiftProjectionWindow = projection;
-            this.setAllDayProjectionData(shiftId ? allDayData : data, shiftId ? allDayProjection : projection);
-            if (!shiftId) {
-              this.setCurrentShiftProjectionData(currentShiftProjection);
-            }
+          next: ({ data }) => {
             this.updateDashboardData(data);
             this.isLoading = false;
           },
@@ -660,32 +618,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    forkJoin({
-      data: this.machineService.getMachinesSummary(this.startTime, this.endTime, shiftId),
-      projection: this.machineService
-        .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
-        .pipe(catchError(() => of(null))),
-      allDayData: shiftId
-        ? this.machineService.getMachinesSummary(this.startTime, this.endTime)
-          .pipe(catchError(() => of(null)))
-        : of(null),
-      allDayProjection: shiftId
-        ? this.machineService.getShiftProjectionWindow(this.getProjectionDate())
-          .pipe(catchError(() => of(null)))
-        : of(null),
-      currentShiftProjection: shiftId
-        ? of(null)
-        : this.isCurrentDayView()
-          ? this.getCurrentShiftProjectionRequest()
-          : of(null),
-    })
+    this.loadDashboardBundle(shiftId, (shift) => this.machineService.getMachinesSummary(this.startTime, this.endTime, shift))
       .subscribe({
-        next: ({ data, projection, allDayData, allDayProjection, currentShiftProjection }: any) => {
-          this.shiftProjectionWindow = projection;
-          this.setAllDayProjectionData(shiftId ? allDayData : data, shiftId ? allDayProjection : projection);
-          if (!shiftId) {
-            this.setCurrentShiftProjectionData(currentShiftProjection);
-          }
+        next: ({ data }) => {
           this.updateDashboardData(data);
           this.isLoading = false;
         },
@@ -695,6 +630,36 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           this.isLoading = false;
         },
       });
+  }
+
+  /**
+   * Machine summary plus the shift projections the summary cards use. With a shift
+   * selected, the all-day summary and projection are loaded too for the comparison
+   * cards. Projection failures are non-fatal; a failed summary request errors the bundle.
+   */
+  private loadDashboardBundle(
+    shiftId: string,
+    fetchSummary: (shiftId?: string) => Observable<any>
+  ): Observable<{ data: any }> {
+    return forkJoin({
+      data: fetchSummary(shiftId),
+      projection: this.machineService
+        .getShiftProjectionWindow(this.getProjectionDate(), shiftId)
+        .pipe(catchError(() => of(null))),
+      allDayData: shiftId ? fetchSummary().pipe(catchError(() => of(null))) : of(null),
+      allDayProjection: shiftId
+        ? this.machineService.getShiftProjectionWindow(this.getProjectionDate()).pipe(catchError(() => of(null)))
+        : of(null),
+      currentShiftProjection: shiftId
+        ? of(null)
+        : this.isCurrentDayView() ? this.getCurrentShiftProjectionRequest() : of(null),
+    }).pipe(
+      tap(({ data, projection, allDayData, allDayProjection, currentShiftProjection }: any) => {
+        this.shiftProjectionWindow = projection;
+        this.setAllDayProjectionData(shiftId ? allDayData : data, shiftId ? allDayProjection : projection);
+        if (!shiftId) this.setCurrentShiftProjectionData(currentShiftProjection);
+      })
+    );
   }
 
   private subscribeToWebsocketDashboardData(): void {
@@ -1312,35 +1277,20 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   }
 
   private subscribeToLayoutEditing(): void {
-    this.layoutEditService.context$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((context) => {
-        const nextEditing = context?.id === this.layoutContextId && context.editing;
-        if (nextEditing && !this.layoutEditing) {
-          this.captureLayoutSnapshot();
-        } else if (!nextEditing && this.layoutEditing) {
-          this.layoutSnapshot = null;
-        }
-        this.layoutEditing = nextEditing;
-      });
-
-    this.layoutEditService.lockRequested$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.confirmAndSaveLayout());
+    this.layoutEditService.bindSession({
+      id: this.layoutContextId,
+      destroyed: this.destroy$,
+      isEditing: () => this.layoutEditing,
+      setEditing: editing => this.layoutEditing = editing,
+      onEnter: () => {
+        this.captureLayoutSnapshot();
+      },
+      onExit: () => this.layoutSnapshot = null,
+      confirm: () => openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayoutPreferences(), this.destroy$)?.afterClosed(),
+      discard: () => this.revertLayoutChanges(),
+    });
   }
 
-  private confirmAndSaveLayout(): void {
-    const dialogRef = openLayoutSaveConfirmDialog(this.dialog, () => this.saveLayoutPreferences(), this.destroy$);
-    if (!dialogRef) return;
-
-    dialogRef.afterClosed()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((result) => {
-        if (result === "discard") {
-          this.revertLayoutChanges();
-        }
-      });
-  }
 
   private saveLayoutPreferences(): Observable<unknown> {
     this.summaryCardOrder = this.getSummaryCardOrder();
@@ -2240,14 +2190,6 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     };
   }
 
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    const h = String(date.getHours()).padStart(2, "0");
-    const min = String(date.getMinutes()).padStart(2, "0");
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 
   private tryApplyWebsocketDashboardData(cache: DashboardCacheState | null): boolean {
     if (!this.shouldUseWebsocketDashboardData()) {
@@ -2337,104 +2279,21 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
 
   private addDummyLoadingRow(): void {
     this.summaryCards = [];
-    // Add a dummy row with loading state
-    this.rows = [
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        //Status: "",
-        "Machine Name": "",
-        "Serial Number": "",
-        Runtime: "",
-        Downtime: "",
-        "Paused Time": "",
-        "Fault Time": "",
-        "Total Count": "",
-        "Misfeed Count": "",
-        PPH: "",
-        Availability: "",
-        Throughput: "",
-        Efficiency: "",
-        OEE: "",
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        //Status: "",
-        "Machine Name": "",
-        "Serial Number": "",
-        Runtime: "",
-        Downtime: "",
-        "Paused Time": "",
-        "Fault Time": "",
-        "Total Count": "",
-        "Misfeed Count": "",
-        PPH: "",
-        Availability: "",
-        Throughput: "",
-        Efficiency: "",
-        OEE: "",
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        //Status: "",
-        "Machine Name": "",
-        "Serial Number": "",
-        Runtime: "",
-        Downtime: "",
-        "Paused Time": "",
-        "Fault Time": "",
-        "Total Count": "",
-        "Misfeed Count": "",
-        PPH: "",
-        Availability: "",
-        Throughput: "",
-        Efficiency: "",
-        OEE: "",
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        //Status: "",
-        "Machine Name": "",
-        "Serial Number": "",
-        Runtime: "",
-        Downtime: "",
-        "Paused Time": "",
-        "Fault Time": "",
-        "Total Count": "",
-        "Misfeed Count": "",
-        PPH: "",
-        Availability: "",
-        Throughput: "",
-        Efficiency: "",
-        OEE: "",
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-      {
-        Status: '<div class="loading-spinner dummy-row">⏳</div>',
-        //Status: "",
-        "Machine Name": "",
-        "Serial Number": "",
-        Runtime: "",
-        Downtime: "",
-        "Paused Time": "",
-        "Fault Time": "",
-        "Total Count": "",
-        "Misfeed Count": "",
-        PPH: "",
-        Availability: "",
-        Throughput: "",
-        Efficiency: "",
-        OEE: "",
-        isDummy: true, // Flag to identify this as a dummy row
-        cssClass: "dummy-row", // CSS class for styling
-      },
-    ];
+    this.rows = placeholderRows([
+      "Machine Name",
+      "Serial Number",
+      "Runtime",
+      "Downtime",
+      "Paused Time",
+      "Fault Time",
+      "Total Count",
+      "Misfeed Count",
+      "PPH",
+      "Availability",
+      "Throughput",
+      "Efficiency",
+      "OEE",
+    ]);
 
     // Set columns if not already set
     if (this.columns.length === 0) {

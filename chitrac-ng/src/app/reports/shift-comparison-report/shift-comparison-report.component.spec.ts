@@ -19,7 +19,7 @@ describe('Shift comparison report data', () => {
     service = jasmine.createSpyObj('DailyDashboardService', ['getMachineItemSessionsSummary']);
     service.getMachineItemSessionsSummary.and.callFake((_start: string, _end: string, _serial: unknown, shiftId: string) =>
       of(response(shiftId, shiftId === 'morning' ? 100 : 200)));
-    component = new ShiftComparisonReportComponent(service, {} as any);
+    component = TestBed.runInInjectionContext(() => new ShiftComparisonReportComponent(service, {} as any));
     component.selectedDate = new Date(2026, 9, 15);
     component.firstShiftId = 'morning';
     component.secondShiftId = 'afternoon';
@@ -73,6 +73,7 @@ describe('Shift comparison report data', () => {
   });
 
   it('keeps rendered grid callbacks and summary data stable across change detection', fakeAsync(() => {
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [ShiftComparisonReportComponent],
       providers: [provideNoopAnimations(), { provide: DailyDashboardService, useValue: service },

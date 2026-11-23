@@ -1,3 +1,4 @@
+const { isRunning } = require("./machineStatus");
 /**
  * Functions for session data (running, paused, fault) not specific to dashboards or reports.
 
@@ -550,7 +551,7 @@ async function buildMachineSessionAnalytics(db, machineSerial, paddedStart, padd
   let currentSession = null;
 
   for (const state of completeStates) {
-    if (state.status?.code === 1) { // Running state
+    if (isRunning(state.status?.code)) { // Running state
       if (!currentSession) {
         currentSession = { start: state, counts: [] };
       }

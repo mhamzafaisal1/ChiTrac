@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { forkJoin, Subject, takeUntil } from 'rxjs';
@@ -7,6 +7,9 @@ import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } fro
 import { DailyDashboardService } from '../services/daily-dashboard.service';
 import { getStatusDot } from '../../utils/status-utils';
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 interface HandoffMetric {
   label: string;
   value: string | number;
@@ -21,6 +24,7 @@ interface HandoffMetric {
   styleUrl: './shift-handoff.component.scss',
 })
 export class ShiftHandoffComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   startTime = '';
   endTime = '';
   isLoading = false;
@@ -31,7 +35,7 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
   itemRows: any[] = [];
   faultRows: any[] = [];
   loadError = '';
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   selectedShiftId: string | null = null;
   timeframeMode: TimeframePickerMode = 'today';
   private destroy$ = new Subject<void>();
@@ -42,16 +46,15 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
     const end = new Date();
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(end);
+    this.startTime = toDateTimeLocalInput(start);
+    this.endTime = toDateTimeLocalInput(end);
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
     this.fetchData();
   }
 
   ngOnDestroy(): void {
-    this.observer?.disconnect();
+    this.themeSubscription?.unsubscribe();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -117,8 +120,8 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
   }
 
   applyTimeframe(selection: TimeframeSelection): void {
-    this.startTime = this.formatDateForInput(selection.start);
-    this.endTime = this.formatDateForInput(selection.end);
+    this.startTime = toDateTimeLocalInput(selection.start);
+    this.endTime = toDateTimeLocalInput(selection.end);
     this.selectedShiftId = selection.shiftId;
     this.timeframeMode = selection.mode || 'custom';
     this.fetchData();
@@ -149,17 +152,9 @@ export class ShiftHandoffComponent implements OnInit, OnDestroy {
   }
 
   private detectTheme(): void {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
+    this.isDarkTheme = this.theme.isDark;
   }
 
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 
   machineOee(row: any): string {
     return `${this.machineOeeValue(row)}%`;

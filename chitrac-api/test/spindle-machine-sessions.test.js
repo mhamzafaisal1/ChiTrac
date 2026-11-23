@@ -1,9 +1,70 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const spindle = require('../controllers/spindle');
+const milnor = require('../controllers/milnor');
 const config = require('../modules/config');
 const { Settings } = require('luxon');
 const { sessionShiftFilter } = require('../utils/reportShiftFilter');
+
+async function analyticsRequest(router, path, query = {}) {
+  const handler = router.stack.find(layer => layer.route.path === path).route.stack[0].handle;
+  const res = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; } };
+  await handler({ query }, res);
+  return res;
+}
+
+test('Milnor and Spindle cached overviews keep independent databases and select the latest ticker', async t => {
+  const originalNow = Settings.now;
+  Settings.now = () => Date.parse('2026-11-17T18:00:00Z');
+  t.after(() => { Settings.now = originalNow; });
+  const machine = { id: 90003, serial: 90003, name: 'Test machine' };
+  const operator = { id: 42, name: 'Test operator' };
+  function create(controller, count) {
+    return controller({ logger: console, db: { collection(name) {
+      return { find(query) {
+        let rows;
+        if (name === config.machineCollectionName) rows = [machine];
+        else if (name === config.operatorCollectionName) rows = [operator];
+        else if (name === config.shiftCollectionName) rows = [];
+        else if (name === config.stateTickerCollectionName) rows = [
+          { machine, operators: [operator], status: { code: 1, name: 'Running' }, timestamps: { update: new Date('2026-11-17T17:00:00Z') } },
+          { machine, operators: [operator], status: { code: 2, name: 'Stopped' }, timestamps: { update: new Date('2026-11-17T16:00:00Z') } },
+        ];
+        else {
+          assert.equal(name, config.totalsDailyCollectionName);
+          assert.equal(query.date, '2026-11-16');
+          rows = [{ machineSerial: machine.serial, operatorId: operator.id, runtimeMs: 3600000,
+            workedTimeMs: 3600000, totalCounts: count, totalMisfeeds: 2, totalTimeCreditMs: 1800000 }];
+        }
+        return { project() { return this; }, toArray: async () => rows };
+      } };
+    } } });
+  }
+  const routers = [[create(milnor, 10), 10], [create(spindle, 20), 20]];
+  for (const path of ['/machine/overview', '/operator/overview']) {
+    for (const [router, count] of routers) {
+      const response = await analyticsRequest(router, path, { timeframe: 'custom', start: '2026-11-16', end: '2026-11-17' });
+      assert.equal(response.code, 200);
+      assert.equal(response.body.length, 1);
+      assert.equal(response.body[0].metrics.output.totalCount, count);
+      assert.equal(response.body[0].metrics.runtime.total, 3600000);
+      assert.equal(response.body[0].currentStatus.code, 1);
+    }
+  }
+});
+
+test('both vendor adapters preserve validation and vendor-specific failure responses', async () => {
+  for (const [controller, vendor] of [[milnor, 'Milnor'], [spindle, 'Spindle']]) {
+    const router = controller({ db: { collection() { throw new Error('Database unavailable'); } }, logger: { error() {} } });
+    assert.deepEqual((await analyticsRequest(router, '/status')).body, { vendor, status: 'ok' });
+    for (const path of ['/machine/overview', '/machine/details', '/operator/overview', '/operator/details']) {
+      assert.equal((await analyticsRequest(router, path, { timeframe: 'invalid' })).code, 400);
+      const response = await analyticsRequest(router, path);
+      assert.equal(response.code, 500);
+      assert.equal(response.body.error, `Failed to fetch ${vendor} ${path.slice(1).replace('/', ' ')}`);
+    }
+  }
+});
 
 function fixture(shift = null, entity = 'machine') {
   const queries = [];

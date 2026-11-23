@@ -53,6 +53,10 @@ async function ensureAnalyticsIndexes(db, config, logger) {
   await Promise.all([
     ensureRuntimeCollectionIndexes(db, config, logger),
     ensureProductionIngestionIndexes(db, config),
+    // Both branches of the sparkline timestamp OR need an index; otherwise Mongo
+    // can choose a full count collection scan, even with timestamps_create present.
+    createIndex(db.collection(config.countCollectionName), { timestamp: 1 },
+      { name: 'count_legacy_timestamp', sparse: true }, logger),
     ...[config.countCollectionName, config.machineStateCollectionName].map(name =>
       createIndex(db.collection(name), { "timestamps.create": 1, _id: 1 },
         { name: "spindle_event_chronology" }, logger)),

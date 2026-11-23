@@ -10,6 +10,8 @@ import { MatIconModule } from '@angular/material/icon';
 
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 @Component({
     selector: 'app-operator-performance-chart',
     imports: [
@@ -25,6 +27,7 @@ import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../char
     styleUrls: ['./operator-performance-chart.component.scss']
 })
 export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnChanges {
+  private readonly theme = inject(ThemeService);
   private readonly settings = inject(SettingsService);
   @Input() chartWidth: number = 600;
   @Input() chartHeight: number = 400;
@@ -46,7 +49,7 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
   error: string | null = null;
   isDarkTheme = false;
 
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
 
   constructor(
     private renderer: Renderer2,
@@ -94,17 +97,16 @@ export class OperatorPerformanceChartComponent implements OnInit, OnDestroy, OnC
   }
 
   ngOnDestroy(): void {
-    this.observer?.disconnect();
+    this.themeSubscription?.unsubscribe();
   }
 
   private observeTheme(): void {
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
   }
 
   private detectTheme(): void {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
+    this.isDarkTheme = this.theme.isDark;
     const el = this.elRef.nativeElement;
   }
 

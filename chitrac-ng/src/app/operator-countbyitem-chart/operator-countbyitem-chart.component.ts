@@ -1,4 +1,4 @@
-import { Component, OnInit, Input, OnDestroy, ElementRef, Renderer2, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, OnInit, Input, OnDestroy, ElementRef, Renderer2, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule } from '@angular/material/dialog';
@@ -11,6 +11,8 @@ import { OperatorService } from '../services/operator.service';
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../charts/cartesian-chart/cartesian-chart.component';
 
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 interface CountByItemData {
   title: string;
   data: {
@@ -38,6 +40,7 @@ interface CountByItemData {
     styleUrl: './operator-countbyitem-chart.component.scss'
 })
 export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnChanges {
+  private readonly theme = inject(ThemeService);
   @Input() operatorId?: number;
   @Input() startTime: string = '';
   @Input() endTime: string = '';
@@ -58,7 +61,7 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
   loading = false;
   error: string | null = null;
   isDarkTheme = false;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
 
   constructor(
     private operatorService: OperatorService,
@@ -68,8 +71,7 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
 
   ngOnInit() {
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     if (this.mode === 'standalone' && this.isValidInput()) {
       this.fetchData();
@@ -86,11 +88,11 @@ export class OperatorCountbyitemChartComponent implements OnInit, OnDestroy, OnC
   }
 
   ngOnDestroy() {
-    this.observer?.disconnect();
+    this.themeSubscription?.unsubscribe();
   }
 
   private detectTheme() {
-    const dark = document.body.classList.contains('dark-theme');
+    const dark = this.theme.isDark;
     this.isDarkTheme = dark;
     const el = this.elRef.nativeElement;
   }

@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -18,6 +18,8 @@ import { ShiftListItem, ShiftService } from '../../services/shift.service';
 import { displayInteger } from '../../shared/utils/display-number';
 import { formatDurationParts } from '../../shared/utils/duration-format';
 
+import { ThemeService } from '../../services/theme.service';
+import { Subscription } from 'rxjs';
 @Component({
   selector: 'app-shift-comparison-report',
   imports: [
@@ -39,6 +41,7 @@ import { formatDurationParts } from '../../shared/utils/duration-format';
   styleUrls: ['./shift-comparison-report.component.scss'],
 })
 export class ShiftComparisonReportComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   selectedDate: Date | null = null;
   shifts: ShiftListItem[] = [];
   firstShiftId: string | null = null;
@@ -51,7 +54,7 @@ export class ShiftComparisonReportComponent implements OnInit, OnDestroy {
   showSummaryOnly = false;
   shiftsLoadError: string | null = null;
   private readonly summaryRowsCache = new WeakMap<any[], any[]>();
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
 
   get firstDisplayedRows(): any[] {
     return this.getDisplayedRows(this.firstRows);
@@ -94,10 +97,7 @@ export class ShiftComparisonReportComponent implements OnInit, OnDestroy {
     this.selectedDate = new Date();
     this.detectTheme();
 
-    this.observer = new MutationObserver(() => {
-      this.detectTheme();
-    });
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     this.shiftService.getActiveShifts().subscribe({
       next: (res) => {
@@ -113,13 +113,13 @@ export class ShiftComparisonReportComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.observer) {
-      this.observer.disconnect();
+    if (this.themeSubscription) {
+      this.themeSubscription.unsubscribe();
     }
   }
 
   detectTheme(): void {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
+    this.isDarkTheme = this.theme.isDark;
   }
 
   onFirstShiftChange(): void {

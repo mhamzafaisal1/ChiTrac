@@ -5,6 +5,12 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 
 
 ---
+## Maintenance backfills
+
+`POST /api/utilities/backfill` rebuilds historical sessions. `POST /api/utilities/backfill-totals` rebuilds daily totals and may create missing sessions. Both write to the database.
+
+Send JSON with `date` (for example, `"2026-11-15"`) and optional `overwrite` (boolean, default `false`). POST also accepts the existing query parameters. GET, HEAD, and other unsupported methods return `405 Method Not Allowed` with `Allow: POST`. Existing authentication requirements still apply.
+
 ## Available Routes
 
 ### Dashboard
@@ -77,7 +83,6 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 - [/api/alpha/analytics/machine/operator-efficiency](#apialphaanalyticsmachineoperator-efficiency)
 - [/api/alpha/analytics/machine/operator-efficiency-fromSessions](#apialphaanalyticsmachineoperator-efficiency-fromsessions)
 - [/api/alpha/analytics/machine-details](#apialphaanalyticsmachine-details)
-- [/api/alpha/analytics/machine-item-sessions-summary](#apialphaanalyticsmachine-item-sessions-summary)
 - [/api/alpha/analytics/machines-summary](#apialphaanalyticsmachines-summary)
 - [/api/alpha/analytics/operator-performance](#apialphaanalyticsoperator-performance)
 - [/api/alpha/analytics/operator-item-summary](#apialphaanalyticsoperator-item-summary)
@@ -86,12 +91,9 @@ The ChiTrac API is a Web Service and Application Programming Interface (API) for
 - [/api/alpha/analytics/operator/daily-efficiency](#apialphaanalyticsoperatordaily-efficiency)
 - [/api/alpha/analytics/operator-fault-history](#apialphaanalyticsoperator-fault-history)
 - [/api/alpha/analytics/operator-details](#apialphaanalyticsoperator-details)
-- [/api/alpha/analytics/operator-item-sessions-summary](#apialphaanalyticsoperator-item-sessions-summary)
 - [/api/alpha/analytics/operator-summary](#apialphaanalyticsoperator-summary)
 - [/api/alpha/analytics/item-summary](#apialphaanalyticsitem-summary)
 - [/api/alpha/analytics/item-dashboard-summary](#apialphaanalyticsitem-dashboard-summary)
-- [/api/alpha/analytics/item-sessions-summary](#apialphaanalyticsitem-sessions-summary)
-- [/api/alpha/historic-data-test](#apialphahistoric-data-test)
 - [/api/alpha/machineOverview](#apialphamachineoverview)
 - [/api/alpha/sample/machineOverview](#apialphamachineoverview) (legacy alias)
 
@@ -2295,16 +2297,6 @@ Returns all operator counts.
 
 ### Analytics routes (alpha-only)
 
-### /api/alpha/historic-data-test
-
-Test route for historic data pipelines (alpha). See server implementation for current behavior and parameters.
-
-**Method:** GET  
-**Auth:** Same as other /api/alpha routes  
-**Idempotent:** Yes
-
----
-
 ### /api/alpha/analytics/machine-details
 
 Returns a full, multi-tab detail payload for a single machine over a time window, suitable for a dashboard "details" drawer/page. The response includes:
@@ -2467,103 +2459,6 @@ GET /api/alpha/analytics/operator-summary?start=2025-05-01T12:00:00.000Z&end=202
 **Versioning & Stability:**
 
 Route path and response shape are Alpha and may evolve. New fields will be additive; existing fields will maintain types and semantics.
-
-### /api/alpha/analytics/machine-item-sessions-summary
-
-Returns per‑machine item performance for sessions overlapping a window. Each machine includes the clipped session slices in the window and an aggregate "machineSummary", with prorated standard and efficiency computed from item mix.
-
-**Method:** GET  
-**Auth:** Same as other /api/alpha routes  
-**Idempotent:** Yes
-
-**Query Parameters:**
-| Label | Type | Required | Description |
-|-------|------|----------|-------------|
-| start | ISO 8601 timestamp (UTC) | Yes | Window start (inclusive). |
-| end | ISO 8601 timestamp (UTC) | Yes | Window end (exclusive). |
-| serial | Integer | No | If present, only include sessions for this machine serial. |
-
-**Example Request:**
-```
-GET /api/alpha/analytics/machine-item-sessions-summary?start=2025-05-01T12:00:00Z&end=2025-05-01T16:00:00Z&serial=67808
-```
-
-**Error Responses:**
-
-**500 Internal Server Error**
-```json
-{"error":"Failed to generate machine item summary"}
-```
-
-**Versioning & Stability:**
-
-All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.
-
-### /api/alpha/analytics/item-sessions-summary
-
-Returns an item‑centric summary across all active machines in the window, using item‑sessions and bookended machine running windows to avoid idle gaps. Each item includes total valid counts, worked time, PPH, standard, and efficiency.
-
-**Method:** GET  
-**Auth:** Same as other /api/alpha routes  
-**Idempotent:** Yes
-
-**Query Parameters:**
-| Label | Type | Required | Description |
-|-------|------|----------|-------------|
-| start | ISO 8601 timestamp (UTC) | Yes | Window start (inclusive). |
-| end | ISO 8601 timestamp (UTC) | Yes | Window end (exclusive). |
-
-**Example Request:**
-```
-GET /api/alpha/analytics/item-sessions-summary?start=2025-05-01T12:00:00Z&end=2025-05-01T18:00:00Z
-```
-
-**Error Responses:**
-
-**416 Range Not Satisfiable**
-```json
-{"error":"start must be before end"}
-```
-
-**500 Internal Server Error**
-```json
-{"error":"Failed to generate item summary report"}
-```
-
-**Versioning & Stability:**
-
-Alpha route; fields may be extended. Additions will be backward-compatible (additive).
-
-### /api/alpha/analytics/operator-item-sessions-summary
-
-Returns operator × machine × item rows for operator‑sessions overlapping the window, including valid counts, misfeeds, pph, and efficiency.
-
-**Method:** GET  
-**Auth:** Same as other /api/alpha routes  
-**Idempotent:** Yes
-
-**Query Parameters:**
-| Label | Type | Required | Description |
-|-------|------|----------|-------------|
-| start | ISO 8601 timestamp (UTC) | Yes | Window start (inclusive). |
-| end | ISO 8601 timestamp (UTC) | Yes | Window end (exclusive). |
-| operatorId | Integer | No | Limit to a single operator. If omitted, returns rows for all operators active in window. |
-
-**Example Request:**
-```
-GET /api/alpha/analytics/operator-item-sessions-summary?operatorId=135790&start=2025-05-01T12:00:00Z&end=2025-05-01T16:00:00Z
-```
-
-**Error Responses:**
-
-**500 Internal Server Error**
-```json
-{"error":"Failed to generate operator item summary report"}
-```
-
-**Versioning & Stability:**
-
-All three routes are Alpha and may add fields (backward‑compatible). Existing semantics are stable; breaking changes will be versioned under a new path.
 
 ### /api/alpha/machineOverview
 

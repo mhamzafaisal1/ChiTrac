@@ -1,3 +1,4 @@
+const { isRunning, isPaused, isFault } = require("./machineStatus");
 const { sessionMachineQuery } = require('./sessionIdentity');
 /**
  * Helper functions extracted from controllers/alpha/reportsSessionRoutes.js
@@ -22,17 +23,7 @@ const { sessionShiftFilter } = require('./reportShiftFilter');
 // Internal utility – overlap calculation (same logic used in machineFunctions
 // and the original reportsSessionRoutes closure).
 // ---------------------------------------------------------------------------
-function overlap(sStart, sEnd, wStart, wEnd) {
-  if (!sStart) return { ovSec: 0, fullSec: 0, factor: 0, ovStart: wStart, ovEnd: wEnd };
-  const ss = new Date(sStart);
-  const se = new Date(sEnd || wEnd);
-  const os = ss > wStart ? ss : wStart;
-  const oe = se < wEnd ? se : wEnd;
-  const ovSec = Math.max(0, (oe - os) / 1000);
-  const fullSec = Math.max(0, (se - ss) / 1000);
-  const factor = fullSec > 0 ? ovSec / fullSec : 0;
-  return { ovSec, fullSec, factor, ovStart: os, ovEnd: oe };
-}
+const { overlap } = require("./records");
 
 function normalizeSessionSeconds(value, session) {
   const numeric = Number(value);
@@ -59,9 +50,9 @@ function getSessionStatusCode(session) {
 
 function classifySessionTime(session) {
   const code = getSessionStatusCode(session);
-  if (code === 0) return "paused";
-  if (code === 1) return "run";
-  if (code > 1) return "fault";
+  if (isPaused(code)) return "paused";
+  if (isRunning(code)) return "run";
+  if (isFault(code)) return "fault";
   return "unknown";
 }
 
@@ -602,22 +593,22 @@ async function getSessionDataForPartialDays(db, partialDays, serial, options = {
         bucket.totalFaults += 1;
       }
 
-      const isRunning = timeClass === "run";
+      const isRunSlice = timeClass === "run";
       const activeStations = Array.isArray(s.operators)
         ? s.operators.filter((op) => op && op.id !== -1).length
         : s.operator && s.operator.id !== -1
           ? 1
           : 0;
 
-      if (isRunning && s.ovStart && s.ovEnd) {
+      if (isRunSlice && s.ovStart && s.ovEnd) {
         bucket.runIntervals.push({ start: new Date(s.ovStart), end: new Date(s.ovEnd) });
       }
 
-      const workedTimeMs = isRunning ? Math.max(0, s.sliceMs * activeStations) : 0;
-      const runtimeMs = isRunning ? Math.max(0, s.sliceMs) : 0;
+      const workedTimeMs = isRunSlice ? Math.max(0, s.sliceMs * activeStations) : 0;
+      const runtimeMs = isRunSlice ? Math.max(0, s.sliceMs) : 0;
 
       bucket.totalRuntimeMs += runtimeMs;
-      if (!isRunning) continue;
+      if (!isRunSlice) continue;
 
       const rawCounts = Array.isArray(s.countsFiltered) ? s.countsFiltered : [];
       const counts = rawCounts

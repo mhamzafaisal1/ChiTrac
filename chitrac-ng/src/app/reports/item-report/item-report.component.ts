@@ -16,6 +16,9 @@ import { TimeframePickerComponent, TimeframeSelection, TimeframePickerMode } fro
 import { displayInteger } from '../../shared/utils/display-number';
 import { formatDurationParts } from '../../shared/utils/duration-format';
 
+import { toDateTimeLocalInput } from '../../shared/utils/date-input';
+import { ThemeService } from '../../services/theme.service';
+import { Subscription } from 'rxjs';
 interface ItemSummary {
   itemId?: number | string;
   itemName: string;
@@ -44,6 +47,7 @@ interface ItemSummary {
     styleUrls: ['./item-report.component.scss']
 })
 export class ItemReportComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   startTime: string = '';
   endTime: string = '';
   selectedShiftId: string | null = null;
@@ -62,7 +66,7 @@ export class ItemReportComponent implements OnInit, OnDestroy {
   isLoading: boolean = false;
   isDownloading: boolean = false;
   isDownloadingCsv: boolean = false;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
 
   constructor(
     private reportsService: ReportsService,
@@ -76,25 +80,22 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
-    this.endTime = this.formatDateForInput(end);
-    this.startTime = this.formatDateForInput(start);
+    this.endTime = toDateTimeLocalInput(end);
+    this.startTime = toDateTimeLocalInput(start);
 
     this.detectTheme();
 
-    this.observer = new MutationObserver(() => {
-      this.detectTheme();
-    });
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
   }
 
   ngOnDestroy() {
-    if (this.observer) {
-      this.observer.disconnect();
+    if (this.themeSubscription) {
+      this.themeSubscription.unsubscribe();
     }
   }
 
   detectTheme() {
-    const isDark = document.body.classList.contains('dark-theme');
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
   }
 
@@ -222,14 +223,6 @@ export class ItemReportComponent implements OnInit, OnDestroy {
     return '';
   };
 
-  private formatDateForInput(date: Date): string {
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  }
 }
 
 

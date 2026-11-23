@@ -11,6 +11,7 @@ import { ServerLogsService, ServerLog } from '../services/server-logs.service';
 import { LogDetailModalComponent } from '../components/log-detail-modal/log-detail-modal.component';
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
 @Component({
   selector: 'app-server-logs-interface',
   standalone: true,
@@ -58,8 +59,8 @@ export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
     const start = new Date();
     start.setHours(start.getHours() - 24);
     
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(end);
+    this.startTime = toDateTimeLocalInput(start);
+    this.endTime = toDateTimeLocalInput(end);
 
     // Detect dark theme
     this.detectDarkTheme();
@@ -78,14 +79,6 @@ export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
     this.isDarkTheme = document.body.classList.contains('dark-theme');
   }
 
-  private formatDateForInput(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  }
 
   fetchLogs(): void {
     if (!this.startTime || !this.endTime) {

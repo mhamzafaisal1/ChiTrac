@@ -1,3 +1,4 @@
+const { isFault } = require("../../utils/machineStatus");
 const express = require("express");
 
 module.exports = function (server) {
@@ -115,7 +116,7 @@ module.exports = function (server) {
           input: inputTotal,
           out: outputTotal,
           thru: parseFloat(performance.performance.throughput.percentage.replace('%', '')),
-          faults: states.filter(s => s.status?.code > 1).length,
+          faults: states.filter(s => isFault(s.status?.code)).length,
           jams: states.filter(s => s.status?.name?.toLowerCase().includes("jam")).length,
         },
         availability: parseFloat(performance.performance.availability.percentage.replace('%', '')),
