@@ -134,3 +134,18 @@ test('both today and historical shift WebSocket envelopes carry full previous-da
     assert.deepEqual(operator.previousDay, { date: '2026-10-27', value: 45 });
   }
 });
+
+
+test('machine dashboard summaries carry configured type for existing and config-only machines', async () => {
+  const { appendConfiguredOfflineMachineRows, loadConfiguredMachines } = require('../utils/machineDashboardCache');
+  const configurations = [{ id: 41, name: 'Renamed', type: 'Cascade' }, { id: 42, type: 'SPF' }, { id: 43, name: 'Offline', type: 'Cascade' }];
+  let projection;
+  const db = { collection: () => ({ find: () => ({ project(value) { projection = value; return this; }, sort() { return this; }, toArray: async () => [] }) }) };
+  await loadConfiguredMachines(db,config);
+  assert.equal(projection.type,1);
+  const rows = [{ machine: { serial: 41, name: 'Old name' }, metrics: { output: { totalCount: 8 } } }, { machine: { serial: 42 } }];
+  const result = await appendConfiguredOfflineMachineRows(db,config,rows,new Date('2026-11-18T06:00:00Z'),new Date('2026-11-18T07:00:00Z'),null,{ configuredMachines: configurations });
+  assert.deepEqual(result.map(row => row.machine.type),['Cascade','SPF','Cascade']);
+  assert.equal(result[0].metrics.output.totalCount,8);
+  assert.equal(rows[0].machine.type,undefined,'stored/cached numeric rows are not mutated');
+});

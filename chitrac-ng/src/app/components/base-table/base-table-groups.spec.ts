@@ -1,3 +1,4 @@
+import { BaseTableGroupCellComponent } from './base-table-group-cell.component';
 import { groupedTableRows, BaseTableGroup } from './base-table-groups';
 import { BaseTableComponent } from './base-table.component';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
@@ -8,7 +9,7 @@ describe('Shared grid report groups', () => {
   const columns = ['Machine', 'Worked Time', 'Efficiency'];
   const groups: BaseTableGroup[] = [
     { key: 'a', summary: { Machine: 'Alpha', 'Worked Time': '2h', Efficiency: '90%' },
-      details: [{ Item: 'Sheets', 'Worked Time': '1h', Efficiency: '95%', _tooltipItemId: 7 }] },
+      details: [{ Item: 'Sheets', 'Worked Time': '1h', Efficiency: '95%', _tooltipItemId: 7 }, { Item: 'Towels', Efficiency: '85%' }] },
     { key: 'b', summary: { Machine: 'Beta', 'Worked Time': '1h', Efficiency: '70%' }, details: [] }
   ];
 
@@ -20,10 +21,10 @@ describe('Shared grid report groups', () => {
   });
   it('puts item values immediately after their summary without duplicate headings', () => {
     const rows = groupedTableRows(groups, new Set(['a']), 'Machine');
-    expect(rows.map(row => row.__baseTableGroup.kind)).toEqual(['summary', 'detail', 'summary']);
+    expect(rows.map(row => row.__baseTableGroup.kind)).toEqual(['summary', 'detail', 'detail', 'summary']);
     expect(rows[1].Machine).toBe('Sheets');
     expect(rows[1]._tooltipItemId).toBe(7);
-    expect(rows[0].__baseTableGroup.singleItem).toBe('Sheets');
+    expect(rows[0].__baseTableGroup.singleItem).toBe('');
     expect(new Set(rows.map(row => row.__baseTableGroup.id)).size).toBe(rows.length);
   });
   it('preserves an explicit empty detail state', () => {
@@ -35,10 +36,10 @@ describe('Shared grid report groups', () => {
     const table = new BaseTableComponent({} as any);
     table.rowGroups = groups;
     const rows = groupedTableRows(groups, new Set(['a']), 'Machine');
-    const nodes = [rows[2], rows[1], rows[0]].map(data => ({ data }));
+    const nodes = [rows[3], rows[2], rows[1], rows[0]].map(data => ({ data }));
     table.postSortRows({ nodes } as any);
-    expect(nodes.map(node => node.data.__baseTableGroup.key)).toEqual(['b', 'a', 'a']);
-    expect(nodes.slice(1).map(node => node.data.__baseTableGroup.rank)).toEqual([0, 1]);
+    expect(nodes.map(node => node.data.__baseTableGroup.key)).toEqual(['b', 'a', 'a', 'a']);
+    expect(nodes.slice(1).map(node => node.data.__baseTableGroup.rank)).toEqual([0, 1, 2]);
   });
   it('leaves ordinary dashboard sorting untouched', () => {
     const table = new BaseTableComponent({} as any);
@@ -126,7 +127,7 @@ for (const identity of ['Machine', 'Operator']) {
       fixture.componentRef.setInput('columns', [identity, 'Efficiency']);
       fixture.componentRef.setInput('groupIdentityColumn', identity);
       fixture.componentRef.setInput('rowGroups', [
-        { key: 'a', summary: { [identity]: 'Alpha' }, details: [{ Item: 'Sheets' }] },
+        { key: 'a', summary: { [identity]: 'Alpha' }, details: [{ Item: 'Sheets' }, { Item: 'Towels' }] },
         { key: 'b', summary: { [identity]: 'Beta' }, details: [] }
       ]);
       fixture.componentRef.setInput('enableToolbar', false);
@@ -218,3 +219,37 @@ for (const identity of ['Machine', 'Operator']) {
     }));
   });
 }
+
+
+for (const identity of ['Machine','Operator']) describe(identity + ' single-item summaries', () => {
+  beforeEach(() => TestBed.configureTestingModule({ imports: [BaseTableComponent], providers: [provideNoopAnimations(),
+    { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } }] }));
+  it('keeps the item badge without an expansion control and blocks stale or row-click expansion', fakeAsync(() => {
+    const group: BaseTableGroup = { key: 'one', summary: { [identity]: 'Name' }, details: [{ Item: 'Sheets' }] };
+    const original = JSON.stringify(group);
+    expect(groupedTableRows([group],new Set(['one']),identity).length).toBe(1);
+    const fixture = TestBed.createComponent(BaseTableComponent), root: HTMLElement = fixture.nativeElement;
+    root.style.width = '800px'; fixture.componentRef.setInput('columns',[identity]);
+    fixture.componentRef.setInput('groupIdentityColumn',identity); fixture.componentRef.setInput('rowGroups',[group]);
+    fixture.componentRef.setInput('enableToolbar',false); fixture.detectChanges(); tick(100); fixture.detectChanges();
+    expect(root.querySelector('.report-summary .count')?.textContent?.trim()).toBe('Sheets');
+    expect(root.querySelector('.report-summary button')).toBeNull();
+    expect(getComputedStyle(root.querySelector('.report-summary')!).cursor).toBe('default');
+    const summary = root.querySelector<HTMLElement>('.report-summary .ag-cell')!;
+    summary.click(); fixture.detectChanges(); tick(100); fixture.detectChanges();
+    expect(root.querySelector('.report-detail')).toBeNull();
+    expect(JSON.stringify(group)).toBe(original); fixture.destroy();
+  }));
+  it('collapses a previously expanded multi-item group when it becomes single-item', fakeAsync(() => {
+    const fixture = TestBed.createComponent(BaseTableComponent), root: HTMLElement = fixture.nativeElement;
+    root.style.width = '800px'; fixture.componentRef.setInput('columns',[identity]); fixture.componentRef.setInput('groupIdentityColumn',identity);
+    fixture.componentRef.setInput('enableToolbar',false);
+    fixture.componentRef.setInput('rowGroups',[{ key: 'one', summary: { [identity]: 'Name' }, details: [{ Item: 'Sheets' },{ Item: 'Towels' }] }]);
+    fixture.detectChanges(); tick(100); fixture.detectChanges(); (root.querySelector('.group-label') as HTMLButtonElement).click();
+    fixture.detectChanges(); tick(100); fixture.detectChanges(); expect(root.querySelectorAll('.report-detail').length).toBe(2);
+    fixture.componentRef.setInput('rowGroups',[{ key: 'one', summary: { [identity]: 'Name' }, details: [{ Item: 'Sheets' }] }]);
+    fixture.detectChanges(); tick(100); fixture.detectChanges(); expect(root.querySelector('.report-detail')).toBeNull();
+    expect(root.querySelector('.group-label')).toBeNull(); expect(root.querySelector('.count')?.textContent?.trim()).toBe('Sheets');
+    fixture.destroy();
+  }));
+});

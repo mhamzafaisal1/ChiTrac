@@ -1,13 +1,15 @@
 import { Injectable } from '@angular/core';
 import type { NamedProductionLayout, ProductionLayoutActivation, ProductionLayoutLibrary, ProductionLayoutReference, ProductionLayoutScope } from './production-layout.models';
+import type { DailyDashboardLayout, DailyLayoutActivation, DailyLayoutLibrary, DailyLayoutReference, DailyLayoutScope, NamedDailyLayout } from './daily-layout.models';
 import { SpfLayout } from '../efficiency-screens/experimental-spf/spf-stations';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, Subject } from 'rxjs';
-import { tap, map, distinctUntilChanged, finalize, shareReplay } from 'rxjs/operators';
+import { tap, map, distinctUntilChanged, finalize, shareReplay, takeUntil } from 'rxjs/operators';
 import { TimeFormat, formatDisplayTime } from '../utils/time-format';
 import { ReportLayoutId } from '../reports/report-columns';
 
 export interface AppSettings {
+  dailyDashboardLayouts?: Record<string, Omit<NamedDailyLayout, 'scope'>>;
   productionScreenLayouts?: Record<string, Omit<NamedProductionLayout, 'scope'>>;
   enableApiTokenCheck: boolean;
   showErrorModals: boolean;
@@ -62,6 +64,8 @@ export type DailyDashboardGridLayout = '3x2' | '2x2';
 export type MachinePphDisplayMode = 'perMachine' | 'perStation';
 
 export interface UserPreferences {
+  dailyDashboardLayouts?: Record<string, Omit<NamedDailyLayout, 'scope'>>;
+  defaultDailyDashboardLayout?: DailyLayoutReference | null;
   productionScreenLayouts?: Record<string, Omit<NamedProductionLayout, 'scope'>>;
   defaultProductionScreenLayout?: ProductionLayoutReference | null;
   reportLayouts?: Partial<Record<ReportLayoutId, { columnOrder: string[] }>>;
@@ -86,6 +90,7 @@ export interface PromoteDashboardLayoutsResponse {
   providedIn: 'root'
 })
 export class SettingsService {
+  private readonly dailyLayoutRequestsCancelled = new Subject<void>();
   private readonly productionLayoutChanges = new Subject<void>();
   readonly productionLayoutsChanged$ = this.productionLayoutChanges.asObservable();
   private settingsRequest$: Observable<AppSettings> | null = null;
@@ -155,6 +160,7 @@ export class SettingsService {
   }
 
   clearUserPreferences(): void {
+    this.dailyLayoutRequestsCancelled.next();
     localStorage.removeItem('chitrac-machine-dashboard-summary-card-order');
     localStorage.removeItem('chitrac-machine-dashboard-summary-card-visibility');
     localStorage.removeItem('chitrac-operator-dashboard-summary-card-order');
@@ -366,6 +372,21 @@ export class SettingsService {
 
   getProductionLayouts(): Observable<ProductionLayoutLibrary> {
     return this.http.get<ProductionLayoutLibrary>('/api/preferences/production-layouts', this.preferenceRequestOptions);
+  }
+
+  getDailyLayouts(): Observable<DailyLayoutLibrary> {
+    return this.http.get<DailyLayoutLibrary>('/api/preferences/daily-layouts', this.preferenceRequestOptions)
+      .pipe(takeUntil(this.dailyLayoutRequestsCancelled));
+  }
+
+  createDailyLayout(scope: DailyLayoutScope, name: string, layout: DailyDashboardLayout): Observable<DailyLayoutActivation> {
+    return this.http.post<DailyLayoutActivation>('/api/preferences/daily-layouts/' + scope, { name, layout }, this.preferenceRequestOptions)
+      .pipe(takeUntil(this.dailyLayoutRequestsCancelled), tap(result => this.acceptUserPreferences(result.preferences)));
+  }
+
+  loadDailyLayout(reference: DailyLayoutReference): Observable<DailyLayoutActivation> {
+    return this.http.post<DailyLayoutActivation>('/api/preferences/daily-layouts/load', reference, this.preferenceRequestOptions)
+      .pipe(takeUntil(this.dailyLayoutRequestsCancelled), tap(result => this.acceptUserPreferences(result.preferences)));
   }
 
   createProductionLayout(scope: ProductionLayoutScope, name: string, stationIds: string[]): Observable<ProductionLayoutActivation> {

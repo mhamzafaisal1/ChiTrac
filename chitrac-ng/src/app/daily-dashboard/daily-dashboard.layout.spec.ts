@@ -126,14 +126,14 @@ describe('Daily dashboard layout state', () => {
   beforeEach(() => {
     preferences = new BehaviorSubject<any>(null);
     closed = new Subject();
-    user = { getToken: () => 'test-token' };
+    user = { getToken: () => 'test-token', hasPermissionLevel: () => true, user: new BehaviorSubject({ username: 'alice' }) };
     editor = new LayoutEditService(user);
     settings = {
       timeFormat$: of('12h'), userPreferences$: preferences,
       setDailyDashboardChartOrder: jasmine.createSpy('set'),
       saveDailyDashboardChartOrder: jasmine.createSpy('save').and.returnValue(of({})),
     };
-    dialog = { open: jasmine.createSpy('open').and.returnValue({ afterClosed: () => closed }) };
+    dialog = { openDialogs: [], open: jasmine.createSpy('open').and.returnValue({ afterClosed: () => closed, close: jasmine.createSpy('close') }) };
     dashboard = TestBed.runInInjectionContext(() => new DailyDashboardComponent(
       { ensureConnected() {}, status$: of('disconnected'), dashboardCache$: of({}) } as any,
       { getConfirmed: () => true } as any, {} as any, editor, settings, user, dialog, {} as any,
@@ -222,5 +222,63 @@ describe('Daily dashboard layout state', () => {
     preferences.next(null);
     expect(dashboard.gridLayout).toBe('3x2');
     expect(dashboard.visibleChartTiles.length).toBe(6);
+  });
+
+  it('creates named layouts from the full current snapshot and restores the activated layout', () => {
+    editor.toggle();
+    dashboard.openCreateLayout();
+    const data = dialog.open.calls.mostRecent().args[1].data;
+    expect(data.layout.chartOrder.length).toBe(7);
+    expect(Object.values(data.layout.chartVisibility).filter(Boolean).length).toBe(6);
+    expect(data.systemAllowed).toBeTrue();
+    const order = [...data.layout.chartOrder].reverse();
+    const chartVisibility = Object.fromEntries(order.map((id: string, i: number) => [id, i < 4]));
+    closed.next({ preferences: { dashboardLayouts: { experimentalDailyDashboard: { gridLayout: '2x2', chartOrder: order, chartVisibility } } } });
+    expect(dashboard.visibleChartTiles.map(tile => tile.id)).toEqual(order.slice(0, 4));
+    expect(dashboard.gridLayout).toBe('2x2');
+    expect(dashboard.layoutEditing).toBeFalse();
+  });
+
+  it('warns of changed layouts, prevents duplicate dialogs, and preserves drafts when cancelled', () => {
+    editor.toggle();
+    dashboard.onChartDrop({ previousIndex: 0, currentIndex: 1 } as any);
+    const draft = dashboard.chartTiles.map(tile => tile.id);
+    dashboard.openLoadLayout();
+    expect(dialog.open.calls.mostRecent().args[1].data.hasUnsavedChanges).toBeTrue();
+    dashboard.openLoadLayout();
+    dashboard.openCreateLayout();
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    closed.next(undefined);
+    expect(dashboard.layoutEditing).toBeTrue();
+    expect(dashboard.chartTiles.map(tile => tile.id)).toEqual(draft);
+  });
+
+  it('keeps the save prompt exclusive and restores the layout through the shared discard flow', () => {
+    const original = dashboard.chartTiles.map(tile => tile.id);
+    editor.toggle();
+    dashboard.onChartDrop({ previousIndex: 0, currentIndex: 1 } as any);
+    editor.toggle();
+    dashboard.openCreateLayout();
+    dashboard.openLoadLayout();
+    editor.toggle();
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+
+    closed.next('discard');
+    closed.complete();
+    expect(dashboard.chartTiles.map(tile => tile.id)).toEqual(original);
+    expect(dashboard.layoutEditing).toBeFalse();
+  });
+
+  it('requires permission and closes named dialogs when the account changes', () => {
+    editor.toggle();
+    user.hasPermissionLevel = () => false;
+    dashboard.openCreateLayout();
+    expect(dialog.open).not.toHaveBeenCalled();
+    user.hasPermissionLevel = () => true;
+    dashboard.openLoadLayout();
+    const ref = dialog.open.calls.mostRecent().returnValue;
+    user.user.next(null);
+    expect(ref.close).toHaveBeenCalled();
+    expect(dashboard.layoutEditing).toBeFalse();
   });
 });

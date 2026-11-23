@@ -1,0 +1,522 @@
+[
+  {
+    "id": 0,
+    "stop": true,
+    "name": "Emergency stop"
+  },
+  {
+    "id": 1,
+    "stop": true,
+    "name": "Thermo"
+  },
+  {
+    "id": 2,
+    "stop": true,
+    "name": "Next machine not ready"
+  },
+  {
+    "id": 3,
+    "stop": true,
+    "name": "Conveyor not ready"
+  },
+  {
+    "id": 4,
+    "stop": false,
+    "name": "Spreading cylinder lane 1 not ready"
+  },
+  {
+    "id": 5,
+    "stop": false,
+    "name": "Spreading cylinder lane 2 not ready"
+  },
+  {
+    "id": 6,
+    "stop": true,
+    "name": "Air pressure too low"
+  },
+  {
+    "id": 7,
+    "stop": true,
+    "name": "Jam Ironer"
+  },
+  {
+    "id": 8,
+    "stop": true,
+    "name": "Conveyor not ready"
+  },
+  {
+    "id": 9,
+    "stop": false,
+    "name": "Vacuum shaft not free"
+  },
+  {
+    "id": 10,
+    "stop": false,
+    "name": "Jam empty clamps"
+  },
+  {
+    "id": 11,
+    "stop": true,
+    "name": "Piece too thick"
+  },
+  {
+    "id": 12,
+    "stop": false,
+    "name": "A gripper pair not ready"
+  },
+  {
+    "id": 13,
+    "stop": true,
+    "name": "Fatal: lower valves leaky!"
+  },
+  {
+    "id": 14,
+    "stop": false,
+    "name": "Contact strip actuated"
+  },
+  {
+    "id": 15,
+    "stop": false,
+    "name": "Laydown table not on top"
+  },
+  {
+    "id": 16,
+    "stop": false,
+    "name": "Pairing error"
+  },
+  {
+    "id": 17,
+    "stop": false,
+    "name": "Reverse position reached"
+  },
+  {
+    "id": 18,
+    "stop": false,
+    "name": "Error reed swing belts"
+  },
+  {
+    "id": 19,
+    "stop": false,
+    "name": "Thermo spreading belts front"
+  },
+  {
+    "id": 20,
+    "stop": false,
+    "name": "Thermo spreading belts"
+  },
+  {
+    "id": 21,
+    "stop": false,
+    "name": "Thermo spreading brushes on top"
+  },
+  {
+    "id": 22,
+    "stop": false,
+    "name": "Error on segment wheel"
+  },
+  {
+    "id": 23,
+    "stop": true,
+    "name": "Slant position detected"
+  },
+  {
+    "id": 25,
+    "stop": true,
+    "name": "Photocell dark"
+  },
+  {
+    "id": 26,
+    "stop": false,
+    "name": "Error reed block next clamps"
+  },
+  {
+    "id": 27,
+    "stop": false,
+    "name": "Wait for laundry"
+  },
+  {
+    "id": 28,
+    "stop": false,
+    "name": "Spreading system not lowered"
+  },
+  {
+    "id": 29,
+    "stop": false,
+    "name": "Error clamp opener"
+  },
+  {
+    "id": 30,
+    "stop": false,
+    "name": "Gripper 12 not on inductive"
+  },
+  {
+    "id": 31,
+    "stop": false,
+    "name": "Gripper 34 not on inductive"
+  },
+  {
+    "id": 32,
+    "stop": true,
+    "name": "Jam ironer"
+  },
+  {
+    "id": 33,
+    "stop": false,
+    "name": "Thermo spreading brushes"
+  },
+  {
+    "id": 34,
+    "stop": false,
+    "name": "Bar L1 not initialized"
+  },
+  {
+    "id": 35,
+    "stop": false,
+    "name": "Bar L2 not initialized"
+  },
+  {
+    "id": 36,
+    "stop": true,
+    "name": "Robot: emergency stop"
+  },
+  {
+    "id": 37,
+    "stop": false,
+    "name": "Robot: user safety ok, but no robot program"
+  },
+  {
+    "id": 38,
+    "stop": true,
+    "name": "Robot: user safety (door closed?)"
+  },
+  {
+    "id": 39,
+    "stop": false,
+    "name": "Empty hanger rail full / not ready"
+  },
+  {
+    "id": 40,
+    "stop": true,
+    "name": "Safety mat"
+  },
+  {
+    "id": 41,
+    "stop": false,
+    "name": "Jam after clamp separating devices"
+  },
+  {
+    "id": 42,
+    "stop": false,
+    "name": "Thermo small piece feeder"
+  },
+  {
+    "id": 43,
+    "stop": false,
+    "name": "Connection interrupted to folder"
+  },
+  {
+    "id": 44,
+    "stop": false,
+    "name": "Jam empty clamp rail"
+  },
+  {
+    "id": 45,
+    "stop": false,
+    "name": "Waiting for clamps"
+  },
+  {
+    "id": 46,
+    "stop": false,
+    "name": "Thermo spreading brushes ironer"
+  },
+  {
+    "id": 47,
+    "stop": false,
+    "name": "Piece on clamp"
+  },
+  {
+    "id": 48,
+    "stop": false,
+    "name": "Light curtain"
+  },
+  {
+    "id": 49,
+    "stop": false,
+    "name": "Error reed clamps opener"
+  },
+  {
+    "id": 50,
+    "stop": false,
+    "name": "Delaying from program change"
+  },
+  {
+    "id": 51,
+    "stop": true,
+    "name": "Paused (next machine not ready)"
+  },
+  {
+    "id": 52,
+    "stop": false,
+    "name": "Thermo vacuum belt fan 1"
+  },
+  {
+    "id": 53,
+    "stop": false,
+    "name": "Thermo vacuum belt fan 2"
+  },
+  {
+    "id": 54,
+    "stop": false,
+    "name": "Thermo vacuum belt fan 3"
+  },
+  {
+    "id": 55,
+    "stop": false,
+    "name": "Delay start after emergency stop"
+  },
+  {
+    "id": 56,
+    "stop": false,
+    "name": "Grippers only one phc dark"
+  },
+  {
+    "id": 57,
+    "stop": false,
+    "name": "Grippers waiting for piece"
+  },
+  {
+    "id": 58,
+    "stop": true,
+    "name": "Servo drive error {servoErrorIndex}"
+  },
+  {
+    "id": 59,
+    "stop": false,
+    "name": "Error reed picker arm"
+  },
+  {
+    "id": 60,
+    "stop": true,
+    "name": "Emergency operation"
+  },
+  {
+    "id": 61,
+    "stop": true,
+    "name": "Revision mode"
+  },
+  {
+    "id": 62,
+    "stop": false,
+    "name": "Error reed braking rolls"
+  },
+  {
+    "id": 63,
+    "stop": false,
+    "name": "Thermo vacuum belt fan 4"
+  },
+  {
+    "id": 64,
+    "stop": false,
+    "name": "Thermo fan picker"
+  },
+  {
+    "id": 65,
+    "stop": false,
+    "name": "Thermo fan 1 vacuum box"
+  },
+  {
+    "id": 66,
+    "stop": false,
+    "name": "Thermo fan 2 vacuum box"
+  },
+  {
+    "id": 67,
+    "stop": false,
+    "name": "Thermo fan laydown conveyor"
+  },
+  {
+    "id": 69,
+    "stop": false,
+    "name": "Error Vision system"
+  },
+  {
+    "id": 70,
+    "stop": true,
+    "name": "Jam laydown conveyor"
+  },
+  {
+    "id": 71,
+    "stop": true,
+    "name": "Button release"
+  },
+  {
+    "id": 72,
+    "stop": false,
+    "name": "Funnel empty"
+  },
+  {
+    "id": 73,
+    "stop": true,
+    "name": "Jam to next machine"
+  },
+  {
+    "id": 74,
+    "stop": true,
+    "name": "Jam under belt 1"
+  },
+  {
+    "id": 75,
+    "stop": false,
+    "name": "Jam picker belt"
+  },
+  {
+    "id": 76,
+    "stop": false,
+    "name": "Robot: waiting for hanger delivery"
+  },
+  {
+    "id": 77,
+    "stop": false,
+    "name": "Robot: error hanger delivered sensor"
+  },
+  {
+    "id": 78,
+    "stop": false,
+    "name": "Error reed antenna"
+  },
+  {
+    "id": 79,
+    "stop": false,
+    "name": "Picker disabled from folder"
+  },
+  {
+    "id": 80,
+    "stop": false,
+    "name": "Connection interrupted to bag system"
+  },
+  {
+    "id": 81,
+    "stop": false,
+    "name": "Connection interrupted to vacuum system"
+  },
+  {
+    "id": 82,
+    "stop": false,
+    "name": "Bag call disabled from folder"
+  },
+  {
+    "id": 83,
+    "stop": true,
+    "name": "Jam return belt"
+  },
+  {
+    "id": 84,
+    "stop": false,
+    "name": "Funnel full"
+  },
+  {
+    "id": 86,
+    "stop": false,
+    "name": "Jam picker"
+  },
+  {
+    "id": 87,
+    "stop": false,
+    "name": "General jam in machine"
+  },
+  {
+    "id": 88,
+    "stop": false,
+    "name": "Picker waiting for reed switch"
+  },
+  {
+    "id": 89,
+    "stop": false,
+    "name": "Connection interrupted to other feeder"
+  },
+  {
+    "id": 90,
+    "stop": false,
+    "name": "Thermo loading system"
+  },
+  {
+    "id": 91,
+    "stop": false,
+    "name": "Non towel cart full"
+  },
+  {
+    "id": 92,
+    "stop": false,
+    "name": "Phc piece end detection vacuum box dark"
+  },
+  {
+    "id": 93,
+    "stop": false,
+    "name": "Picker waiting for laydown belts"
+  },
+  {
+    "id": 94,
+    "stop": false,
+    "name": "Too many Non-Towels in machine?"
+  },
+  {
+    "id": 95,
+    "stop": false,
+    "name": "Sort out belt not running"
+  },
+  {
+    "id": 96,
+    "stop": false,
+    "name": "OPC connection interrupted"
+  },
+  {
+    "id": 97,
+    "stop": false,
+    "name": "Picker disabled from conveyor system"
+  },
+  {
+    "id": 98,
+    "stop": false,
+    "name": "Warning jam picker belt"
+  },
+  {
+    "id": 99,
+    "stop": false,
+    "name": "Scanner connection interrupted"
+  },
+  {
+    "id": 100,
+    "stop": true,
+    "name": "Timeout trommel"
+  },
+  {
+    "id": 101,
+    "stop": true,
+    "name": "Phc cross in front of loading stations"
+  },
+  {
+    "id": 102,
+    "stop": false,
+    "name": "Error not locked"
+  },
+  {
+    "id": 103,
+    "stop": false,
+    "name": "Error not unlocked"
+  },
+  {
+    "id": 104,
+    "stop": false,
+    "name": "Laydown table not at the back"
+  },
+  {
+    "id": 105,
+    "stop": false,
+    "name": "Error folder"
+  },
+  {
+    "id": 106,
+    "stop": false,
+    "name": "Maintenance needed"
+  }
+]

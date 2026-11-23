@@ -5,7 +5,7 @@ const { isRunning } = require("../../utils/machineStatus");
 /** MODULE REQUIRES */
 const express = require("express");
 const config = require("../../modules/config");
-const router = express.Router();
+const { enrichVersaAlarm } = require("../../modules/versaAlarms");
 const { DateTime, Duration, Interval } = require("luxon"); //For handling dates and times
 const ObjectId = require("mongodb").ObjectId;
 const startupDT = DateTime.now();
@@ -15,6 +15,7 @@ module.exports = function (server) {
 };
 
 function constructor(server) {
+  const router = express.Router();
   const db = server.db;
   const logger = server.logger;
   
@@ -36,13 +37,14 @@ function constructor(server) {
   });
 
   router.post("/versa", async (req, res, next) => {
-    const currentDateTime = new Date();
-    let bodyJSON = Object.assign({}, req.body);
-    if (bodyJSON.timestamp) {
-      bodyJSON.timestamp = new Date(DateTime.fromISO(bodyJSON.timestamp));
-    }
+    try {
+      const currentDateTime = new Date();
+      let bodyJSON = Object.assign({}, req.body);
+      if (bodyJSON.timestamp) {
+        bodyJSON.timestamp = new Date(DateTime.fromISO(bodyJSON.timestamp));
+      }
 
-    let storeJSON = Object.assign({}, bodyJSON);
+      let storeJSON = Object.assign({}, bodyJSON);
     /*if (req.socket.remoteAddress) {
       const ipStrings = req.socket.remoteAddress.split(":");
       storeJSON.machineInfo["ipAddress"] = "" + ipStrings[ipStrings.length - 1];
@@ -53,7 +55,7 @@ function constructor(server) {
       { id: storeJSON.operatorInfo.code, name: storeJSON.operatorInfo.name },
     ];*/
 
-    let collection = db.collection("versa");
+      let collection = db.collection("versa");
     /*if (storeJSON.status) {
       collection = db.collection("ac360-status");
 
@@ -307,14 +309,18 @@ function constructor(server) {
     } else if (storeJSON.stack) {
       collection = db.collection("ac360-stack");
     }*/
-    const result = await collection.insertOne(storeJSON);
+      storeJSON = await enrichVersaAlarm(storeJSON, db, logger);
+      const result = await collection.insertOne(storeJSON);
 
-    if (req.is("application/json")) {
-      res.json({ receivedBody: storeJSON });
-    } else if (req.body) {
-      res.send(storeJSON);
-    } else {
-      res.json("No body received");
+      if (req.is("application/json")) {
+        res.json({ receivedBody: storeJSON });
+      } else if (req.body) {
+        res.send(storeJSON);
+      } else {
+        res.json("No body received");
+      }
+    } catch (error) {
+      next(error);
     }
   });
 

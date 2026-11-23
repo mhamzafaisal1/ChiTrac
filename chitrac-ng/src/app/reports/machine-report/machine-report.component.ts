@@ -1,3 +1,4 @@
+import { CASCADE_REPORT_METRICS, isCascadeMachine, presentMachineMetrics } from '../../shared/utils/machine-presentation';
 import { Component, OnInit, OnDestroy, ElementRef, Renderer2, inject } from '@angular/core';
 import { ReportColumnLayoutService } from '../report-column-layout.service';
 import { reportCsv, reportCsvColumns, reportPdfTable } from '../report-columns';
@@ -28,6 +29,7 @@ interface MachineReportGroup {
   key: string;
   summary: any;
   details: any[];
+  expandable?: boolean;
 }
 
 @Component({
@@ -164,6 +166,16 @@ export class MachineReportComponent implements OnInit, OnDestroy {
     results.forEach((machine: any) => {
       const summary = machine.machineSummary;
       if (!summary) return;
+
+      if (isCascadeMachine(machine.machine)) {
+        const row = presentMachineMetrics(this.formatMachineSummaryRow(
+          machine.machine?.name ?? '', machine.machine?.serial ?? '', summary
+        ), machine.machine, CASCADE_REPORT_METRICS);
+        formattedData.push(row);
+        this.reportGroups.push({ key: String(machine.machine?.serial ?? machine.machine?.name),
+          summary: row, details: [], expandable: false });
+        return;
+      }
 
       const itemSummaries = summary.itemSummaries;
       const items = itemSummaries != null
@@ -333,7 +345,7 @@ export class MachineReportComponent implements OnInit, OnDestroy {
 
     setTimeout(() => {
       try {
-        const csvContent = reportCsv(this.columns, this.displayedRows);
+        const csvContent = '\uFEFF' + reportCsv(this.columns, this.displayedRows);
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
       

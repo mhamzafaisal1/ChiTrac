@@ -49,6 +49,7 @@ const appRoutes: Routes = [
 	{ path: 'ng/downtime-pareto', loadComponent: () => import('./downtime-pareto/downtime-pareto.component').then(m => m.DowntimeParetoComponent), data: { preload: true } },
 	{ path: 'ng/shift-handoff', loadComponent: () => import('./shift-handoff/shift-handoff.component').then(m => m.ShiftHandoffComponent), data: { preload: true } },
 	{ path: 'ng/visual-ops', loadComponent: () => import('./visual-ops-dashboard/visual-ops-dashboard.component').then(m => m.VisualOpsDashboardComponent), data: { preload: true } },
+	{ path: 'ng/cascade-status', loadComponent: () => import('./cascade-status/cascade-status.component').then(m => m.CascadeStatusComponent) },
 	{
 		path: 'ng/daily-dashboard',
 		data: { preload: true },
@@ -59,7 +60,8 @@ const appRoutes: Routes = [
 	
 	// Reports
 	{ path: 'ng/reports/machine-report', loadComponent: () => import('./reports/machine-report/machine-report.component').then(m => m.MachineReportComponent), data: { preload: true } },
-	{ path: 'ng/reports/shift-machine-report', loadComponent: () => import('./reports/shift-machine-report/shift-machine-report.component').then(m => m.ShiftMachineReportComponent), data: { preload: true } },
+  { path: 'ng/reports/shift-machine-report', pathMatch: 'full', redirectTo: ({ queryParams, fragment }) =>
+      inject(Router).createUrlTree(['/ng/reports/machine-report'], { queryParams, fragment }) },
 	{ path: 'ng/reports/shift-comparison-report', loadComponent: () => import('./reports/shift-comparison-report/shift-comparison-report.component').then(m => m.ShiftComparisonReportComponent), data: { preload: true } },
 	{ path: 'ng/reports/operator-report', loadComponent: () => import('./reports/operator-report/operator-report.component').then(m => m.OperatorReportComponent), data: { preload: true } },
 	{ path: 'ng/reports/item-report', loadComponent: () => import('./reports/item-report/item-report.component').then(m => m.ItemReportComponent), data: { preload: true } },

@@ -195,6 +195,14 @@ async function startServer() {
         } });
         Object.defineProperty(server, 'minuteTotalsSync', { value: minuteSync, configurable: true });
         await minuteSync.start();
+        if (process.env.CASCADE_MQTT_URL) {
+            try {
+                const { startCascadeMqttSubscriber } = require('./modules/cascadeMqtt');
+                server.cascadeMqtt = startCascadeMqttSubscriber({ db, logger });
+            } catch (error) {
+                logger.error(`Cascade MQTT subscriber not started: ${error.message}`);
+            }
+        }
         const httpServer = app.listen(port, () => {
             logger.info(`ChiTracAPI Started and listening on port ${port}`);
         });

@@ -78,3 +78,35 @@ describe('Machine dashboard shift infobox', () => {
     expect(dashboard.applySummaryCardVisibility([dashboard.getShiftInfoCard(), machines])).toEqual([machines]);
   });
 });
+
+
+describe('Cascade machine presentation', () => {
+  const response = (type: string, serial: number) => ({ machine: { serial, name: 'Any name', type }, currentStatus: { code: 1 },
+    metrics: { runtime: { total: 60000 }, downtime: { total: 10000 }, pausedTime: { total: 10000 }, faultTime: { total: 0 },
+      output: { totalCount: 8, misfeedCount: 2 }, performance: { availability: { percentage: 80 }, throughput: { percentage: 80 },
+        efficiency: { percentage: 90 }, oee: { percentage: 72 } } } });
+  let dashboard: any;
+  beforeEach(() => {
+    dashboard = Object.create(MachineDashboardComponent.prototype);
+    dashboard.updateSummaryCards = () => {}; dashboard.loadOperatorStatusCounts = () => {}; dashboard.prefetchMachineDetails = () => {};
+    dashboard.applyCachedOperatorStatus = () => {}; dashboard.websocketService = { getDashboardCacheSnapshot: () => ({}) };
+    dashboard.dateTimeService = { getShiftId: (): string | null => null }; dashboard.shouldUseWebsocketDashboardData = () => true;
+  });
+  for (const mode of ['REST','websocket']) it(mode + ' masks only Cascade production values', () => {
+    const data = [response('Cascade', 41), response('SPF', 42)];
+    if (mode === 'REST') dashboard.updateDashboardData(data);
+    else dashboard.tryApplyWebsocketDashboardData({ today: { machinesSummary: data } });
+    for (const key of ['Total Count','Misfeed Count','PPH','Throughput','Efficiency','OEE']) expect(dashboard.rows[0][key]).withContext(key).toBe('—');
+    expect(dashboard.rows[0].Runtime).not.toBe('—'); expect(dashboard.rows[0].Availability).toBe('80%');
+    expect(dashboard.rows[1]['Total Count']).toBe(8); expect(dashboard.rows[1].Efficiency).toBe('90%');
+    expect(data[0].metrics.output.totalCount).toBe(8);
+  });
+  for (const type of ['Cascade','SPF']) it(type + ' opens only its approved modal tabs', () => {
+    dashboard.getDashboardCacheScope = () => 'today';
+    dashboard.dialog = { open: jasmine.createSpy().and.returnValue({ afterClosed: () => ({ subscribe() {} }) }) };
+    dashboard.openMachineDetailsModal({},41,{ machine: { type } },{ width: 800, height: 500 });
+    const labels = dashboard.dialog.open.calls.mostRecent().args[1].data.componentInputs.tabData.map((tab: any) => tab.label);
+    expect(labels).toEqual(type === 'Cascade' ? ['Fault Summaries','Downtime Pareto','Fault History']
+      : ['Item Summary','Current Operators','Item Stacked Chart','Fault Summaries','Downtime Pareto','Fault History','Performance Chart']);
+  });
+});

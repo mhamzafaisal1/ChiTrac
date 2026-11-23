@@ -196,6 +196,7 @@
   }
 
   .ag-row.report-summary .ag-cell { font-weight: 600; }
+  .ag-row.report-static-summary { cursor: default; }
   .ag-row.report-detail,
   .ag-row.report-empty-detail {
     background-color: var(--detail-bg);

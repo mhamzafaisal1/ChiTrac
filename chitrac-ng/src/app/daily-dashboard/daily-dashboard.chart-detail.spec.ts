@@ -134,7 +134,7 @@ describe('Dashboard chart header controls', () => {
         { provide: DashboardTimeframeService, useValue: {} },
         { provide: LayoutEditService, useValue: { register: () => {}, unregister: () => {}, context$: new BehaviorSubject(null), lockRequested$: new Subject(), bindSession: LayoutEditService.prototype.bindSession } },
         { provide: SettingsService, useValue: { timeFormat$: new Subject(), userPreferences$: new Subject() } },
-        { provide: UserService, useValue: {} },
+        { provide: UserService, useValue: { getToken: () => 'test-token', hasPermissionLevel: () => true, user: new BehaviorSubject({ username: 'alice' }) } },
         { provide: MatDialog, useValue: {} },
       ],
     }).overrideComponent(DailyDashboardComponent, {
