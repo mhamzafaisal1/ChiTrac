@@ -11,7 +11,9 @@
     "src/app/services/settings-spf-layout.spec.ts",
     "src/app/services/settings-named-production-layouts.spec.ts",
     "src/app/services/production-screen-layouts.service.spec.ts",
+    "src/app/services/production-screen-navigation.service.spec.ts",
     "src/app/home/home.component.spec.ts",
+    "src/app/nav-main-menu/nav-indicators.spec.ts",
     "src/app/settings-menu/settings-menu.component.spec.ts",
     "src/app/guards/auth.guard.spec.ts",
     "src/**/*.d.ts"

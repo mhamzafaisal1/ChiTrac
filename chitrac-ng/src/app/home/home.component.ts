@@ -6,6 +6,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, take, takeUntil } from 'rxjs';
 import { NavigationActionsService } from '../services/navigation-actions.service';
 import { ProductionScreenLayoutsService } from '../services/production-screen-layouts.service';
+import { ProductionScreenNavigationService } from '../services/production-screen-navigation.service';
 import { isNavigationMenu, menuParents, menuTitles, navigationEntries, NavigationMenu } from '../services/navigation-menu';
 import { PermissionLevels, UserService } from '../user.service';
 import { UserLoginComponent } from '../user-login/user-login.component';
@@ -20,6 +21,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly navigation = inject(NavigationActionsService);
   readonly userService = inject(UserService);
   readonly productionLayouts = inject(ProductionScreenLayoutsService);
+  readonly productionNavigation = inject(ProductionScreenNavigationService);
   readonly permissionLevels = PermissionLevels;
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);

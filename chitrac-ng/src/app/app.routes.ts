@@ -11,6 +11,7 @@ import { SystemSettingsComponent } from './system-settings/system-settings.compo
 import { PermissionLevels } from './user.service';
 import { SettingsMenuComponent } from './settings-menu/settings-menu.component';
 import { HomeComponent } from './home/home.component';
+import { restoreLegacyProductionLayout } from './services/production-screen-navigation.service';
 
 const appRoutes: Routes = [
 	// Settings pages
@@ -72,8 +73,8 @@ const appRoutes: Routes = [
 	...legacyProductionRoutes,
 
 	// Production/Efficiency Screens
-	{ path: 'ng/production-screen', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent), data: { preload: true } },
-	{ path: 'ng/experimental/spf', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent) },
+	{ path: 'ng/production-screen', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent), canActivate: [restoreLegacyProductionLayout], runGuardsAndResolvers: 'paramsOrQueryParamsChange', data: { preload: true } },
+	{ path: 'ng/experimental/spf', loadComponent: () => import('./efficiency-screens/experimental-spf/experimental-spf.component').then(m => m.ExperimentalSpfComponent), canActivate: [restoreLegacyProductionLayout], runGuardsAndResolvers: 'paramsOrQueryParamsChange' },
 	
 	// Redirects
 	{ path: 'ng/home', component: HomeComponent },

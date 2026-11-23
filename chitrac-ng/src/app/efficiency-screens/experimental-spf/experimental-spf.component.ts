@@ -1,7 +1,7 @@
 import { CreateProductionLayoutDialogComponent, LoadProductionLayoutDialogComponent } from './production-layout-dialogs.component';
 import { ProductionLayoutActivation } from '../../services/production-layout.models';
-import { ActivatedRoute, Router } from '@angular/router';
 import { ProductionScreenLayoutsService } from '../../services/production-screen-layouts.service';
+import { ProductionScreenNavigationService } from '../../services/production-screen-navigation.service';
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
@@ -60,8 +60,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     private readonly user: UserService,
     private readonly editor: LayoutEditService,
     private readonly dialog: MatDialog,
-    private readonly route: ActivatedRoute,
-    private readonly router: Router,
+    private readonly productionNavigation: ProductionScreenNavigationService,
     private readonly productionLayouts: ProductionScreenLayoutsService,
   ) {}
 
@@ -93,7 +92,7 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
       this.savedLayout = preferences?.dashboardLayouts?.experimentalSpf || null;
       if (!this.layoutEditing) this.applyDisplayLayout();
     });
-    this.watchRouteLayout();
+    this.watchLayoutSelection();
     this.loadStations();
   }
 
@@ -128,13 +127,12 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
     });
   }
 
-  private watchRouteLayout(): void {
+  private watchLayoutSelection(): void {
     combineLatest([
-      this.route.queryParamMap,
-      this.user.user.pipe(map(user => user?.username || null), distinctUntilChanged()),
+      this.productionNavigation.selection$,
       this.layoutRetry.pipe(startWith(undefined)),
     ]).pipe(
-      switchMap(([params]) => {
+      switchMap(([selection]) => {
         this.selectionChanged.next();
         this.picker?.close();
         this.namedDialog?.close();
@@ -147,15 +145,13 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
         this.isLoading = true;
         this.polling?.unsubscribe();
         this.lanes = {};
-        this.hasNamedSelection = params.has('layoutScope') || params.has('layoutId');
-        if (!this.hasNamedSelection) return of(null);
-        const scope = params.get('layoutScope');
-        const id = params.get('layoutId');
-        if ((scope !== 'system' && scope !== 'user') || !id || !/^[a-f0-9]{64}$/.test(id)) {
+        this.hasNamedSelection = selection !== null;
+        if (!selection) return of(null);
+        if (selection === 'invalid') {
           this.layoutError = 'This production layout link is invalid. Choose another layout or open the default production screen.';
           return of(null);
         }
-        return this.productionLayouts.read({ scope, id }).pipe(catchError(error => {
+        return this.productionLayouts.read(selection).pipe(catchError(error => {
           this.layoutError = error?.error?.error || 'Could not load this production layout. Please try again or open the default production screen.';
           return of(null);
         }));
@@ -186,13 +182,11 @@ export class ExperimentalSpfComponent implements OnInit, OnDestroy {
   retrySelectedLayout(): void { this.layoutRetry.next(); }
 
   openDefaultLayout(): void {
-    this.router.navigate(['/ng/production-screen']);
+    void this.productionNavigation.open();
   }
 
   private clearNamedSelection(): void {
-    if (this.hasNamedSelection) this.router.navigate([], {
-      relativeTo: this.route, queryParams: { layoutScope: null, layoutId: null }, queryParamsHandling: 'merge', replaceUrl: true,
-    });
+    if (this.hasNamedSelection) void this.productionNavigation.clear();
   }
 
   private startPolling(): void {
