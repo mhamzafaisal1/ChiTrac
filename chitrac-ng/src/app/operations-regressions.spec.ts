@@ -41,8 +41,8 @@ describe('Operations data and loading regressions', () => {
   });
 
   it('uses configured OEE thresholds and plots the bar and target on the same scale', () => {
-    const component = new VisualOpsDashboardComponent({} as any, {} as any, {} as any, {} as any,
-      TestBed.inject(PercentBreakpointService), settings);
+    const component = TestBed.runInInjectionContext(() => new VisualOpsDashboardComponent({} as any, {} as any, {} as any, {} as any,
+      TestBed.inject(PercentBreakpointService), settings));
     settings.loadSettings().subscribe();
     http.expectOne('/api/utilities/settings').flush({ systemName: 'chitrac', oePercentBreakpoints: { poor: 0, okay: 50, good: 72 } });
     expect(component.oeeTarget).toBe(72);
@@ -53,7 +53,7 @@ describe('Operations data and loading regressions', () => {
   });
 
   it('keeps distinct machines and fault codes identifiable without changing Pareto totals', () => {
-    const component = new DowntimeParetoComponent({} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const component = TestBed.runInInjectionContext(() => new DowntimeParetoComponent({} as any, {} as any, {} as any, {} as any, {} as any, {} as any));
     (component as any).processRows([{ name: 'Estop/Door', code: 10, count: 2, totalDurationSeconds: 100, faults: [
       { machineSerial: 1, machineName: 'LPL1', durationSeconds: 40 },
       { machineSerial: 2, machineName: 'LPL2', durationSeconds: 60 }

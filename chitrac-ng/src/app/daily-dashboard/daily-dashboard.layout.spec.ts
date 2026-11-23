@@ -134,10 +134,10 @@ describe('Daily dashboard layout state', () => {
       saveDailyDashboardChartOrder: jasmine.createSpy('save').and.returnValue(of({})),
     };
     dialog = { openDialogs: [], open: jasmine.createSpy('open').and.returnValue({ afterClosed: () => closed, close: jasmine.createSpy('close') }) };
-    dashboard = new DailyDashboardComponent(
+    dashboard = TestBed.runInInjectionContext(() => new DailyDashboardComponent(
       { ensureConnected() {}, status$: of('disconnected'), dashboardCache$: of({}) } as any,
       { getConfirmed: () => true } as any, {} as any, editor, settings, user, dialog, {} as any,
-    );
+    ));
     spyOn(dashboard as any, 'scheduleChartDimensionUpdate');
     dashboard.ngOnInit();
   });
@@ -251,6 +251,22 @@ describe('Daily dashboard layout state', () => {
     closed.next(undefined);
     expect(dashboard.layoutEditing).toBeTrue();
     expect(dashboard.chartTiles.map(tile => tile.id)).toEqual(draft);
+  });
+
+  it('keeps the save prompt exclusive and restores the layout through the shared discard flow', () => {
+    const original = dashboard.chartTiles.map(tile => tile.id);
+    editor.toggle();
+    dashboard.onChartDrop({ previousIndex: 0, currentIndex: 1 } as any);
+    editor.toggle();
+    dashboard.openCreateLayout();
+    dashboard.openLoadLayout();
+    editor.toggle();
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+
+    closed.next('discard');
+    closed.complete();
+    expect(dashboard.chartTiles.map(tile => tile.id)).toEqual(original);
+    expect(dashboard.layoutEditing).toBeFalse();
   });
 
   it('requires permission and closes named dialogs when the account changes', () => {

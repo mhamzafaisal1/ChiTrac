@@ -1,3 +1,4 @@
+const { isRunning, isPaused, isFault } = require("../../utils/machineStatus");
 /*** Utilites API controller */
 
 /** MODULE REQUIRES */
@@ -22,7 +23,7 @@ const {
 } = require("../../utils/configExport");
 const { REBOOT_DELAY_SECONDS, createLinuxRebootScheduler } = require("../../utils/rebootScheduler");
 
-const recordTimestamp = (record) => record?.timestamps?.create;
+const { recordTimestamp, overlap } = require("../../utils/records");
 
 let usbPackage = null;
 
@@ -595,16 +596,6 @@ function constructor(server) {
   /**
    * Helper function to calculate overlap factor between session and query window
    */
-  function overlap(sStart, sEnd, wStart, wEnd) {
-    const ss = new Date(sStart);
-    const se = new Date(sEnd || wEnd);
-    const os = ss > wStart ? ss : wStart;
-    const oe = se < wEnd ? se : wEnd;
-    const ovSec = Math.max(0, (oe - os) / 1000);
-    const fullSec = Math.max(0, (se - ss) / 1000);
-    const f = fullSec > 0 ? ovSec / fullSec : 0;
-    return { ovSec, fullSec, factor: f };
-  }
 
   /**
    * Safe number extraction
@@ -998,21 +989,31 @@ function constructor(server) {
 
   // ==================== END CACHE BUILDER HELPER FUNCTIONS ====================
 
-  router.get("/backfill", async (req, res) => {
+  // Backfills write historical data; reads and unsupported methods must never run them.
+  router.all(["/backfill", "/backfill-totals"], (req, res, next) => {
+    if (req.method === "POST") return next();
+    return res.set("Allow", "POST").status(405).json({ error: "Use POST to run a backfill" });
+  });
+
+  router.post("/backfill", async (req, res) => {
     try {
       // Step 1: Parse and validate input date
-      const { date, overwrite } = req.query;
+      // Accept query parameters on POST for existing maintenance scripts.
+      const date = req.body?.date ?? req.query.date;
+      const overwrite = req.body?.overwrite ?? req.query.overwrite;
       
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required (format: YYYY-MM-DD)" });
       }
 
-      const inputDate = DateTime.fromISO(date, { zone: 'America/Chicago' });
+      const inputDate = typeof date === 'string'
+        ? DateTime.fromISO(date, { zone: 'America/Chicago' })
+        : DateTime.invalid('Date must be a string');
       if (!inputDate.isValid) {
         return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
       }
 
-      const allowOverwrite = overwrite === 'true';
+      const allowOverwrite = overwrite === true || overwrite === 'true';
 
       // Calculate day boundaries
       const dayStart = inputDate.startOf('day').toJSDate();
@@ -1300,7 +1301,7 @@ function constructor(server) {
           const statusCode = state.status?.code;
 
           // Check if this is a Running state (code 1)
-          if (statusCode === 1) {
+          if (isRunning(statusCode)) {
             // Start new machine session if not already in one
             if (!currentMachineSession) {
               // Get unique items from program.items
@@ -1420,7 +1421,7 @@ function constructor(server) {
             }
           } 
           // Check if this is a Fault state (code >= 2)
-          else if (statusCode >= 2) {
+          else if (isFault(statusCode)) {
             // End machine session if one is active
             if (currentMachineSession) {
               await endMachineSession(currentMachineSession, state);
@@ -1486,7 +1487,7 @@ function constructor(server) {
             }
           }
           // Timeout state (code 0)
-          else if (statusCode === 0) {
+          else if (isPaused(statusCode)) {
             // End machine session if one is active
             if (currentMachineSession) {
               await endMachineSession(currentMachineSession, state);
@@ -1734,21 +1735,25 @@ function constructor(server) {
     }
   });
 
-  router.get("/backfill-totals", async (req, res) => {
+  router.post("/backfill-totals", async (req, res) => {
     try {
       // Step 1: Parse and validate input date
-      const { date, overwrite } = req.query;
+      // Accept query parameters on POST for existing maintenance scripts.
+      const date = req.body?.date ?? req.query.date;
+      const overwrite = req.body?.overwrite ?? req.query.overwrite;
       
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required (format: YYYY-MM-DD)" });
       }
 
-      const inputDate = DateTime.fromISO(date, { zone: 'America/Chicago' });
+      const inputDate = typeof date === 'string'
+        ? DateTime.fromISO(date, { zone: 'America/Chicago' })
+        : DateTime.invalid('Date must be a string');
       if (!inputDate.isValid) {
         return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD" });
       }
 
-      const allowOverwrite = overwrite === 'true';
+      const allowOverwrite = overwrite === true || overwrite === 'true';
 
       // Calculate day boundaries
       const dayStart = inputDate.startOf('day').toJSDate();
@@ -1853,7 +1858,7 @@ function constructor(server) {
             const state = states[i];
             const statusCode = state.status?.code;
 
-            if (statusCode === 1) {
+            if (isRunning(statusCode)) {
               if (!currentMachineSession) {
                 const itemsInProgram = extractItemsArray(state.program?.items);
                 const uniqueItemIds = [...new Set(itemsInProgram.map(it => it.id).filter(id => id && id > 0))];
@@ -1959,7 +1964,7 @@ function constructor(server) {
                 currentFaultSession = null;
               }
             } 
-            else if (statusCode >= 2) {
+            else if (isFault(statusCode)) {
               if (currentMachineSession) {
                 await endMachineSession(currentMachineSession, state);
                 backfilledSessions.machineSessions.push(currentMachineSession);
@@ -2018,7 +2023,7 @@ function constructor(server) {
                 currentFaultSession.states.push(state);
               }
             }
-            else if (statusCode === 0) {
+            else if (isPaused(statusCode)) {
               if (currentMachineSession) {
                 await endMachineSession(currentMachineSession, state);
                 backfilledSessions.machineSessions.push(currentMachineSession);

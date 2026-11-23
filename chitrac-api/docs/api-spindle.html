@@ -428,6 +428,13 @@ GET /api/spindle/operator/overview?timeframe=custom&amp;start=2026-05-20T05:00:0
 { "error": "start must be a valid ISO date string" }</code></pre>
 
     <h3>GET /api/spindle/machine/details</h3>
+    <p><code>currentStatus</code> is the latest machine status, even for a historical
+      request. <code>faultData.faultCycles</code> lists recorded fault sessions overlapping
+      the requested window, with start, end and duration in that window. Open faults
+      are measured through the window end. <code>faultSummaries</code> groups cycles by
+      fault code and name and reports their count and total duration in milliseconds.
+      <code>performance.pausedTime</code> reports paused intervals separately from faults.
+      A live fault alone does not establish a historical fault duration.</p>
     <p>
       Returns machine modal/detail payloads in the same shape as the standard
       machine dashboard daily cache route. The route supports all active

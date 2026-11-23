@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const config = require('../../modules/config');
-const { assertPermissionLevel, getPermissionLevel } = require('../../modules/permissions');
+const { findPermittedUser, getPermissionLevel } = require('../../modules/permissions');
 const { createVerifyJwtMiddleware } = require('../../utils/authMiddleware');
 
 module.exports = function(server) {
@@ -62,8 +62,7 @@ function constructor(server) {
                 const tokenUserId = getTokenUserId(payload);
                 if (!tokenUserId) return res.status(401).json({ error: 'Invalid token payload' });
 
-                const user = await db.collection(config.userCollectionName).findOne({ _id: new ObjectId(tokenUserId) });
-                assertPermissionLevel(user, requiredLevel);
+                const user = await findPermittedUser(db.collection(config.userCollectionName), tokenUserId, requiredLevel);
                 req.authUser = user;
                 return next();
             } catch (error) {

@@ -3,6 +3,7 @@ import { Injectable, NgZone, inject } from '@angular/core';
 import { Observable, timer, Subject, BehaviorSubject, of } from 'rxjs';
 import { switchMap, filter, takeUntil, tap, concatMap, delay, mergeMap } from 'rxjs/operators';
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
 @Injectable({ providedIn: 'root' })
 export class PollingService {
   private modalOpen$ = new BehaviorSubject<boolean>(false);
@@ -69,15 +70,7 @@ export class PollingService {
   // Utility method to update end timestamp to now
   updateEndTimestampToNow(): string {
     const now = new Date();
-    return this.formatDateForInput(now);
+    return toDateTimeLocalInput(now);
   }
 
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 }

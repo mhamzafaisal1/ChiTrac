@@ -1,15 +1,16 @@
 import { PreviousDayComparison, yesterdayMarker, yesterdayTooltip, YESTERDAY_MARKER_STYLE } from '../yesterday-comparison';
 // charts/daily-machine-oee-bar-chart/daily-machine-oee-bar-chart.component.ts
-import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DashboardService } from '../../services/dashboard.service';
-import { PollingService } from '../../services/polling-service.service';
+
 import { DateTimeService } from '../../services/date-time.service';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
-import { Subject, Observable } from 'rxjs';
-import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
+import { Observable } from 'rxjs';
 
+import { toDateTimeLocalInput } from '../../shared/utils/date-input';
+import { DailyLiveChartBase } from '../daily-live-chart.base';
 @Component({
   selector: 'app-daily-machine-oee-bar-chart',
   standalone: true,
@@ -18,7 +19,7 @@ import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
   styleUrls: ['./daily-machine-oee-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnChanges {
+export class DailyMachineOeeBarChartComponent extends DailyLiveChartBase implements OnInit, OnChanges {
   @Input() chartWidth!: number;
   @Input() chartHeight!: number;
   @Input() showLegend!: boolean;
@@ -34,32 +35,13 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   private lastResponse: any = null;
 
   chartConfig: CartesianChartConfig | null = null;
-  private themeObserver?: MutationObserver;
-  isDarkTheme = false;
-  isLoading = false;
-  hasInitialData = false;
-  dummyMode = true;
-
-  startTime = '';
-  endTime = '';
-  liveMode = false;
-
-  private destroy$ = new Subject<void>();
-  private pollingSub: any;
-  private readonly POLLING_INTERVAL = 6000;
-  private cdr = inject(ChangeDetectorRef);
 
   constructor(
     private dashboardService: DashboardService,
-    private pollingService: PollingService,
     private dateTimeService: DateTimeService,
     private percentBreakpointService: PercentBreakpointService
   ) {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
-    this.themeObserver = new MutationObserver(() => {
-      this.isDarkTheme = document.body.classList.contains('dark-theme');
-    });
-    this.themeObserver.observe(document.body, { attributes: true });
+    super();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -84,111 +66,28 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     // default [start,end] = [midnight, now]
     const now = new Date();
     const start = new Date(); start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
+    this.startTime = toDateTimeLocalInput(start);
+    this.endTime = toDateTimeLocalInput(now);
 
     if (!this.preloadedData) this.enterDummy();
     if (this.useExternalTitle) return;
 
     // Consolidated initial fetch logic - only one fetch call
-    this.performInitialFetch(isLive, wasConfirmed);
-
-    this.dateTimeService.liveMode$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((live) => {
-        this.liveMode = live;
-        if (live) this.startLive(); else this.stopLive();
-      });
-
-    this.dateTimeService.confirmTrigger$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => {
-        this.liveMode = false;
-        this.stopPolling();
-        this.enterDummy();
-        this.startTime = this.dateTimeService.getStartTime();
-        this.endTime = this.dateTimeService.getEndTime();
-        this.fetchOnce().subscribe();
-      });
-  }
-
-  ngOnDestroy(): void {
-    this.themeObserver?.disconnect();
-    this.destroy$.next(); this.destroy$.complete();
-    this.stopPolling();
+    this.startTimeframeSync(isLive, wasConfirmed);
   }
 
   // ---- flow ----
-  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
-    // Determine if we should fetch data based on the current state
-    const shouldFetch = !isLive || wasConfirmed;
-    
-    if (shouldFetch) {
-      // Use confirmed times if available, otherwise use default times
-      if (wasConfirmed) {
-        this.startTime = this.dateTimeService.getStartTime();
-        this.endTime = this.dateTimeService.getEndTime();
-      }
-      
-      this.fetchOnce().subscribe();
-    }
-  }
 
-  private startLive(): void {
-    this.enterDummy();
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.pollingService.updateEndTimestampToNow();
-
-    // setupPolling() handles the initial fetch, no need for separate fetchOnce()
-    this.setupPolling();
-  }
-
-  private stopLive(): void {
-    this.stopPolling();
-    this.hasInitialData = false;
+  protected clearChart(): void {
     this.chartConfig = null;
     this.lastResponse = null;
-    this.enterDummy();
   }
 
-  private pollOnce(): Observable<any> {
-    this.endTime = this.pollingService.updateEndTimestampToNow();
-    return this.dashboardService.getDailyMachineOee(this.startTime, this.endTime)
-      .pipe(tap(this.consumeResponse('poll')));
+  protected loadData(start: string, end: string): Observable<any> {
+    return this.dashboardService.getDailyMachineOee(start, end);
   }
 
-  private setupPolling(): void {
-    this.stopPolling();
-
-    this.pollingSub = this.pollOnce()               // immediate first poll
-      .pipe(
-        // wait POLLING_INTERVAL after completion, then resubscribe to pollOnce()
-        // ensures: no overlap, next call starts only after prior finished + delay
-        // RxJS 7+
-        // @ts-ignore – type inference sometimes complains on repeat config
-        repeat({ delay: this.POLLING_INTERVAL }),
-        takeUntil(this.destroy$)
-      )
-      .subscribe({ error: () => this.stopPolling() });
-  }
-
-  private stopPolling(): void {
-    if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-  }
-
-  private fetchOnce(): Observable<any> {
-    if (!this.startTime || !this.endTime) return new Observable();
-    this.isLoading = true;
-    return this.dashboardService.getDailyMachineOee(this.startTime, this.endTime)
-      .pipe(
-        takeUntil(this.destroy$),
-        tap(this.consumeResponse('once')),
-        delay(0)
-      );
-  }
-
-  private consumeResponse =
+  protected consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
       this.lastResponse = res;
@@ -264,7 +163,7 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
     return this.percentBreakpointService.getOeColorHex(oee);
   }
 
-  private enterDummy(): void {
+  protected enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
@@ -274,14 +173,6 @@ export class DailyMachineOeeBarChartComponent implements OnInit, OnDestroy, OnCh
   }
 
   // ---- utils ----
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 
   private formatPercent(value: number): string {
     return `${new Intl.NumberFormat('en-US', {

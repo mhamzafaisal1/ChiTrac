@@ -1,7 +1,7 @@
 import { SettingsService } from '../services/settings.service';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { forkJoin, of, Subject, Subscription } from 'rxjs';
@@ -12,6 +12,7 @@ import { DailyDashboardService } from '../services/daily-dashboard.service';
 import { DateTimeService } from '../services/date-time.service';
 import { PollingService } from '../services/polling-service.service';
 
+import { ThemeService } from '../services/theme.service';
 interface VisualMetric {
   label: string;
   value: string;
@@ -58,6 +59,7 @@ interface HeatCell {
   styleUrl: './visual-ops-dashboard.component.scss',
 })
 export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   startTime = '';
   endTime = '';
   isLoading = false;
@@ -74,7 +76,7 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
   waterfallGap = 0;
   faultRows: any[] = [];
 
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   private destroy$ = new Subject<void>();
   private pollingSubscription: Subscription | null = null;
   private lastData: any;
@@ -95,14 +97,13 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
       if (this.lastData) this.applyDashboardData(this.lastData);
     });
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
     this.subscribeToTimeframePicker();
     this.initializeTimeframe();
   }
 
   ngOnDestroy(): void {
-    this.observer?.disconnect();
+    this.themeSubscription?.unsubscribe();
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
@@ -487,7 +488,7 @@ export class VisualOpsDashboardComponent implements OnInit, OnDestroy {
   }
 
   private detectTheme(): void {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
+    this.isDarkTheme = this.theme.isDark;
   }
 
 }

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, takeUntil } from 'rxjs';
 import { UserService } from '../user.service';
 
 export interface LayoutEditContext {
@@ -7,6 +7,22 @@ export interface LayoutEditContext {
   label: string;
   editing: boolean;
   editsMade: boolean;
+}
+
+export interface LayoutEditSessionOptions {
+  /** Context id the dashboard registered with. */
+  id: string;
+  destroyed: Observable<void>;
+  isEditing: () => boolean;
+  setEditing: (editing: boolean) => void;
+  /** Entering edit mode: remember the current layout. */
+  onEnter: () => void;
+  /** Leaving edit mode: forget the remembered layout. */
+  onExit: () => void;
+  /** Lock pressed with unsaved edits: open the save/discard prompt and return its result. */
+  confirm: () => Observable<unknown> | undefined;
+  /** The user chose discard: put the remembered layout back and leave edit mode. */
+  discard: () => void;
 }
 
 @Injectable({
@@ -59,5 +75,25 @@ export class LayoutEditService {
     const context = this.contextSubject.value;
     if (!context?.editing) return;
     this.contextSubject.next({ ...context, editsMade: true });
+  }
+
+  /**
+   * Edit session for one dashboard: viewing -> editing (snapshot taken) -> lock
+   * with edits -> save/discard prompt -> saved, discarded (snapshot restored) or
+   * kept editing. Unsubscribes when `destroyed` emits.
+   */
+  bindSession(options: LayoutEditSessionOptions): void {
+    this.context$.pipe(takeUntil(options.destroyed)).subscribe(context => {
+      const nextEditing = context?.id === options.id && context.editing;
+      if (nextEditing && !options.isEditing()) options.onEnter();
+      else if (!nextEditing && options.isEditing()) options.onExit();
+      options.setEditing(nextEditing);
+    });
+
+    this.lockRequested$.pipe(takeUntil(options.destroyed)).subscribe(() => {
+      options.confirm()?.pipe(takeUntil(options.destroyed)).subscribe(result => {
+        if (result === 'discard') options.discard();
+      });
+    });
   }
 }

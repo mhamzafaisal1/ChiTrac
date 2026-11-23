@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const config = require("../../modules/config");
 const certificates = require("../../modules/certificates");
 const { ObjectId } = require("mongodb");
-const { assertPermissionLevel } = require("../../modules/permissions");
+const { findPermittedUser } = require("../../modules/permissions");
 const timestampsSchema = require("../../schemas/timestampsSchema");
 const authTokenSchema = require('../../schemas/auth-token');
 const { randomUUID } = require('node:crypto');
@@ -70,8 +70,7 @@ module.exports = function (server) {
         const userId = normalizeTokenUserId(req.tokenPayload?.userId || req.tokenPayload?.createdBy);
         if (!userId) return res.status(401).json({ error: "Invalid token payload" });
 
-        const user = await server.db.collection(config.userCollectionName).findOne({ _id: new ObjectId(userId) });
-        assertPermissionLevel(user, requiredLevel);
+        const user = await findPermittedUser(server.db.collection(config.userCollectionName), userId, requiredLevel);
         req.authUser = user;
         return next();
       } catch (err) {

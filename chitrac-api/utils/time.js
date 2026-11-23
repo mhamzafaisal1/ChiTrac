@@ -13,12 +13,6 @@ const TIME_CONSTANTS = {
     DISPLAY: "MM/dd/yyyy HH:mm:ss",
     MONGO: "YYYY-MM-DDTHH:mm:ss.SSSZ",
   },
-  // Collection selection thresholds (in hours)
-  COLLECTION_THRESHOLDS: {
-    DAILY: 24,      // < 24h → *-daily
-    WEEKLY: 168,    // >= 24h && < 168h → *-weekly  
-    MONTHLY: 744,   // >= 168h && < 744h → *-monthly
-  },
 };
 
 /**
@@ -310,64 +304,20 @@ function safeToDateTime(input) {
   return dt;
 }
 
-/**
- * Determines which state collection to query based on start date
- * @param {Date|string} startDate - The start date for the query
- * @returns {string} The appropriate collection name
- */
+// The datafeed writes complete history to these base collections. Daily state
+// copies are duplicates, and age-tiered collections are not a storage contract.
 function getStateCollectionName(startDate) {
-  const startDT = safeToDateTime(startDate);
-  const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
-  const hoursDiff = now.diff(startDT).as('hours');
-  
-  // Handle future timestamps - treat as daily
-  if (hoursDiff < 0) {
-    return 'state-machine-daily';
-  }
-  
-  const { DAILY, WEEKLY, MONTHLY } = TIME_CONSTANTS.COLLECTION_THRESHOLDS;
-  
-  if (hoursDiff < DAILY) {
-    return 'state-machine-daily';
-  } else if (hoursDiff >= DAILY && hoursDiff < WEEKLY) {
-    return 'state-machine-weekly';
-  } else if (hoursDiff >= WEEKLY && hoursDiff < MONTHLY) {
-    return 'state-machine-monthly';
-  } else {
-    return 'state-machine'; // Base collection for older data
-  }
+  safeToDateTime(startDate);
+  return 'state-machine';
 }
 
-/**
- * Determines which count collection to query based on start date
- * @param {Date|string} startDate - The start date for the query
- * @returns {string} The appropriate collection name
- */
 function getCountCollectionName(startDate) {
-  const startDT = safeToDateTime(startDate);
-  const now = DateTime.now().setZone(SYSTEM_TIMEZONE);
-  const hoursDiff = now.diff(startDT).as('hours');
-  
-  // Handle future timestamps - treat as daily
-  if (hoursDiff < 0) {
-    return 'count-daily';
-  }
-  
-  const { DAILY, WEEKLY, MONTHLY } = TIME_CONSTANTS.COLLECTION_THRESHOLDS;
-  
-  if (hoursDiff < DAILY) {
-    return 'count-daily';
-  } else if (hoursDiff >= DAILY && hoursDiff < WEEKLY) {
-    return 'count-weekly';
-  } else if (hoursDiff >= WEEKLY && hoursDiff < MONTHLY) {
-    return 'count-monthly';
-  } else {
-    return 'count'; // Base collection for older data
-  }
+  safeToDateTime(startDate);
+  return 'count';
 }
 
 /**
- * Gets the appropriate collection names for both state and count based on start date
+ * Gets canonical history collection names, retaining query-date validation.
  * @param {Date|string} startDate - The start date for the query
  * @returns {Object} Object containing state and count collection names
  */
@@ -381,7 +331,7 @@ function getCollectionNames(startDate) {
 /**
  * Resolves legacy collection names to new collection names
  * @param {string} collectionName - The collection name to resolve
- * @param {Date|string} startDate - The start date for the query (optional, for time-based resolution)
+ * @param {Date|string} startDate - Optional query start date to validate
  * @returns {string} The resolved collection name
  */
 function resolveCollectionName(collectionName, startDate = null) {

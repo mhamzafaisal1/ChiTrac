@@ -25,3 +25,14 @@ Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To u
 ## Further help
 
 To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+
+## Focused test runs
+
+All specs compile with `tsconfig.spec.json`. To run only some of them, pass `--include` once per spec file or folder:
+
+```bash
+npx ng test --watch=false --browsers=ChromeHeadless --include=src/app/daily-dashboard
+```
+
+`npm run test:operations` and `npm run test:production-cleanup` are saved examples of this.
+

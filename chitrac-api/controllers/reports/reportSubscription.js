@@ -13,6 +13,7 @@ const validateReportSubscription = ajv.compile(reportSubscriptionSchema.schema);
 
 const COLLECTION_NAME = "reportSubscription";
 const JOB_PREFIX = "reportSubscription:";
+const startupRegistrations = new WeakMap();
 
 const toResponseDoc = (doc) => ({
   ...doc,
@@ -178,20 +179,29 @@ const scheduleSubscriptionJob = (server, subscriptionDoc) => {
     throw new Error("Missing or invalid schedule.cron");
   }
 
-  const job = schedule.scheduleJob(cron, async () => {
+  const job = new schedule.Job(async () => {
     await runSubscriptionJob(server, subscriptionDoc);
   });
 
-  if (!job) {
-    throw new Error("Invalid cron expression. Could not schedule job.");
+  try {
+    if (!job.schedule(cron)) {
+      throw new Error("Invalid cron expression. Could not schedule job.");
+    }
+    return job;
+  } catch (error) {
+    // node-schedule can retain a failed schedule in its job registry.
+    job.cancel();
+    throw error;
   }
-
-  return job;
 };
 
 const setScheduledJob = (server, subscriptionId, jobOrNull) => {
   if (!server.scheduledJobs) server.scheduledJobs = {};
-  server.scheduledJobs[`${JOB_PREFIX}${subscriptionId}`] = jobOrNull;
+  const key = `${JOB_PREFIX}${subscriptionId}`;
+  if (server.scheduledJobs[key] && server.scheduledJobs[key] !== jobOrNull) {
+    cancelScheduledJob(server, subscriptionId);
+  }
+  server.scheduledJobs[key] = jobOrNull;
 };
 
 const cancelScheduledJob = (server, subscriptionId) => {
@@ -208,7 +218,7 @@ const cancelScheduledJob = (server, subscriptionId) => {
   server.scheduledJobs[key] = null;
 };
 
-const registerSubscriptionAtStartup = async (server) => {
+const loadSubscriptionsAtStartup = async (server) => {
   const db = server.db;
   const logger = server.logger;
   const docs = await db
@@ -235,6 +245,20 @@ const registerSubscriptionAtStartup = async (server) => {
       );
     }
   }
+};
+
+// Both API route trees build this controller. Startup owns scheduling, and
+// concurrent or repeated initialization for the same server shares one result.
+const registerSubscriptionsAtStartup = (server) => {
+  const existing = startupRegistrations.get(server);
+  if (existing) return existing;
+
+  const registration = loadSubscriptionsAtStartup(server).catch((error) => {
+    startupRegistrations.delete(server);
+    throw error;
+  });
+  startupRegistrations.set(server, registration);
+  return registration;
 };
 
 module.exports = function (server) {
@@ -345,7 +369,6 @@ module.exports = function (server) {
         throw new Error("Mongo update was not acknowledged.");
       }
 
-      cancelScheduledJob(server, String(docId));
       setScheduledJob(server, String(docId), newJob);
       return res.json(toResponseDoc(nextDoc));
     } catch (error) {
@@ -381,9 +404,7 @@ module.exports = function (server) {
     }
   });
 
-  registerSubscriptionAtStartup(server).catch((error) => {
-    logger.error("[reportSubscription] startup registration failed:", error);
-  });
-
   return router;
 };
+
+module.exports.registerSubscriptionsAtStartup = registerSubscriptionsAtStartup;

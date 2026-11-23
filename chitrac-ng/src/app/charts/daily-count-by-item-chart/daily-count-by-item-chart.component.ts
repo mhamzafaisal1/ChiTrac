@@ -1,15 +1,17 @@
 import { PreviousDayComparison, yesterdayMarker, yesterdayTooltip, YESTERDAY_MARKER_STYLE } from '../yesterday-comparison';
 // charts/daily-count-by-item-chart/daily-count-by-item-chart.component.ts
-import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DashboardService } from '../../services/dashboard.service';
-import { PollingService } from '../../services/polling-service.service';
+
 import { DateTimeService } from '../../services/date-time.service';
-import { Subject, Observable } from 'rxjs';
-import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
+import { Observable } from 'rxjs';
+
 import * as d3 from 'd3';
 
+import { toDateTimeLocalInput } from '../../shared/utils/date-input';
+import { DailyLiveChartBase } from '../daily-live-chart.base';
 @Component({
   selector: 'app-daily-count-by-item-chart',
   standalone: true,
@@ -18,7 +20,7 @@ import * as d3 from 'd3';
   styleUrls: ['./daily-count-by-item-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChanges {
+export class DailyCountByItemChartComponent extends DailyLiveChartBase implements OnInit, OnChanges {
   @Input() chartWidth!: number;
   @Input() chartHeight!: number;
   @Input() showLegend!: boolean;
@@ -34,20 +36,6 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
   private lastResponse: any = null;
 
   chartConfig: CartesianChartConfig | null = null;
-  private themeObserver?: MutationObserver;
-  isDarkTheme = false;
-  isLoading = false;
-  hasInitialData = false;
-  dummyMode = true;
-
-  startTime = '';
-  endTime = '';
-  liveMode = false;
-
-  private destroy$ = new Subject<void>();
-  private pollingSub: any;
-  private readonly POLLING_INTERVAL = 6000;
-  private cdr = inject(ChangeDetectorRef);
 
   /** Palette for item bars (each item gets a different color) */
   private readonly ITEM_COLORS = [
@@ -57,14 +45,9 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
 
   constructor(
     private dashboardService: DashboardService,
-    private pollingService: PollingService,
     private dateTimeService: DateTimeService
   ) {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
-    this.themeObserver = new MutationObserver(() => {
-      this.isDarkTheme = document.body.classList.contains('dark-theme');
-    });
-    this.themeObserver.observe(document.body, { attributes: true });
+    super();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -95,100 +78,25 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
 
     const now = new Date();
     const start = new Date(); start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
+    this.startTime = toDateTimeLocalInput(start);
+    this.endTime = toDateTimeLocalInput(now);
 
     if (!this.preloadedData) this.enterDummy();
     if (this.useExternalTitle) return;
 
-    this.performInitialFetch(isLive, wasConfirmed);
-
-    this.dateTimeService.liveMode$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((live) => {
-        this.liveMode = live;
-        if (live) this.startLive(); else this.stopLive();
-      });
-
-    this.dateTimeService.confirmTrigger$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => {
-        this.liveMode = false;
-        this.stopPolling();
-        this.enterDummy();
-        this.startTime = this.dateTimeService.getStartTime();
-        this.endTime = this.dateTimeService.getEndTime();
-        this.fetchOnce().subscribe();
-      });
+    this.startTimeframeSync(isLive, wasConfirmed);
   }
 
-  ngOnDestroy(): void {
-    this.themeObserver?.disconnect();
-    this.destroy$.next(); this.destroy$.complete();
-    this.stopPolling();
-  }
-
-  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
-    const shouldFetch = !isLive || wasConfirmed;
-
-    if (shouldFetch) {
-      if (wasConfirmed) {
-        this.startTime = this.dateTimeService.getStartTime();
-        this.endTime = this.dateTimeService.getEndTime();
-      }
-      this.fetchOnce().subscribe();
-    }
-  }
-
-  private startLive(): void {
-    this.enterDummy();
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.pollingService.updateEndTimestampToNow();
-    this.setupPolling();
-  }
-
-  private stopLive(): void {
-    this.stopPolling();
-    this.hasInitialData = false;
+  protected clearChart(): void {
     this.chartConfig = null;
     this.lastResponse = null;
-    this.enterDummy();
   }
 
-  private pollOnce(): Observable<any> {
-    this.endTime = this.pollingService.updateEndTimestampToNow();
-    return this.dashboardService.getItemTotalsByType(this.startTime, this.endTime)
-      .pipe(tap(this.consumeResponse('poll')));
+  protected loadData(start: string, end: string): Observable<any> {
+    return this.dashboardService.getItemTotalsByType(start, end);
   }
 
-  private setupPolling(): void {
-    this.stopPolling();
-    this.pollingSub = this.pollOnce()
-      .pipe(
-        // @ts-ignore
-        repeat({ delay: this.POLLING_INTERVAL }),
-        takeUntil(this.destroy$)
-      )
-      .subscribe({ error: () => this.stopPolling() });
-  }
-
-  private stopPolling(): void {
-    if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-  }
-
-  private fetchOnce(): Observable<any> {
-    if (!this.startTime || !this.endTime) return new Observable();
-    this.isLoading = true;
-    return this.dashboardService.getItemTotalsByType(this.startTime, this.endTime)
-      .pipe(
-        takeUntil(this.destroy$),
-        tap(this.consumeResponse('once')),
-        delay(0)
-      );
-  }
-
-  private consumeResponse =
+  protected consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
       this.lastResponse = res;
@@ -283,22 +191,13 @@ export class DailyCountByItemChartComponent implements OnInit, OnDestroy, OnChan
     return `${Number.isInteger(thousands) ? thousands.toFixed(0) : thousands.toFixed(1)}k`;
   }
 
-  private enterDummy(): void {
+  protected enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
     this.chartConfig = null;
     this.lastResponse = null;
     this.cdr.markForCheck();
-  }
-
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
   }
 
   private formatCount(value: number): string {

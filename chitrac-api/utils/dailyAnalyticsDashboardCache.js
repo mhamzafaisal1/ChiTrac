@@ -1,3 +1,4 @@
+const { isRunning, isFault } = require("./machineStatus");
 const { DateTime } = require("luxon");
 const { formatDuration, SYSTEM_TIMEZONE } = require("./time");
 const { computeShiftElapsedMs, loadActiveShifts } = require("./shiftElapsed");
@@ -308,8 +309,8 @@ function overlapRange(startInput, endInput, windowStart, windowEnd) {
 function timelineStatusFromSession(session) {
   const status = session.startState?.status || session.status || session.endState?.status || {};
   const code = Number(status.id ?? status.code ?? 0);
-  if (code === 1) return { key: "running", label: "Running", code };
-  if (code >= 2) return { key: "faulted", label: status.name || "Faulted", code };
+  if (isRunning(code)) return { key: "running", label: "Running", code };
+  if (isFault(code)) return { key: "faulted", label: status.name || "Faulted", code };
   return { key: "paused", label: status.name || "Paused", code };
 }
 

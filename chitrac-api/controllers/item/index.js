@@ -15,6 +15,9 @@ const { parseAndValidateQueryParams } = require("../../utils/time");
 const { getItemSummaryForRange } = require('../../utils/itemFunctions');
 
 const DELAYED_ITEM_JOB_PREFIX = 'delayedItemConfigApply:';
+// Pending delayed applies survive restarts here. Not named config-*: configuration
+// sync broadcasts every config-* collection to all browsers.
+const PENDING_ITEM_COLLECTION = 'pending-item-config';
 
 module.exports = function(server) {
 	return constructor(server);
@@ -215,48 +218,51 @@ function constructor(server) {
 		await fs.promises.writeFile(req.pendingItemImage.filePath, req.pendingItemImage.buffer);
 	}
 
-	function scheduleDelayedItemApply({ id, itemPayload, originalRequestTimestamp, attempt = 1 }) {
-		const waitTimeMs = getApplyChangeWaitTimeMs();
-		const runAt = new Date(Date.now() + waitTimeMs);
-		const jobKey = `${DELAYED_ITEM_JOB_PREFIX}${originalRequestTimestamp}:${attempt}`;
+	const pendingCollection = db.collection(PENDING_ITEM_COLLECTION);
+	const pendingKey = (id, originalRequestTimestamp) => `${originalRequestTimestamp}:${id ?? 'new'}`;
 
-		const job = schedule.scheduleJob(runAt, async () => {
+	async function savePendingApply({ id, itemPayload, originalRequestTimestamp, attempt, runAt }) {
+		const now = new Date();
+		await pendingCollection.updateOne(
+			{ _id: pendingKey(id, originalRequestTimestamp) },
+			{
+				$set: { itemId: id ?? null, itemPayload, originalRequestTimestamp, attempt, runAt, status: 'scheduled', 'timestamps.update': now },
+				$setOnInsert: { 'timestamps.create': now }
+			},
+			{ upsert: true }
+		);
+	}
+
+	/**
+	 * Delayed apply states: scheduled -> (machines online: rescheduled, attempt + 1)
+	 * -> applied (record deleted) or failed (record kept with the error).
+	 */
+	async function scheduleDelayedItemApply({ id, itemPayload, originalRequestTimestamp, attempt = 1, runAt }) {
+		const nextRunAt = runAt || new Date(Date.now() + getApplyChangeWaitTimeMs());
+		const jobKey = `${DELAYED_ITEM_JOB_PREFIX}${originalRequestTimestamp}:${attempt}`;
+		const logContext = { id, itemId: itemPayload.id, originalRequestTimestamp, attempt };
+
+		await savePendingApply({ id, itemPayload, originalRequestTimestamp, attempt, runAt: nextRunAt });
+
+		const job = schedule.scheduleJob(nextRunAt, async () => {
 			clearScheduledJob(jobKey);
 			try {
 				const onlineMachine = await findOnlineMachine();
 				if (onlineMachine) {
-					logger.info('[delayedItemApply] Machines still online; scheduling next attempt.', {
-						id,
-						id: itemPayload.id,
-						originalRequestTimestamp,
-						attempt,
-						nextAttempt: attempt + 1
-					});
-					scheduleDelayedItemApply({
-						id,
-						itemPayload,
-						originalRequestTimestamp,
-						attempt: attempt + 1
-					});
+					logger.info('[delayedItemApply] Machines still online; scheduling next attempt.', { ...logContext, nextAttempt: attempt + 1 });
+					await scheduleDelayedItemApply({ id, itemPayload, originalRequestTimestamp, attempt: attempt + 1 });
 					return;
 				}
 
 				await applyItemConfigChange(id, itemPayload);
-				logger.info('[delayedItemApply] Item config change applied.', {
-					id,
-					id: itemPayload.id,
-					originalRequestTimestamp,
-					attempt
-				});
+				await pendingCollection.deleteOne({ _id: pendingKey(id, originalRequestTimestamp) });
+				logger.info('[delayedItemApply] Item config change applied.', logContext);
 			} catch (error) {
-				logger.error('[delayedItemApply] Apply attempt failed.', {
-					id,
-					id: itemPayload.id,
-					originalRequestTimestamp,
-					attempt,
-					error: error.message,
-					stack: error.stack
-				});
+				logger.error('[delayedItemApply] Apply attempt failed.', { ...logContext, error: error.message, stack: error.stack });
+				await pendingCollection.updateOne(
+					{ _id: pendingKey(id, originalRequestTimestamp) },
+					{ $set: { status: 'failed', error: error.message, 'timestamps.update': new Date() } }
+				).catch(saveError => logger.error('[delayedItemApply] Could not record failure.', { ...logContext, error: saveError.message }));
 			}
 		});
 
@@ -265,23 +271,33 @@ function constructor(server) {
 		}
 
 		setScheduledJob(jobKey, job);
-		logger.info('[delayedItemApply] Scheduled item config change.', {
-			jobKey,
-			id,
-			id: itemPayload.id,
-			originalRequestTimestamp,
-			attempt,
-			runAt: runAt.toISOString()
-		});
+		logger.info('[delayedItemApply] Scheduled item config change.', { ...logContext, jobKey, runAt: nextRunAt.toISOString() });
 
-		return { jobKey, runAt };
+		return { jobKey, runAt: nextRunAt };
+	}
+
+	/** Re-schedules changes that were still waiting when the server last stopped. */
+	async function restorePendingItemApplies() {
+		const pending = await pendingCollection.find({ status: 'scheduled' }).toArray();
+		for (const entry of pending) {
+			const savedRunAt = new Date(entry.runAt).getTime();
+			const runAt = new Date(Math.max(Date.now() + 5000, Number.isFinite(savedRunAt) ? savedRunAt : 0));
+			await scheduleDelayedItemApply({
+				id: entry.itemId ?? undefined,
+				itemPayload: entry.itemPayload,
+				originalRequestTimestamp: entry.originalRequestTimestamp,
+				attempt: entry.attempt || 1,
+				runAt
+			});
+		}
+		if (pending.length) logger.info(`[delayedItemApply] Restored ${pending.length} pending item config change(s).`);
 	}
 
 	async function scheduleDelayedItemApplyHandler(req, res, next) {
 		try {
 			await persistPreparedItemImage(req);
 			const originalRequestTimestamp = new Date().toISOString();
-			const scheduled = scheduleDelayedItemApply({
+			const scheduled = await scheduleDelayedItemApply({
 				id: req.params.id,
 				itemPayload: { ...req.body },
 				originalRequestTimestamp
@@ -349,7 +365,7 @@ function constructor(server) {
 
 			logger.info('[upsertItem] Item updated successfully:', {
 				id: id,
-				id: updates.id,
+				itemId: updates.id,
 				name: updates.name,
 				timestamp: new Date().toISOString()
 			});
@@ -452,6 +468,9 @@ function constructor(server) {
       res.status(error.statusCode || 500).json({ error: 'Failed to generate items summary' });
     }
   });
+
+	restorePendingItemApplies().catch(error =>
+		logger.error('[delayedItemApply] Could not restore pending item config changes.', { error: error.message }));
 
 	return router;
 }

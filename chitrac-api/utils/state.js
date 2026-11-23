@@ -1,6 +1,7 @@
+const { isRunning, isPaused, isFault } = require("./machineStatus");
 const { getStateCollectionName } = require('./time');
 
-const stateTimestamp = (state) => state?.timestamps?.create;
+const { recordTimestamp: stateTimestamp } = require("./records");
 
 async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
     const query = {
@@ -98,9 +99,9 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   
       // Running cycles only
       if (!mode || mode === 'running') {
-        if (code === 1 && !currentRunningStart) {
+        if (isRunning(code) && !currentRunningStart) {
           currentRunningStart = timestamp;
-        } else if (code !== 1 && currentRunningStart) {
+        } else if (!isRunning(code) && currentRunningStart) {
           if (currentRunningStart >= startTime && timestamp <= endTime) {
             cycles.running.push({
               start: currentRunningStart,
@@ -114,9 +115,9 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   
       // Paused cycles only
       if (!mode || mode === 'paused') {
-        if (code === 0 && !currentPauseStart) {
+        if (isPaused(code) && !currentPauseStart) {
           currentPauseStart = timestamp;
-        } else if (code !== 0 && currentPauseStart) {
+        } else if (!isPaused(code) && currentPauseStart) {
           if (currentPauseStart >= startTime && timestamp <= endTime) {
             cycles.paused.push({
               start: currentPauseStart,
@@ -130,9 +131,9 @@ async function fetchStatesForMachine(db, serial, paddedStart, paddedEnd) {
   
       // Faulted cycles only
       if (!mode || mode === 'fault') {
-        if (code > 1 && !currentFaultStart) {
+        if (isFault(code) && !currentFaultStart) {
           currentFaultStart = timestamp;
-        } else if (code === 1 && currentFaultStart) {
+        } else if (isRunning(code) && currentFaultStart) {
           if (currentFaultStart >= startTime && timestamp <= endTime) {
             cycles.fault.push({
               start: currentFaultStart,
@@ -624,7 +625,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
         const statusCode = state.status.code;
         const timestamp = new Date(stateTimestamp(state));
         
-        if (statusCode === 1) {
+        if (isRunning(statusCode)) {
             // Start a new cycle when code is 1
             if (!currentCycle) {
                 currentCycle = {
@@ -635,7 +636,7 @@ async function fetchStatesForOperatorForSoftrol(db, operatorId, paddedStart, pad
             } else {
                 currentCycle.states.push(state);
             }
-        } else if (statusCode === 0 || statusCode > 1) {
+        } else if (isPaused(statusCode) || isFault(statusCode)) {
             // Close the current cycle if we're in one
             if (currentCycle) {
                 currentCycle.end = timestamp;
@@ -694,7 +695,7 @@ function getCompletedCyclesWithOperatorSplit(states) {
     const operator = Array.isArray(state.operators) ? state.operators[0] : null;
     const operatorId = operator?.id ?? null;
 
-    if (statusCode === 1) {
+    if (isRunning(statusCode)) {
       const isOperatorSwitch = currentCycle && lastRunOperatorId !== null && operatorId !== null && operatorId !== lastRunOperatorId;
 
       if (isOperatorSwitch) {
@@ -735,7 +736,7 @@ function getCompletedCyclesWithOperatorSplit(states) {
       }
     }
 
-    else if (statusCode === 0 || statusCode > 1) {
+    else if (isPaused(statusCode) || isFault(statusCode)) {
       if (currentCycle) {
         currentCycle.end = timestamp;
         currentCycle.endState = state;
@@ -979,7 +980,7 @@ function extractFaultCycles(states, queryStart, queryEnd) {
     // A fault cycle begins when the machine is NOT running (code !== 1)
     // and continues as long as it's not running.
     // Timeout (code 0) is now considered a non-running fault state.
-    if (code !== 1) { // Machine is not running, so it's either a fault or a timeout (which we now treat as part of fault)
+    if (!isRunning(code)) { // Machine is not running, so it's either a fault or a timeout (which we now treat as part of fault)
       if (!currentCycle) {
         // This is the start of a new fault cycle
         currentCycle = {
@@ -994,7 +995,7 @@ function extractFaultCycles(states, queryStart, queryEnd) {
       }
     }
     // A fault cycle ONLY ends when the machine returns to Running (code === 1)
-    else if (code === 1 && currentCycle) {
+    else if (isRunning(code) && currentCycle) {
       currentCycle.end = timestamp;
       currentCycle.duration = timestamp - currentCycle.start;
 

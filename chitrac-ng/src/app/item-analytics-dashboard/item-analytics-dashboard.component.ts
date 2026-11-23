@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ElementRef, Renderer2, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ElementRef, Renderer2, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -14,6 +14,9 @@ import { displayInteger } from '../shared/utils/display-number';
 import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 import { formatDurationParts } from '../shared/utils/duration-format';
 
+import { toDateTimeLocalInput } from '../shared/utils/date-input';
+import { ThemeService } from '../services/theme.service';
+import { Subscription } from 'rxjs';
 @Component({
     selector: 'app-item-analytics-dashboard',
     imports: [
@@ -28,6 +31,7 @@ import { formatDurationParts } from '../shared/utils/duration-format';
     styleUrl: './item-analytics-dashboard.component.scss'
 })
 export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
+  private readonly theme = inject(ThemeService);
   startTime = '';
   endTime = '';
   rows: any[] = [];
@@ -42,7 +46,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
   isDarkTheme: boolean = false;
   isLoading: boolean = false;
   liveMode: boolean = false;
-  private observer!: MutationObserver;
+  private themeSubscription?: Subscription;
   private pollingSubscription: any;
   private destroy$ = new Subject<void>();
   private readonly POLLING_INTERVAL = 6000; // 6 seconds
@@ -90,8 +94,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.detectTheme();
-    this.observer = new MutationObserver(() => this.detectTheme());
-    this.observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.themeSubscription = this.theme.isDark$.subscribe(() => this.detectTheme());
 
     // Subscribe to live mode changes
     this.dateTimeService.liveMode$.pipe(
@@ -106,7 +109,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
         // Reset startTime to today at 00:00
         const start = new Date();
         start.setHours(0, 0, 0, 0);
-        this.startTime = this.formatDateForInput(start);
+        this.startTime = toDateTimeLocalInput(start);
         this.dateTimeService.setStartTime(this.startTime);
 
         // Reset endTime to now
@@ -141,8 +144,8 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.observer) {
-      this.observer.disconnect();
+    if (this.themeSubscription) {
+      this.themeSubscription.unsubscribe();
     }
     this.destroy$.next();
     this.destroy$.complete();
@@ -150,7 +153,7 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
   }
 
   detectTheme(): void {
-    const isDark = document.body.classList.contains('dark-theme');
+    const isDark = this.theme.isDark;
     this.isDarkTheme = isDark;
 
     const element = this.elRef.nativeElement;
@@ -243,12 +246,4 @@ export class ItemAnalyticsDashboardComponent implements OnInit, OnDestroy {
     this.rows = [];
   }
 
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 }

@@ -1,13 +1,14 @@
 // charts/daily-machine-stacked-bar-chart/daily-machine-stacked-bar-chart.component.ts
-import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartesianChartComponent, CartesianChartConfig, XYSeries } from '../cartesian-chart/cartesian-chart.component';
 import { DashboardService } from '../../services/dashboard.service';
-import { PollingService } from '../../services/polling-service.service';
-import { DateTimeService } from '../../services/date-time.service';
-import { Subject, Observable, EMPTY } from 'rxjs';
-import { takeUntil, tap, delay, repeat } from 'rxjs/operators';
 
+import { DateTimeService } from '../../services/date-time.service';
+import { Observable } from 'rxjs';
+
+import { toDateTimeLocalInput } from '../../shared/utils/date-input';
+import { DailyLiveChartBase } from '../daily-live-chart.base';
 interface MachineStatus {
   serial: number;
   name: string;
@@ -25,7 +26,7 @@ interface MachineStatus {
   styleUrls: ['./daily-machine-stacked-bar-chart.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, OnChanges {
+export class DailyMachineStackedBarChartComponent extends DailyLiveChartBase implements OnInit, OnChanges {
   @Input() chartWidth!: number;
   @Input() chartHeight!: number;
   @Input() marginTop!: number;
@@ -43,7 +44,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     // console.log('DailyMachineStackedBarChart: Input changes:', changes);
     // console.log('DailyMachineStackedBarChart: Current dimensions:', this.chartWidth, 'x', this.chartHeight);
     if (changes['preloadedData'] && this.preloadedData) {
-      this.stopPollingInternal();
+      this.stopPolling();
       this.consumeResponse('once')({ machineStatus: this.preloadedData });
     } else if (changes['preloadedData'] && !this.preloadedData && this.liveMode && !this.dateTimeService.getConfirmed()) {
       this.setupPolling();
@@ -51,32 +52,12 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
   }
 
   chartConfig: CartesianChartConfig | null = null;
-  private themeObserver?: MutationObserver;
-
-  isDarkTheme = false;
-  isLoading = false;
-  hasInitialData = false;
-  dummyMode = true;
-
-  startTime = '';
-  endTime = '';
-  liveMode = false;
-
-  private destroy$ = new Subject<void>();
-  private pollingSub: any;
-  private readonly POLLING_INTERVAL = 6000;
-  private cdr = inject(ChangeDetectorRef);
 
   constructor(
     private dashboardService: DashboardService,
-    private pollingService: PollingService,
     private dateTimeService: DateTimeService
   ) {
-    this.isDarkTheme = document.body.classList.contains('dark-theme');
-    this.themeObserver = new MutationObserver(() => {
-      this.isDarkTheme = document.body.classList.contains('dark-theme');
-    });
-    this.themeObserver.observe(document.body, { attributes: true });
+    super();
   }
 
   ngOnInit(): void {
@@ -85,110 +66,27 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
 
     const now = new Date();
     const start = new Date(); start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime = this.formatDateForInput(now);
+    this.startTime = toDateTimeLocalInput(start);
+    this.endTime = toDateTimeLocalInput(now);
 
     if (!this.preloadedData) this.enterDummy();
     if (this.useExternalTitle) return;
 
     // Consolidated initial fetch logic - only one fetch call
-    this.performInitialFetch(isLive, wasConfirmed);
-
-    this.dateTimeService.liveMode$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((live) => {
-        this.liveMode = live;
-        if (live) this.startLive(); else this.stopLive();
-      });
-
-    this.dateTimeService.confirmTrigger$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => {
-        this.liveMode = false;
-        this.stopPollingInternal();
-        this.enterDummy();
-        this.startTime = this.dateTimeService.getStartTime();
-        this.endTime   = this.dateTimeService.getEndTime();
-        this.fetchOnce().subscribe();
-      });
-  }
-
-  ngOnDestroy(): void {
-    this.themeObserver?.disconnect();
-    this.destroy$.next(); this.destroy$.complete();
-    this.stopPollingInternal();
+    this.startTimeframeSync(isLive, wasConfirmed);
   }
 
   // ---- flow ----
-  private performInitialFetch(isLive: boolean, wasConfirmed: boolean): void {
-    // Determine if we should fetch data based on the current state
-    const shouldFetch = !isLive || wasConfirmed;
-    
-    if (shouldFetch) {
-      // Use confirmed times if available, otherwise use default times
-      if (wasConfirmed) {
-        this.startTime = this.dateTimeService.getStartTime();
-        this.endTime = this.dateTimeService.getEndTime();
-      }
-      
-      this.fetchOnce().subscribe();
-    }
-  }
 
-  private startLive(): void {
-    this.enterDummy();
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime   = this.pollingService.updateEndTimestampToNow();
-
-    // setupPolling() handles the initial fetch, no need for separate fetchOnce()
-    this.setupPolling();
-  }
-
-  private stopLive(): void {
-    this.stopPollingInternal();
-    this.hasInitialData = false;
+  protected clearChart(): void {
     this.chartConfig = null;
-    this.enterDummy();
   }
 
-  private pollOnce(): Observable<any> {
-    this.endTime = this.pollingService.updateEndTimestampToNow();
-    return this.dashboardService.getDailyMachineStatus(this.startTime, this.endTime, this.serial)
-      .pipe(tap(this.consumeResponse('poll')));
+  protected loadData(start: string, end: string): Observable<any> {
+    return this.dashboardService.getDailyMachineStatus(start, end, this.serial);
   }
 
-  private setupPolling(): void {
-    this.stopPollingInternal();
-
-    this.pollingSub = this.pollOnce()               // immediate first poll
-      .pipe(
-        // wait POLLING_INTERVAL after completion, then resubscribe to pollOnce()
-        // ensures: no overlap, next call starts only after prior finished + delay
-        // RxJS 7+
-        // @ts-ignore – type inference sometimes complains on repeat config
-        repeat({ delay: this.POLLING_INTERVAL }),
-        takeUntil(this.destroy$)
-      )
-      .subscribe({ error: () => this.stopPollingInternal() });
-  }
-
-  private stopPollingInternal(): void {
-    if (this.pollingSub) { this.pollingSub.unsubscribe(); this.pollingSub = null; }
-  }
-
-  private fetchOnce(): Observable<any> {
-    if (!this.startTime || !this.endTime) return EMPTY;
-    this.isLoading = true;
-    return this.dashboardService.getDailyMachineStatus(this.startTime, this.endTime, this.serial)
-      .pipe(
-        takeUntil(this.destroy$),
-        tap(this.consumeResponse('once')),
-        delay(0)
-      );
-  }
-
-  private consumeResponse =
+  protected consumeResponse =
     (_source: 'once' | 'poll') =>
     (res: any) => {
       // Handle the API response structure with machineStatus array
@@ -301,7 +199,7 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     };
   }
 
-  private enterDummy(): void {
+  protected enterDummy(): void {
     this.isLoading = true;
     this.dummyMode = true;
     this.hasInitialData = false;
@@ -309,38 +207,12 @@ export class DailyMachineStackedBarChartComponent implements OnInit, OnDestroy, 
     this.cdr.markForCheck();          // <— ensure overlay shows/hides
   }
 
-  // ---- grid interface methods ----
-  startPolling(): void {
-    // ensure one immediate fetch
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    this.startTime = this.formatDateForInput(start);
-    this.endTime   = this.pollingService.updateEndTimestampToNow();
-
-    this.enterDummy();
-    this.fetchOnce().subscribe();
-    this.setupPolling();
-  }
-
-  stopPolling(): void {
-    this.stopLive(); // calls the existing private stopPolling method
-  }
-
   setAvailableSize(w: number, h: number): void {
     this.chartWidth = w;
     this.chartHeight = h;
   }
 
-
-
   // ---- utils ----
-  private formatDateForInput(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${d}T${h}:${min}`;
-  }
 
   private getStatusTimeLabel(statusId: string): string {
     switch (statusId) {

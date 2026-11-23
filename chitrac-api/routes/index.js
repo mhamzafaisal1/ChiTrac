@@ -20,9 +20,6 @@ function init(app, server) {
     const softrolRoutes = require('../controllers/softrol')(server);
     const milnorRoutes = require('../controllers/milnor')(server);
     const spindleRoutes = require('../controllers/spindle')(server);
-    const alphaController = require('../controllers/alpha');
-    const alphaRoutes = alphaController(server);
-    alphaController.registerMachineXmlRoutes(app, server);
     const bikoRoutes = require('../controllers/biko')(server);
     const authRoutes = require('../controllers/auth')(server);
     const userRoutes = require('../controllers/users')(server);
@@ -34,6 +31,13 @@ function init(app, server) {
     const dashboardRoutes = require('../controllers/dashboard')(server);
     const faultRoutes = require('../controllers/fault')(server);
     const reportRoutes = require('../controllers/reports')(server);
+    // /api/alpha mounts these same router instances instead of building its own copies.
+    const alphaController = require('../controllers/alpha');
+    const alphaRoutes = alphaController(server, {
+        machine: machineRoutes, operator: operatorRoutes, item: itemRoutes,
+        fault: faultRoutes, dashboard: dashboardRoutes, reports: reportRoutes,
+    });
+    alphaController.registerMachineXmlRoutes(app, server);
     const verifyJwtMiddleware = createVerifyJwtMiddleware(server);
 
 

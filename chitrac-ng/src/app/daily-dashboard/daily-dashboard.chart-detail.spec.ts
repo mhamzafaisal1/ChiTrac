@@ -25,11 +25,11 @@ describe('Daily Dashboard chart detail', () => {
     closed = new Subject<void>();
     close = jasmine.createSpy('close');
     open = jasmine.createSpy('open').and.returnValue({ close, afterClosed: () => closed });
-    dashboard = new DailyDashboardComponent(
+    dashboard = TestBed.runInInjectionContext(() => new DailyDashboardComponent(
       {} as any, {} as any, {} as any,
       { unregister: () => {} } as any, {} as any, {} as any,
       { open } as any, {} as any,
-    );
+    ));
   });
 
   afterEach(() => dashboard.ngOnDestroy());
@@ -132,7 +132,7 @@ describe('Dashboard chart header controls', () => {
         { provide: WebsocketService, useValue: { ensureConnected: () => {}, status$: new Subject(), dashboardCache$: new Subject() } },
         { provide: DateTimeService, useValue: { getConfirmed: () => true } },
         { provide: DashboardTimeframeService, useValue: {} },
-        { provide: LayoutEditService, useValue: { register: () => {}, unregister: () => {}, context$: new BehaviorSubject(null), lockRequested$: new Subject() } },
+        { provide: LayoutEditService, useValue: { register: () => {}, unregister: () => {}, context$: new BehaviorSubject(null), lockRequested$: new Subject(), bindSession: LayoutEditService.prototype.bindSession } },
         { provide: SettingsService, useValue: { timeFormat$: new Subject(), userPreferences$: new Subject() } },
         { provide: UserService, useValue: { getToken: () => 'test-token', hasPermissionLevel: () => true, user: new BehaviorSubject({ username: 'alice' }) } },
         { provide: MatDialog, useValue: {} },
