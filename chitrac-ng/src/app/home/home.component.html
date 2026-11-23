@@ -42,9 +42,9 @@
             <h2 class="home-menu-title">{{ group.title }}</h2>
             <nav class="home-grid" [attr.aria-label]="group.title">
               @for (layout of group.entries; track layout.scope + ':' + layout.id) {
-                <a class="home-tile" routerLink="/ng/production-screen" [queryParams]="{layoutScope: layout.scope, layoutId: layout.id}" [attr.title]="layout.name">
+                <button type="button" class="home-tile" (click)="productionNavigation.open(layout)" [attr.title]="layout.name">
                   <span class="tile-label">{{ layout.name }}</span><mat-icon aria-hidden="true">live_tv</mat-icon>
-                </a>
+                </button>
               }
             </nav>
           }

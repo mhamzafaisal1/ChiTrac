@@ -1,4 +1,5 @@
 import { ProductionScreenLayoutsService, ProductionScreenMenuState } from '../services/production-screen-layouts.service';
+import { ProductionScreenNavigationService } from '../services/production-screen-navigation.service';
 import { Component, EventEmitter, Output } from '@angular/core';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoPreloading, provideRouter, withPreloading } from '@angular/router';
@@ -30,17 +31,25 @@ describe('DMC navigation indicators', () => {
   let users: BehaviorSubject<any>;
   let status: BehaviorSubject<WebsocketConnectionStatus>;
   let logout: jasmine.Spy;
+  let openProductionScreen: jasmine.Spy;
 
   beforeEach(() => {
     users = new BehaviorSubject<any>({username:'Admin',permissions:{level:0}});
     status = new BehaviorSubject<WebsocketConnectionStatus>('connected');
+    openProductionScreen = jasmine.createSpy('openProductionScreen');
     logout = jasmine.createSpy('logout').and.callFake(() => {
       users.next(null);
       return of({ username: null });
     });
     TestBed.configureTestingModule({
       imports: [NavMainMenuComponent],
-      providers: [{ provide: ProductionScreenLayoutsService, useValue: { state$: of({systemLayouts: [], userLayouts: [], loading: false, error: ''}), refresh() {}, ensureFresh() {} } },provideRouter([{path:'ng/home',children:[]}], withPreloading(NoPreloading)), provideNoopAnimations(),
+      providers: [provideRouter([{path:'ng/home',children:[]}], withPreloading(NoPreloading)), provideNoopAnimations(),
+        { provide: ProductionScreenLayoutsService, useValue: {
+          state$: of({ systemLayouts: [], userLayouts: [], loading: false, error: '' }),
+          refresh() {},
+          ensureFresh() {},
+        } },
+        { provide: ProductionScreenNavigationService, useValue: { open: openProductionScreen } },
         { provide: UserService, useValue: { user: users, hasPermissionLevel: () => true, logout } },
         { provide: SettingsService, useValue: { settings$: of(null) } },
         { provide: MatDialog, useValue: { afterOpened: new Subject() } },
@@ -55,31 +64,29 @@ describe('DMC navigation indicators', () => {
     });
   });
 
-  it('renders the generic production link first, then scope groups with distinct named URLs', fakeAsync(() => {
+  it('opens the default and each scope from the production menu', fakeAsync(() => {
     const library = TestBed.inject(ProductionScreenLayoutsService) as any;
-    library.state$ = of({
-      systemLayouts: [{ name: 'Line A', scope: 'system', id: 'a'.repeat(64) }],
-      userLayouts: [{ name: 'Line A', scope: 'user', id: 'a'.repeat(64) }],
-      loading: false, error: '',
-    });
+    const system = { name: 'Line A', scope: 'system', id: 'a'.repeat(64) };
+    const user = { name: 'Line A', scope: 'user', id: 'a'.repeat(64) };
+    library.state$ = of({ systemLayouts: [system], userLayouts: [user], loading: false, error: '' });
     const fixture = TestBed.createComponent(NavMainMenuComponent);
     fixture.detectChanges();
     fixture.componentInstance.openMenu('productionScreens');
     fixture.detectChanges(); tick(); fixture.detectChanges();
-    const links = Array.from(fixture.nativeElement.querySelectorAll('mat-sidenav a')) as HTMLAnchorElement[];
-    const productionLinks = links.filter(link => link.pathname === '/ng/production-screen');
-    expect(productionLinks.length).toBe(3);
-    expect(productionLinks[0].textContent).toContain('Production Screen');
-    expect(productionLinks[0].search).toBe('');
-    expect(productionLinks[1].search).toContain('layoutScope=system');
-    expect(productionLinks[2].search).toContain('layoutScope=user');
     expect(fixture.nativeElement.textContent).toContain('System layouts');
     expect(fixture.nativeElement.textContent).toContain('Your layouts');
     expect(fixture.nativeElement.textContent).not.toContain('Blanket Blaster 1');
+    const buttons = fixture.nativeElement.querySelectorAll('mat-sidenav button[mat-list-item]') as NodeListOf<HTMLButtonElement>;
+    expect(buttons[1].textContent).toContain('Production Screen');
+    buttons[1].click();
+    buttons[2].click();
+    buttons[3].click();
+    expect(openProductionScreen.calls.allArgs()).toEqual([[undefined], [system], [user]]);
+    expect(fixture.componentInstance.shownMenu).toBe('');
     fixture.destroy();
   }));
 
-  it('retains the generic production link when the library is empty, loading or unavailable', fakeAsync(() => {
+  it('retains the default production action when the library is empty, loading or unavailable', fakeAsync(() => {
     const states = new BehaviorSubject<ProductionScreenMenuState>({ systemLayouts: [], userLayouts: [], loading: true, error: '' });
     (TestBed.inject(ProductionScreenLayoutsService) as any).state$ = states;
     const fixture = TestBed.createComponent(NavMainMenuComponent);
@@ -92,7 +99,8 @@ describe('DMC navigation indicators', () => {
     ];
     for (const state of variants) {
       states.next(state); fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('mat-sidenav a[href="/ng/production-screen"]')).not.toBeNull();
+      const buttons = Array.from(fixture.nativeElement.querySelectorAll('mat-sidenav button[mat-list-item]')) as HTMLButtonElement[];
+      expect(buttons.some(button => button.textContent?.includes('Production Screen'))).toBeTrue();
     }
     expect(fixture.nativeElement.textContent).toContain('Retry');
     fixture.destroy();

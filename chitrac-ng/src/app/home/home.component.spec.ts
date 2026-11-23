@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -29,6 +30,7 @@ describe('Home login gate and DMC menu grid', () => {
       {path:'ng/home',component:HomeComponent},
       routes.find(route=>route.path==='ng/login')!,routes.find(route=>route.path==='ng/reset-password')!,
       {path:'ng/return-target',component:ReturnTarget},
+      {path:'ng/production-screen',component:ReturnTarget},
     ]),
       {provide:UserService,useValue:{user:users,hasPermissionLevel:(level:number,user:User|null)=>typeof user?.permissions?.level==='number' && user.permissions.level<=level}},
       {provide:ProductionScreenLayoutsService,useValue:{state$:library,refresh:jasmine.createSpy('refresh'),ensureFresh:jasmine.createSpy('ensureFresh')}},
@@ -67,13 +69,21 @@ describe('Home login gate and DMC menu grid', () => {
     await press(h,'Reports');expect(labels(h)[0]).toBe('Main Menu');expect(labels(h)).toContain('Shift Comparison Report');expect(labels(h)).not.toContain('Shift Machine Report');
   });
 
-  it('uses the same production destinations, with distinct scope links for identically named saved layouts',async()=>{
+  it('opens identically named layouts by scope without exposing their references in the URL',async()=>{
     users.next(admin);const h=await RouterTestingHarness.create('/ng/home?menu=productionScreens');
     expect(labels(h)).toEqual(['Main Menu','Production Screen','Line A','Line A']);
-    const links=Array.from(h.routeNativeElement!.querySelectorAll('a')) as HTMLAnchorElement[];
-    const named=links.filter(link=>link.search.includes('layoutId='));
-    expect(named.length).toBe(2);expect(named[0].search).toContain('layoutScope=system');expect(named[1].search).toContain('layoutScope=user');
-    const generic=links.find(link=>link.pathname==='/ng/production-screen' && !link.search);expect(generic).toBeDefined();
+    expect(h.routeNativeElement!.querySelector('a[href="/ng/production-screen"]')).not.toBeNull();
+    const location = TestBed.inject(Location);
+    for (const [group, scope] of [['System layouts', 'system'], ['Your layouts', 'user']]) {
+      const button = h.routeNativeElement!.querySelector<HTMLButtonElement>(`nav[aria-label="${group}"] button`)!;
+      button.click();
+      await h.fixture.whenStable();
+      expect(location.path()).toBe('/ng/production-screen');
+      expect(location.getState()).toEqual(jasmine.objectContaining({
+        productionLayout: jasmine.objectContaining({ scope, id: 'a'.repeat(64) }),
+      }));
+      await h.navigateByUrl('/ng/home?menu=productionScreens');
+    }
   });
 
   it('hides permission-restricted entries and immediately hides all navigation after logout',async()=>{

@@ -33,6 +33,8 @@ import { DateTimeModalComponent } from '../components/date-time-modal/date-time-
 import { UserLoginComponent } from '../user-login/user-login.component';
 import { NavigationActionsService } from '../services/navigation-actions.service';
 import { ProductionScreenLayoutsService } from '../services/production-screen-layouts.service';
+import { ProductionLayoutReference } from '../services/production-layout.models';
+import { ProductionScreenNavigationService } from '../services/production-screen-navigation.service';
 
 const left = [
   query(':enter, :leave', style({ position: 'absolute', width: '15em' })),
@@ -83,6 +85,7 @@ const right = [
 })
 export class NavMainMenuComponent implements OnInit, OnDestroy {
   readonly productionLayouts = inject(ProductionScreenLayoutsService);
+  private readonly productionNavigation = inject(ProductionScreenNavigationService);
   connectionTooltipVisible = false;
   connectionTooltipOrigin = { x: 0, y: 0 };
   readonly connectionTooltipPositions: ConnectedPosition[] = [
@@ -418,6 +421,11 @@ export class NavMainMenuComponent implements OnInit, OnDestroy {
 
   trackProductionLayout(_index: number, layout: { scope: string; id: string }): string {
     return layout.scope + ':' + layout.id;
+  }
+
+  openProductionScreen(layout?: ProductionLayoutReference): void {
+    this.closeMenu();
+    void this.productionNavigation.open(layout);
   }
 
   openMenu(menu: string) {
