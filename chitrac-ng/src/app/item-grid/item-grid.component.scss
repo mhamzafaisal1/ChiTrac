@@ -1,29 +1,9 @@
-.selectedRow {
-	background-color: var(--theme-color-secondary-container) !important;
-}
-
-.mat-mdc-header-row {
-	background-color: var(--theme-color-primary);
-	color: var(--theme-color-on-primary);
-}
-
-.mat-mdc-row:nth-child(even) {
-  background-color: var(--theme-color-surface-bright);
-  color: var(--theme-color-on-surface-variant);
-}
-
-.mat-mdc-row:hover {
-  background-color: var(--theme-color-secondary-middle) !important;
-  color: var(--theme-color-on-secondary);
-}
-
 .item-photo {
 	width: 48px;
 	height: 48px;
 	object-fit: cover;
 	border-radius: 4px;
-	display: block;
-	margin: 4px 0;
+	vertical-align: middle;
 }
 
 .cud-buttons {

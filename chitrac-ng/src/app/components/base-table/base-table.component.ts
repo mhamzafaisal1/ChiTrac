@@ -8,6 +8,7 @@ import {
   OnInit,
   Output,
   SimpleChanges,
+  TemplateRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -36,6 +37,7 @@ import {
   GridReadyEvent,
   GridSizeChangedEvent,
   Module,
+  PaginationModule,
   SizeColumnsToFitGridStrategy,
   QuickFilterModule,
   RenderApiModule,
@@ -52,6 +54,10 @@ import { PercentBreakpointService } from '../../services/percent-breakpoint.serv
 import { BaseTableHeaderComponent } from './base-table-header.component';
 import { BaseTableGroup, groupedTableRows, isReportGroupExpandable } from './base-table-groups';
 import { BaseTableGroupCellComponent } from './base-table-group-cell.component';
+import { BaseTableTemplateCellComponent } from './base-table-template-cell.component';
+
+export type BaseTableColumnOptions<T> = Partial<Pick<ColDef<T>,
+  'field' | 'valueGetter' | 'valueFormatter' | 'getQuickFilterText' | 'sortable' | 'minWidth'>>;
 
 export function reconcileColumnOrder(columns: string[] = [], columnOrder: string[] = []): string[] {
   const availableColumns = new Set(columns);
@@ -89,11 +95,17 @@ let nextTooltipId = 0;
 export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   @Input() columns: string[] = [];
   @Input() rows: any[] = [];
+  @Input() columnOptions: Record<string, BaseTableColumnOptions<any>> = {};
+  @Input() cellTemplates: Record<string, TemplateRef<{ $implicit: any }>> = {};
+  @Input() pageSizes: number[] = [];
+  @Input() pageSize = 10;
+  @Input() emptyMessage = '';
   /** Columns that intentionally combine numeric values with display placeholders. */
   @Input() mixedValueColumns: readonly string[] = [];
   /** Supply before grid creation when immutable refreshes should preserve row nodes. */
   @Input() rowIdentity: ((row: any) => string) | null = null;
   @Input() selectedRow: any | null = null;
+  @Input() deselectOnRowClick = true;
   @Input() disableSorting = false;
   @Input() getCellClass: ((value: any, column: string) => string) | null = null;
   @Input() responsiveHiddenColumns: { [breakpoint: number]: string[] } = {};
@@ -124,6 +136,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     ColumnApiModule,
     ColumnAutoSizeModule,
     CsvExportModule,
+    PaginationModule,
     DragAndDropModule,
     QuickFilterModule,
     RenderApiModule,
@@ -186,6 +199,8 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
     }
     const columnDefinitionInputs = [
       'columns',
+      'columnOptions',
+      'cellTemplates',
       'columnTooltips',
       'mixedValueColumns',
       'disableSorting',
@@ -263,6 +278,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
 
   applyFilter(): void {
     this.gridApi?.setGridOption('quickFilterText', this.searchTerm.trim().toLowerCase());
+    if (this.pageSizes.length) this.gridApi?.paginationGoToFirstPage();
   }
 
   clearFilter(): void {
@@ -292,8 +308,8 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   onRowClick(row: any): void {
-    if (row?.isDummy) return;
-    this.rowClicked.emit(this.isSelectedRow(row) ? null : row);
+    if (!row || row.isDummy) return;
+    this.rowClicked.emit(this.deselectOnRowClick && this.isSelectedRow(row) ? null : row);
   }
 
   private isSelectedRow(row: any): boolean {
@@ -459,9 +475,10 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
         ])),
         'column-disabled': () => this.columnEditMode && this.isColumnToggleable(column) && !this.isColumnEnabled(column),
       },
-      cellRenderer: this.rowGroups && column === this.groupIdentityColumn ? BaseTableGroupCellComponent
+      cellRenderer: this.cellTemplates[column] ? BaseTableTemplateCellComponent
+        : this.rowGroups && column === this.groupIdentityColumn ? BaseTableGroupCellComponent
         : column === 'Status' ? (params: any) => this.createStatusCell(params.value) : undefined,
-      cellRendererParams: { onToggle: (key: string) => this.toggleGroup(key) },
+      cellRendererParams: { template: this.cellTemplates[column], onToggle: (key: string) => this.toggleGroup(key) },
       headerComponentParams: {
         innerHeaderComponent: BaseTableHeaderComponent,
         innerHeaderComponentParams: {
@@ -472,6 +489,7 @@ export class BaseTableComponent implements OnInit, OnChanges, OnDestroy {
           onToggle: (enabled: boolean) => this.onColumnToggle(column, enabled),
         },
       },
+      ...this.columnOptions[column],
     }));
 
     if (this.gridApi) {

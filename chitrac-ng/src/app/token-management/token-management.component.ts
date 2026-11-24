@@ -1,12 +1,9 @@
-import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { SettingsService } from '../services/settings.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 // Material Imports
-import { MatTableModule, MatTableDataSource } from '@angular/material/table';
-import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
-import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -18,6 +15,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { SummaryCardVisibilityDialogComponent, SummaryCardVisibilityDialogResult } from '../components/summary-card-visibility-dialog/summary-card-visibility-dialog.component';
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
+import { BaseTableColumnOptions, BaseTableComponent } from '../components/base-table/base-table.component';
 import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 // rxjs Imports
@@ -32,12 +30,10 @@ import { TokenManagementService, PermanentToken, ApiControllerOption, TokenListR
   standalone: true,
   imports: [
     PageLoadStateComponent,
+    BaseTableComponent,
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
-    MatTableModule,
-    MatPaginatorModule,
-    MatSortModule,
     MatDividerModule,
     MatButtonModule,
     MatIconModule,
@@ -58,8 +54,6 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   controllers: ApiControllerOption[] = [];
   tokens: PermanentToken[] = [];
   deactivatedTokens: PermanentToken[] = [];
-  dataSource: MatTableDataSource<PermanentToken>;
-  deactivatedDataSource: MatTableDataSource<PermanentToken>;
   
   sub: Subscription;
   createTokenFormGroup: FormGroup;
@@ -69,22 +63,28 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
   isLoading = true;
   loadError: string | null = null;
 
-  displayedColumns: string[] = ['name', 'description', 'created', 'lastUsed', 'usageCount', 'actions'];
-  deactivatedDisplayedColumns: string[] = ['name', 'description', 'created', 'deactivated', 'lastUsed', 'usageCount'];
+  readonly displayedColumns = ['Name', 'Description', 'Created', 'Last Used', 'Usage Count', 'Actions'];
+  readonly deactivatedDisplayedColumns = ['Name', 'Description', 'Created', 'Deactivated', 'Last Used', 'Usage Count'];
+  readonly pageSizes = [5, 10, 25, 50];
+  readonly rowIdentity = (token: PermanentToken) => token.id;
+  readonly columnOptions: Record<string, BaseTableColumnOptions<PermanentToken>> = {
+    Name: { field: 'name' },
+    Description: { valueGetter: ({ data }) => data?.description || '-', sortable: false, minWidth: 160 },
+    Created: this.dateColumn(token => token.timestamps?.create),
+    Deactivated: this.dateColumn(token => token.timestamps?.inactive),
+    'Last Used': this.dateColumn(token => token.lastUsed),
+    'Usage Count': { field: 'usageCount' },
+    Actions: { sortable: false, minWidth: 136 },
+  };
+  readonly getCellTooltip = (token: PermanentToken, column: string) =>
+    column === 'Description' ? token.description || '' : '';
 
-  @ViewChild('activePaginator') activePaginator!: MatPaginator;
-  @ViewChild('activeSort') activeSort!: MatSort;
-  @ViewChild('deactivatedPaginator') deactivatedPaginator!: MatPaginator;
-  @ViewChild('deactivatedSort') deactivatedSort!: MatSort;
 
   constructor(
     private tokenService: TokenManagementService,
     private snackBar: MatSnackBar,
     private clipboard: Clipboard
-  ) {
-    this.dataSource = new MatTableDataSource<PermanentToken>([]);
-    this.deactivatedDataSource = new MatTableDataSource<PermanentToken>([]);
-  }
+  ) {}
 
   private getTokensSubFunction = (res: TokenListResponse) => {
     this.isLoading = false;
@@ -93,9 +93,6 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
     this.tokenLoadErrorShown = false;
     this.tokens = res.tokens;
     this.deactivatedTokens = res.deactivatedTokens || [];
-    this.dataSource.data = this.tokens;
-    this.deactivatedDataSource.data = this.deactivatedTokens;
-    this.configureDataSources();
   }
 
   private handleTokenLoadError = () => {
@@ -111,28 +108,18 @@ export class TokenManagementComponent implements OnInit, OnDestroy {
     return EMPTY;
   };
 
-  private configureDataSources(): void {
-    this.dataSource.sortingDataAccessor = this.tokenSortingDataAccessor;
-    this.deactivatedDataSource.sortingDataAccessor = this.tokenSortingDataAccessor;
-
-    if (this.activePaginator) this.dataSource.paginator = this.activePaginator;
-    if (this.activeSort) this.dataSource.sort = this.activeSort;
-    if (this.deactivatedPaginator) this.deactivatedDataSource.paginator = this.deactivatedPaginator;
-    if (this.deactivatedSort) this.deactivatedDataSource.sort = this.deactivatedSort;
+  private dateColumn(getDate: (token: PermanentToken) => Date | null | undefined): BaseTableColumnOptions<PermanentToken> {
+    const displayDate = (value: number | null) => this.formatDate(value == null ? null : new Date(value));
+    return {
+      valueGetter: ({ data }) => {
+        const date = data && getDate(data);
+        return date ? new Date(date).getTime() : null;
+      },
+      valueFormatter: ({ value }) => displayDate(value),
+      getQuickFilterText: ({ value }) => displayDate(value),
+      minWidth: 200,
+    };
   }
-
-  private tokenSortingDataAccessor = (token: PermanentToken, property: string): string | number => {
-    if (property === 'created') {
-      return token.timestamps?.create ? new Date(token.timestamps.create).getTime() : 0;
-    }
-    if (property === 'deactivated') {
-      return token.timestamps?.inactive ? new Date(token.timestamps.inactive).getTime() : 0;
-    }
-    if (property === 'lastUsed') {
-      return token.lastUsed ? new Date(token.lastUsed).getTime() : 0;
-    }
-    return (token as any)[property] ?? '';
-  };
 
   ngOnInit() {
     this.createTokenFormGroup = new FormGroup({

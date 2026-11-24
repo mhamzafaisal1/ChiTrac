@@ -1,8 +1,64 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { Component } from '@angular/core';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { PercentBreakpointService } from '../../services/percent-breakpoint.service';
 import { CASCADE_DASHBOARD_METRICS } from '../../shared/utils/machine-presentation';
 import { BaseTableComponent, haveSameColumns, reconcileColumnOrder } from './base-table.component';
+
+@Component({
+  imports: [BaseTableComponent],
+  template: `
+    <base-table [columns]="['Name', 'Actions']" [rows]="rows" [rowIdentity]="rowIdentity"
+      [pageSize]="5" [pageSizes]="[5, 10]" [cellTemplates]="{ Actions: actions }"
+      [selectedRow]="selectedRow" [enableCsvExport]="false" [fillAvailableWidth]="true"
+      emptyMessage="No users found." (rowClicked)="selectedRow = $event" />
+    <ng-template #actions let-row>
+      <button type="button" (click)="$event.stopPropagation(); actedOn = row.id">Edit {{ row.Name }}</button>
+    </ng-template>
+  `,
+})
+class PaginatedTableHost {
+  rows = Array.from({ length: 12 }, (_, index) => ({ id: index, Name: `User ${index + 1}` }));
+  rowIdentity = (row: { id: number }) => String(row.id);
+  actedOn: number | null = null;
+  selectedRow: (typeof this.rows)[number] | null = null;
+}
+
+describe('Paginated settings table', () => {
+  it('searches every page and keeps a custom action tied to its record without selecting the row', fakeAsync(() => {
+    TestBed.configureTestingModule({ imports: [PaginatedTableHost], providers: [provideNoopAnimations(),
+      { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } }] });
+    const fixture = TestBed.createComponent(PaginatedTableHost);
+    const root: HTMLElement = fixture.nativeElement;
+    root.style.display = 'block';
+    root.style.width = '340px';
+    const render = () => { fixture.detectChanges(); tick(100); fixture.detectChanges(); };
+    const input = () => root.querySelector<HTMLInputElement>('input')!;
+    const search = (term: string) => {
+      input().value = term;
+      input().dispatchEvent(new Event('input'));
+      render();
+    };
+    try {
+      render();
+      expect(root.querySelectorAll('.ag-row[row-index]').length).toBe(5);
+      search('User 12');
+      expect(root.querySelector('.row-count')?.textContent).toContain('1 / 12 rows');
+      const row = root.querySelector<HTMLElement>('.ag-row[row-index]')!;
+      const action = row.querySelector<HTMLButtonElement>('button')!;
+      expect(action.textContent).toContain('Edit User 12');
+      action.click();
+      expect(fixture.componentInstance.actedOn).toBe(11);
+      expect(fixture.componentInstance.selectedRow).toBeNull();
+      search('missing');
+      expect(root.textContent).toContain('No matching rows.');
+      search('');
+      expect(root.querySelectorAll('.ag-row[row-index]').length).toBe(5);
+    } finally {
+      fixture.destroy();
+    }
+  }));
+});
 
 describe('reconcileColumnOrder', () => {
   it('applies a saved order and appends new columns', () => {

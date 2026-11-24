@@ -4,6 +4,7 @@ import { of } from 'rxjs';
 
 import { OperatorGridComponent } from './operator-grid.component';
 import { ConfigurationService } from '../configuration.service';
+import { PercentBreakpointService } from '../services/percent-breakpoint.service';
 
 describe('OperatorGridComponent', () => {
   let component: OperatorGridComponent;
@@ -14,6 +15,7 @@ describe('OperatorGridComponent', () => {
       imports: [OperatorGridComponent],
       providers: [
         provideNoopAnimations(),
+        { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } },
         { provide: ConfigurationService, useValue: { watchOperatorConfigs: () => of([]) } },
       ],
     })

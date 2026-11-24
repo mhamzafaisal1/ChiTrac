@@ -1,17 +1,13 @@
 /*** Angular Imports */
-import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, LOCALE_ID, OnInit, OnDestroy, inject } from '@angular/core';
+import { CommonModule, formatNumber } from '@angular/common';
+import { BaseTableColumnOptions, BaseTableComponent } from '../components/base-table/base-table.component';
 
 /*** Material Imports */
-import { MatTableModule, MatTableDataSource } from '@angular/material/table';
-import { PageEvent, MatPaginator } from '@angular/material/paginator';
-import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
-import { SelectionModel } from '@angular/cdk/collections';
-import { MatCheckboxModule } from '@angular/material/checkbox';
 
 /*** rxjs Imports */
 import { defer, EMPTY, Subscription } from 'rxjs';
@@ -32,11 +28,8 @@ import { ConfigurationService } from '../configuration.service';
   standalone: true,
   imports: [
     PageLoadStateComponent,
+    BaseTableComponent,
     CommonModule,
-    MatTableModule,
-    MatPaginator,
-    MatSortModule,
-    MatCheckboxModule,
     MatDividerModule,
     MatButtonModule,
     MatIconModule
@@ -44,16 +37,27 @@ import { ConfigurationService } from '../configuration.service';
   templateUrl: './item-grid.component.html',
   styleUrl: './item-grid.component.scss'
 })
-export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
-  selectionModel = new SelectionModel<ItemConfig>(false, []);
-  page: number = 1;
-  paginationSize: number = 10;
-  displayedColumns: string[] = ['photo', 'id', 'name', 'standard', 'active'];
-  dataSource = new MatTableDataSource<ItemConfig>([]);
+export class ItemGridComponent implements OnInit, OnDestroy {
+  selectedRow: ItemConfig | null = null;
+  readonly displayedColumns = ['Image', 'ID', 'Name', 'Pace Standard', 'Active'];
+  readonly pageSizes = [5, 10, 25, 100];
+  readonly columnOptions: Record<string, BaseTableColumnOptions<ItemConfig>> = {
+    Image: { sortable: false },
+    ID: { field: 'id' },
+    Name: { field: 'name' },
+    'Pace Standard': {
+      valueGetter: ({ data }) => data?.standard || 0,
+      valueFormatter: ({ value }) => formatNumber(value, this.locale, '1.0-0'),
+      getQuickFilterText: ({ value }) => formatNumber(value, this.locale, '1.0-0'),
+    },
+    Active: { valueGetter: ({ data }) => data?.active ? 'Active' : 'Inactive' },
+  };
+  readonly rowIdentity = (row: ItemConfig) => String(row._id ?? row.id);
+  private readonly locale = inject(LOCALE_ID);
   isLoading = true;
 
   sub: Subscription;
-  items: ItemConfig[];
+  items: ItemConfig[] = [];
   error: string | null = null;
   emptyItem: ItemConfig = new ItemConfig().deserialize({ 
     id: null, 
@@ -64,9 +68,6 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
     area: 0,
     department: ''
   });
-
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort: MatSort;
 
   constructor(private configurationService: ConfigurationService) {}
 
@@ -102,13 +103,10 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isLoading = false;
     this.error = null;
     this.items = res;
-    this.dataSource.data = res;
-    const selectedId = this.selectionModel.selected[0]?._id;
-    const selected = selectedId == null ? undefined : res.find(row => row._id === selectedId);
-    this.selectionModel.clear();
-    if (selected) this.selectionModel.select(selected);
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
+    const selectedRow = this.selectedRow;
+    this.selectedRow = selectedRow
+      ? this.items.find(row => this.rowIdentity(row) === this.rowIdentity(selectedRow)) ?? null
+      : null;
   };
 
   private handleError = (error: any) => {
@@ -136,11 +134,6 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  ngAfterViewInit(): void {
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
-  }
-
   private refreshTable() {
     this.isLoading = true;
     this.error = null;
@@ -158,10 +151,6 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   retryLoad(): void { this.refreshTable(); }
-
-  handlePageEvent(e: PageEvent) {
-    this.page = e.pageIndex;
-  }
 
   ngOnDestroy() {
     if (this.sub) this.sub.unsubscribe();
@@ -208,7 +197,7 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
       action$.subscribe({
         next: (res) => {
           console.log('Success:', res);
-          this.selectionModel.clear();
+          this.selectedRow = null;
         },
         error: (err) => {
           console.error('Operation failed:', err);
@@ -241,7 +230,7 @@ export class ItemGridComponent implements OnInit, OnDestroy, AfterViewInit {
       this.configurationService.deleteItemConfig(item._id).subscribe({
         next: (res) => {
           console.log('Delete successful:', res);
-          this.selectionModel.clear();
+          this.selectedRow = null;
         },
         error: (err) => {
           console.error('Delete failed:', err);

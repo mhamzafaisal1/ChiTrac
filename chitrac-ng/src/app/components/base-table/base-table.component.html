@@ -30,17 +30,23 @@
 
 <ag-grid-angular
   class="base-data-grid"
+  [class.paginated-grid]="pageSizes.length > 0"
   [theme]="gridTheme"
   [modules]="modules"
   [rowData]="rowGroups ? groupedRows : rows"
   [getRowId]="rowGroups ? getGroupedRowId : rowIdentity ? getDataRowId : undefined"
   [postSortRows]="postSortRows"
   [columnDefs]="columnDefs"
+  [pagination]="pageSizes.length > 0"
+  [paginationPageSize]="pageSizes.length ? pageSize : 100"
+  [paginationPageSizeSelector]="pageSizes.length ? pageSizes : false"
+  [suppressNoRowsOverlay]="!!emptyMessage"
   [autoSizeStrategy]="fillAvailableWidth ? undefined : autoSizeStrategy"
   domLayout="autoHeight"
   [animateRows]="false"
   [suppressColumnMoveAnimation]="!columnEditMode"
   [suppressCellFocus]="true"
+  [suppressColumnVirtualisation]="pageSizes.length > 0"
   [suppressDragLeaveHidesColumns]="true"
   [suppressMovableColumns]="!columnEditMode"
   [enableBrowserTooltips]="false"
@@ -58,6 +64,10 @@
   (columnMoved)="onColumnMoved($event)"
   (rowClicked)="onGridRowClicked($event)">
 </ag-grid-angular>
+
+<p class="table-empty" *ngIf="emptyMessage && !getFilteredRowCount()" role="status">
+  {{ rows.length ? 'No matching rows.' : emptyMessage }}
+</p>
 
 <ng-template cdkConnectedOverlay
   [cdkConnectedOverlayOrigin]="tooltipOrigin!"

@@ -1,10 +1,7 @@
 import { Router, Routes } from '@angular/router';
 import { legacyProductionRoutes } from './production-screen-legacy.routes';
 import { inject } from '@angular/core';
-import { OperatorGridComponent } from './operator-grid/operator-grid.component';
-import { ItemGridComponent } from './item-grid/item-grid.component';
 import { AuthGuard } from './guards/auth.guard';
-import { MachineGridComponent } from './machine-grid/machine-grid.component';
 import { ShiftSettingsComponent } from './shift-management/shift-settings.component';
 import { MaintenanceShiftSettingsComponent } from './shift-management/maintenance-shift-settings.component';
 import { SystemSettingsComponent } from './system-settings/system-settings.component';
@@ -16,9 +13,9 @@ import { restoreLegacyProductionLayout } from './services/production-screen-navi
 const appRoutes: Routes = [
 	// Settings pages
 	{ path: 'ng/settings', pathMatch: 'full', component: SettingsMenuComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
-	{ path: 'ng/settings/operators', component: OperatorGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.operators } },
-	{ path: 'ng/settings/items', component: ItemGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
-	{ path: 'ng/settings/machines', component: MachineGridComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
+	{ path: 'ng/settings/operators', loadComponent: () => import('./operator-grid/operator-grid.component').then(m => m.OperatorGridComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.operators } },
+	{ path: 'ng/settings/items', loadComponent: () => import('./item-grid/item-grid.component').then(m => m.ItemGridComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.settings } },
+	{ path: 'ng/settings/machines', loadComponent: () => import('./machine-grid/machine-grid.component').then(m => m.MachineGridComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/system', component: SystemSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.settings } },
 	{ path: 'ng/settings/profile', loadComponent: () => import('./user-profile/user-profile.component').then(m => m.UserProfileComponent), canActivate: [AuthGuard], data: { preload: true, requiredPermissionLevel: PermissionLevels.profile } },
 	{ path: 'ng/settings/shifts', component: ShiftSettingsComponent, canActivate: [AuthGuard], data: { requiredPermissionLevel: PermissionLevels.shifts } },

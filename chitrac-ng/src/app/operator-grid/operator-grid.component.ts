@@ -1,18 +1,14 @@
 /*** Angular Imports */
-import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, model, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { BaseTableColumnOptions, BaseTableComponent } from '../components/base-table/base-table.component';
 
 /*** Material Imports */
-import { MatTableModule, MatTableDataSource } from '@angular/material/table';
-import { PageEvent, MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
-import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
-import { SelectionModel } from '@angular/cdk/collections';
 
-import { MatCheckboxModule } from '@angular/material/checkbox';
 
 
 /*** rxjs Imports */
@@ -35,29 +31,31 @@ import { ConfigurationService } from '../configuration.service';
 
 @Component({
     selector: 'operator-grid',
-    imports: [PageLoadStateComponent, CommonModule, MatTableModule, MatPaginatorModule, MatSortModule, MatCheckboxModule, MatDividerModule, MatButtonModule, MatIconModule],
+    imports: [PageLoadStateComponent, BaseTableComponent, CommonModule, MatDividerModule, MatButtonModule, MatIconModule],
     templateUrl: './operator-grid.component.html',
     styleUrl: './operator-grid.component.scss'
 })
-export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
-  operators: OperatorConfig[];
-  dataSource = new MatTableDataSource<OperatorConfig>([]);
+export class OperatorGridComponent implements OnInit, OnDestroy {
+  operators: OperatorConfig[] = [];
   isLoading = true;
   error: string | null = null;
-  selectionModel = new SelectionModel<OperatorConfig>(false, []);
+  selectedRow: OperatorConfig | null = null;
 
   sub: Subscription;
-  page: number = 1;
-  paginationSize: number = 10;
   isDownloading: boolean = false;
 
-  displayedColumns: string[] = ['id', 'name', 'active'];
+  readonly displayedColumns = ['ID', 'Name', 'Active'];
+  readonly pageSizes = [5, 10, 25, 100];
+  readonly columnOptions: Record<string, BaseTableColumnOptions<OperatorConfig>> = {
+    ID: { field: 'id' },
+    Name: { valueGetter: ({ data }) => data ? this.getOperatorDisplayName(data) : '' },
+    Active: { valueGetter: ({ data }) => data?.active ? 'Active' : 'Inactive' },
+  };
+  readonly rowIdentity = (row: OperatorConfig) => String(row._id ?? row.id);
 
   emptyOperator: OperatorConfig = new OperatorConfig().deserialize({ id: null, name: '', active: true});
 
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
 
-  @ViewChild(MatSort) sort: MatSort;
 
   constructor(private configurationService: ConfigurationService) {
    }
@@ -66,13 +64,10 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isLoading = false;
     this.error = null;
     this.operators = res;
-    this.dataSource.data = res;
-    const selectedId = this.selectionModel.selected[0]?._id;
-    const selected = selectedId == null ? undefined : res.find(row => row._id === selectedId);
-    this.selectionModel.clear();
-    if (selected) this.selectionModel.select(selected);
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
+    const selectedRow = this.selectedRow;
+    this.selectedRow = selectedRow
+      ? this.operators.find(row => this.rowIdentity(row) === this.rowIdentity(selectedRow)) ?? null
+      : null;
   }
 
   private getOps = defer(() => this.configurationService.watchOperatorConfigs())
@@ -86,11 +81,6 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
   );
 
   readonly dialog = inject(MatDialog);
-
-  ngAfterViewInit(): void {
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
-  }
 
   private sanitize(op: any): OperatorConfig {
     const { _id, id, code, name, active } = op ?? {};
@@ -159,7 +149,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
 
       req$.subscribe({
         next: () => {
-          this.selectionModel.clear();
+          this.selectedRow = null;
           dialogRef.close('saved');
         },
         error: err => {
@@ -175,7 +165,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
       this.configurationService.deleteOperatorConfig(operator._id).subscribe({
         next: (res) => {
           console.log('Operator deleted:', res);
-          this.selectionModel.clear();
+          this.selectedRow = null;
         },
         error: (err) => {
           console.error('Error deleting operator:', err);
@@ -185,12 +175,8 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
 
-  handlePageEvent(e: PageEvent) {
-    this.page = e.pageIndex;
-  }
-
   async downloadOperatorsPdf(): Promise<void> {
-    if (!this.dataSource?.data || this.dataSource.data.length === 0) {
+    if (!this.operators.length) {
       console.warn('No operators data to export');
       return;
     }
@@ -219,7 +205,7 @@ export class OperatorGridComponent implements OnInit, OnDestroy, AfterViewInit {
       const head = [['ID', 'Name', 'Status']];
       
       // Table body - export all operators (not just current page)
-      const body = this.dataSource.data.map(operator => [
+      const body = this.operators.map(operator => [
         operator.id?.toString() || 'N/A',
         this.getOperatorDisplayName(operator),
         operator.active ? 'Active' : 'Inactive'
