@@ -8,26 +8,67 @@
  * Datafeed status-code contract (see chitrac-datafeed-api modules/alarms.js):
  *   1  = run time
  *   0  = paused / idle time
- *   >1 = fault, resolved against config-alarm by id (19 = Lo Air Pressure)
+ *   >1 = fault; Cascade faults are sent as explicit alarm objects
  */
 
 // Rising/falling edge of each signal -> event name.
 const SIGNAL_EVENTS = {
   running: { on: 'start', off: 'stop' },
   paused: { on: 'pause', off: 'resume' },
-  lowAir: { on: 'fault', off: 'faultCleared' },
   readyToStart: { on: 'ready', off: 'notReady' },
   rts2: { on: 'rts2On', off: 'rts2Off' },
   rts3: { on: 'rts3On', off: 'rts3Off' }
 };
 
-// First matching rule wins, so faults take priority over running.
+// Status when no Cascade fault is active. First matching rule wins.
 const DEFAULT_STATUS_RULES = [
-  { when: 'lowAir', status: { code: 19, name: 'Lo Air Pressure' } },
   { when: 'running', status: { code: 1, name: 'Run' } },
   { when: 'paused', status: { code: 0, name: 'Paused' } }
 ];
 const DEFAULT_IDLE_STATUS = { code: 0, name: 'Idle' };
+
+// Cascade stopping faults (IDs = PLC address numbers, per Rob).
+//   key        payload field carrying the PLC bit
+//   activeWhen value of that bit that means "faulted"
+// M2103 is already published as `lowAir`. M2106 is commented "Breaker OK" in
+// the PLC, but the ladder SETs it when breaker input I0000 is OFF (rungs 11/12),
+// so like every other bit here it is a fault when true.
+// Ascending device order breaks ties when a single snapshot reports several
+// new faults. The publisher supplies no order within a snapshot.
+const CASCADE_FAULT_DEFINITIONS = [
+  { id: 2103, name: 'Low Air Fault', key: 'lowAir', activeWhen: true },
+  { id: 2106, name: 'Breaker Fault', key: 'M2106', activeWhen: true },
+  { id: 2107, name: 'Autoload Fault', key: 'M2107', activeWhen: true },
+  { id: 2110, name: 'LR Estop', key: 'M2110', activeWhen: true },
+  { id: 2111, name: 'LF Estop', key: 'M2111', activeWhen: true },
+  { id: 2112, name: 'RF Estop', key: 'M2112', activeWhen: true },
+  { id: 2113, name: 'RR Estop', key: 'M2113', activeWhen: true },
+  { id: 2114, name: 'Inverter Fault', key: 'M2114', activeWhen: true },
+  { id: 2115, name: 'Doors Open', key: 'M2115', activeWhen: true },
+  { id: 2204, name: 'No Material', key: 'M2204', activeWhen: true }
+];
+// Alarm objects exactly as sent to the datafeed (strict schema: no extra fields).
+const CASCADE_FAULTS = CASCADE_FAULT_DEFINITIONS.map(({ id, name }) => ({ id, name, fault: true, stop: true }));
+const CASCADE_FAULT_KEYS = CASCADE_FAULT_DEFINITIONS.map(def => def.key);
+
+// A missing bit (older payload) is never treated as a fault.
+const isFaultActive = (def, signals) => signals?.[def.key] === def.activeWhen;
+
+function resolveCascadeFaults(previous, signals, previousFaults = []) {
+  const byId = new Map(CASCADE_FAULT_DEFINITIONS.map(def => [def.id, def]));
+  // Keep the stored activation order; drop faults that cleared or are no longer defined.
+  const activeFaults = previousFaults
+    .filter(alarm => byId.has(alarm.id) && isFaultActive(byId.get(alarm.id), signals))
+    .map(alarm => CASCADE_FAULTS.find(fault => fault.id === alarm.id));
+  const faultChanges = [];
+  CASCADE_FAULT_DEFINITIONS.forEach((def, index) => {
+    const alarm = CASCADE_FAULTS[index];
+    const active = isFaultActive(def, signals);
+    if (active && !activeFaults.some(fault => fault.id === alarm.id)) activeFaults.push(alarm);
+    if (active !== isFaultActive(def, previous)) faultChanges.push({ ...alarm, active });
+  });
+  return { activeFaults, faultChanges };
+}
 
 /** Event names for every signal that changed between two snapshots. */
 function detectCascadeEvents(previous, signals) {
@@ -49,11 +90,12 @@ function sameStatus(a, b) {
   return !!a && !!b && a.code === b.code && a.name === b.name;
 }
 
-function buildDatafeedStatusMessage({ serial, name, timestamp, status }) {
+function buildDatafeedStatusMessage({ serial, name, timestamp, status, alarm }) {
   return {
     machineInfo: { serial, name },
     timestamp: new Date(timestamp).toISOString(),
-    status: { code: status.code, name: status.name }
+    status: { code: status.code, name: status.name },
+    ...(alarm ? { alarm } : {})
   };
 }
 
@@ -168,6 +210,10 @@ function createDatafeedForwarder({ url, retryMs = 5000, maxQueue = 500, requestT
 }
 
 module.exports = {
+  CASCADE_FAULTS,
+  CASCADE_FAULT_DEFINITIONS,
+  CASCADE_FAULT_KEYS,
+  resolveCascadeFaults,
   SIGNAL_EVENTS,
   DEFAULT_STATUS_RULES,
   DEFAULT_IDLE_STATUS,

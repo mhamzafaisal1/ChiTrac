@@ -18,8 +18,7 @@ test('edges become named events', () => {
   assert.deepEqual(detectCascadeEvents(sig({ running: true }), off), ['stop']);
   assert.deepEqual(detectCascadeEvents(off, sig({ paused: true })), ['pause']);
   assert.deepEqual(detectCascadeEvents(sig({ paused: true }), off), ['resume']);
-  assert.deepEqual(detectCascadeEvents(off, sig({ lowAir: true })), ['fault']);
-  assert.deepEqual(detectCascadeEvents(sig({ lowAir: true }), off), ['faultCleared']);
+  assert.deepEqual(detectCascadeEvents(off, sig({ lowAir: true })), [], 'low air is reported as a Cascade fault, not a plain event');
   assert.deepEqual(detectCascadeEvents(off, sig({ readyToStart: true })), ['ready']);
   assert.deepEqual(detectCascadeEvents(sig({ readyToStart: true }), off), ['notReady']);
   assert.deepEqual(detectCascadeEvents(off, off), []);
@@ -37,8 +36,7 @@ test('first snapshot reports only the signals that are on', () => {
   assert.deepEqual(detectCascadeEvents(null, sig({ readyToStart: true, running: true })).sort(), ['ready', 'start']);
 });
 
-test('status priority: low air > running > paused > idle', () => {
-  assert.deepEqual(deriveCascadeStatus(sig({ lowAir: true, running: true })), { code: 19, name: 'Lo Air Pressure' });
+test('non-fault status priority: running > paused > idle', () => {
   assert.deepEqual(deriveCascadeStatus(sig({ running: true, paused: true })), { code: 1, name: 'Run' });
   assert.deepEqual(deriveCascadeStatus(sig({ paused: true })), { code: 0, name: 'Paused' });
   assert.deepEqual(deriveCascadeStatus(sig({ readyToStart: true })), { code: 0, name: 'Idle' });
@@ -52,6 +50,93 @@ test('datafeed message matches the datafeed-api status shape', () => {
     timestamp: '2026-11-19T14:00:00.000Z',
     status: { code: 1, name: 'Run' }
   });
+});
+
+test('Cascade sends the exact stopping alarm for each PLC bit', async () => {
+  // [id, name, payload key, value that means faulted]
+  const faults = [
+    [2103, 'Low Air Fault', 'lowAir', true], [2106, 'Breaker Fault'],
+    [2107, 'Autoload Fault'],
+    [2110, 'LR Estop'], [2111, 'LF Estop'], [2112, 'RF Estop'], [2113, 'RR Estop'],
+    [2114, 'Inverter Fault'], [2115, 'Doors Open'], [2204, 'No Material']
+  ];
+  const sent = [];
+  const store = createCascadeStatusStore({
+    db: fakeDb(), logger: quiet, forwarder: { send: message => sent.push(message) },
+    machine: { serial: 90050, name: 'Cascade' }
+  });
+  const healthy = { M2106: false }; // M2106 is set only when the breaker input is off
+  const submit = bits => store.handleMessage('t', JSON.stringify({
+    source: 'bench', ...sig({ running: true, ...healthy, ...bits })
+  }));
+  await submit({});
+  assert.equal(sent.at(-1).alarm, undefined, 'healthy bench is not faulted');
+  for (const [id, name, key = `M${id}`, faultedValue = true] of faults) {
+    const alarm = { id, name, fault: true, stop: true };
+    const on = await submit({ [key]: faultedValue });
+    assert.deepEqual(on.events, [`Fault: ${name}`]);
+    assert.deepEqual(sent.at(-1).alarm, alarm);
+    assert.deepEqual(sent.at(-1).status, { code: id, name });
+    const cleared = await submit({ [key]: !faultedValue });
+    assert.deepEqual(cleared.events, [`Fault cleared: ${name}`]);
+    assert.deepEqual(sent.at(-1).status, { code: 1, name: 'Run' });
+    assert.equal(sent.at(-1).alarm, undefined);
+  }
+});
+
+test('newest fault wins, survives restart, and falls back to the newest remaining fault', async () => {
+  const db = fakeDb();
+  const sent = [];
+  const collection = db.collection;
+  let persisted;
+  db.collection = name => name === CURRENT_COLLECTION ? {
+    ...collection(name),
+    findOne: async () => persisted,
+    updateOne: async (_, update) => { persisted = { ...persisted, ...structuredClone(update.$set) }; }
+  } : collection(name);
+  const makeStore = () => createCascadeStatusStore({
+    db, logger: quiet, forwarder: { send: message => sent.push(message) },
+    machine: { serial: 90050, name: 'Cascade' }
+  });
+  let store = makeStore();
+  const submit = bits => store.handleMessage('t', JSON.stringify({ source: 'bench', ...sig({ running: true, M2106: false, ...bits }) }));
+  await submit({ M2110: true, M2111: true });
+  assert.equal(sent.at(-1).alarm.id, 2111, 'later address wins a same-snapshot tie');
+  await submit({ M2110: true, M2111: true, M2106: true }); // breaker fault
+  assert.equal(sent.at(-1).alarm.id, 2106, 'most recent activation overrides both earlier faults');
+  assert.deepEqual(persisted.activeFaults.map(fault => fault.id), [2110, 2111, 2106]);
+  assert.deepEqual(db.writes[EVENT_COLLECTION][0].faultChanges.map(fault => fault.id), [2110, 2111]);
+
+  store = makeStore();
+  await submit({ M2106: true, M2110: true, M2111: true });
+  assert.equal(sent.at(-1).alarm.id, 2106);
+  assert.equal(db.writes[EVENT_COLLECTION].length, 2, 'restart does not log new activations');
+  await submit({ M2106: false, M2110: true, M2111: true }); // breaker restored
+  assert.equal(sent.at(-1).alarm.id, 2111);
+  await submit({ M2110: true, M2111: false });
+  assert.equal(sent.at(-1).alarm.id, 2110);
+  await submit({ M2110: false, M2111: false });
+  assert.deepEqual(sent.at(-1).status, { code: 1, name: 'Run' });
+  assert.equal(sent.at(-1).alarm, undefined);
+});
+
+test('older payloads without the fault bits never report breaker or other faults', async () => {
+  const sent = [];
+  const store = createCascadeStatusStore({
+    db: fakeDb(), logger: quiet, forwarder: { send: message => sent.push(message) },
+    machine: { serial: 90050, name: 'Cascade' }
+  });
+  // Older payloads without the fault bits must not report faults.
+  const r = await store.handleMessage('t', JSON.stringify({ source: 'bench', ...sig({ running: true }) }));
+  assert.deepEqual(r.status, { code: 1, name: 'Run' });
+  assert.equal(sent.at(-1).alarm, undefined);
+  const low = await store.handleMessage('t', JSON.stringify({ source: 'bench', ...sig({ running: true, lowAir: true }) }));
+  assert.deepEqual(low.status, { code: 2103, name: 'Low Air Fault' });
+});
+
+test('alarm objects carry only datafeed schema fields', () => {
+  const { CASCADE_FAULTS } = require('../modules/cascadeEvents');
+  for (const alarm of CASCADE_FAULTS) assert.deepEqual(Object.keys(alarm).sort(), ['fault', 'id', 'name', 'stop']);
 });
 
 test('datafeed config is off without a URL and defaults to serial 90050', () => {
@@ -142,13 +227,13 @@ test('store logs signal changes and forwards derived status changes', async () =
   await store.handleMessage('t', msg({}));                       // first: Idle
   await store.handleMessage('t', msg({ readyToStart: true }));   // ready, still Idle -> no send
   await store.handleMessage('t', msg({ readyToStart: true, running: true })); // start -> Run
-  await store.handleMessage('t', msg({ readyToStart: true, running: true, lowAir: true })); // fault -> 19
-  await store.handleMessage('t', msg({ readyToStart: true, running: true })); // faultCleared -> Run
+  await store.handleMessage('t', msg({ readyToStart: true, running: true, lowAir: true })); // fault -> 2103
+  await store.handleMessage('t', msg({ readyToStart: true, running: true })); // cleared -> Run
 
   const events = db.writes[EVENT_COLLECTION];
-  assert.deepEqual(events.map(e => e.events), [[], ['ready'], ['start'], ['fault'], ['faultCleared']]);
-  assert.deepEqual(events.map(e => e.status.code), [0, 0, 1, 19, 1]);
-  assert.deepEqual(sent.map(m => m.status.code), [0, 1, 19, 1]);
+  assert.deepEqual(events.map(e => e.events), [[], ['ready'], ['start'], ['Fault: Low Air Fault'], ['Fault cleared: Low Air Fault']]);
+  assert.deepEqual(events.map(e => e.status.code), [0, 0, 1, 2103, 1]);
+  assert.deepEqual(sent.map(m => m.status.code), [0, 1, 2103, 1]);
   assert.equal(sent[0].machineInfo.serial, 90050);
 });
 

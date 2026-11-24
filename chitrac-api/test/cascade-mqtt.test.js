@@ -64,6 +64,8 @@ test('rejects malformed payloads', () => {
   assert.equal(parseCascadeStatus('[]').ok, false);
   assert.equal(parseCascadeStatus(JSON.stringify({ readyToStart: false })).ok, false);
   assert.match(parseCascadeStatus(payload({ running: 'false' })).error, /running must be boolean/);
+  assert.match(parseCascadeStatus(payload({ M2106: 1 })).error, /M2106 must be boolean/);
+  assert.equal(parseCascadeStatus(payload({ M2106: false })).value.signals.M2106, false);
 });
 
 test('first message stores current state and one event', async () => {
