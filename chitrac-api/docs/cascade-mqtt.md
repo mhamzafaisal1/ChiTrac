@@ -13,6 +13,25 @@ Reads the Cascade PLC status published over MQTT and stores it in MongoDB.
 PLC devices: readyToStart = M2100, paused = M2101, running = M2102, lowAir = M2103.
 `running` is the machine signal, not the PLC CPU RUN state. Values are retained as published. State conversion follows the existing ChiTrac status/alarm contract.
 
+For the fault-enabled publisher, add these Boolean device entries to the existing WindLDR publish payload. Use the PLC address as the JSON key and its numeric part as the alarm ID.
+
+| JSON key and PLC device | ID | Fault name |
+|---|---:|---|
+| `lowAir` (M2103, already published) | 2103 | Low Air Fault |
+| `M2106` (commented "Breaker OK", but set when breaker input I0000 is off) | 2106 | Breaker Fault |
+| `M2107` | 2107 | Autoload Fault |
+| `M2110` | 2110 | LR Estop |
+| `M2111` | 2111 | LF Estop |
+| `M2112` | 2112 | RF Estop |
+| `M2113` | 2113 | RR Estop |
+| `M2114` | 2114 | Inverter Fault |
+| `M2115` | 2115 | Doors Open |
+| `M2204` | 2204 | No Material |
+
+WindLDR's **Payload → Import JSON Text** uses strings such as `"M2106": "Boolean M2106"`
+to define the device binding. The MQTT message itself must contain `"M2106": true`
+or `"M2106": false`. Publish these fault bits with the existing status fields on the same topic.
+
 ## Events and status
 
 Each real signal change is parsed into events and a ChiTrac status (`modules/cascadeEvents.js`):
@@ -21,14 +40,19 @@ Each real signal change is parsed into events and a ChiTrac status (`modules/cas
 |---|---|---|
 | running | `start` | `stop` |
 | paused | `pause` | `resume` |
-| lowAir | `fault` | `faultCleared` |
 | readyToStart | `ready` | `notReady` |
 
-Status (first match wins), following the datafeed-api contract (1 = run, 0 = paused/idle, >1 = fault via `config-alarm`):
+Each listed fault is active on `true`. All send `fault: true` and `stop: true`. A bit missing from the payload is never treated as a fault.
+The latest activation takes precedence. If it clears, the next most recent active
+fault takes over. The subscriber stores this order across restarts. If two or more
+faults activate in one snapshot, the highest device number wins that tie. Each
+activation and clearance is logged even if it does not change the primary status.
+An omitted bit retains its last known value, and a reported `false` clears it.
+
+Status when no listed fault is active (first match wins):
 
 | Condition | Status |
 |---|---|
-| lowAir | 19 Lo Air Pressure |
 | running | 1 Run |
 | paused | 0 Paused |
 | otherwise | 0 Idle |
@@ -36,8 +60,8 @@ Status (first match wins), following the datafeed-api contract (1 = run, 0 = pau
 Alarm 19 is the existing active stopping fault in Alpha `config-alarm` (`fault: true`, `stop: true`).
 Serial 90050 is registered in Alpha `config-machine` as **Cascade Bench**, type Cascade, one lane/station,
 self-reporting (`polled: false`) and not simulated. Its PLC IP is 192.168.70.177.
-No existing machine or alarm definitions were changed. Codes above 1 are resolved through `config-alarm`;
-non-stopping alarms follow their configured flags rather than automatically stopping production.
+The new faults send explicit alarm objects, so Datafeed uses the reported IDs, names,
+and flags directly. Low air no longer uses configured alarm 19.
 
 ## Datafeed forwarding (off unless configured)
 
@@ -49,6 +73,10 @@ No heartbeat is generated from a timer after PLC messages disappear.
 
 ```json
 {"machineInfo":{"serial":90050,"name":"Cascade"},"timestamp":"2026-11-19T14:00:00.000Z","status":{"code":1,"name":"Run"}}
+```
+
+```json
+{"machineInfo":{"serial":90050,"name":"Cascade"},"timestamp":"2026-11-19T14:00:00.000Z","status":{"code":2106,"name":"Breaker Fault"},"alarm":{"id":2106,"name":"Breaker Fault","fault":true,"stop":true}}
 ```
 
 Messages are sent one at a time in order, with a 30-second request timeout. Network errors, HTTP 408/429,
