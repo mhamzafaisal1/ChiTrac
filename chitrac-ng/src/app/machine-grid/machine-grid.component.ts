@@ -1,18 +1,13 @@
-import { AfterViewInit, Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatTableModule, MatTableDataSource } from '@angular/material/table';
-import { MatPaginator, PageEvent } from '@angular/material/paginator';
-import { MatSort, MatSortModule } from '@angular/material/sort';
+import { BaseTableColumnOptions, BaseTableComponent } from '../components/base-table/base-table.component';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
-import { SelectionModel } from '@angular/cdk/collections';
-import { MatCheckboxModule } from '@angular/material/checkbox';
 import { defer, EMPTY, Subscription } from 'rxjs';
 import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 import { share, catchError } from 'rxjs/operators';
-import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 import { MachineConfig } from '../shared/models/machine.model';
 import { ConfigurationService } from '../configuration.service';
@@ -23,28 +18,34 @@ import { MachineDialogCuComponent } from '../machine-dialog-cu/machine-dialog-cu
   standalone: true,
   imports: [
     PageLoadStateComponent,
+    BaseTableComponent,
     CommonModule,
-    MatTableModule,
-    MatPaginator,
-    MatSortModule,
-    MatCheckboxModule,
     MatDividerModule,
     MatButtonModule,
     MatIconModule,
-    MatSlideToggleModule 
   ],
   templateUrl: './machine-grid.component.html',
   styleUrl: './machine-grid.component.scss'
 })
-export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
+export class MachineGridComponent implements OnInit, OnDestroy {
   machines: MachineConfig[] = [];
-  dataSource = new MatTableDataSource<MachineConfig>([]);
   isLoading = true;
-  selectionModel = new SelectionModel<MachineConfig>(false, []);
+  selectedRow: MachineConfig | null = null;
   sub: Subscription;
-  page = 1;
-  paginationSize = 10;
-  displayedColumns: string[] = ['id', 'name', 'ipAddress', 'lanes', 'stations', 'type', 'polled', 'simulated', 'active'];
+  readonly displayedColumns = ['ID', 'Name', 'IP Address', 'Lanes', 'Stations', 'Type', 'Polled', 'Simulated', 'Active'];
+  readonly pageSizes = [5, 10, 25, 100];
+  readonly columnOptions: Record<string, BaseTableColumnOptions<MachineConfig>> = {
+    ID: { field: 'id' },
+    Name: { field: 'name' },
+    'IP Address': { valueGetter: ({ data }) => data ? this.formatIpAddress(data) : '', minWidth: 142 },
+    Lanes: { valueGetter: ({ data }) => this.formatAddresses(data?.lanes), sortable: false },
+    Stations: { valueGetter: ({ data }) => this.formatAddresses(data?.stations), sortable: false },
+    Type: { field: 'type' },
+    Polled: { valueGetter: ({ data }) => data?.polled ? 'Yes' : 'No' },
+    Simulated: { valueGetter: ({ data }) => data?.simulated ? 'Yes' : 'No' },
+    Active: { valueGetter: ({ data }) => data?.active ? 'Active' : 'Inactive' },
+  };
+  readonly rowIdentity = (row: MachineConfig) => String(row._id ?? row.id);
 
   error: string | null = null;
 
@@ -59,10 +60,6 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
     polled: false,
     simulated: false
   });
-  
-
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort: MatSort;
 
   constructor(private configurationService: ConfigurationService) {}
 
@@ -72,14 +69,11 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isLoading = false;
     this.error = null;
     const machines = Array.isArray(res) ? res : [res];
-    this.machines = Object.assign([], machines);
-    this.dataSource.data = machines;
-    const selectedId = this.selectionModel.selected[0]?._id;
-    const selected = selectedId == null ? undefined : machines.find(row => row._id === selectedId);
-    this.selectionModel.clear();
-    if (selected) this.selectionModel.select(selected);
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
+    this.machines = machines;
+    const selectedRow = this.selectedRow;
+    this.selectedRow = selectedRow
+      ? this.machines.find(row => this.rowIdentity(row) === this.rowIdentity(selectedRow)) ?? null
+      : null;
   };
 
   private handleError = (error: any) => {
@@ -108,15 +102,6 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.sub) {
       this.sub.unsubscribe();
     }
-  }
-
-  ngAfterViewInit(): void {
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
-  }
-
-  handlePageEvent(e: PageEvent) {
-    this.page = e.pageIndex;
   }
 
   private refreshTable(): void {
@@ -165,7 +150,7 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
 
       action$.subscribe({
         next: () => {
-          this.selectionModel.clear();
+          this.selectedRow = null;
         },
         error: (err) => {
           console.error('Machine operation failed:', err);
@@ -193,7 +178,7 @@ export class MachineGridComponent implements OnInit, OnDestroy, AfterViewInit {
       this.configurationService.deleteMachineConfig(machine._id).subscribe({
         next: (res) => {
           console.log('Delete successful:', res);
-          this.selectionModel.clear();
+          this.selectedRow = null;
         },
         error: (err) => {
           console.error('Delete failed:', err);

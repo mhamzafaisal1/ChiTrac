@@ -69,114 +69,50 @@
   <div class="table-container">
     <h3>Active Tokens</h3>
     
-    <table mat-table [dataSource]="dataSource" matSort #activeSort="matSort" class="tokens-table">
-      
-      <!-- Name Column -->
-      <ng-container matColumnDef="name">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Name </th>
-        <td mat-cell *matCellDef="let token"> {{ token.name }} </td>
-      </ng-container>
+    <base-table
+      [columns]="displayedColumns"
+      [columnOptions]="columnOptions"
+      [getCellTooltip]="getCellTooltip"
+      [rows]="tokens"
+      [rowIdentity]="rowIdentity"
+      [pageSizes]="pageSizes"
+      [enableCsvExport]="false"
+      [fillAvailableWidth]="true"
+      [cellTemplates]="{ Actions: tokenActions }"
+      [emptyMessage]="!isLoading && !loadError ? 'No tokens created yet. Create your first token above.' : ''"
+    ></base-table>
 
-      <!-- Description Column -->
-      <ng-container matColumnDef="description">
-        <th mat-header-cell *matHeaderCellDef> Description </th>
-        <td mat-cell *matCellDef="let token"> {{ token.description || '-' }} </td>
-      </ng-container>
-
-      <!-- Created Column -->
-      <ng-container matColumnDef="created">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Created </th>
-        <td mat-cell *matCellDef="let token"> {{ formatDate(token.timestamps?.create) }} </td>
-      </ng-container>
-
-      <!-- Last Used Column -->
-      <ng-container matColumnDef="lastUsed">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Last Used </th>
-        <td mat-cell *matCellDef="let token"> {{ formatDate(token.lastUsed) }} </td>
-      </ng-container>
-
-      <!-- Usage Count Column -->
-      <ng-container matColumnDef="usageCount">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Usage Count </th>
-        <td mat-cell *matCellDef="let token"> {{ token.usageCount }} </td>
-      </ng-container>
-
-      <!-- Actions Column -->
-      <ng-container matColumnDef="actions">
-        <th mat-header-cell *matHeaderCellDef> Actions </th>
-        <td mat-cell *matCellDef="let token">
-          <button mat-icon-button (click)="editControllerAccess(token)" [disabled]="!controllers.length"
-            matTooltip="Edit controller access" [attr.aria-label]="'Edit controller access for ' + token.name">
-            <mat-icon>admin_panel_settings</mat-icon>
-          </button>
-          <button mat-icon-button color="warn" (click)="deleteToken(token)" matTooltip="Deactivate token">
-            <mat-icon>delete</mat-icon>
-          </button>
-        </td>
-      </ng-container>
-
-      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
-
-      <!-- No data row -->
-      <tr class="mat-row" *matNoDataRow>
-        <td class="mat-cell" [attr.colspan]="displayedColumns.length">
-          No tokens created yet. Create your first token above.
-        </td>
-      </tr>
-    </table>
-
-    <mat-paginator #activePaginator [pageSizeOptions]="[5, 10, 25, 50]" showFirstLastButtons></mat-paginator>
+    <ng-template #tokenActions let-token>
+      <div class="row-actions">
+        <button mat-icon-button type="button" (click)="editControllerAccess(token)" [disabled]="!controllers.length"
+          matTooltip="Edit controller access" [attr.aria-label]="'Edit controller access for ' + token.name">
+          <mat-icon>admin_panel_settings</mat-icon>
+        </button>
+        <button mat-icon-button color="warn" type="button" (click)="deleteToken(token)"
+          matTooltip="Deactivate token" [attr.aria-label]="'Deactivate ' + token.name">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </div>
+    </ng-template>
   </div>
 
   <mat-divider></mat-divider>
 
   <!-- Deactivated Tokens Table -->
-  <div class="table-container deactivated-tokens">
+  <div class="table-container">
     <h3>Deactivated Tokens</h3>
 
-    <table mat-table [dataSource]="deactivatedDataSource" matSort #deactivatedSort="matSort" class="tokens-table">
-      <ng-container matColumnDef="name">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Name </th>
-        <td mat-cell *matCellDef="let token"> {{ token.name }} </td>
-      </ng-container>
-
-      <ng-container matColumnDef="description">
-        <th mat-header-cell *matHeaderCellDef> Description </th>
-        <td mat-cell *matCellDef="let token"> {{ token.description || '-' }} </td>
-      </ng-container>
-
-      <ng-container matColumnDef="created">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Created </th>
-        <td mat-cell *matCellDef="let token"> {{ formatDate(token.timestamps?.create) }} </td>
-      </ng-container>
-
-      <ng-container matColumnDef="deactivated">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Deactivated </th>
-        <td mat-cell *matCellDef="let token"> {{ formatDate(token.timestamps?.inactive) }} </td>
-      </ng-container>
-
-      <ng-container matColumnDef="lastUsed">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Last Used </th>
-        <td mat-cell *matCellDef="let token"> {{ formatDate(token.lastUsed) }} </td>
-      </ng-container>
-
-      <ng-container matColumnDef="usageCount">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header> Usage Count </th>
-        <td mat-cell *matCellDef="let token"> {{ token.usageCount }} </td>
-      </ng-container>
-
-      <tr mat-header-row *matHeaderRowDef="deactivatedDisplayedColumns"></tr>
-      <tr mat-row *matRowDef="let row; columns: deactivatedDisplayedColumns;"></tr>
-
-      <tr class="mat-row" *matNoDataRow>
-        <td class="mat-cell" [attr.colspan]="deactivatedDisplayedColumns.length">
-          No deactivated tokens.
-        </td>
-      </tr>
-    </table>
-
-    <mat-paginator #deactivatedPaginator [pageSizeOptions]="[5, 10, 25, 50]" showFirstLastButtons></mat-paginator>
+    <base-table
+      [columns]="deactivatedDisplayedColumns"
+      [columnOptions]="columnOptions"
+      [getCellTooltip]="getCellTooltip"
+      [rows]="deactivatedTokens"
+      [rowIdentity]="rowIdentity"
+      [pageSizes]="pageSizes"
+      [enableCsvExport]="false"
+      [fillAvailableWidth]="true"
+      [emptyMessage]="!isLoading && !loadError ? 'No deactivated tokens.' : ''"
+    ></base-table>
   </div>
 </div>
 

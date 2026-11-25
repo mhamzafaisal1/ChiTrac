@@ -1,3 +1,5 @@
+import { By } from '@angular/platform-browser';
+import { BaseTableComponent } from './components/base-table/base-table.component';
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -11,6 +13,7 @@ import { OperatorGridComponent } from './operator-grid/operator-grid.component';
 import { TokenManagementComponent } from './token-management/token-management.component';
 import { TokenManagementService } from './services/token-management.service';
 import { SettingsService } from './services/settings.service';
+import { PercentBreakpointService } from './services/percent-breakpoint.service';
 import { Component, NgZone } from '@angular/core';
 import { Router, RouterOutlet, provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
@@ -32,6 +35,7 @@ for (const [type, method, name] of [
     beforeEach(() => {
       response = new Subject(); get = jasmine.createSpy(method).and.callFake(() => response);
       TestBed.configureTestingModule({ imports: [type], providers: [provideNoopAnimations(),
+        { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } },
         { provide: ConfigurationService, useValue: { [method]: get } },
         { provide: MatDialog, useValue: {} },
       ] });
@@ -69,11 +73,14 @@ for (const [type, method, name] of [
       const fixture = TestBed.createComponent(type as any);
       try {
         fixture.detectChanges(); tick(); fixture.detectChanges();
-        const page: any = fixture.componentInstance;
-        expect(page.paginator).toBeDefined();
-        expect(page.sort).toBeDefined();
-        expect(page.dataSource.paginator).toBe(page.paginator);
-        expect(page.dataSource.sort).toBe(page.sort);
+        const table: BaseTableComponent = fixture.debugElement.query(By.directive(BaseTableComponent)).componentInstance;
+        expect(table.pageSizes).toContain(10);
+        expect(table.columnDefs.find(column => column.colId === 'Name')?.sortable).toBeTrue();
+        if (type === MachineGridComponent) {
+          expect(table.columnDefs.filter(column => column.sortable).map(column => column.colId))
+            .toEqual(['ID', 'Name', 'IP Address', 'Type', 'Polled', 'Simulated', 'Active']);
+        }
+        expect(table.rows).toEqual([]);
         expect(fixture.nativeElement.querySelector('.loading-spinner')).toBeNull();
         tick(60000);
         expect(get).toHaveBeenCalledTimes(1);
@@ -87,6 +94,7 @@ describe('API Tokens initial loading', () => {
     const response = new Subject<any>();
     const getTokens = jasmine.createSpy('getTokens').and.returnValue(response);
     TestBed.configureTestingModule({ imports: [TokenManagementComponent], providers: [provideNoopAnimations(),
+      { provide: PercentBreakpointService, useValue: { getColorClass: () => '' } },
       { provide: TokenManagementService, useValue: { getTokens } },
       { provide: MatSnackBar, useValue: { open() {} } },
       { provide: MatDialog, useValue: {} }, { provide: Clipboard, useValue: {} },
@@ -98,7 +106,7 @@ describe('API Tokens initial loading', () => {
       expect(getTokens).toHaveBeenCalledTimes(1);
       expect(fixture.nativeElement.querySelector('[role="status"]')).not.toBeNull();
       response.next({ tokens: [], controllers: [], deactivatedTokens: [] }); fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('[role="status"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('app-page-load-state [role="status"]')).toBeNull();
     } finally { fixture.destroy(); }
   }));
 });

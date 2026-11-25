@@ -57,6 +57,20 @@
   width: 100%;
 }
 
+:host ::ng-deep .paginated-grid .ag-paging-panel {
+  height: auto;
+  min-height: 48px;
+  padding-block: 8px;
+
+  .ag-paging-panel-content {
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 8px 16px;
+  }
+}
+
 .tracked-cell-tooltip {
   max-width: min(320px, calc(100vw - 24px));
   padding: 8px 12px;
@@ -276,4 +290,10 @@
   .export-button {
     margin-left: 0;
   }
+}
+.table-empty {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  color: var(--theme-color-on-surface-variant);
 }

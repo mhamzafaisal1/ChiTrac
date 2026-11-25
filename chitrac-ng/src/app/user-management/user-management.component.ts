@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, OnInit, TemplateRef, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild, inject } from '@angular/core';
 import { SettingsService } from '../services/settings.service';
 import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -10,12 +10,9 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
-import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatSort, MatSortModule } from '@angular/material/sort';
-import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import {
@@ -25,6 +22,7 @@ import {
   UserSaveRequest
 } from '../services/user-management.service';
 import { UserService } from '../user.service';
+import { BaseTableColumnOptions, BaseTableComponent } from '../components/base-table/base-table.component';
 import { PageLoadStateComponent } from '../components/page-load-state/page-load-state.component';
 
 const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
@@ -33,6 +31,7 @@ const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-
   selector: 'app-user-management',
   imports: [
     PageLoadStateComponent,
+    BaseTableComponent,
     CommonModule,
     ReactiveFormsModule,
     MatButtonModule,
@@ -42,22 +41,33 @@ const EMAIL_PATTERN = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-
     MatIconModule,
     MatInputModule,
     MatDialogModule,
-    MatPaginatorModule,
     MatSelectModule,
     MatSlideToggleModule,
     MatSnackBarModule,
-    MatSortModule,
-    MatTableModule,
     MatTooltipModule
   ],
   templateUrl: './user-management.component.html',
   styleUrl: './user-management.component.scss'
 })
-export class UserManagementComponent implements OnInit, AfterViewInit {
+export class UserManagementComponent implements OnInit {
   private readonly settings = inject(SettingsService);
   users: ManagedUser[] = [];
-  dataSource = new MatTableDataSource<ManagedUser>([]);
-  displayedColumns: string[] = ['username', 'email', 'permissionLevel', 'active', 'updatedAt', 'actions'];
+  readonly displayedColumns = ['Username', 'Email', 'Level', 'Status', 'Updated', 'Actions'];
+  readonly pageSizes = [10, 25, 50];
+  readonly rowIdentity = (user: ManagedUser) => user._id;
+  readonly columnOptions: Record<string, BaseTableColumnOptions<ManagedUser>> = {
+    Username: { field: 'username' },
+    Email: { valueGetter: ({ data }) => data?.email || '-', minWidth: 180 },
+    Level: { valueGetter: ({ data }) => data?.permissions?.level ?? '-' },
+    Status: { valueGetter: ({ data }) => data?.active === false ? 'Inactive' : 'Active', minWidth: 116 },
+    Updated: {
+      valueGetter: ({ data }) => data?.updatedAt ? new Date(data.updatedAt).getTime() : null,
+      valueFormatter: ({ value }) => this.formatDate(value == null ? null : new Date(value)),
+      getQuickFilterText: ({ value }) => this.formatDate(value == null ? null : new Date(value)),
+      minWidth: 200,
+    },
+    Actions: { sortable: false, minWidth: 136 },
+  };
   selectedUser: ManagedUser | null = null;
   isSaving = false;
   isSendingReset = false;
@@ -75,8 +85,6 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     confirmPassword: new FormControl('')
   });
 
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort!: MatSort;
   @ViewChild('userDialog') userDialog!: TemplateRef<unknown>;
 
   constructor(
@@ -94,18 +102,12 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     this.loadUsers();
   }
 
-  ngAfterViewInit(): void {
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort = this.sort;
-  }
-
   loadUsers(): void {
     this.isLoading = true;
     this.userManagementService.getUsers().subscribe({
       next: (res) => {
         this.users = res.users;
         this.roleOptions = res.roles || [];
-        this.dataSource.data = res.users;
         this.isLoading = false;
       },
       error: (err) => {
@@ -295,7 +297,6 @@ export class UserManagementComponent implements OnInit, AfterViewInit {
     this.users = index >= 0
       ? [...this.users.slice(0, index), user, ...this.users.slice(index + 1)]
       : [...this.users, user];
-    this.dataSource.data = this.users;
   }
 
   private openUserDialog(): void {
