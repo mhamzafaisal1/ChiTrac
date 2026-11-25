@@ -1,11 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { Subject } from 'rxjs';
+import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs';
 import { MachineFaultHistoryComponent } from './machine-fault-history.component';
 import { FaultService, FaultHistoryResponse } from '../services/fault.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { WebsocketService } from '../services/websocket.service';
 
 describe('Machine modal fault states', () => {
   let fixture: ComponentFixture<MachineFaultHistoryComponent>;
@@ -27,6 +28,7 @@ describe('Machine modal fault states', () => {
         { provide: FaultService, useValue: faultService },
         { provide: PollingService, useValue: {} },
         { provide: DateTimeService, useValue: { liveMode$: new Subject(), confirmTrigger$: new Subject() } },
+        { provide: WebsocketService, useValue: { connect() {}, machineDashboardData$: () => new Subject() } },
       ],
     });
     fixture = TestBed.createComponent(MachineFaultHistoryComponent);
@@ -106,5 +108,84 @@ describe('Machine modal fault states', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.controls')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.chart-no-data')).toBeNull();
+  });
+});
+
+describe('Live machine modal fault tabs', () => {
+  const stale: any = { faultSummaries: [], faultCycles: [] };
+  const lfEstop = { code: 2111, name: 'LF Estop', count: 1, totalDurationSeconds: 120 };
+  const lfCycle = { id: 'a', name: 'LF Estop', start: '2026-11-24T15:31:19Z', durationSeconds: 120 };
+  let rows$: Subject<any[]>;
+  let polls: Array<() => Observable<any>>;
+  let faultService: jasmine.SpyObj<FaultService>;
+  let websocket: { connect: jasmine.Spy; machineDashboardData$: jasmine.Spy };
+
+  function create(view: 'summary' | 'cycles', live: boolean, liveRefresh = true) {
+    rows$ = new Subject<any[]>();
+    polls = [];
+    faultService = jasmine.createSpyObj('FaultService', ['getFaultHistoryBySerial']);
+    websocket = { connect: jasmine.createSpy('connect'), machineDashboardData$: jasmine.createSpy('rows').and.returnValue(rows$) };
+    TestBed.configureTestingModule({
+      imports: [MachineFaultHistoryComponent],
+      providers: [
+        provideNoopAnimations(),
+        { provide: MAT_DIALOG_DATA, useValue: null },
+        { provide: FaultService, useValue: faultService },
+        { provide: PollingService, useValue: {
+          // Run each poll once on demand so tests control timing.
+          poll: (fn: () => Observable<any>) => { polls.push(fn); return of(null); },
+          updateEndTimestampToNow: () => 'NOW',
+        } },
+        { provide: DateTimeService, useValue: { liveMode$: new BehaviorSubject(live), confirmTrigger$: new Subject() } },
+        { provide: WebsocketService, useValue: websocket },
+      ],
+    });
+    const fixture = TestBed.createComponent(MachineFaultHistoryComponent);
+    fixture.componentRef.setInput('mode', 'dashboard');
+    fixture.componentRef.setInput('viewType', view);
+    fixture.componentRef.setInput('serial', '90050');
+    fixture.componentRef.setInput('startTime', '2026-11-24T00:00');
+    fixture.componentRef.setInput('preloadedData', stale);
+    fixture.componentRef.setInput('liveRefresh', liveRefresh);
+    fixture.componentRef.setInput('cacheScope', 'today');
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('summary follows the live dashboard cache row for its machine (same source as Pareto)', () => {
+    const fixture = create('summary', true);
+    expect(fixture.componentInstance.rows.length).toBe(0);
+    expect(websocket.machineDashboardData$).toHaveBeenCalledWith('today', null);
+    rows$.next([{ machine: { serial: 1 }, faultData: { faultSummaries: [{ ...lfEstop, name: 'Other' }] } },
+      { machine: { serial: 90050 }, faultData: { faultSummaries: [lfEstop] } }]);
+    expect(fixture.componentInstance.rows).toEqual([{ 'Fault Type': 'LF Estop', 'Count': 1, 'Total Duration': jasmine.any(String) }]);
+    expect(faultService.getFaultHistoryBySerial).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('cycles poll the fault history with end = now and keep rows on a failed poll', () => {
+    const fixture = create('cycles', true);
+    expect(polls.length).toBe(1);
+    faultService.getFaultHistoryBySerial.and.returnValue(of({ faultCycles: [lfCycle] } as any));
+    polls[0]().subscribe();
+    expect(faultService.getFaultHistoryBySerial).toHaveBeenCalledWith('2026-11-24T00:00', 'NOW', 90050, 'cycles');
+    expect(fixture.componentInstance.rows.length).toBe(1);
+    faultService.getFaultHistoryBySerial.and.returnValue(throwError(() => new Error('offline')));
+    polls[0]().subscribe();
+    expect(fixture.componentInstance.rows.length).toBe(1);
+    expect(fixture.componentInstance.hasLoadError).toBeFalse();
+    fixture.destroy();
+  });
+
+  it('historical ranges and non-opted-in dashboards keep the preloaded snapshot without polling', () => {
+    for (const [live, opted] of [[false, true], [true, false]] as const) {
+      const fixture = create('cycles', live, opted);
+      expect(polls.length).toBe(0);
+      expect(websocket.machineDashboardData$).not.toHaveBeenCalled();
+      fixture.destroy();
+      TestBed.resetTestingModule();
+    }
   });
 });
