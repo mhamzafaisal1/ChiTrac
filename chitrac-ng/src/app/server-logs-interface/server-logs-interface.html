@@ -7,18 +7,19 @@
   </div>
 
   <div class="controls">
-    <app-date-time-picker
-      label="Start Time"
-      [(value)]="startTime"
-    ></app-date-time-picker>
-    <app-date-time-picker
-      label="End Time"
-      [(value)]="endTime"
-    ></app-date-time-picker>
+    <app-timeframe-picker
+      confirmLabel="Apply Timeframe"
+      [start]="startTime"
+      [end]="endTime"
+      [mode]="timeframeMode"
+      [showShiftFilter]="false"
+      [disabled]="isLoading"
+      (confirmed)="applyTimeframe($event)"
+    ></app-timeframe-picker>
 
     <mat-form-field appearance="outline" class="level-filter">
       <mat-label>Log Level</mat-label>
-      <mat-select [(ngModel)]="selectedLevel" (selectionChange)="onLevelChange()">
+      <mat-select [(ngModel)]="selectedLevel" [disabled]="isLoading" (selectionChange)="onLevelChange()">
         <mat-option value="">All Levels</mat-option>
         <mat-option *ngFor="let level of logLevels.slice(1)" [value]="level">
           {{ level.toUpperCase() }}

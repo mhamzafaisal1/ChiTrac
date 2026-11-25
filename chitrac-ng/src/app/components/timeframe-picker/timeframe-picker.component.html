@@ -26,7 +26,7 @@
       <mat-timepicker #endTimePicker></mat-timepicker>
     </mat-form-field>
   </div>
-  <div class="picker-option-section">
+  <div class="picker-option-section" *ngIf="showShiftFilter">
     <h4>Shift filter</h4>
     <p class="shift-hint" *ngIf="shiftsLoadError">{{ shiftsLoadError }}</p>
     <div class="picker-button-row">

@@ -37,6 +37,7 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
   @Input() mode: TimeframePickerMode = 'custom';
   @Input() disabled = false;
   @Input() confirmLabel = 'Confirm';
+  @Input() showShiftFilter = true;
   @Input() shifts: ShiftListItem[] | null = null;
   @Input() shiftsLoadError: string | null = null;
   @Output() confirmed = new EventEmitter<TimeframeSelection>();
@@ -69,7 +70,7 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
   constructor(private shiftService: ShiftService, @Optional() private cdr?: ChangeDetectorRef) {}
 
   ngOnInit(): void {
-    if (this.shifts !== null) return;
+    if (!this.showShiftFilter || this.shifts !== null) return;
     this.shiftService.getActiveShifts().pipe(takeUntil(this.destroy$)).subscribe({
       next: res => { this.shifts = res.shifts || []; this.scheduleShiftStartCheck(); },
       error: () => { this.shifts = []; this.shiftsLoadError = 'Could not load shifts'; },
@@ -81,7 +82,7 @@ export class TimeframePickerComponent implements OnInit, OnChanges, OnDestroy {
     if (!['start', 'end', 'shiftId', 'mode'].some(key => changes[key])) return;
     this.pickerStart = this.start ? new Date(this.start) : this.startOfToday();
     this.pickerEnd = this.end ? new Date(this.end) : new Date();
-    this.pickerShiftId = this.shiftId;
+    this.pickerShiftId = this.showShiftFilter ? this.shiftId : null;
     this.pickerMode = this.mode === 'shift' ? 'custom' : this.mode;
     this.shiftTimeRange.reset();
     this.scheduleShiftStartCheck();

@@ -9,9 +9,8 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { ServerLogsService, ServerLog } from '../services/server-logs.service';
 import { LogDetailModalComponent } from '../components/log-detail-modal/log-detail-modal.component';
-import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
+import { TimeframePickerComponent, TimeframePickerMode, TimeframeSelection } from '../components/timeframe-picker/timeframe-picker.component';
 
-import { toDateTimeLocalInput } from '../shared/utils/date-input';
 @Component({
   selector: 'app-server-logs-interface',
   standalone: true,
@@ -24,7 +23,7 @@ import { toDateTimeLocalInput } from '../shared/utils/date-input';
     MatFormFieldModule,
     MatDialogModule,
     BaseTableComponent,
-    DateTimePickerComponent
+    TimeframePickerComponent
   ],
   templateUrl: './server-logs-interface.html',
   styleUrls: ['./server-logs-interface.scss']
@@ -33,6 +32,7 @@ import { toDateTimeLocalInput } from '../shared/utils/date-input';
 export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
   startTime: string = '';
   endTime: string = '';
+  timeframeMode: TimeframePickerMode = 'custom';
   selectedLevel: string = '';
   columns: string[] = ['Timestamp', 'Level', 'Message', 'Hostname'];
   rows: any[] = [];
@@ -55,12 +55,9 @@ export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     // Set default date range (last 24 hours)
-    const end = new Date();
-    const start = new Date();
-    start.setHours(start.getHours() - 24);
-    
-    this.startTime = toDateTimeLocalInput(start);
-    this.endTime = toDateTimeLocalInput(end);
+    const end = Date.now();
+    this.startTime = new Date(end - 24 * 60 * 60 * 1000).toISOString();
+    this.endTime = new Date(end).toISOString();
 
     // Detect dark theme
     this.detectDarkTheme();
@@ -80,8 +77,16 @@ export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
   }
 
 
+  applyTimeframe(selection: TimeframeSelection): void {
+    if (this.isLoading) return;
+    this.startTime = selection.start.toISOString();
+    this.endTime = selection.end.toISOString();
+    this.timeframeMode = selection.mode ?? 'custom';
+    this.fetchLogs();
+  }
+
   fetchLogs(): void {
-    if (!this.startTime || !this.endTime) {
+    if (this.isLoading || !this.startTime || !this.endTime) {
       return;
     }
 
@@ -89,8 +94,8 @@ export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
     this.currentPage = 0;
 
     const options = {
-      start: new Date(this.startTime).toISOString(),
-      end: new Date(this.endTime).toISOString(),
+      start: this.startTime,
+      end: this.endTime,
       level: this.selectedLevel || undefined,
       limit: this.pageSize,
       skip: 0
@@ -119,8 +124,8 @@ export class ServerLogsInterfaceComponent implements OnInit, OnDestroy {
     this.currentPage++;
 
     const options = {
-      start: new Date(this.startTime).toISOString(),
-      end: new Date(this.endTime).toISOString(),
+      start: this.startTime,
+      end: this.endTime,
       level: this.selectedLevel || undefined,
       limit: this.pageSize,
       skip: this.currentPage * this.pageSize
