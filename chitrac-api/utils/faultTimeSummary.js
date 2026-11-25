@@ -5,7 +5,7 @@ const { SYSTEM_TIMEZONE } = require("./time");
 const { getShiftTimeComponents, getTimeComponentsFromTimestamp } = require("./shiftTimeComponents");
 
 const NON_FAULT_CODES = new Set([0, 1, "0", "1", null]);
-const OPEN_FAULT_SESSION_CAP_MS = 5 * 60 * 1000;
+const { effectiveFaultSessionEnd } = require("./openFaultSession");
 
 function validDate(value) {
   const date = value ? new Date(value) : null;
@@ -143,9 +143,8 @@ function clippedFaultSessionMs(session, rangeStart, rangeEnd) {
   const sessionStart = validDate(session?.timestamps?.start);
   if (!sessionStart) return 0;
 
-  const storedEnd = validDate(session?.timestamps?.end);
-  const cappedOpenEnd = new Date(Math.min(sessionStart.getTime() + OPEN_FAULT_SESSION_CAP_MS, rangeEnd.getTime()));
-  const sessionEnd = storedEnd || cappedOpenEnd;
+  // Open sessions run to rangeEnd while still reported on; orphaned ones are capped.
+  const sessionEnd = effectiveFaultSessionEnd(session, rangeEnd);
 
   return overlapMs(sessionStart, sessionEnd, rangeStart, rangeEnd);
 }

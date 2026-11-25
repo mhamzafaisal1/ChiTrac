@@ -5,6 +5,7 @@ const { parseAndValidateQueryParams } = require("../../utils/time");
 const { formatHumanName } = require("../../utils/humanNames");
 const { reportShiftMiddleware, sessionShiftFilter } = require('../../utils/reportShiftFilter');
 const { buildShiftScopedSessionWindows, durationInWindows } = require('../../utils/shiftWindows');
+const { effectiveFaultSessionEndExpression } = require('../../utils/openFaultSession');
 
 const NON_FAULT_CODES = [0, 1, "0", "1", null];
 
@@ -57,7 +58,8 @@ function buildFaultSessionMatch(startDate, endDate) {
       { "timestamps.start": { $lte: endDate } },
       {
         $or: [
-          { "timestamps.end": { $exists: false } },
+          // The datafeed opens sessions with end: null; { end: null } matches null and missing.
+          { "timestamps.end": null },
           { "timestamps.end": { $gte: startDate } },
         ],
       },
@@ -155,14 +157,9 @@ module.exports = function faultHistoryRoute(server) {
               ovEnd: {
                 $let: {
                   vars: {
-                    // If timestamps.end is missing, the session was likely orphaned by a crash.
-                    // Cap at start + 5 minutes instead of endDate to prevent 10+ hour phantom faults.
-                    effectiveEnd: {
-                      $ifNull: [
-                        "$timestamps.end",
-                        { $min: [{ $add: ["$timestamps.start", 5 * 60 * 1000] }, endDate] }
-                      ]
-                    }
+                    // Open sessions run to the range end while still reported on;
+                    // orphaned ones are capped (see utils/openFaultSession).
+                    effectiveEnd: effectiveFaultSessionEndExpression(endDate)
                   },
                   in: {
                     $cond: [
@@ -369,17 +366,7 @@ module.exports = function faultHistoryRoute(server) {
               ovEnd: {
                 $let: {
                   vars: {
-                    effectiveEnd: {
-                      $ifNull: [
-                        "$timestamps.end",
-                        {
-                          $min: [
-                            { $add: ["$timestamps.start", 5 * 60 * 1000] },
-                            endDate,
-                          ],
-                        },
-                      ],
-                    },
+                    effectiveEnd: effectiveFaultSessionEndExpression(endDate),
                   },
                   in: {
                     $cond: [
@@ -508,17 +495,7 @@ module.exports = function faultHistoryRoute(server) {
               ovEnd: {
                 $let: {
                   vars: {
-                    effectiveEnd: {
-                      $ifNull: [
-                        "$timestamps.end",
-                        {
-                          $min: [
-                            { $add: ["$timestamps.start", 5 * 60 * 1000] },
-                            endDate,
-                          ],
-                        },
-                      ],
-                    },
+                    effectiveEnd: effectiveFaultSessionEndExpression(endDate),
                   },
                   in: {
                     $cond: [
@@ -610,4 +587,6 @@ module.exports = function faultHistoryRoute(server) {
 
   return router;
 };
+
+module.exports.buildFaultSessionMatch = buildFaultSessionMatch;
 

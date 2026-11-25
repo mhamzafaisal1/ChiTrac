@@ -38,6 +38,7 @@ const {
 } = require("../../utils/machineFunctions");
 const { calendarRange, normalizeTotalsDocument } = require("../../utils/totalsSchema");
 const ipAddressSchema = require("../../schemas/ipAddress");
+const { effectiveFaultSessionEnd } = require("../../utils/openFaultSession");
 
 function totalsMachineSerialCondition(machineSerials) {
   const numericSerials = machineSerials
@@ -680,7 +681,8 @@ function constructor(server) {
       if (!(Number(status.code) > 1)) continue;
 
       const sessionStart = new Date(session.timestamps?.start || session.timestamps?.create || windowStart);
-      const sessionEnd = session.timestamps?.end ? new Date(session.timestamps.end) : windowEnd;
+      // Same open-session rule as the fault history API and dashboard cache.
+      const sessionEnd = effectiveFaultSessionEnd(session, windowEnd) || windowEnd;
       const overlapStart = sessionStart > windowStart ? sessionStart : windowStart;
       const overlapEnd = sessionEnd < windowEnd ? sessionEnd : windowEnd;
       const overlapMs = Math.max(0, overlapEnd - overlapStart);
