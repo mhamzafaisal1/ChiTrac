@@ -16,13 +16,14 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSelectModule } from '@angular/material/select';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { Subject, tap, takeUntil, debounceTime } from 'rxjs';
+import { Subject, tap, takeUntil, debounceTime, catchError, of } from 'rxjs';
 
 import { BaseTableComponent } from '../components/base-table/base-table.component';
 import { DateTimePickerComponent } from '../../../arch/date-time-picker/date-time-picker.component';
 import { FaultService } from '../services/fault.service';
 import { PollingService } from '../services/polling-service.service';
 import { DateTimeService } from '../services/date-time.service';
+import { DashboardCacheScope, WebsocketService } from '../services/websocket.service';
 import { formatDurationSeconds } from '../shared/utils/duration-format';
 
 import { toDateTimeLocalInput } from '../shared/utils/date-input';
@@ -52,6 +53,14 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   @Input() isModal: boolean = false;
   @Input() mode: 'standalone' | 'dashboard' = 'standalone';
   @Input() preloadedData: any | null = null;
+  /**
+   * Dashboard modals in live mode: keep the preloaded snapshot current.
+   * Summaries follow the live dashboard cache (same source as Downtime Pareto);
+   * cycles are refreshed from the fault-history API with end = now.
+   */
+  @Input() liveRefresh = false;
+  @Input() cacheScope: DashboardCacheScope | null = null;
+  @Input() shiftId: string | null = null;
 
   private _viewType: 'summary' | 'cycles' = 'summary';
   @Input()
@@ -77,6 +86,8 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
   lastParams: { startTime: string; endTime: string; serial: string } | null = null;
   private themeSubscription?: Subscription;
   private pollingSubscription: any;
+  private liveDashboardSubscription: Subscription | null = null;
+  private readonly websocketService = inject(WebsocketService);
   private destroy$ = new Subject<void>();
   private fetchTrigger$ = new Subject<void>();
 
@@ -119,8 +130,11 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
         this.liveMode = isLive;
 
         if (this.usePreloadedData()) {
-          this.stopPolling();
+          this.stopLiveDashboardUpdates();
           this.applyPreloadedData();
+          if (this.liveMode && this.shouldRefreshLive()) {
+            this.startLiveDashboardUpdates();
+          }
           return;
         }
 
@@ -193,7 +207,7 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
 
   ngOnDestroy() {
     if (this.themeSubscription) this.themeSubscription.unsubscribe();
-    this.stopPolling();
+    this.stopLiveDashboardUpdates();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -336,6 +350,64 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
           this.isLoading = false;
         }
       });
+  }
+
+  private shouldRefreshLive(): boolean {
+    return this.mode === 'dashboard' && this.liveRefresh && Number.isFinite(parseInt(this.serial, 10));
+  }
+
+  private startLiveDashboardUpdates(): void {
+    this.stopLiveDashboardUpdates();
+    const serial = parseInt(this.serial, 10);
+
+    if (this.viewType === 'summary') {
+      const scope = this.cacheScope || (this.shiftId ? 'currentShift' : 'today');
+      this.websocketService.connect();
+      this.liveDashboardSubscription = this.websocketService
+        .machineDashboardData$(scope, this.shiftId)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe((machineRows) => {
+          const row = (machineRows || []).find((candidate: any) => Number(candidate?.machine?.serial) === serial);
+          const summaries = row?.faultData?.faultSummaries ?? row?.downtimePareto?.faultSummaries;
+          if (!Array.isArray(summaries)) return;
+          this.lastFetchedData = { ...(this.lastFetchedData || {}), faultSummaries: summaries };
+          this.markLoaded();
+        });
+      return;
+    }
+
+    // The live dashboard cache does not carry individual cycles, so poll them.
+    this.pollingSubscription = this.pollingService
+      .poll(
+        () => this.faultService
+          .getFaultHistoryBySerial(this.startTime, this.pollingService.updateEndTimestampToNow(), serial, 'cycles')
+          .pipe(
+            tap((data: any) => {
+              this.lastFetchedData = { ...(this.lastFetchedData || {}), faultCycles: data?.faultCycles ?? [] };
+              this.markLoaded();
+            }),
+            // Keep the last good rows on a transient failure; the next poll retries.
+            catchError(() => of(null))
+          ),
+        this.POLLING_INTERVAL,
+        this.destroy$,
+        false,
+        false
+      )
+      .subscribe();
+  }
+
+  private stopLiveDashboardUpdates(): void {
+    this.stopPolling();
+    this.liveDashboardSubscription?.unsubscribe();
+    this.liveDashboardSubscription = null;
+  }
+
+  private markLoaded(): void {
+    this.hasFetchedOnce = true;
+    this.hasLoadError = false;
+    this.isLoading = false;
+    this.updateTable();
   }
 
   private usePreloadedData(): boolean {

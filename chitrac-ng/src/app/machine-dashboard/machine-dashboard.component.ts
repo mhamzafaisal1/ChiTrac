@@ -278,6 +278,13 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
   private operatorStatusCounts: OperatorStatusCounts = EMPTY_OPERATOR_STATUS_COUNTS;
   private machineDetailCache = new Map<number, any>();
   private machineDetailCacheKey = "";
+  private machineDetailCacheFetchedAt = 0;
+  /**
+   * In live mode the prefetched modal details are a snapshot of the moment they
+   * were fetched, so they are only reused briefly; older snapshots are refetched
+   * for the clicked machine with end = now when its modal opens.
+   */
+  private static readonly LIVE_DETAIL_CACHE_MAX_AGE_MS = 10_000;
   private machineDetailPrefetchKey = "";
 
   chartWidth: number = 1200;
@@ -1894,52 +1901,46 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
     }
 
     this.isOpeningModal = true;
-    if (timeframe) {
-      // Use timeframe-based API call
-      this.machineService
-        .getMachineDetailsWithTimeframe(timeframe, machineSerial, this.dateTimeService.getShiftId())
-        .subscribe({
-        next: (res: any[]) => {
-          try {
-            this.openMachineDetailsModal(row, machineSerial, res[0], modalChartDimensions);
-          } finally {
-            this.isOpeningModal = false;
-          }
-        },
-        error: (err: unknown) => {
-          console.error(
-            `Error loading detailed modal data for machine ${machineSerial}:`,
-            err
-          );
+    this.loadMachineDetailsForModal(machineSerial, timeframe).subscribe({
+      next: (res: any[]) => {
+        try {
+          this.openMachineDetailsModal(row, machineSerial, res[0], modalChartDimensions);
+        } finally {
           this.isOpeningModal = false;
-        },
-      });
-    } else {
-      // Fallback to date-based API call
-      this.machineService
-        .getMachineDetails(this.startTime, this.endTime, machineSerial, this.dateTimeService.getShiftId())
-        .subscribe({
-          next: (res: any[]) => {
-            try {
-              this.openMachineDetailsModal(row, machineSerial, res[0], modalChartDimensions);
-            } finally {
-              this.isOpeningModal = false;
-            }
-          },
-          error: (err: unknown) => {
-            console.error(
-              `Error loading detailed modal data for machine ${machineSerial}:`,
-              err
-            );
-            this.isOpeningModal = false;
-          },
-        });
+        }
+      },
+      error: (err: unknown) => {
+        console.error(
+          `Error loading detailed modal data for machine ${machineSerial}:`,
+          err
+        );
+        this.isOpeningModal = false;
+      },
+    });
+  }
+
+  private loadMachineDetailsForModal(machineSerial: number, timeframe: string): Observable<any> {
+    const shiftId = this.dateTimeService.getShiftId();
+    if (this.liveMode) {
+      // Live dashboards stop polling once websocket data arrives, so endTime
+      // can be minutes or hours old. Always read up to now.
+      return this.machineService.getMachineDetails(
+        this.startTime,
+        this.pollingService.updateEndTimestampToNow(),
+        machineSerial,
+        shiftId
+      );
     }
+    return timeframe
+      ? this.machineService.getMachineDetailsWithTimeframe(timeframe, machineSerial, shiftId)
+      : this.machineService.getMachineDetails(this.startTime, this.endTime, machineSerial, shiftId);
   }
 
   private getCachedMachineDetails(machineSerial: number): any | null {
     const detailCacheKey = this.getMachineDetailCacheKey();
-    if (this.machineDetailCacheKey === detailCacheKey) {
+    const detailCacheFresh = !this.liveMode ||
+      Date.now() - this.machineDetailCacheFetchedAt <= MachineDashboardComponent.LIVE_DETAIL_CACHE_MAX_AGE_MS;
+    if (this.machineDetailCacheKey === detailCacheKey && detailCacheFresh) {
       const cachedDetails = this.machineDetailCache.get(Number(machineSerial));
       if (cachedDetails) return cachedDetails;
     }
@@ -1993,6 +1994,7 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           });
           this.machineDetailCache = nextCache;
           this.machineDetailCacheKey = cacheKey;
+          this.machineDetailCacheFetchedAt = Date.now();
           this.machineDetailPrefetchKey = "";
         },
         error: (error) => {
@@ -2069,6 +2071,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           isModal: this.isModal,
           mode: "dashboard",
           preloadedData: machineData?.faultData,
+          liveRefresh: this.liveMode,
+          cacheScope: dashboardCacheScope,
+          shiftId: dashboardShiftId,
         },
       },
       {
@@ -2096,6 +2101,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           isModal: this.isModal,
           mode: "dashboard",
           preloadedData: machineData?.faultData,
+          liveRefresh: this.liveMode,
+          cacheScope: dashboardCacheScope,
+          shiftId: dashboardShiftId,
         },
       },
       {

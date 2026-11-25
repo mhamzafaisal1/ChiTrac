@@ -110,3 +110,58 @@ describe('Cascade machine presentation', () => {
       : ['Item Summary','Current Operators','Item Stacked Chart','Fault Summaries','Downtime Pareto','Fault History','Performance Chart']);
   });
 });
+
+describe('Live machine modal details', () => {
+  let dashboard: any;
+  const detail: any = { machine: { serial: 90050, type: 'Cascade' }, faultData: { faultSummaries: [], faultCycles: [] },
+    itemSummary: {}, itemHourlyStack: [], operatorEfficiency: [], currentOperators: [] };
+  beforeEach(() => {
+    dashboard = Object.create(MachineDashboardComponent.prototype);
+    dashboard.machineData = [];
+    dashboard.startTime = '2026-11-24T00:00';
+    dashboard.endTime = '2026-11-24T08:00';
+    dashboard.dateTimeService = { getShiftId: (): string | null => null };
+    dashboard.pollingService = { updateEndTimestampToNow: () => '2026-11-24T14:15' };
+    dashboard.machineService = jasmine.createSpyObj('MachineService', ['getMachineDetails', 'getMachineDetailsWithTimeframe']);
+    dashboard.machineDetailCache = new Map([[90050, detail]]);
+    dashboard.machineDetailCacheKey = dashboard.getMachineDetailCacheKey();
+  });
+
+  it('reuses a fresh prefetch but not a stale one in live mode', () => {
+    dashboard.liveMode = true;
+    dashboard.machineDetailCacheFetchedAt = Date.now();
+    expect(dashboard.getCachedMachineDetails(90050)).toBe(detail);
+    dashboard.machineDetailCacheFetchedAt = Date.now() - 60_000;
+    expect(dashboard.getCachedMachineDetails(90050)).toBeNull();
+  });
+
+  it('keeps using the prefetch for fixed historical ranges', () => {
+    dashboard.liveMode = false;
+    dashboard.machineDetailCacheFetchedAt = Date.now() - 3_600_000;
+    expect(dashboard.getCachedMachineDetails(90050)).toBe(detail);
+  });
+
+  it('loads live modal details up to now, not the stale dashboard end time', () => {
+    dashboard.liveMode = true;
+    dashboard.loadMachineDetailsForModal(90050, 'today');
+    expect(dashboard.machineService.getMachineDetails).toHaveBeenCalledWith('2026-11-24T00:00', '2026-11-24T14:15', 90050, null);
+    dashboard.liveMode = false;
+    dashboard.loadMachineDetailsForModal(90050, '');
+    expect(dashboard.machineService.getMachineDetails).toHaveBeenCalledWith('2026-11-24T00:00', '2026-11-24T08:00', 90050, null);
+  });
+
+  it('turns on live refresh for both fault tabs only in live mode', () => {
+    for (const live of [true, false]) {
+      dashboard.liveMode = live;
+      dashboard.getDashboardCacheScope = () => 'today';
+      dashboard.dialog = { open: jasmine.createSpy().and.returnValue({ afterClosed: () => ({ subscribe() {} }) }) };
+      dashboard.openMachineDetailsModal({}, 90050, detail, { width: 800, height: 500 });
+      const tabs = dashboard.dialog.open.calls.mostRecent().args[1].data.componentInputs.tabData;
+      for (const label of ['Fault Summaries', 'Fault History']) {
+        const inputs = tabs.find((tab: any) => tab.label === label).componentInputs;
+        expect(inputs.liveRefresh).withContext(label).toBe(live);
+        expect(inputs.cacheScope).withContext(label).toBe('today');
+      }
+    }
+  });
+});
