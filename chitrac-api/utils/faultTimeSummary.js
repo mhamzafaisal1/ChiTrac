@@ -294,25 +294,56 @@ async function getMachineFaultTimeBySerial(db, config, machineSerials, start, en
   return faultTimeBySerial;
 }
 
-async function getMachineFaultSummariesBySerial(db, config, machineSerials, start, end, options = {}) {
-  const serials = idVariants(machineSerials);
-  if (!config.machineSessionCollectionName || serials.length === 0) return new Map();
+// Downtime categories, matching the datafeed totals definition of downtime
+// (paused + fault + offline). Status 1 is running time and is never downtime.
+function downtimeCategory(code) {
+  const value = Number(code);
+  if (code === null || code === undefined || !Number.isFinite(value)) return null;
+  if (value === 0) return "paused";
+  if (value === -1) return "offline";
+  if (value > 1) return "fault";
+  return null;
+}
 
-  const faultSessions = await db
-    .collection(config.machineSessionCollectionName)
-    .find({
-      $and: [
-        overlapQuery(start, end),
-        realFaultSessionQuery(),
-        {
-          $or: [
-            { "machine.serial": { $in: serials } },
-            { "machine.id": { $in: serials } },
-            { "machine.serialNumber": { $in: serials } },
-          ],
-        },
+function downtimeSessionQuery() {
+  const notRunning = { $exists: true, $nin: [1, "1", null] };
+  return {
+    $or: [
+      { type: notRunning },
+      { "status.code": notRunning },
+      { "status.id": notRunning },
+      { "startState.status.code": notRunning },
+      { "startState.status.id": notRunning },
+      { "states.start.status.id": notRunning },
+      { "states.start.status.code": notRunning },
+    ],
+  };
+}
+
+/**
+ * Group machine sessions overlapping [start, end] into per-machine summaries
+ * keyed by category, code and name. Pass null for all machines in the range.
+ * `classify(code)` returns the category for
+ * a session state code, or null to skip it.
+ */
+async function getMachineStateSummariesBySerial(db, config, machineSerials, start, end, options, { query, classify }) {
+  const serials = machineSerials === null ? null : idVariants(machineSerials);
+  if (!config.machineSessionCollectionName || serials?.length === 0) return new Map();
+
+  const filters = [overlapQuery(start, end), query];
+  if (serials) {
+    filters.push({
+      $or: [
+        { "machine.serial": { $in: serials } },
+        { "machine.id": { $in: serials } },
+        { "machine.serialNumber": { $in: serials } },
       ],
-    })
+    });
+  }
+
+  const sessions = await db
+    .collection(config.machineSessionCollectionName)
+    .find({ $and: filters })
     .project({
       _id: 0,
       activeStations: 1,
@@ -329,12 +360,13 @@ async function getMachineFaultSummariesBySerial(db, config, machineSerials, star
     .toArray();
 
   const summariesBySerial = new Map();
-  for (const session of faultSessions) {
+  for (const session of sessions) {
     const serial = serialFromEntity(session.machine);
     if (serial === null) continue;
 
     const code = sessionStateCode(session);
-    if (NON_FAULT_CODES.has(code)) continue;
+    const category = classify(code);
+    if (!category) continue;
 
     const clippedMs = clippedFaultSessionMs(session, start, end);
     const clippedStart = Math.max(+new Date(session.timestamps?.start), +start);
@@ -346,11 +378,12 @@ async function getMachineFaultSummariesBySerial(db, config, machineSerials, star
     if (!summariesBySerial.has(serial)) summariesBySerial.set(serial, new Map());
     const summaryMap = summariesBySerial.get(serial);
     const name = sessionStateName(session);
-    const key = `${code ?? ""}|${name}`;
+    const key = `${category}|${code ?? ""}|${name}`;
     const activeStations = typeof session.activeStations === "number"
       ? session.activeStations
       : (Array.isArray(session.operators) ? session.operators.length : 0);
     const summary = summaryMap.get(key) || {
+      category,
       code,
       name,
       count: 0,
@@ -361,6 +394,7 @@ async function getMachineFaultSummariesBySerial(db, config, machineSerials, star
     summary.count += 1;
     summary.totalDurationSeconds += durationSeconds;
     summary.totalWorkTimeMissedSeconds += activeStations * durationSeconds;
+    if (options.includeMachineName && session.machine?.name) summary.machineName = session.machine.name;
     summaryMap.set(key, summary);
   }
 
@@ -380,6 +414,23 @@ async function getMachineFaultSummariesBySerial(db, config, machineSerials, star
   }
 
   return result;
+}
+
+/** Fault-only summaries (Fault Summaries tab, fault time). Unchanged behaviour. */
+async function getMachineFaultSummariesBySerial(db, config, machineSerials, start, end, options = {}) {
+  return getMachineStateSummariesBySerial(db, config, machineSerials, start, end, options, {
+    query: realFaultSessionQuery(),
+    // Fault time is status > 1 (datafeed contract); offline (-1) is not a fault.
+    classify: (code) => (downtimeCategory(code) === "fault" ? "fault" : null),
+  });
+}
+
+/** Downtime summaries for the Downtime Pareto: faults, paused and offline. */
+async function getMachineDowntimeSummariesBySerial(db, config, machineSerials, start, end, options = {}) {
+  return getMachineStateSummariesBySerial(db, config, machineSerials, start, end, options, {
+    query: downtimeSessionQuery(),
+    classify: downtimeCategory,
+  });
 }
 
 function mergeIntervals(intervals) {
@@ -671,6 +722,8 @@ module.exports = {
   isFaultSession: session => !NON_FAULT_CODES.has(sessionStateCode(session)),
   getMachineFaultTimeBySerial,
   getMachineFaultSummariesBySerial,
+  getMachineDowntimeSummariesBySerial,
+  downtimeCategory,
   getOperatorFaultTimeByOperatorId,
   getOperatorMachineStateTimeByOperatorId,
   getMachineStateTimeBySerial,

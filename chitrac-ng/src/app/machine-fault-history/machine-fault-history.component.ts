@@ -368,7 +368,8 @@ export class MachineFaultHistoryComponent implements OnInit, OnChanges, OnDestro
         .pipe(takeUntil(this.destroy$))
         .subscribe((machineRows) => {
           const row = (machineRows || []).find((candidate: any) => Number(candidate?.machine?.serial) === serial);
-          const summaries = row?.faultData?.faultSummaries ?? row?.downtimePareto?.faultSummaries;
+          // faultData is fault-only; downtimePareto also has paused/offline rows.
+          const summaries = row?.faultData?.faultSummaries;
           if (!Array.isArray(summaries)) return;
           this.lastFetchedData = { ...(this.lastFetchedData || {}), faultSummaries: summaries };
           this.markLoaded();
