@@ -9,6 +9,16 @@ export interface CascadeSignals {
   lowAir: boolean;
   rts2?: boolean;
   rts3?: boolean;
+  // Stopping-fault bits (true = faulted). Optional: older payloads omit them.
+  M2106?: boolean;
+  M2107?: boolean;
+  M2110?: boolean;
+  M2111?: boolean;
+  M2112?: boolean;
+  M2113?: boolean;
+  M2114?: boolean;
+  M2115?: boolean;
+  M2204?: boolean;
 }
 
 export interface CascadeMachineStatus {

@@ -8,9 +8,23 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
   { key: 'readyToStart', label: 'Ready to start', device: 'M2100' },
   { key: 'paused', label: 'Paused', device: 'M2101' },
   { key: 'running', label: 'Running', device: 'M2102' },
-  { key: 'lowAir', label: 'Low air', device: 'M2103' },
   { key: 'rts2', label: 'RTS 2', device: 'M2104' },
   { key: 'rts3', label: 'RTS3', device: 'M2105' },
+];
+
+// Stopping faults: on = faulted. Names match what is sent to the datafeed
+// (chitrac-api/modules/cascadeEvents.js).
+const FAULTS: { key: keyof CascadeSignals; label: string; device: string }[] = [
+  { key: 'lowAir', label: 'Low Air Fault', device: 'M2103' },
+  { key: 'M2106', label: 'Breaker Fault', device: 'M2106' },
+  { key: 'M2107', label: 'Autoload Fault', device: 'M2107' },
+  { key: 'M2110', label: 'LR Estop', device: 'M2110' },
+  { key: 'M2111', label: 'LF Estop', device: 'M2111' },
+  { key: 'M2112', label: 'RF Estop', device: 'M2112' },
+  { key: 'M2113', label: 'RR Estop', device: 'M2113' },
+  { key: 'M2114', label: 'Inverter Fault', device: 'M2114' },
+  { key: 'M2115', label: 'Doors Open', device: 'M2115' },
+  { key: 'M2204', label: 'No Material', device: 'M2204' },
 ];
 
 /** Live view of the Cascade PLC status received over MQTT. Polls every 5 s. */
@@ -53,6 +67,17 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
                 </div>
               }
             </div>
+            <h3 class="cs-section-title">Faults</h3>
+            <div class="cs-signals">
+              @for (f of faultDefs; track f.key) {
+                <div class="cs-signal cs-fault" [class.cs-faulted]="src.signals[f.key]" [class.cs-dim]="src.stale">
+                  <span class="cs-dot"></span>
+                  <span class="cs-label">{{ f.label }}</span>
+                  <span class="cs-value">{{ faultState(src.signals[f.key]) }}</span>
+                  <span class="cs-device">{{ f.device }}</span>
+                </div>
+              }
+            </div>
             <p class="cs-meta">
               Last message {{ src.lastSeenAt | date: 'medium' }} · Last change {{ src.lastChangedAt | date: 'medium' }}
             </p>
@@ -62,7 +87,7 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
           <div class="cs-card">
             <h2 class="cs-card-title">Recent changes</h2>
             <table class="cs-table">
-              <thead><tr><th>Time</th><th>Events</th><th>Status</th>@for (sig of signalDefs; track sig.key) {<th>{{ sig.label }}</th>}</tr></thead>
+              <thead><tr><th>Time</th><th>Events</th><th>Status</th>@for (sig of signalDefs; track sig.key) {<th>{{ sig.label }}</th>}<th>Active faults</th></tr></thead>
               <tbody>
                 @for (e of events(); track $index) {
                   <tr>
@@ -73,6 +98,9 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
                       <td [class.cs-changed]="e.previous && e.previous[sig.key] !== e.signals[sig.key]"
                           [class.cs-cell-on]="e.signals[sig.key]">{{ onOff(e.signals[sig.key]) }}</td>
                     }
+                    <td [class.cs-changed]="faultsChanged(e)" [class.cs-cell-fault]="activeFaults(e.signals).length">
+                      {{ activeFaults(e.signals).join(', ') || '—' }}
+                    </td>
                   </tr>
                 }
               </tbody>
@@ -119,11 +147,17 @@ const SIGNALS: { key: keyof CascadeSignals; label: string; device: string }[] = 
     .cs-table th, .cs-table td { padding: .4rem .5rem; border-bottom: 1px solid rgba(255,255,255,.1); }
     .cs-cell-on { color: #66bb6a; }
     .cs-changed { font-weight: 700; text-decoration: underline; }
+    .cs-section-title { margin: 1rem 0 .5rem; font-size: .95rem; font-weight: 600; color: var(--theme-color-on-surface-variant); }
+    .cs-fault.cs-faulted { border-color: #e53935; }
+    .cs-fault.cs-faulted .cs-dot { background: #e53935; box-shadow: 0 0 6px #e53935; }
+    .cs-fault.cs-faulted .cs-value { color: #ef5350; }
+    .cs-cell-fault { color: #ef5350; }
   `]
 })
 export class CascadeStatusComponent {
   private cascade = inject(CascadeService);
   readonly signalDefs = SIGNALS;
+  readonly faultDefs = FAULTS;
   readonly status = signal<CascadeStatusResponse | null>(null);
   readonly events = signal<CascadeEvent[]>([]);
   readonly error = signal<string | null>(null);
@@ -137,6 +171,19 @@ export class CascadeStatusComponent {
   /** Optional bits (RTS 2 / RTS3) show N/A until the PLC payload includes them. */
   onOff(value: boolean | undefined): string {
     return value === undefined ? 'N/A' : value ? 'ON' : 'OFF';
+  }
+
+  /** Fault bits: true = faulted. Missing bits (older payloads) show N/A. */
+  faultState(value: boolean | undefined): string {
+    return value === undefined ? 'N/A' : value ? 'FAULT' : 'OK';
+  }
+
+  activeFaults(signals: CascadeSignals | null | undefined): string[] {
+    return signals ? FAULTS.filter(f => signals[f.key] === true).map(f => f.label) : [];
+  }
+
+  faultsChanged(e: CascadeEvent): boolean {
+    return !!e.previous && FAULTS.some(f => e.previous![f.key] !== e.signals[f.key]);
   }
 
   eventLabels(events?: string[]): string {
