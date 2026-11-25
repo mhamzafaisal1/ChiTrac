@@ -9,8 +9,11 @@ const { calendarRange, normalizeTotalsDocument } = require("./totalsSchema");
 const { getShiftTimeComponents, getShiftStartMinutes } = require("./shiftTimeComponents");
 const {
   getMachineFaultSummariesBySerial,
+  getMachineDowntimeSummariesBySerial,
   getMachineFaultTimeBySerial,
 } = require("./faultTimeSummary");
+
+const DOWNTIME_CATEGORIES = ["fault", "paused", "offline"];
 
 const TOTALS_SHIFT_COLLECTION = "totals-shift";
 
@@ -19,11 +22,25 @@ function safeNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
-function buildDowntimeParetoPayload(faultSummaries = []) {
-  const summaries = Array.isArray(faultSummaries) ? faultSummaries : [];
+/**
+ * Downtime Pareto payload. `summaries` holds every downtime cause (fault,
+ * paused and offline, each tagged with `category`); `categories` has the
+ * per-category totals so clients can toggle categories without refetching.
+ */
+function buildDowntimeParetoPayload(downtimeSummaries = []) {
+  const summaries = Array.isArray(downtimeSummaries) ? downtimeSummaries : [];
+  const categories = Object.fromEntries(
+    DOWNTIME_CATEGORIES.map((category) => [category, { totalDurationSeconds: 0, totalCount: 0 }])
+  );
+  for (const summary of summaries) {
+    const bucket = categories[summary?.category || "fault"];
+    if (!bucket) continue;
+    bucket.totalDurationSeconds += safeNumber(summary?.totalDurationSeconds);
+    bucket.totalCount += safeNumber(summary?.count);
+  }
   return {
     summaries,
-    faultSummaries: summaries,
+    categories,
     totalDurationSeconds: summaries.reduce(
       (sum, summary) => sum + safeNumber(summary?.totalDurationSeconds),
       0
@@ -165,6 +182,7 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
   const machineSerials = records.map((r) => Number(r.machineSerial)).filter(Number.isFinite);
   const faultTimeBySerial = await getMachineFaultTimeBySerial(db, config, machineSerials, requestStart, requestEnd, options);
   const faultSummariesBySerial = await getMachineFaultSummariesBySerial(db, config, machineSerials, requestStart, requestEnd, options);
+  const downtimeSummariesBySerial = await getMachineDowntimeSummariesBySerial(db, config, machineSerials, requestStart, requestEnd, options);
   const configuredMachines = Array.isArray(options.configuredMachines)
     ? options.configuredMachines
     : await loadConfiguredMachines(db, config).catch(() => []);
@@ -225,7 +243,7 @@ async function buildMachineSummaryRows(db, logger, config, records, activeShifts
     const offlineTimeMs = safeNumber(record.offlineTimeMs);
     const faultTimeMs = faultTimeBySerial.get(machineSerial) ?? record.faultTimeMs ?? 0;
     const faultSummaries = faultSummariesBySerial.get(machineSerial) || [];
-    const downtimePareto = buildDowntimeParetoPayload(faultSummaries);
+    const downtimePareto = buildDowntimeParetoPayload(downtimeSummariesBySerial.get(machineSerial) || []);
     const breakTimeMs = safeNumber(record.breakTimeMs);
     const productiveElapsedMs = Math.max(0, elapsedMs - breakTimeMs);
     const totalCounts = safeNumber(record.totalCounts);
@@ -375,10 +393,10 @@ async function loadConfiguredMachines(db, config, serial = null) {
     .toArray();
 }
 
-function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd, faultSummaries = []) {
+function buildOfflineMachineSummaryRow(machine, requestStart, requestEnd, faultSummaries = [], downtimeSummaries = faultSummaries) {
   const serial = machineSerialFromConfig(machine);
   if (serial === null) return null;
-  const downtimePareto = buildDowntimeParetoPayload(faultSummaries);
+  const downtimePareto = buildDowntimeParetoPayload(downtimeSummaries);
 
   return {
     machine: {
@@ -488,6 +506,13 @@ async function appendConfiguredOfflineMachineRows(db, config, rows, requestStart
     requestStart,
     requestEnd
   );
+  const downtimeSummariesBySerial = await getMachineDowntimeSummariesBySerial(
+    db,
+    config,
+    missingSerials,
+    requestStart,
+    requestEnd
+  );
   const missingRows = missingMachines
     .map((machine) => {
       const machineSerial = machineSerialFromConfig(machine);
@@ -495,7 +520,8 @@ async function appendConfiguredOfflineMachineRows(db, config, rows, requestStart
         machine,
         requestStart,
         requestEnd,
-        faultSummariesBySerial.get(machineSerial) || []
+        faultSummariesBySerial.get(machineSerial) || [],
+        downtimeSummariesBySerial.get(machineSerial) || []
       );
     })
     .filter(Boolean);

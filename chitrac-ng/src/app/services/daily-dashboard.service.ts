@@ -8,6 +8,7 @@ import { Observable } from 'rxjs';
 export class DailyDashboardService {
   private apiUrl = '/api/dashboard';
   private faultApiUrl = '/api/fault';
+  private downtimeApiUrl = '/api/downtime';
   private reportsApiUrl = '/api/reports';
 
   constructor(private http: HttpClient) { }
@@ -171,6 +172,13 @@ getItemsSummary(start: string, end: string, serial?: number, shiftId?: string | 
   }
 
   /** Fault report: summary across all machines by fault code (uses fault-session, no cache) */
+  /** Downtime causes (fault, paused, offline) for the Downtime Pareto. */
+  getDowntimeSummary(start: string, end: string, serial?: number | null): Observable<{ context: any; summaries: any[] }> {
+    let params = new HttpParams().set('start', start).set('end', end);
+    if (serial !== undefined && serial !== null) params = params.set('serial', String(serial));
+    return this.http.get<{ context: any; summaries: any[] }>(`${this.downtimeApiUrl}/analytics/summary`, { params });
+  }
+
   getFaultReportSummary(start: string, end: string, shiftId?: string | null): Observable<{ context: any; summaries: any[] }> {
     let params = new HttpParams().set('start', start).set('end', end);
     if (shiftId) params = params.set('shiftId', shiftId);

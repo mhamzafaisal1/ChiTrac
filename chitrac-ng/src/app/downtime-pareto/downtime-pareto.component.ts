@@ -12,7 +12,28 @@ import { PollingService } from '../services/polling-service.service';
 import { DashboardCacheScope, WebsocketService } from '../services/websocket.service';
 
 import { ThemeService } from '../services/theme.service';
+export type DowntimeCategory = 'fault' | 'paused' | 'offline';
+
+const DOWNTIME_CATEGORIES: { key: DowntimeCategory; label: string }[] = [
+  { key: 'fault', label: 'Faults' },
+  { key: 'paused', label: 'Paused' },
+  { key: 'offline', label: 'Offline' },
+];
+// Faults and paused are what Rob defined as downtime for this view; offline is
+// available but off by default so idle overnight/weekend time does not swamp it.
+const DEFAULT_CATEGORIES: DowntimeCategory[] = ['fault', 'paused'];
+const CATEGORY_STORAGE_KEY = 'chitrac.downtimePareto.categories';
+
+interface ParetoSource {
+  category: DowntimeCategory;
+  fault: string;
+  machine: string;
+  count: number;
+  seconds: number;
+}
+
 interface ParetoRow {
+  category: DowntimeCategory;
   fault: string;
   machine: string;
   count: number;
@@ -46,6 +67,10 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   rows: ParetoRow[] = [];
   totalDuration = 0;
   totalCount = 0;
+  readonly categoryOptions = DOWNTIME_CATEGORIES;
+  enabledCategories = new Set<DowntimeCategory>(this.loadCategoryPreference());
+  categoryTotals: Record<DowntimeCategory, number> = { fault: 0, paused: 0, offline: 0 };
+  private sourceRows: ParetoSource[] = [];
   private themeSubscription?: Subscription;
   private destroy$ = new Subject<void>();
   private pollingSubscription: Subscription | null = null;
@@ -147,16 +172,15 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     this.isLoading = true;
-    this.faultService.getFaultHistoryBySerial(
+    this.dailyDashboardService.getDowntimeSummary(
       new Date(this.startTime).toISOString(),
       new Date(this.endTime).toISOString(),
-      machineSerial,
-      'summaries'
+      machineSerial
     )
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
-          this.processRows(response?.faultSummaries || []);
+          this.processRows(response?.summaries || []);
           this.isLoading = false;
         },
         error: () => {
@@ -197,8 +221,9 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
 
   private extractSummaries(source: any): any[] | null {
     if (Array.isArray(source)) return source;
-    if (Array.isArray(source?.downtimePareto?.faultSummaries)) return source.downtimePareto.faultSummaries;
     if (Array.isArray(source?.downtimePareto?.summaries)) return source.downtimePareto.summaries;
+    // Older payloads (pre paused/offline) only carried fault summaries.
+    if (Array.isArray(source?.downtimePareto?.faultSummaries)) return source.downtimePareto.faultSummaries;
     if (Array.isArray(source?.faultData?.faultSummaries)) return source.faultData.faultSummaries;
     if (Array.isArray(source?.faultSummaries)) return source.faultSummaries;
     if (Array.isArray(source?.summaries)) return source.summaries;
@@ -237,16 +262,56 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
       }
       return [...machines.values()];
     });
-    const sorted = expanded
-      .map((summary) => ({
-        machine: `${summary.machineName || ((this.serial ?? this.machineSerial) ? 'Machine' : 'All machines')}${summary.machineSerial != null ? ' · Serial ' + summary.machineSerial : (this.serial ?? this.machineSerial) ? ' · Serial ' + (this.serial ?? this.machineSerial) : ''}`,
-        fault: summary.code == null ? summary.name || 'Fault' : `${summary.name || 'Fault'} (${summary.code})`,
-        count: Number(summary.count || 0),
-        seconds: Number(summary.totalDurationSeconds || 0),
-      }))
+    this.sourceRows = expanded
+      .map((summary): ParetoSource => {
+        const category = this.categoryOf(summary);
+        const name = summary.name || (category === 'fault' ? 'Fault' : category === 'paused' ? 'Paused' : 'Offline');
+        return {
+          category,
+          machine: `${summary.machineName || ((this.serial ?? this.machineSerial) ? 'Machine' : 'All machines')}${summary.machineSerial != null ? ' · Serial ' + summary.machineSerial : (this.serial ?? this.machineSerial) ? ' · Serial ' + (this.serial ?? this.machineSerial) : ''}`,
+          // Fault codes identify the alarm; paused/offline codes (0/-1) add nothing.
+          fault: category === 'fault' && summary.code != null ? `${name} (${summary.code})` : name,
+          count: Number(summary.count || 0),
+          seconds: Number(summary.totalDurationSeconds || 0),
+        };
+      })
       .filter((row) => row.seconds > 0 || row.count > 0)
       .sort((a, b) => b.seconds - a.seconds || b.count - a.count);
 
+    this.categoryTotals = { fault: 0, paused: 0, offline: 0 };
+    for (const row of this.sourceRows) this.categoryTotals[row.category] += row.seconds;
+    this.applyCategoryFilter();
+  }
+
+  isCategoryEnabled(category: DowntimeCategory): boolean {
+    return this.enabledCategories.has(category);
+  }
+
+  toggleCategory(category: DowntimeCategory): void {
+    const next = new Set(this.enabledCategories);
+    if (next.has(category)) next.delete(category);
+    else next.add(category);
+    this.enabledCategories = next;
+    this.saveCategoryPreference();
+    this.applyCategoryFilter();
+  }
+
+  categoryLabel(category: DowntimeCategory): string {
+    return DOWNTIME_CATEGORIES.find((option) => option.key === category)?.label ?? category;
+  }
+
+  private categoryOf(summary: any): DowntimeCategory {
+    if (summary?.category === 'paused' || summary?.category === 'offline' || summary?.category === 'fault') {
+      return summary.category;
+    }
+    const code = summary?.code;
+    if (code === 0 || code === '0') return 'paused';
+    if (code === -1 || code === '-1') return 'offline';
+    return 'fault';
+  }
+
+  private applyCategoryFilter(): void {
+    const sorted = this.sourceRows.filter((row) => this.enabledCategories.has(row.category));
     this.totalDuration = sorted.reduce((sum, row) => sum + row.seconds, 0);
     this.totalCount = sorted.reduce((sum, row) => sum + row.count, 0);
     let running = 0;
@@ -350,13 +415,35 @@ export class DowntimeParetoComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private loadParetoData() {
-    return this.dailyDashboardService.getFaultReportSummary(
+    return this.dailyDashboardService.getDowntimeSummary(
       new Date(this.startTime).toISOString(),
       new Date(this.endTime).toISOString()
     );
   }
 
+  private loadCategoryPreference(): DowntimeCategory[] {
+    try {
+      const stored = JSON.parse(localStorage.getItem(CATEGORY_STORAGE_KEY) || 'null');
+      if (Array.isArray(stored)) {
+        return stored.filter((key: string) => DOWNTIME_CATEGORIES.some((option) => option.key === key));
+      }
+    } catch {
+      // Storage unavailable or malformed: fall back to the defaults.
+    }
+    return [...DEFAULT_CATEGORIES];
+  }
+
+  private saveCategoryPreference(): void {
+    try {
+      localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify([...this.enabledCategories]));
+    } catch {
+      // Not persisting is acceptable; the toggle still applies to this view.
+    }
+  }
+
   private clearRows(): void {
+    this.sourceRows = [];
+    this.categoryTotals = { fault: 0, paused: 0, offline: 0 };
     this.rows = [];
     this.totalDuration = 0;
     this.totalCount = 0;

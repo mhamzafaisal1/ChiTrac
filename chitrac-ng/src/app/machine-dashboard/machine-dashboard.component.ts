@@ -2085,7 +2085,9 @@ export class MachineDashboardComponent implements OnInit, OnDestroy {
           machineSerial,
           isModal: this.isModal,
           mode: "dashboard",
-          preloadedData: machineData?.downtimePareto || machineData?.faultData,
+          // Downtime causes include paused/offline; faultData is fault-only, so it
+          // is not a valid stand-in. Without it the tab loads the downtime API.
+          preloadedData: machineData?.downtimePareto ?? null,
           cacheScope: dashboardCacheScope,
           shiftId: dashboardShiftId,
         },

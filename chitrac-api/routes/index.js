@@ -115,6 +115,7 @@ function init(app, server) {
     app.use('/api', operatorRoutes);
     app.use('/api/dashboard', dashboardRoutes);
     app.use('/api/fault', faultRoutes);
+    app.use('/api/downtime', require('../controllers/downtime')(server));
     app.use('/api/cascade', require('../controllers/cascade')(server));
     app.use('/api/reports', reportRoutes);
     app.use('/api', statusRoutes);
